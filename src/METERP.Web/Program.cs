@@ -171,6 +171,8 @@ public class DatabaseSeeder : IHostedService
                 await userManager.AddToRoleAsync(adminUser, "Admin");
                 // Add explicit permission claims as well (defense in depth)
                 await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", Permissions.TenantsManage));
+                // Add TenantId claim so CurrentTenantProvider can read it automatically after login
+                await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("TenantId", defaultTenantId.ToString()));
             }
         }
     }
