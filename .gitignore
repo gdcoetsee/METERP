@@ -1,0 +1,47 @@
+﻿# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.userprefs
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# NuGet
+packages/
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# .NET Core / .NET
+project.lock.json
+project.fragment.lock.json
+artifacts/
+*.dll
+*.exe
+*.pdb
+
+# Others
+*.bak
+*.tmp
+*.temp
+Thumbs.db
+Desktop.ini
