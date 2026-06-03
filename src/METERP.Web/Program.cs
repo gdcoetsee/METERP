@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
+using METERP.Common;
+using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
 using METERP.Web.Components;
@@ -11,20 +14,54 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Multi-tenancy foundation
+// === Multi-tenancy + Current User ===
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, CurrentTenantProvider>();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
 
-// Database - SQL Server for foundation (configurable via connection string)
-// In production you would choose provider based on config or use a factory.
+// === Database (PostgreSQL chosen for cost and scalability in a sellable multi-tenant ERP) ===
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                       ?? "Server=(localdb)\\mssqllocaldb;Database=METERP;Trusted_Connection=True;MultipleActiveResultSets=true";
+                       ?? "Host=localhost;Database=METERP;Username=postgres;Password=postgres;Port=5432";
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseNpgsql(connectionString));
 
-// For development: ensure database is created/migrated on startup (remove in prod)
-builder.Services.AddHostedService<DatabaseInitializer>();
+// === ASP.NET Core Identity + Multi-tenancy ===
+builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
+    {
+        options.SignIn.RequireConfirmedAccount = false; // Foundation: simplify for now
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
+// Cookie authentication (suitable for Blazor Server)
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/login";
+    options.LogoutPath = "/logout";
+    options.AccessDeniedPath = "/access-denied";
+});
+
+// Authorization policies based on permissions (claim-based)
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Tenants.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.TenantsManage));
+
+    options.AddPolicy("Tenants.View", policy =>
+        policy.RequireClaim("Permission", Permissions.TenantsView, Permissions.TenantsManage));
+
+    // Add more policies as modules are built
+});
+
+// For development/demo only: ensure DB + seed data
+builder.Services.AddHostedService<DatabaseSeeder>();
 
 var app = builder.Build();
 
@@ -36,9 +73,11 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -46,14 +85,14 @@ app.MapRazorComponents<App>()
 app.Run();
 
 /// <summary>
-/// Simple hosted service to ensure the database exists for the foundation.
-/// In a real project you would use EF migrations (dotnet ef migrations add ...).
+/// Seeds the database with a default tenant, roles with permissions, and a demo user.
+/// This is for foundation/demo purposes only.
 /// </summary>
-public class DatabaseInitializer : IHostedService
+public class DatabaseSeeder : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
 
-    public DatabaseInitializer(IServiceProvider serviceProvider)
+    public DatabaseSeeder(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
     }
@@ -62,10 +101,103 @@ public class DatabaseInitializer : IHostedService
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
 
-        // For foundation/demo: create DB if not exists.
-        // TODO: Replace with proper migrations before real use.
+        // Ensure database exists (replace with migrations in real use)
         await db.Database.EnsureCreatedAsync(cancellationToken);
+
+        // 1. Create a default tenant if none exists
+        var existingTenants = await tenantService.GetAllAsync(cancellationToken);
+        Guid defaultTenantId;
+
+        if (!existingTenants.Any())
+        {
+            // Temporarily set no tenant for creation
+            tenantProvider.SetTenantId(Guid.Empty);
+            defaultTenantId = await tenantService.CreateAsync("Acme Electrical (Demo)", "acme", cancellationToken);
+        }
+        else
+        {
+            defaultTenantId = existingTenants.First().Id;
+        }
+
+        // 2. Ensure roles with permissions exist for the tenant
+        tenantProvider.SetTenantId(defaultTenantId);
+
+        await EnsureRoleWithPermissions(roleManager, "Admin", new[]
+        {
+            Permissions.TenantsView,
+            Permissions.TenantsManage,
+            Permissions.CustomersView,
+            Permissions.CustomersManage,
+            Permissions.JobsView,
+            Permissions.JobsManage
+        }, defaultTenantId, cancellationToken);
+
+        await EnsureRoleWithPermissions(roleManager, "Manager", new[]
+        {
+            Permissions.TenantsView,
+            Permissions.CustomersView,
+            Permissions.CustomersManage,
+            Permissions.JobsView,
+            Permissions.JobsManage
+        }, defaultTenantId, cancellationToken);
+
+        await EnsureRoleWithPermissions(roleManager, "Technician", new[]
+        {
+            Permissions.CustomersView,
+            Permissions.JobsView
+        }, defaultTenantId, cancellationToken);
+
+        // 3. Create a demo admin user if none exists for this tenant
+        var adminEmail = "admin@acme.demo";
+        var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
+        if (existingAdmin == null)
+        {
+            var adminUser = new ApplicationUser
+            {
+                UserName = adminEmail,
+                Email = adminEmail,
+                EmailConfirmed = true,
+                TenantId = defaultTenantId
+            };
+
+            var result = await userManager.CreateAsync(adminUser, "Demo123!");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(adminUser, "Admin");
+                // Add explicit permission claims as well (defense in depth)
+                await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", Permissions.TenantsManage));
+            }
+        }
+    }
+
+    private async Task EnsureRoleWithPermissions(RoleManager<ApplicationRole> roleManager, string roleName, string[] permissions, Guid tenantId, CancellationToken ct)
+    {
+        var role = await roleManager.FindByNameAsync(roleName);
+        if (role == null)
+        {
+            role = new ApplicationRole
+            {
+                Name = roleName,
+                TenantId = tenantId,
+                NormalizedName = roleName.ToUpper()
+            };
+            await roleManager.CreateAsync(role);
+        }
+
+        // Add permission claims to the role
+        var existingClaims = await roleManager.GetClaimsAsync(role);
+        foreach (var perm in permissions)
+        {
+            if (!existingClaims.Any(c => c.Type == "Permission" && c.Value == perm))
+            {
+                await roleManager.AddClaimAsync(role, new System.Security.Claims.Claim("Permission", perm));
+            }
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

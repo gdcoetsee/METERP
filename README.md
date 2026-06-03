@@ -11,12 +11,19 @@
 - **.NET 9**
 
 ## Phase 1 Foundation (What we are building now)
-- Multi-tenant DbContext
-- Base entities with audit + soft delete
-- ASP.NET Identity + Permissions
+- Multi-tenant DbContext (PostgreSQL via Npgsql)
+- Base entities with audit + soft delete + concurrency token
+- ASP.NET Core Identity (multi-tenant users + roles) + claim-based Permissions
+- Current user & tenant services
 - Dependency Injection setup
-- Docker support
-- Basic Tenant management
+- Docker support (Postgres included)
+- Basic Tenant management + demo UI with login
+- Authorization policies
+
+**Tech decisions made for the foundation:**
+- **Database**: PostgreSQL (better cost/scalability for a sellable multi-tenant product). Easy to switch via connection string.
+- **Identity**: Full ASP.NET Identity with `TenantId` on users/roles. Permissions implemented as claims + policies.
+- Blazor Server interactive components with cascading auth state.
 
 ## Next Modules (after foundation)
 1. Customer & Contact Management

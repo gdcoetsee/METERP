@@ -1,6 +1,8 @@
 @page "/tenants"
 @using METERP.Application.Services
 @using METERP.Domain
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "Tenants.View")]
 @inject ITenantService TenantService
 
 <PageTitle>Tenants</PageTitle>
