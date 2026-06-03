@@ -1,0 +1,89 @@
+@page "/tenants"
+@using METERP.Application.Services
+@using METERP.Domain
+@inject ITenantService TenantService
+
+<PageTitle>Tenants</PageTitle>
+
+<h1>Tenants</h1>
+
+<p>This page demonstrates basic multi-tenant foundation functionality.</p>
+
+@if (tenants == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (!tenants.Any())
+{
+    <p>No tenants found. Use the form below to create the first one.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Subdomain</th>
+                <th>Active</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in tenants)
+            {
+                <tr>
+                    <td>@t.Name</td>
+                    <td>@t.Subdomain</td>
+                    <td>@t.IsActive</td>
+                    <td>@t.CreatedDate.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h3>Create New Tenant</h3>
+
+<EditForm Model="newTenant" OnValidSubmit="CreateTenant">
+    <div class="mb-3">
+        <label class="form-label">Name</label>
+        <InputText class="form-control" @bind-Value="newTenant.Name" required />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Subdomain</label>
+        <InputText class="form-control" @bind-Value="newTenant.Subdomain" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Create Tenant</button>
+</EditForm>
+
+@code {
+    private List<Tenant> tenants = new();
+    private NewTenantModel newTenant = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenants();
+    }
+
+    private async Task LoadTenants()
+    {
+        var result = await TenantService.GetAllAsync();
+        tenants = result.ToList();
+    }
+
+    private async Task CreateTenant()
+    {
+        if (string.IsNullOrWhiteSpace(newTenant.Name) || string.IsNullOrWhiteSpace(newTenant.Subdomain))
+            return;
+
+        await TenantService.CreateAsync(newTenant.Name, newTenant.Subdomain);
+        newTenant = new();
+        await LoadTenants();
+    }
+
+    private class NewTenantModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Subdomain { get; set; } = string.Empty;
+    }
+}

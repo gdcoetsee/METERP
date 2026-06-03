@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+WORKDIR /app
+EXPOSE 8080
+EXPOSE 8081
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG BUILD_CONFIGURATION=Release
+WORKDIR /src
+COPY ["METERP.sln", "."]
+COPY ["src/METERP.Domain/METERP.Domain.csproj", "src/METERP.Domain/"]
+COPY ["src/METERP.Common/METERP.Common.csproj", "src/METERP.Common/"]
+COPY ["src/METERP.Application/METERP.Application.csproj", "src/METERP.Application/"]
+COPY ["src/METERP.Infrastructure/METERP.Infrastructure.csproj", "src/METERP.Infrastructure/"]
+COPY ["src/METERP.Web/METERP.Web.csproj", "src/METERP.Web/"]
+RUN dotnet restore "METERP.sln"
+
+COPY . .
+WORKDIR "/src/src/METERP.Web"
+RUN dotnet build "METERP.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build
+
+FROM build AS publish
+ARG BUILD_CONFIGURATION=Release
+RUN dotnet publish "METERP.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+
+FROM base AS final
+WORKDIR /app
+COPY --from=publish /app/publish .
+ENTRYPOINT ["dotnet", "METERP.Web.dll"]

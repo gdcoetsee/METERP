@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ProjectGuid>{66F75E2B-ACAE-4915-9ECE-033B666E03CF}</ProjectGuid>
+  </PropertyGroup>
+
+</Project>

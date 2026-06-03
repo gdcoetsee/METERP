@@ -1,0 +1,24 @@
+@page "/"
+
+<PageTitle>METERP - Foundation</PageTitle>
+
+<h1>Welcome to METERP</h1>
+
+<p>
+    This is the clean foundation for the multi-tenant ERP system (Electrical &amp; Mechanical Contracting, South Africa).
+</p>
+
+<p>
+    <strong>Current architecture:</strong> Clean Architecture with multi-tenancy built in from day one.
+</p>
+
+<ul>
+    <li>Domain: BaseEntity + Tenant</li>
+    <li>Application: Contracts for tenant management</li>
+    <li>Infrastructure: EF Core + global query filters for tenant isolation + soft delete</li>
+    <li>Web: Blazor Server</li>
+</ul>
+
+<p>
+    Next steps in Phase 1: full tenant provisioning, ASP.NET Identity integration with tenant-aware users, permissions, etc.
+</p>

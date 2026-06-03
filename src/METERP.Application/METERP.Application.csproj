@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ProjectGuid>{CE50DD3F-9D46-49E2-9A0E-E36865698F2A}</ProjectGuid>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\METERP.Domain\METERP.Domain.csproj" />
+    <ProjectReference Include="..\METERP.Common\METERP.Common.csproj" />
+  </ItemGroup>
+
+</Project>
