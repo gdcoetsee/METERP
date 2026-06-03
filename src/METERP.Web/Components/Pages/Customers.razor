@@ -1,0 +1,379 @@
+@page "/customers"
+@using METERP.Application.Services
+@using METERP.Domain
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "Customers.View")]
+@inject ICustomerService CustomerService
+
+<PageTitle>Customers</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Customers</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Customer</button>
+    }
+</div>
+
+@if (customers == null)
+{
+    <p><em>Loading customers...</em></p>
+}
+else if (!customers.Any())
+{
+    <div class="alert alert-info">No customers found for this tenant. Create your first one!</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Phone / Email</th>
+                    <th>Location</th>
+                    <th>Contacts</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var customer in customers)
+                {
+                    <tr>
+                        <td>
+                            <strong>@customer.Name</strong>
+                            @if (!string.IsNullOrEmpty(customer.CompanyRegistrationNumber))
+                            {
+                                <br /><small class="text-muted">Reg: @customer.CompanyRegistrationNumber</small>
+                            }
+                        </td>
+                        <td>
+                            @customer.Phone <br />
+                            <small>@customer.Email</small>
+                        </td>
+                        <td>@customer.City, @customer.Province</td>
+                        <td>
+                            <span class="badge bg-secondary">@customer.Contacts.Count</span>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewCustomer(customer)">View</button>
+                            @if (UserCanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditCustomer(customer)">Edit</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit Customer" : "New Customer")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentCustomer" OnValidSubmit="SaveCustomer">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Name / Company *</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.Name" required />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Company Reg Number</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.CompanyRegistrationNumber" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">VAT Number</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.VatNumber" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Phone</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.Phone" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Email</label>
+                        <InputText type="email" class="form-control" @bind-Value="currentCustomer.Email" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">City</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.City" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Address</label>
+                    <InputText class="form-control" @bind-Value="currentCustomer.AddressLine1" placeholder="Street Address" />
+                    <InputText class="form-control mt-1" @bind-Value="currentCustomer.AddressLine2" placeholder="Address Line 2" />
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Province</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.Province" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Postal Code</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.PostalCode" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Country</label>
+                        <InputText class="form-control" @bind-Value="currentCustomer.Country" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="currentCustomer.Notes" rows="2" />
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save Customer</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedCustomer != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <h5 class="mb-0">@selectedCustomer.Name - Contacts</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseCustomerView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <strong>Details:</strong> @selectedCustomer.Phone | @selectedCustomer.Email<br />
+                @selectedCustomer.AddressLine1, @selectedCustomer.City
+            </div>
+
+            <h6>Contacts (@selectedCustomer.Contacts.Count)</h6>
+
+            @if (selectedCustomer.Contacts.Any())
+            {
+                <ul class="list-group mb-3">
+                    @foreach (var contact in selectedCustomer.Contacts.OrderByDescending(c => c.IsPrimary))
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>@contact.FirstName @contact.LastName</strong>
+                                @if (contact.IsPrimary) { <span class="badge bg-info ms-1">Primary</span> }
+                                <br />
+                                <small>@contact.JobTitle | @contact.Phone | @contact.Email</small>
+                            </div>
+                            @if (UserCanManage)
+                            {
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => EditContact(contact)">Edit</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteContact(contact)">Delete</button>
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="text-muted">No contacts yet.</p>
+            }
+
+            @if (UserCanManage)
+            {
+                <button class="btn btn-outline-success btn-sm" @onclick="ShowAddContactForm">+ Add Contact</button>
+            }
+
+            @if (showContactForm)
+            {
+                <div class="mt-3 p-3 border rounded">
+                    <h6>@(editingContact?.Id != Guid.Empty ? "Edit" : "New") Contact</h6>
+                    <EditForm Model="editingContact" OnValidSubmit="SaveContact">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <InputText class="form-control mb-2" @bind-Value="editingContact!.FirstName" placeholder="First Name" required />
+                            </div>
+                            <div class="col-md-6">
+                                <InputText class="form-control mb-2" @bind-Value="editingContact.LastName" placeholder="Last Name" required />
+                            </div>
+                        </div>
+                        <InputText class="form-control mb-2" @bind-Value="editingContact.JobTitle" placeholder="Job Title" />
+                        <InputText class="form-control mb-2" @bind-Value="editingContact.Phone" placeholder="Phone" />
+                        <InputText type="email" class="form-control mb-2" @bind-Value="editingContact.Email" placeholder="Email" />
+                        <div class="form-check mb-2">
+                            <InputCheckbox class="form-check-input" @bind-Value="editingContact.IsPrimary" />
+                            <label class="form-check-label">Primary Contact</label>
+                        </div>
+                        <InputTextArea class="form-control mb-2" @bind-Value="editingContact.Notes" placeholder="Notes" rows="2" />
+
+                        <button type="submit" class="btn btn-sm btn-success">Save Contact</button>
+                        <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelContactForm">Cancel</button>
+                    </EditForm>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<Customer> customers = new();
+    private Customer currentCustomer = new();
+    private Customer? selectedCustomer;
+    private bool showForm;
+    private bool isEditing;
+    private bool showContactForm;
+    private Contact? editingContact;
+
+    private bool UserCanManage => true; // TODO: Wire to ICurrentUserService permissions in real implementation
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        customers = (await CustomerService.GetAllAsync()).ToList();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentCustomer = new Customer { Country = "South Africa" };
+        isEditing = false;
+        showForm = true;
+        selectedCustomer = null;
+    }
+
+    private void EditCustomer(Customer customer)
+    {
+        currentCustomer = new Customer
+        {
+            Id = customer.Id,
+            Name = customer.Name,
+            CompanyRegistrationNumber = customer.CompanyRegistrationNumber,
+            VatNumber = customer.VatNumber,
+            Phone = customer.Phone,
+            Email = customer.Email,
+            AddressLine1 = customer.AddressLine1,
+            AddressLine2 = customer.AddressLine2,
+            City = customer.City,
+            Province = customer.Province,
+            PostalCode = customer.PostalCode,
+            Country = customer.Country,
+            Notes = customer.Notes
+        };
+        isEditing = true;
+        showForm = true;
+        selectedCustomer = null;
+    }
+
+    private async Task SaveCustomer()
+    {
+        if (isEditing)
+        {
+            await CustomerService.UpdateAsync(currentCustomer);
+        }
+        else
+        {
+            await CustomerService.CreateAsync(currentCustomer);
+        }
+
+        showForm = false;
+        await LoadCustomers();
+        currentCustomer = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentCustomer = new();
+    }
+
+    private async Task ViewCustomer(Customer customer)
+    {
+        selectedCustomer = await CustomerService.GetByIdAsync(customer.Id);
+        showForm = false;
+        showContactForm = false;
+    }
+
+    private void CloseCustomerView()
+    {
+        selectedCustomer = null;
+        editingContact = null;
+        showContactForm = false;
+    }
+
+    private void ShowAddContactForm()
+    {
+        if (selectedCustomer == null) return;
+        editingContact = new Contact { CustomerId = selectedCustomer.Id };
+        showContactForm = true;
+    }
+
+    private void EditContact(Contact contact)
+    {
+        editingContact = new Contact
+        {
+            Id = contact.Id,
+            CustomerId = contact.CustomerId,
+            FirstName = contact.FirstName,
+            LastName = contact.LastName,
+            JobTitle = contact.JobTitle,
+            Phone = contact.Phone,
+            Mobile = contact.Mobile,
+            Email = contact.Email,
+            Notes = contact.Notes,
+            IsPrimary = contact.IsPrimary
+        };
+        showContactForm = true;
+    }
+
+    private async Task SaveContact()
+    {
+        if (editingContact == null || selectedCustomer == null) return;
+
+        if (editingContact.Id == Guid.Empty)
+        {
+            await CustomerService.AddContactAsync(editingContact);
+        }
+        else
+        {
+            await CustomerService.UpdateContactAsync(editingContact);
+        }
+
+        showContactForm = false;
+        editingContact = null;
+        selectedCustomer = await CustomerService.GetByIdAsync(selectedCustomer.Id); // refresh
+        await LoadCustomers();
+    }
+
+    private void CancelContactForm()
+    {
+        showContactForm = false;
+        editingContact = null;
+    }
+
+    private async Task DeleteContact(Contact contact)
+    {
+        if (!await ConfirmDelete($"Delete contact {contact.FirstName} {contact.LastName}?")) return;
+
+        await CustomerService.DeleteContactAsync(contact.Id);
+        selectedCustomer = await CustomerService.GetByIdAsync(selectedCustomer!.Id);
+        await LoadCustomers();
+    }
+
+    private async Task<bool> ConfirmDelete(string message)
+    {
+        // Simple confirmation - in real app use a proper modal
+        return await Task.FromResult(true); // For demo, always confirm
+    }
+}

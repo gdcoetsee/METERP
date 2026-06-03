@@ -25,8 +25,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     // Platform / cross-cutting (non-Identity)
     public DbSet<Tenant> Tenants { get; set; } = null!;
 
-    // Future module sets will be added here or via conventions
-    // public DbSet<Customer> Customers { get; set; } = null!;
+    // Customer module (Module 1)
+    public DbSet<Customer> Customers { get; set; } = null!;
+    public DbSet<Contact> Contacts { get; set; } = null!;
 
     public Guid CurrentTenantId => _tenantProvider.GetCurrentTenantId();
 

@@ -3,9 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
+using METERP.Domain;
+using METERP.Infrastructure.Services;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
-using METERP.Infrastructure.Services;
 using METERP.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +20,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, CurrentTenantProvider>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
 
 // === Database (PostgreSQL chosen for cost and scalability in a sellable multi-tenant ERP) ===
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -56,6 +58,13 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy("Tenants.View", policy =>
         policy.RequireClaim("Permission", Permissions.TenantsView, Permissions.TenantsManage));
+
+    // Customer module policies
+    options.AddPolicy("Customers.View", policy =>
+        policy.RequireClaim("Permission", Permissions.CustomersView, Permissions.CustomersManage));
+
+    options.AddPolicy("Customers.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.CustomersManage));
 
     // Add more policies as modules are built
 });
@@ -104,6 +113,7 @@ public class DatabaseSeeder : IHostedService
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
         var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var customerService = scope.ServiceProvider.GetRequiredService<ICustomerService>();
         var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
 
         // Ensure database exists (replace with migrations in real use)
@@ -171,9 +181,47 @@ public class DatabaseSeeder : IHostedService
                 await userManager.AddToRoleAsync(adminUser, "Admin");
                 // Add explicit permission claims as well (defense in depth)
                 await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", Permissions.TenantsManage));
+                await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", Permissions.CustomersManage));
                 // Add TenantId claim so CurrentTenantProvider can read it automatically after login
                 await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("TenantId", defaultTenantId.ToString()));
             }
+        }
+
+        // 4. Seed some demo customers for the tenant (if none exist)
+        var existingCustomers = await customerService.GetAllAsync(ct: cancellationToken);
+        if (!existingCustomers.Any())
+        {
+            var cust1 = new Customer
+            {
+                Name = "Johannesburg General Hospital",
+                Phone = "011 555 1234",
+                Email = "procurement@jhgh.co.za",
+                City = "Johannesburg",
+                Province = "Gauteng",
+                PostalCode = "2001"
+            };
+            await customerService.CreateAsync(cust1, cancellationToken);
+
+            await customerService.AddContactAsync(new Contact
+            {
+                CustomerId = cust1.Id,
+                FirstName = "Thabo",
+                LastName = "Mokoena",
+                JobTitle = "Procurement Manager",
+                Phone = "011 555 1235",
+                Email = "thabo.mokoena@jhgh.co.za",
+                IsPrimary = true
+            }, cancellationToken);
+
+            var cust2 = new Customer
+            {
+                Name = "Cape Town Mining Ltd",
+                Phone = "021 444 9876",
+                Email = "ops@ctmining.co.za",
+                City = "Cape Town",
+                Province = "Western Cape"
+            };
+            await customerService.CreateAsync(cust2, cancellationToken);
         }
     }
 
