@@ -1,0 +1,39 @@
+---
+description: METERP coding standards for C# and Blazor
+globs: "**/*.{cs,razor,csproj}"
+alwaysApply: false
+---
+
+# METERP code rules
+
+## Multi-tenancy (critical)
+- Tenant-scoped entities use `BaseEntity`; respect `AppDbContext` global filters.
+- Set `TenantId` from `ITenantProvider` in services — never hardcode tenant IDs.
+- Soft-delete via `IsDeleted`; do not physically delete tenant business data unless explicitly required.
+
+## New features checklist
+1. Domain entity/enum
+2. `Application/Services/I*Service.cs`
+3. `Infrastructure/Services/*Service.cs`
+4. `Program.cs` DI + authorization policy
+5. `Common/Permissions.cs` constants
+6. Blazor page in `Web/Components/Pages/`
+7. Nav entry in `NavMenu.razor` if user-facing
+8. EF migration for schema changes (`dotnet ef migrations add` from Infrastructure project)
+
+## Patterns to match
+- `LineTotal` on document lines is computed in the entity, not assigned in UI.
+- Usage counters on `Tenant` increment in service create methods.
+- Check `tenant.HasFeature("ai")` before AI operations.
+- Seeding: safe by default; only reset with `METERP_SEED_RESET=true`.
+- UI: `professional.css`, `ToastService`, `@rendermode InteractiveServer`, reuse `QuoteList`/`JobList` gateway patterns.
+
+## Testing
+- Run `dotnet test` after non-trivial changes.
+- Add unit tests for calculation logic in `tests/METERP.Application.Tests/`.
+
+## Avoid
+- Business logic in Razor `@code` blocks — delegate to services.
+- Bypassing tenant filters or cross-layer references.
+- SQL Server — use PostgreSQL/Npgsql only.
+- Unrelated refactors in the same PR as a feature fix.

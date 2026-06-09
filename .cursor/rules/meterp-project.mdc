@@ -1,0 +1,20 @@
+---
+description: METERP project vision, goals, and roadmap — read before any task
+alwaysApply: true
+---
+
+# METERP project context
+
+**Goal:** Sellable multi-tenant ERP for contractors — demo-ready SaaS with Quote → Sales Order → Job → Invoice as the core spine. Travel costs stay explicit everywhere.
+
+**Stack:** .NET 9, Blazor Server, PostgreSQL, EF Core, ASP.NET Identity with claim permissions.
+
+**Layers:** Domain → Application (interfaces) → Infrastructure (services, EF) → Web (Blazor). Never reference Infrastructure from Domain.
+
+**Before coding:** Read `AGENTS.md` and `README.md` for full context.
+
+**Default demo:** `admin@acme.demo` / `Demo123!` via `docker-compose up --build`.
+
+**Roadmap focus:** E2E tests (Playwright), production hardening (logging, health, secrets), billing/quota enforcement, real email/2FA integrations.
+
+**Ask the user** before large architectural changes or new modules not on the roadmap.
