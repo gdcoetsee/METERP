@@ -1,0 +1,416 @@
+@page "/assets"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Assets.View")]
+@inject IAssetService AssetService
+@inject ICustomerService CustomerService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Assets</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Assets</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Asset</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search name, serial, location or customer..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading assets...</em></p>
+}
+else if (assets == null || !assets.Any())
+{
+    @if (!string.IsNullOrEmpty(searchTerm))
+    {
+        <div class="alert alert-warning">No assets match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
+    }
+    else
+    {
+        <div class="alert alert-info">No assets registered yet. Add transformers, switchgear, etc. for your customers.</div>
+    }
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Asset #</th>
+                    <th>Name / Type</th>
+                    <th>Customer / Location</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var asset in assets)
+                {
+                    <tr>
+                        <td><strong>@asset.AssetNumber</strong></td>
+                        <td>
+                            @asset.Name<br />
+                            <small class="text-muted">@asset.AssetType @(asset.RatedKVA.HasValue ? $"({asset.RatedKVA} kVA)" : "")</small>
+                        </td>
+                        <td>
+                            @(asset.Customer?.Name ?? "—")<br />
+                            <small>@asset.Location</small>
+                        </td>
+                        <td>@GetStatusBadge(asset.Status)</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewAsset(asset)">View</button>
+                            @if (UserCanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditAsset(asset)">Edit</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(assets.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit Asset" : "New Asset")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentAsset" OnValidSubmit="SaveAsset" FormName="AssetForm">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Customer *</label>
+                        <select class="form-select" @bind="currentAsset.CustomerId" required>
+                            <option value="">-- Select customer --</option>
+                            @foreach (var c in availableCustomers)
+                            {
+                                <option value="@c.Id">@c.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Asset Type</label>
+                        <InputText class="form-control" @bind-Value="currentAsset.AssetType" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Name / Description *</label>
+                    <InputText class="form-control" @bind-Value="currentAsset.Name" required />
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Serial Number</label>
+                        <InputText class="form-control" @bind-Value="currentAsset.SerialNumber" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Location / Site</label>
+                        <InputText class="form-control" @bind-Value="currentAsset.Location" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Commissioned</label>
+                        <InputDate class="form-control" @bind-Value="currentAsset.CommissionedDate" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Rated kVA</label>
+                        <InputNumber class="form-control" @bind-Value="currentAsset.RatedKVA" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Voltage</label>
+                        <InputText class="form-control" @bind-Value="currentAsset.Voltage" placeholder="11kV / 400V" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="currentAsset.Notes" rows="2" />
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save Asset</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedAsset != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedAsset.AssetNumber — @selectedAsset.Name</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseAssetView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <strong>Customer:</strong> @(selectedAsset.Customer?.Name ?? "—")<br />
+                    <strong>Location:</strong> @selectedAsset.Location<br />
+                    <strong>Serial:</strong> @selectedAsset.SerialNumber
+                </div>
+                <div class="col-md-6">
+                    <strong>Status:</strong> @GetStatusBadge(selectedAsset.Status)<br />
+                    <strong>Type:</strong> @selectedAsset.AssetType<br />
+                    @if (selectedAsset.RatedKVA.HasValue)
+                    {
+                        <span><strong>Rating:</strong> @selectedAsset.RatedKVA kVA @selectedAsset.Voltage</span>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(selectedAsset.Notes))
+            {
+                <div class="mb-3">
+                    <strong>History / Notes:</strong>
+                    <pre class="small bg-light p-2 rounded" style="white-space: pre-wrap;">@selectedAsset.Notes</pre>
+                </div>
+            }
+
+            @if (UserCanManage)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Update Status</label>
+                    <div class="btn-group" role="group">
+                        @foreach (var s in Enum.GetValues<AssetStatus>())
+                        {
+                            <button class="btn btn-sm @(selectedAsset.Status == s ? "btn-primary" : "btn-outline-primary")"
+                                    @onclick="() => UpdateStatus(s)">
+                                @s
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="ShowAddNoteForm">+ Add Maintenance Note</button>
+                </div>
+            }
+
+            @if (showNoteForm)
+            {
+                <div class="mt-2 p-3 border rounded bg-light">
+                    <InputTextArea class="form-control mb-2" @bind-Value="newNote" rows="2" placeholder="Work performed, test results, etc." />
+                    <button class="btn btn-sm btn-success" @onclick="SaveNote">Save Note</button>
+                    <button class="btn btn-sm btn-secondary ms-1" @onclick="CancelNote">Cancel</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<Asset> assets = new();
+    private List<Customer> availableCustomers = new();
+    private Asset currentAsset = new();
+    private Asset? selectedAsset;
+    private bool showForm;
+    private bool isEditing;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool showNoteForm;
+    private string newNote = string.Empty;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.AssetsManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadCustomers();
+            await LoadAssets();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadCustomers()
+    {
+        availableCustomers = (await CustomerService.GetAllAsync()).ToList();
+    }
+
+    private async Task LoadAssets()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        assets = (await AssetService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadAssets();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadAssets();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadAssets();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadAssets();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentAsset = new Asset { AssetType = "Transformer" };
+        isEditing = false;
+        showForm = true;
+        selectedAsset = null;
+    }
+
+    private void EditAsset(Asset asset)
+    {
+        currentAsset = new Asset
+        {
+            Id = asset.Id,
+            CustomerId = asset.CustomerId,
+            AssetNumber = asset.AssetNumber,
+            Name = asset.Name,
+            SerialNumber = asset.SerialNumber,
+            AssetType = asset.AssetType,
+            Location = asset.Location,
+            RatedKVA = asset.RatedKVA,
+            Voltage = asset.Voltage,
+            CommissionedDate = asset.CommissionedDate,
+            Status = asset.Status,
+            Notes = asset.Notes
+        };
+        isEditing = true;
+        showForm = true;
+        selectedAsset = null;
+    }
+
+    private async Task SaveAsset()
+    {
+        if (isEditing)
+        {
+            await AssetService.UpdateAsync(currentAsset);
+        }
+        else
+        {
+            await AssetService.CreateAsync(currentAsset);
+        }
+
+        showForm = false;
+        ToastService.ShowSuccess("Asset saved successfully.");
+        await LoadAssets();
+        currentAsset = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentAsset = new();
+    }
+
+    private async Task ViewAsset(Asset asset)
+    {
+        selectedAsset = await AssetService.GetByIdAsync(asset.Id);
+        showForm = false;
+        showNoteForm = false;
+        newNote = string.Empty;
+    }
+
+    private void CloseAssetView()
+    {
+        selectedAsset = null;
+        showNoteForm = false;
+        newNote = string.Empty;
+    }
+
+    private async Task UpdateStatus(AssetStatus status)
+    {
+        if (selectedAsset == null) return;
+        await AssetService.UpdateStatusAsync(selectedAsset.Id, status);
+        selectedAsset = await AssetService.GetByIdAsync(selectedAsset.Id);
+        ToastService.ShowSuccess($"Status updated to {status}.");
+        await LoadAssets();
+    }
+
+    private void ShowAddNoteForm()
+    {
+        showNoteForm = true;
+        newNote = string.Empty;
+    }
+
+    private async Task SaveNote()
+    {
+        if (selectedAsset == null || string.IsNullOrWhiteSpace(newNote)) return;
+
+        await AssetService.AddMaintenanceNoteAsync(selectedAsset.Id, newNote);
+        showNoteForm = false;
+        newNote = string.Empty;
+        selectedAsset = await AssetService.GetByIdAsync(selectedAsset.Id);
+        await LoadAssets();
+    }
+
+    private void CancelNote()
+    {
+        showNoteForm = false;
+        newNote = string.Empty;
+    }
+
+    private static string GetStatusBadge(AssetStatus status)
+    {
+        return status switch
+        {
+            AssetStatus.Operational => "<span class=\"badge bg-success\">Operational</span>",
+            AssetStatus.UnderMaintenance => "<span class=\"badge bg-warning text-dark\">Under Maintenance</span>",
+            AssetStatus.Faulty => "<span class=\"badge bg-danger\">Faulty</span>",
+            AssetStatus.Decommissioned => "<span class=\"badge bg-dark\">Decommissioned</span>",
+            AssetStatus.InStorage => "<span class=\"badge bg-secondary\">In Storage</span>",
+            _ => status.ToString()
+        };
+    }
+}

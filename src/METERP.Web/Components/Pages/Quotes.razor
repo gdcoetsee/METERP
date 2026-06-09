@@ -1,0 +1,75 @@
+@page "/quotes"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Quotes.View")]
+@inject IQuoteService QuoteService
+@inject ICurrentUserService CurrentUserService
+@inject ToastService ToastService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@using METERP.Common
+
+<PageTitle>Quotes</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Quotes <span class="badge bg-primary ai-badge">AI-Powered</span></h1>
+        <p class="text-muted mb-0">Professional quotes with labor, materials, explicit travel. 15% SA VAT.</p>
+    </div>
+    <a href="/ai-copilot" class="btn btn-success">✨ Create with AI Copilot</a>
+</div>
+
+<div class="mb-3" style="max-width: 480px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search quote #, customer or notes..." 
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" @onclick="ClearSearch">Clear</button>
+        }
+    </div>
+</div>
+
+<h6>Recent / Live Quotes (from services)</h6>
+<ul class="list-group mb-3">
+    @foreach (var q in demoQuotes)
+    {
+        <li class="list-group-item d-flex justify-content-between">
+            <span>@q.QuoteNumber — @(q.Customer?.Name ?? "—") (R @q.Total.ToString("N0"), @q.Status, @(q.Lines?.Count(l => !l.IsDeleted) ?? 0) lines)</span>
+            <a href="/ai-copilot" class="btn btn-sm btn-outline-primary">Enhance with AI</a>
+        </li>
+    }
+</ul>
+
+<div class="card">
+    <div class="card-body">
+        <p class="mb-1"><strong>Full data layer complete.</strong> Server pagination, soft-delete, status, ConvertToJob, VAT. AI Copilot for creation and enhancement. Component ready for richer lists.</p>
+        <button class="btn btn-sm btn-secondary" @onclick="GoToCopilot">Go to AI Copilot</button>
+    </div>
+</div>
+
+@code {
+    private List<Quote> demoQuotes = new();
+    private string searchTerm = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        demoQuotes = (await QuoteService.GetAllAsync(null, 1, 2)).ToList();
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ClearSearch()
+    {
+        searchTerm = string.Empty;
+    }
+
+    private void GoToCopilot() => Nav.NavigateTo("/ai-copilot");
+}

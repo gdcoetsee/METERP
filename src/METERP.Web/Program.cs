@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Npgsql;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
@@ -8,6 +10,7 @@ using METERP.Infrastructure.Services;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
 using METERP.Web.Components;
+using METERP.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,21 +18,50 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddCascadingAuthenticationState();
+
 // === Multi-tenancy + Current User ===
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, CurrentTenantProvider>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<IQuoteService, QuoteService>();
+builder.Services.AddScoped<IJobService, JobService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
+builder.Services.AddScoped<IFinanceService, FinanceService>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
+builder.Services.AddScoped<ToastService>();
+builder.Services.AddScoped<NotificationService>();
+
+// === AI Assistant (optional - powers smart quoting & post-job learning) ===
+// The implementation creates its own short-lived HttpClient (acceptable for infrequent LLM calls).
+builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
+
+// === Rate limiting note ===
+// Framework rate limiter can be enabled here with AddRateLimiter + UseRateLimiter for HTTP endpoints.
+// For AI/LLM cost control (the expensive part in a sellable product) we use a lightweight
+// tenant-aware throttle directly inside AiAssistantService (no extra packages required).
 
 // === Database (PostgreSQL chosen for cost and scalability in a sellable multi-tenant ERP) ===
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                       ?? "Host=localhost;Database=METERP;Username=postgres;Password=postgres;Port=5432";
+                       ?? "Host=localhost;Database=METERP;Username=postgres;Password=CHANGE_ME;Port=5432";
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(connectionString)
+           .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning)));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
 
 // === ASP.NET Core Identity + Multi-tenancy ===
+
+// Production hardening note: Rate limiting for AI (to prevent abuse/cost) and full logging (Serilog) can be added by referencing Microsoft.AspNetCore.RateLimiting and Serilog packages.
+// Example: builder.Services.AddRateLimiter(...); and builder.Host.UseSerilog(...);
+// OpenTelemetry for monitoring in prod. Current has basic rate limit comment and error UI.
 builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false; // Foundation: simplify for now
@@ -66,10 +98,87 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Customers.Manage", policy =>
         policy.RequireClaim("Permission", Permissions.CustomersManage));
 
+    // Quote -> Job workflow policies (Module 2)
+    options.AddPolicy("Quotes.View", policy =>
+        policy.RequireClaim("Permission", Permissions.QuotesView, Permissions.QuotesManage));
+
+    options.AddPolicy("Quotes.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.QuotesManage));
+
+    options.AddPolicy("Jobs.View", policy =>
+        policy.RequireClaim("Permission", Permissions.JobsView, Permissions.JobsManage));
+
+    options.AddPolicy("Jobs.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.JobsManage));
+
+    // User management (tenant-scoped)
+    options.AddPolicy("Users.View", policy =>
+        policy.RequireClaim("Permission", Permissions.UsersView, Permissions.UsersManage));
+
+    options.AddPolicy("Users.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.UsersManage));
+
+    // Invoicing policies
+    options.AddPolicy("Invoices.View", policy =>
+        policy.RequireClaim("Permission", Permissions.InvoicesView, Permissions.InvoicesManage));
+
+    options.AddPolicy("Invoices.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.InvoicesManage));
+
+    // Inventory policies
+    options.AddPolicy("Inventory.View", policy =>
+        policy.RequireClaim("Permission", Permissions.InventoryView, Permissions.InventoryManage));
+
+    options.AddPolicy("Inventory.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.InventoryManage));
+
+    // Assets policies
+    options.AddPolicy("Assets.View", policy =>
+        policy.RequireClaim("Permission", Permissions.AssetsView, Permissions.AssetsManage));
+
+    options.AddPolicy("Assets.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.AssetsManage));
+
+    // Purchasing policies (Phase 2)
+    options.AddPolicy("Suppliers.View", policy =>
+        policy.RequireClaim("Permission", Permissions.SuppliersView, Permissions.SuppliersManage));
+
+    options.AddPolicy("Suppliers.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.SuppliersManage));
+
+    options.AddPolicy("PurchaseOrders.View", policy =>
+        policy.RequireClaim("Permission", Permissions.PurchaseOrdersView, Permissions.PurchaseOrdersManage));
+
+    options.AddPolicy("PurchaseOrders.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.PurchaseOrdersManage));
+
+    // Finance policies (Phase 3)
+    options.AddPolicy("Finance.View", policy =>
+        policy.RequireClaim("Permission", Permissions.FinanceView, Permissions.FinanceManage));
+
+    options.AddPolicy("Finance.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.FinanceManage));
+
+    // HR policies
+    options.AddPolicy("Employees.View", policy =>
+        policy.RequireClaim("Permission", Permissions.EmployeesView, Permissions.EmployeesManage));
+
+    options.AddPolicy("Employees.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.EmployeesManage));
+
+    // Sales Orders policies
+    options.AddPolicy("SalesOrders.View", policy =>
+        policy.RequireClaim("Permission", Permissions.SalesOrdersView, Permissions.SalesOrdersManage));
+
+    options.AddPolicy("SalesOrders.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.SalesOrdersManage));
+
     // Add more policies as modules are built
 });
 
-// For development/demo only: ensure DB + seed data
+// For development/demo only: ensure DB + seed data (idempotent by default).
+// Safe by default (no destructive drops). Use METERP_SEED_RESET=true or config "Seed:ForceResetOnStart" for full reset after schema work.
+// In production, disable the seeder (comment out or gate behind environment).
 builder.Services.AddHostedService<DatabaseSeeder>();
 
 var app = builder.Build();
@@ -110,17 +219,76 @@ public class DatabaseSeeder : IHostedService
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
         var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
         var customerService = scope.ServiceProvider.GetRequiredService<ICustomerService>();
+        var quoteService = scope.ServiceProvider.GetRequiredService<IQuoteService>();
+        var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
+        var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
+        var invoiceService = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
+        var inventoryService = scope.ServiceProvider.GetRequiredService<IInventoryService>();
+        var assetService = scope.ServiceProvider.GetRequiredService<IAssetService>();
+        var supplierService = scope.ServiceProvider.GetRequiredService<ISupplierService>();
+        var purchaseOrderService = scope.ServiceProvider.GetRequiredService<IPurchaseOrderService>();
+        var financeService = scope.ServiceProvider.GetRequiredService<IFinanceService>();
+        var employeeService = scope.ServiceProvider.GetRequiredService<IEmployeeService>();
+        var salesOrderService = scope.ServiceProvider.GetRequiredService<ISalesOrderService>();
         var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
 
-        // Ensure database exists (replace with migrations in real use)
-        await db.Database.EnsureCreatedAsync(cancellationToken);
+        var env = scope.ServiceProvider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>();
+
+        // === Seeding strategy (Runnable & Demo-Ready) ===
+        // By default: safe mode — just Migrate + seed missing data only. Never destructive on normal starts.
+        // For major schema changes after code edits: set METERP_SEED_RESET=true (env var) or "Seed:ForceResetOnStart": true in config.
+        // This keeps everyday `dotnet run` or docker-compose starts fast and non-destructive while preserving the powerful reset option.
+        bool forceReset = string.Equals(Environment.GetEnvironmentVariable("METERP_SEED_RESET"), "true", StringComparison.OrdinalIgnoreCase)
+                       || config.GetValue<bool>("Seed:ForceResetOnStart");
+
+        // Dev-only robust reset (only when explicitly requested)
+        if (forceReset && (env?.IsDevelopment() ?? true))
+        {
+            try
+            {
+                var rawCs = db.Database.GetConnectionString()
+                            ?? "Host=localhost;Database=METERP_Dev;Username=postgres;Password=CHANGE_ME;Port=5432";
+                var csb = new NpgsqlConnectionStringBuilder(rawCs);
+                var targetDb = csb.Database ?? "METERP_Dev";
+
+                // Maintenance connection to the always-present 'postgres' database
+                var maintCsb = new NpgsqlConnectionStringBuilder(rawCs) { Database = "postgres" };
+                await using var maint = new NpgsqlConnection(maintCsb.ConnectionString);
+                await maint.OpenAsync(cancellationToken);
+
+                var existsCmd = maint.CreateCommand();
+                existsCmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @db";
+                existsCmd.Parameters.AddWithValue("db", targetDb);
+                var dbExists = (await existsCmd.ExecuteScalarAsync(cancellationToken)) != null;
+
+                if (!dbExists)
+                {
+                    var createCmd = maint.CreateCommand();
+                    createCmd.CommandText = $"CREATE DATABASE \"{targetDb}\" OWNER postgres";
+                    await createCmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+                await maint.CloseAsync();
+
+                // Wipe whatever was there (or no-op) so the exact current migrations + full model apply cleanly, then seed.
+                await db.Database.EnsureDeletedAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: surface in console so user sees why, then let Migrate surface the real problem if any.
+                Console.WriteLine($"[DatabaseSeeder] Dev DB reset note (only happens when METERP_SEED_RESET=true): {ex.Message}");
+            }
+        }
+
+        // Production-ready: Use migrations (now against a guaranteed clean DB in dev)
+        await db.Database.MigrateAsync(cancellationToken);
 
         // 1. Create a default tenant if none exists
-        var existingTenants = await tenantService.GetAllAsync(cancellationToken);
+        var existingTenants = await tenantService.GetAllAsync(ct: cancellationToken);
         Guid defaultTenantId;
 
         if (!existingTenants.Any())
@@ -128,6 +296,13 @@ public class DatabaseSeeder : IHostedService
             // Temporarily set no tenant for creation
             tenantProvider.SetTenantId(Guid.Empty);
             defaultTenantId = await tenantService.CreateAsync("Acme Electrical (Demo)", "acme", cancellationToken);
+            // Demo: give the main tenant rich commercial features enabled
+            var demoTenant = await tenantService.GetByIdAsync(defaultTenantId, cancellationToken);
+            if (demoTenant != null)
+            {
+                demoTenant.EnabledFeatures = "ai,usage-tracking,advanced-reports,compliance";
+                await tenantService.UpdateAsync(demoTenant, cancellationToken);
+            }
         }
         else
         {
@@ -143,8 +318,28 @@ public class DatabaseSeeder : IHostedService
             Permissions.TenantsManage,
             Permissions.CustomersView,
             Permissions.CustomersManage,
+            Permissions.QuotesView,
+            Permissions.QuotesManage,
             Permissions.JobsView,
-            Permissions.JobsManage
+            Permissions.JobsManage,
+            Permissions.UsersView,
+            Permissions.UsersManage,
+            Permissions.InvoicesView,
+            Permissions.InvoicesManage,
+            Permissions.InventoryView,
+            Permissions.InventoryManage,
+            Permissions.AssetsView,
+            Permissions.AssetsManage,
+            Permissions.SuppliersView,
+            Permissions.SuppliersManage,
+            Permissions.PurchaseOrdersView,
+            Permissions.PurchaseOrdersManage,
+            Permissions.FinanceView,
+            Permissions.FinanceManage,
+            Permissions.EmployeesView,
+            Permissions.EmployeesManage,
+            Permissions.SalesOrdersView,
+            Permissions.SalesOrdersManage
         }, defaultTenantId, cancellationToken);
 
         await EnsureRoleWithPermissions(roleManager, "Manager", new[]
@@ -152,8 +347,28 @@ public class DatabaseSeeder : IHostedService
             Permissions.TenantsView,
             Permissions.CustomersView,
             Permissions.CustomersManage,
+            Permissions.QuotesView,
+            Permissions.QuotesManage,
             Permissions.JobsView,
-            Permissions.JobsManage
+            Permissions.JobsManage,
+            Permissions.UsersView,
+            Permissions.UsersManage,
+            Permissions.InvoicesView,
+            Permissions.InvoicesManage,
+            Permissions.InventoryView,
+            Permissions.InventoryManage,
+            Permissions.AssetsView,
+            Permissions.AssetsManage,
+            Permissions.SuppliersView,
+            Permissions.SuppliersManage,
+            Permissions.PurchaseOrdersView,
+            Permissions.PurchaseOrdersManage,
+            Permissions.FinanceView,
+            Permissions.FinanceManage,
+            Permissions.EmployeesView,
+            Permissions.EmployeesManage,
+            Permissions.SalesOrdersView,
+            Permissions.SalesOrdersManage
         }, defaultTenantId, cancellationToken);
 
         await EnsureRoleWithPermissions(roleManager, "Technician", new[]
@@ -222,6 +437,405 @@ public class DatabaseSeeder : IHostedService
                 Province = "Western Cape"
             };
             await customerService.CreateAsync(cust2, cancellationToken);
+        }
+
+        // 5. Seed demo quotes + one converted job to demonstrate the full Quote -> Job workflow (Module 2)
+        var existingQuotes = await quoteService.GetAllAsync(ct: cancellationToken);
+        if (!existingQuotes.Any())
+        {
+            var customers = await customerService.GetAllAsync(ct: cancellationToken);
+            var cust = customers.FirstOrDefault();
+            if (cust != null)
+            {
+                // Create a realistic quote for the first demo customer
+                var q1 = new Quote
+                {
+                    CustomerId = cust.Id,
+                    QuoteDate = DateTime.UtcNow.AddDays(-4),
+                    ValidUntil = DateTime.UtcNow.AddDays(26),
+                    Status = QuoteStatus.Sent,
+                    Notes = "DB board upgrade + warehouse lighting retrofit. Includes supply, install, test & commission.",
+                    TaxRate = 0.15m
+                };
+
+                var quoteId = await quoteService.CreateAsync(q1, cancellationToken);
+
+                await quoteService.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = quoteId,
+                    Description = "DB board 12-way + breakers (complete)",
+                    Quantity = 1,
+                    UnitPrice = 2680m,
+                    LineType = "Material",
+                    Unit = "ea"
+                }, cancellationToken);
+
+                await quoteService.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = quoteId,
+                    Description = "Labour - 2 electricians x 8 hours install & testing",
+                    Quantity = 16,
+                    UnitPrice = 195m,
+                    LineType = "Labour",
+                    Unit = "hr"
+                }, cancellationToken);
+
+                await quoteService.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = quoteId,
+                    Description = "4mm SWA cable 50m + glands & accessories",
+                    Quantity = 1,
+                    UnitPrice = 875m,
+                    LineType = "Material",
+                    Unit = "lot"
+                }, cancellationToken);
+
+                await quoteService.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = quoteId,
+                    Description = "LED high-bay lights 150W (x8)",
+                    Quantity = 8,
+                    UnitPrice = 420m,
+                    LineType = "Material",
+                    Unit = "ea"
+                }, cancellationToken);
+
+                // Demo Sales Order (Quote -> SO -> Job per original vision)
+                var so = new SalesOrder
+                {
+                    QuoteId = quoteId,
+                    CustomerId = cust.Id,
+                    SoDate = DateTime.UtcNow.AddDays(-3),
+                    DeliveryDate = DateTime.UtcNow.AddDays(4),
+                    Status = SalesOrderStatus.Confirmed,
+                    TaxRate = 0.15m
+                };
+                var soId = await salesOrderService.CreateAsync(so, cancellationToken);
+
+                // Copy lines for demo (simplified)
+                foreach (var ql in (await quoteService.GetByIdAsync(quoteId, cancellationToken))?.Lines ?? new List<QuoteLine>())
+                {
+                    if (!ql.IsDeleted)
+                    {
+                        await salesOrderService.AddLineAsync(new SalesOrderLine
+                        {
+                            SalesOrderId = soId,
+                            Description = ql.Description,
+                            Quantity = ql.Quantity,
+                            UnitPrice = ql.UnitPrice,
+                            Unit = ql.Unit,
+                            LineType = ql.LineType
+                        }, cancellationToken);
+                    }
+                }
+
+                // Convert to Job from SO (demonstrates Quote -> SO -> Job flow)
+                var createdJob = await salesOrderService.ConvertToJobAsync(soId, cancellationToken);
+
+                // Record some actual costs to show variance tracking
+                await jobService.AddCostAsync(new JobCost
+                {
+                    JobId = createdJob.Id,
+                    Description = "DB board + breakers (supplier invoice)",
+                    Amount = 2745m,
+                    CostType = "Material",
+                    CostDate = DateTime.UtcNow.AddDays(-2)
+                }, cancellationToken);
+
+                await jobService.AddCostAsync(new JobCost
+                {
+                    JobId = createdJob.Id,
+                    Description = "Electricians - actual hours logged",
+                    Amount = 3120m,
+                    CostType = "Labour",
+                    CostDate = DateTime.UtcNow.AddDays(-1)
+                }, cancellationToken);
+
+                await jobService.AddCostAsync(new JobCost
+                {
+                    JobId = createdJob.Id,
+                    Description = "Site consumables & testing equipment",
+                    Amount = 285m,
+                    CostType = "Other",
+                    CostDate = DateTime.UtcNow
+                }, cancellationToken);
+
+                // Explicit Travel / Transport cost (common in contracting jobs)
+                await jobService.AddCostAsync(new JobCost
+                {
+                    JobId = createdJob.Id,
+                    Description = "Travel & transport (van + fuel for crew)",
+                    Amount = 620m,
+                    CostType = "Travel",
+                    CostDate = DateTime.UtcNow.AddDays(-2)
+                }, cancellationToken);
+
+                // Put the job into progress for demo
+                await jobService.UpdateStatusAsync(createdJob.Id, JobStatus.InProgress, cancellationToken);
+
+                // Add sample labor entries
+                await jobService.AddLaborAsync(new JobLabor
+                {
+                    JobId = createdJob.Id,
+                    WorkDate = DateTime.UtcNow.AddDays(-2),
+                    Hours = 8,
+                    HourlyRate = 195,
+                    Description = "Installation and testing",
+                    Technician = "Thabo Mokoena"
+                }, cancellationToken);
+
+                await jobService.AddLaborAsync(new JobLabor
+                {
+                    JobId = createdJob.Id,
+                    WorkDate = DateTime.UtcNow.AddDays(-1),
+                    Hours = 4,
+                    HourlyRate = 210,
+                    Description = "Commissioning and handover",
+                    Technician = "Johan van der Berg"
+                }, cancellationToken);
+
+                // Create a demo invoice from the job (completes Quote -> Job -> Invoice flow)
+                try
+                {
+                    var demoInvoice = await invoiceService.CreateFromJobAsync(createdJob.Id, cancellationToken);
+                    await invoiceService.UpdateStatusAsync(demoInvoice.Id, InvoiceStatus.Sent, cancellationToken);
+                }
+                catch { /* non-fatal for demo seeding */ }
+
+                // Seed realistic commercial usage data for demo (ties into tracking + flags)
+                try
+                {
+                    var demoTenant = await tenantService.GetByIdAsync(defaultTenantId, cancellationToken);
+                    if (demoTenant != null)
+                    {
+                        demoTenant.TotalJobsCreated = Math.Max(demoTenant.TotalJobsCreated, 4);
+                        demoTenant.TotalQuotesCreated = Math.Max(demoTenant.TotalQuotesCreated, 3);
+                        demoTenant.TotalInvoicesIssued = Math.Max(demoTenant.TotalInvoicesIssued, 1);
+                        demoTenant.TotalRevenueBilled = Math.Max(demoTenant.TotalRevenueBilled, 8500m);
+                        demoTenant.TotalAiCalls = Math.Max(demoTenant.TotalAiCalls, 8);
+                        demoTenant.LastActivityUtc = DateTime.UtcNow;
+                        await tenantService.UpdateAsync(demoTenant, cancellationToken);
+                    }
+                }
+                catch { /* non-fatal */ }
+
+                // Seed some inventory items + a stock issue to the job for realism
+                var existingItems = await inventoryService.GetAllItemsAsync(ct: cancellationToken);
+                if (!existingItems.Any())
+                {
+                    var dbBoard = new InventoryItem
+                    {
+                        Sku = "DB-12W-001",
+                        Name = "DB Board 12-Way with Breakers",
+                        Description = "Complete distribution board",
+                        Unit = "ea",
+                        QuantityOnHand = 12,
+                        ReorderLevel = 5,
+                        UnitCost = 2450m,
+                        Category = "Electrical"
+                    };
+                    await inventoryService.CreateItemAsync(dbBoard, cancellationToken);
+
+                    var cable = new InventoryItem
+                    {
+                        Sku = "CABLE-4MM-50",
+                        Name = "4mm SWA Cable 50m",
+                        Unit = "roll",
+                        QuantityOnHand = 8,
+                        ReorderLevel = 3,
+                        UnitCost = 875m,
+                        Category = "Electrical"
+                    };
+                    await inventoryService.CreateItemAsync(cable, cancellationToken);
+
+                    var ledLight = new InventoryItem
+                    {
+                        Sku = "LED-HB-150",
+                        Name = "LED High-Bay 150W",
+                        Unit = "ea",
+                        QuantityOnHand = 25,
+                        ReorderLevel = 10,
+                        UnitCost = 420m,
+                        Category = "Lighting"
+                    };
+                    await inventoryService.CreateItemAsync(ledLight, cancellationToken);
+
+                    // Record some stock usage against the created job
+                    await inventoryService.RecordStockTransactionAsync(dbBoard.Id, -1, StockTransactionType.Issue, createdJob.JobNumber, createdJob.Id, "Used on demo job", cancellationToken);
+                    await inventoryService.RecordStockTransactionAsync(cable.Id, -1, StockTransactionType.Issue, createdJob.JobNumber, createdJob.Id, "Used on demo job", cancellationToken);
+
+                    // Seed demo assets (Transformers etc.) for the customer
+                    var existingAssets = await assetService.GetAllAsync(ct: cancellationToken);
+                    if (!existingAssets.Any())
+                    {
+                        await assetService.CreateAsync(new Asset
+                        {
+                            CustomerId = cust.Id,
+                            Name = "Main 11kV/400V Transformer - Hospital Substation",
+                            SerialNumber = "TRF-88421-2019",
+                            AssetType = "Transformer",
+                            Location = "Johannesburg General Hospital - Main Sub",
+                            RatedKVA = 1250,
+                            Voltage = "11kV / 400V",
+                            CommissionedDate = new DateTime(2019, 3, 15, 0, 0, 0, DateTimeKind.Utc),
+                            Status = AssetStatus.Operational,
+                            Notes = "Annual oil test due Q3 2026"
+                        }, cancellationToken);
+
+                        await assetService.CreateAsync(new Asset
+                        {
+                            CustomerId = cust.Id,
+                            Name = "Warehouse LV Distribution Board",
+                            SerialNumber = "DB-LV-0032",
+                            AssetType = "Switchgear",
+                            Location = "Cape Town Mining Ltd - Warehouse A",
+                            CommissionedDate = new DateTime(2022, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+                            Status = AssetStatus.Operational
+                        }, cancellationToken);
+
+                        // Link first asset to the job for demo
+                        var linkableAssets = await assetService.GetAllAsync(ct: cancellationToken);
+                        if (linkableAssets.Any())
+                        {
+                            createdJob.AssetId = linkableAssets.First().Id;
+                            await jobService.UpdateAsync(createdJob, cancellationToken);
+                        }
+
+                        // Seed suppliers + PO (Phase 2 Purchasing) to demonstrate replenishment -> inventory -> job use
+                        var existingSuppliers = await supplierService.GetAllAsync(ct: cancellationToken);
+                        if (!existingSuppliers.Any())
+                        {
+                            var supplier = new Supplier
+                            {
+                                Name = "ElectroSupply SA (Pty) Ltd",
+                                ContactPerson = "Sipho Dlamini",
+                                Phone = "011 555 9876",
+                                Email = "orders@electrosupply.co.za",
+                                City = "Johannesburg",
+                                Province = "Gauteng",
+                                TaxNumber = "9876543210"
+                            };
+                            await supplierService.CreateAsync(supplier, cancellationToken);
+
+                            var po = new PurchaseOrder
+                            {
+                                SupplierId = supplier.Id,
+                                PoDate = DateTime.UtcNow.AddDays(-10),
+                                ExpectedDate = DateTime.UtcNow.AddDays(-3),
+                                Status = PurchaseOrderStatus.Received,
+                                TaxRate = 0.15m
+                            };
+                            var poId = await purchaseOrderService.CreateAsync(po, cancellationToken);
+
+                            // PO line that will be "received" into inventory (links to existing seeded dbBoard item)
+                            var dbBoardItem = (await inventoryService.GetAllItemsAsync(ct: cancellationToken))
+                                .FirstOrDefault(i => i.Sku == "DB-12W-001");
+                            if (dbBoardItem != null)
+                            {
+                                await purchaseOrderService.AddLineAsync(new PurchaseOrderLine
+                                {
+                                    PurchaseOrderId = poId,
+                                    InventoryItemId = dbBoardItem.Id,
+                                    Description = dbBoardItem.Name,
+                                    Quantity = 5,
+                                    UnitPrice = dbBoardItem.UnitCost,
+                                    Unit = dbBoardItem.Unit
+                                }, cancellationToken);
+
+                                // Simulate receipt (updates stock + transaction)
+                                await inventoryService.RecordStockTransactionAsync(
+                                    dbBoardItem.Id,
+                                    5,
+                                    StockTransactionType.Receipt,
+                                    po.PoNumber,
+                                    null,
+                                    "PO receipt from " + supplier.Name,
+                                    cancellationToken);
+                            }
+                        }
+
+                        // Seed basic CoA + sample journal (Phase 3 Finance) so costing has GL visibility
+                        var existingAccounts = await financeService.GetAccountsAsync(ct: cancellationToken);
+                        if (!existingAccounts.Any())
+                        {
+                            var revenue = new Account { AccountCode = "4000", Name = "Revenue - Contracting", Type = AccountType.Revenue };
+                            await financeService.CreateAccountAsync(revenue, cancellationToken);
+
+                            var ar = new Account { AccountCode = "1100", Name = "Accounts Receivable", Type = AccountType.Asset };
+                            await financeService.CreateAccountAsync(ar, cancellationToken);
+
+                            var expenseMat = new Account { AccountCode = "5000", Name = "Materials & Supplies", Type = AccountType.Expense };
+                            await financeService.CreateAccountAsync(expenseMat, cancellationToken);
+
+                            var expenseLabor = new Account { AccountCode = "5100", Name = "Direct Labor", Type = AccountType.Expense };
+                            await financeService.CreateAccountAsync(expenseLabor, cancellationToken);
+
+                            var expenseTravel = new Account { AccountCode = "5200", Name = "Travel & Transport", Type = AccountType.Expense };
+                            await financeService.CreateAccountAsync(expenseTravel, cancellationToken);
+
+                            // Sample journal: recognize revenue + AR from the demo invoice (simplified)
+                            var demoInvoiceForJournal = (await invoiceService.GetAllAsync(ct: cancellationToken)).FirstOrDefault();
+                            if (demoInvoiceForJournal != null)
+                            {
+                                var je = new JournalEntry
+                                {
+                                    EntryDate = DateTime.UtcNow,
+                                    Description = "Demo invoice revenue recognition",
+                                    Reference = demoInvoiceForJournal.InvoiceNumber,
+                                    JobId = demoInvoiceForJournal.JobId
+                                };
+                                // For demo simplicity we create lines directly (service will validate balance on post)
+                                _ = await financeService.PostJournalAsync(je, cancellationToken); // lines would be added in real impl
+                            }
+                        }
+
+                        // Seed employees (Phase 4 HR) and link sample labor rates
+                        var existingEmps = await employeeService.GetAllAsync(ct: cancellationToken);
+                        if (!existingEmps.Any())
+                        {
+                            await employeeService.CreateAsync(new Employee
+                            {
+                                EmployeeNumber = "EMP-001",
+                                FirstName = "Thabo",
+                                LastName = "Mokoena",
+                                JobTitle = "Electrician",
+                                DefaultHourlyRate = 195
+                            }, cancellationToken);
+
+                            await employeeService.CreateAsync(new Employee
+                            {
+                                EmployeeNumber = "EMP-002",
+                                FirstName = "Johan",
+                                LastName = "van der Berg",
+                                JobTitle = "Technician",
+                                DefaultHourlyRate = 210
+                            }, cancellationToken);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Create an additional demo user (Manager role) so the Users page has something interesting to show
+        var managerEmail = "manager@acme.demo";
+        var existingManager = await userManager.FindByEmailAsync(managerEmail);
+        if (existingManager == null)
+        {
+            var managerUser = new ApplicationUser
+            {
+                UserName = managerEmail,
+                Email = managerEmail,
+                EmailConfirmed = true,
+                TenantId = defaultTenantId
+            };
+
+            var mgrResult = await userManager.CreateAsync(managerUser, "Demo123!");
+            if (mgrResult.Succeeded)
+            {
+                await userManager.AddToRoleAsync(managerUser, "Manager");
+                await userManager.AddClaimAsync(managerUser, new System.Security.Claims.Claim("TenantId", defaultTenantId.ToString()));
+                // Manager permissions are already granted via the role claims in the role setup above
+            }
         }
     }
 

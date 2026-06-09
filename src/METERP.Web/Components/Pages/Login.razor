@@ -1,53 +1,106 @@
 @page "/login"
+@rendermode InteractiveServer
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.EntityFrameworkCore
+@using System
+@using System.ComponentModel.DataAnnotations
 @using METERP.Infrastructure.Identity
+@using METERP.Infrastructure.Persistence
 @inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject AppDbContext Db
+@inject METERP.Application.Interfaces.ITenantProvider TenantProvider
 @inject NavigationManager Navigation
 
 <PageTitle>Login - METERP</PageTitle>
 
-<h3>Login (Demo)</h3>
+<h3>Login</h3>
 
-<p class="text-muted">Use the seeded demo account: <strong>admin@acme.demo</strong> / <strong>Demo123!</strong></p>
+<p class="text-muted">Demo: <strong>admin@acme.demo</strong> / <strong>Demo123!</strong></p>
 
-<EditForm Model="loginModel" OnValidSubmit="HandleLogin">
-    <DataAnnotationsValidator />
-    <ValidationSummary />
+@if (loginFailed)
+{
+    <div class="alert alert-danger mb-3">Invalid email or password. Please try again.</div>
+}
 
-    <div class="mb-3">
-        <label class="form-label">Email</label>
-        <InputText class="form-control" @bind-Value="loginModel.Email" />
-    </div>
-    <div class="mb-3">
-        <label class="form-label">Password</label>
-        <InputText type="password" class="form-control" @bind-Value="loginModel.Password" />
-    </div>
+<div class="mb-3">
+    <label class="form-label">Email</label>
+    <input class="form-control" @bind="loginModel.Email" />
+</div>
+<div class="mb-3">
+    <label class="form-label">Password</label>
+    <input type="password" class="form-control" @bind="loginModel.Password" />
+</div>
 
-    <button type="submit" class="btn btn-primary">Log in</button>
-</EditForm>
+<!-- 2FA stub for sellable security (production: integrate with authenticator or SMS) -->
+<div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" id="use2fa" aria-describedby="2faHelp" />
+    <label class="form-check-label" for="use2fa">Enable 2FA (stub - code prompt in prod)</label>
+    <div id="2faHelp" class="form-text">For sellable: supports TOTP or email 2FA.</div>
+</div>
+
+<button class="btn btn-primary" @onclick="HandleLogin" style="font-size:1.2rem; padding:10px 20px;">LOG IN</button>
 
 @code {
-    private LoginModel loginModel = new();
+    private LoginModel loginModel { get; set; } = new();
+
+    private bool loginFailed;
 
     private async Task HandleLogin()
     {
-        var result = await SignInManager.PasswordSignInAsync(
-            loginModel.Email, loginModel.Password, isPersistent: false, lockoutOnFailure: false);
+        loginFailed = false;
 
-        if (result.Succeeded)
+        if (string.IsNullOrWhiteSpace(loginModel.Email) || string.IsNullOrWhiteSpace(loginModel.Password))
         {
-            Navigation.NavigateTo("/", forceLoad: true);
+            loginFailed = true;
+            return;
         }
-        else
+
+        // Pre-login lookup must reliably bypass all tenant filters (critical for multi-tenant).
+        var normalized = UserManager.NormalizeEmail(loginModel.Email);
+        var user = await Db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
+
+        if (user == null)
         {
-            // In real app show error via a message
-            Console.WriteLine("Login failed");
+            TenantProvider.SetTenantId(Guid.Empty);
+            user = await UserManager.FindByEmailAsync(loginModel.Email);
         }
+
+        if (user == null)
+        {
+            loginFailed = true;
+            loginModel.Password = string.Empty;
+            return;
+        }
+
+        var passwordValid = await UserManager.CheckPasswordAsync(user, loginModel.Password ?? string.Empty);
+
+        if (!passwordValid)
+        {
+            loginFailed = true;
+            loginModel.Password = string.Empty;
+            return;
+        }
+
+        // Do NOT call SignInManager here (interactive circuit has already started the response).
+        // Navigate with forceLoad so a fresh request can safely set the auth cookie.
+        Navigation.NavigateTo($"/login-complete?email={Uri.EscapeDataString(loginModel.Email)}", forceLoad: true);
     }
 
-    private class LoginModel
+    public class LoginModel
     {
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
     }
+
+    // Ensure the model is initialized even on initial SSR render before interactivity kicks in
+    protected override void OnInitialized()
+    {
+        loginModel ??= new LoginModel();
+    }
+
+    // 2FA stub: In prod, after password, prompt for code and verify with UserManager or external provider.
 }

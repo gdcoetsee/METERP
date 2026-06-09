@@ -1,0 +1,115 @@
+@* Safe, lightweight Quote list renderer component.
+   Parent provides the data list + handles loading/search/pagination.
+   Keeps Razor surface small to avoid codegen/parser issues.
+   View detail is minimal; heavy creation stays in AI Copilot.
+*@
+@using METERP.Domain
+@using Microsoft.AspNetCore.Components
+
+@if (Quotes == null || !Quotes.Any())
+{
+    <div class="alert alert-info">No quotes to display.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Quote #</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-center">Lines</th>
+                    <th style="width: 160px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var q in Quotes)
+                {
+                    <tr>
+                        <td><strong>@q.QuoteNumber</strong></td>
+                        <td>@(q.Customer?.Name ?? "-")</td>
+                        <td>@q.QuoteDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Valid @q.ValidUntil.ToString("yyyy-MM-dd")</small></td>
+                        <td>@((MarkupString)GetStatusBadge(q.Status))</td>
+                        <td class="text-end">R @q.Total.ToString("N2")</td>
+                        <td class="text-center"><span class="badge bg-secondary">@(q.Lines?.Count(l => !l.IsDeleted) ?? 0)</span></td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(q)">View</button>
+                            @if (CanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(q)">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (ShowPagination)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnPrevious.InvokeAsync()" disabled="@DisablePrevious">Previous</button>
+            <span class="text-muted small">Page @CurrentPage</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnNext.InvokeAsync()" disabled="@DisableNext">Next</button>
+            <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="OnExportCsv">Export CSV</button>
+        </div>
+    }
+}
+
+@if (SelectedQuote != null)
+{
+    <div class="card mt-3 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <h6 class="mb-0">@SelectedQuote.QuoteNumber — @(SelectedQuote.Customer?.Name ?? "")</h6>
+            <button class="btn btn-sm btn-light" @onclick="() => OnCloseView.InvokeAsync()">Close</button>
+        </div>
+        <div class="card-body small">
+            <div>Total: <strong>R @SelectedQuote.Total.ToString("N2")</strong> (incl. 15% VAT)</div>
+            @if (!string.IsNullOrWhiteSpace(SelectedQuote.Notes))
+            {
+                <div class="mt-1">Notes: @SelectedQuote.Notes</div>
+            }
+            <div class="mt-2">
+                <a href="/ai-copilot" class="btn btn-sm btn-primary">✨ Enhance in AI Copilot</a>
+                @if (CanManage && (SelectedQuote.Status == QuoteStatus.Draft || SelectedQuote.Status == QuoteStatus.Sent))
+                {
+                    <button class="btn btn-sm btn-success ms-1" @onclick="() => OnConvert.InvokeAsync(SelectedQuote)">Convert to Job</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public List<Quote> Quotes { get; set; } = new();
+    [Parameter] public Quote? SelectedQuote { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public bool ShowPagination { get; set; } = true;
+    [Parameter] public bool DisablePrevious { get; set; }
+    [Parameter] public bool DisableNext { get; set; }
+
+    [Parameter] public EventCallback<Quote> OnView { get; set; }
+    [Parameter] public EventCallback<Quote> OnDelete { get; set; }
+    [Parameter] public EventCallback OnPrevious { get; set; }
+    [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnExportCsv { get; set; }
+    [Parameter] public EventCallback<Quote> OnConvert { get; set; }
+    [Parameter] public EventCallback OnCloseView { get; set; }
+
+    private static string GetStatusBadge(QuoteStatus s)
+    {
+        return s switch
+        {
+            QuoteStatus.Draft => "<span class=\"badge bg-secondary\">Draft</span>",
+            QuoteStatus.Sent => "<span class=\"badge bg-info\">Sent</span>",
+            QuoteStatus.Accepted => "<span class=\"badge bg-success\">Accepted</span>",
+            QuoteStatus.Rejected => "<span class=\"badge bg-danger\">Rejected</span>",
+            QuoteStatus.Expired => "<span class=\"badge bg-warning text-dark\">Expired</span>",
+            _ => $"<span class=\"badge bg-light text-dark\">{s}</span>"
+        };
+    }
+}

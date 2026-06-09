@@ -1,0 +1,71 @@
+@page "/finance"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "Finance.View")]
+@inject IFinanceService FinanceService
+@inject ICurrentUserService CurrentUserService
+
+<PageTitle>Finance</PageTitle>
+
+<h1>Finance & Accounting</h1>
+<p class="text-muted">Minimal GL / Chart of Accounts for job costing and invoicing visibility (Phase 3).</p>
+
+@if (accounts == null)
+{
+    <p>Loading accounts...</p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-8">
+            <h5>Chart of Accounts</h5>
+            <table class="table table-sm">
+                <thead>
+                    <tr><th>Code</th><th>Name</th><th>Type</th><th class="text-end">Balance (demo)</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in accounts)
+                    {
+                        <tr>
+                            <td><code>@a.AccountCode</code></td>
+                            <td>@a.Name</td>
+                            <td>@a.Type</td>
+                            <td class="text-end">R @(FinanceService.GetAccountBalanceAsync(a.Id).Result.ToString("N2"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6>Post Journal (demo)</h6>
+                    <p class="small text-muted">In a full system this would be driven from invoices/costs/POs. For MVP the seeder posts example entries.</p>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="Refresh">Refresh Balances</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Account> accounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        accounts = (await FinanceService.GetAccountsAsync()).ToList();
+    }
+
+    private async Task Refresh()
+    {
+        await Load();
+    }
+}

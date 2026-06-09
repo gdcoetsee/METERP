@@ -5,7 +5,7 @@ namespace METERP.Application.Services;
 public interface ICustomerService
 {
     Task<Customer?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<IReadOnlyList<Customer>> GetAllAsync(string? search = null, CancellationToken ct = default);
+    Task<IReadOnlyList<Customer>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
     Task<Guid> CreateAsync(Customer customer, CancellationToken ct = default);
     Task UpdateAsync(Customer customer, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);

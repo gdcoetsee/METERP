@@ -1,10 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ProjectGuid>{D984DDDB-7AEE-437C-97EA-8B48271EB87B}</ProjectGuid>
+    <UserSecretsId>bdc12c8f-c53c-46c8-b25d-60bb7c4c91f9</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +22,13 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+
+    <!-- Professional PDF generation for AI reports, quote/job closeouts, and branded exports. Community license is sufficient. -->
+    <PackageReference Include="QuestPDF" Version="2024.12.0" />
+
+    <!-- Rate limiting is provided by the ASP.NET Core framework (no extra package needed for .NET 9 web apps). See AddRateLimiter + UseRateLimiter in Program.cs. -->
+    <!-- Direct Npgsql for the dev DB reset helper in seeder (transitive from EF provider but explicit for compile of Npgsql* types in Program.cs) -->
+    <PackageReference Include="Npgsql" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

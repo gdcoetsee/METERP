@@ -21,7 +21,7 @@ public class CustomerService : ICustomerService
             .FirstOrDefaultAsync(c => c.Id == id, ct);
     }
 
-    public async Task<IReadOnlyList<Customer>> GetAllAsync(string? search = null, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Customer>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = _dbContext.Set<Customer>().AsQueryable();
 
@@ -35,7 +35,10 @@ public class CustomerService : ICustomerService
         }
 
         return await query
+            .Include(c => c.Contacts)
             .OrderBy(c => c.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
     }
 

@@ -1,0 +1,76 @@
+@page "/notifications"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ToastService ToastService
+@inject NotificationService NotificationService
+
+<PageTitle>Notifications</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Notifications <span class="badge bg-warning">Alerts & Approvals</span></h1>
+        <p class="text-muted mb-0">In-app alerts for due dates, low stock, approvals, overdue jobs. Email/SMS in production.</p>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllRead">Mark All Read</button>
+</div>
+
+<div class="list-group">
+    @foreach (var n in notifications)
+    {
+        <div class="list-group-item d-flex justify-content-between @(n.IsRead ? "text-muted" : "")" style="cursor:pointer;" @onclick="() => MarkRead(n)">
+            <div>
+                <strong>@n.Title</strong><br />
+                <small>@n.Message</small>
+            </div>
+            <div class="text-end">
+                <small class="text-muted">@n.Date.ToString("MMM dd")</small>
+                @if (!n.IsRead)
+                {
+                    <span class="badge bg-danger ms-2">New</span>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@if (!notifications.Any())
+{
+    <div class="alert alert-info">No notifications. System will alert on low stock, overdue jobs, approvals.</div>
+}
+
+@code {
+    private List<NotificationService.NotificationItem> notifications = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        notifications = await NotificationService.GetAllAsync();
+        // Seed demo data if empty (first run)
+        if (!notifications.Any())
+        {
+            await NotificationService.AddAsync("Low Stock Alert", "Transformer oil below reorder for upcoming J-2402.");
+            await NotificationService.AddAsync("Job Overdue", "Substation Upgrade (J-2401) past scheduled date. Travel costs may increase.", isRead: true);
+            await NotificationService.AddAsync("Approval Needed", "Labor timesheet for Mine Install requires manager sign-off.");
+            notifications = await NotificationService.GetAllAsync();
+        }
+    }
+
+    private async Task MarkRead(NotificationService.NotificationItem n)
+    {
+        await NotificationService.MarkReadAsync(n.Id);
+        notifications = await NotificationService.GetAllAsync();
+        ToastService.ShowInfo("Notification marked read. Full email/SMS in production.");
+    }
+
+    private async Task MarkAllRead()
+    {
+        await NotificationService.MarkAllReadAsync();
+        notifications = await NotificationService.GetAllAsync();
+        ToastService.ShowSuccess("All notifications marked read. (Email/SMS stub: would send via SendGrid or similar in prod.)");
+    }
+
+    // Email stub for sellable notifications (integrations)
+    private void SendEmailStub(NotificationService.NotificationItem n)
+    {
+        ToastService.ShowInfo($"Email sent for '{n.Title}' (stub - integrate SendGrid/Mailgun for real alerts on due dates, approvals, low stock).");
+    }
+}

@@ -1,0 +1,198 @@
+@page "/scheduling"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@attribute [Authorize(Policy = "Jobs.View")]
+@inject IJobService JobService
+@inject IEmployeeService EmployeeService
+@inject IAssetService AssetService
+@inject ICurrentUserService CurrentUserService
+@inject IAiAssistantService AiAssistantService
+@inject ToastService ToastService
+
+<PageTitle>Scheduling</PageTitle>
+
+<h1>Job Scheduling</h1>
+<p class="text-muted">Basic view of upcoming and scheduled jobs. Assign employees and assets for next-level operations.</p>
+<button class="btn btn-primary btn-sm mb-3" @onclick="SuggestAssignmentsWithAI">✨ AI Suggest Best Assignments</button>
+<button class="btn btn-outline-primary btn-sm mb-3 ms-2" @onclick="RunLowStockRiskForScheduled">🔮 AI: Low-stock + travel risk for these scheduled jobs</button>
+
+@if (_loading)
+{
+    <p><em>Loading schedule...</em></p>
+}
+else if (jobs == null || !jobs.Any())
+{
+    <div class="alert alert-info">No scheduled jobs.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Job #</th>
+                    <th>Title / Customer</th>
+                    <th>Scheduled</th>
+                    <th>Status</th>
+                    <th>Assigned</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var job in jobs.OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue))
+                {
+                    <tr>
+                        <td>@job.JobNumber</td>
+                        <td>@job.Title<br /><small>@(job.Customer?.Name)</small></td>
+                        <td>@(job.ScheduledStart?.ToString("yyyy-MM-dd") ?? "TBD")</td>
+                        <td>@((MarkupString)GetStatusBadge(job.Status))</td>
+                        <td>
+                            @if (job.Asset != null) { <span class="badge bg-info">@job.Asset.Name</span><br /> }
+                            <!-- Employee assignment stub -->
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewJob(job)">View/Assign</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (selectedJob != null)
+{
+    <div class="card mt-3">
+        <div class="card-header">Assign for @selectedJob.JobNumber</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <label>Assign Asset</label>
+                    <select class="form-select" @bind="assignAssetId">
+                        <option value="">-- None --</option>
+                        @foreach (var a in availableAssets)
+                        {
+                            <option value="@a.Id">@a.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label>Assign Employee (for labor)</label>
+                    <select class="form-select" @bind="assignEmployeeId">
+                        <option value="">-- None --</option>
+                        @foreach (var e in availableEmployees)
+                        {
+                            <option value="@e.Id">@e.FirstName @e.LastName</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <button class="btn btn-success mt-2" @onclick="AssignResources">Save Assignments</button>
+            <button class="btn btn-secondary mt-2 ms-1" @onclick="CloseAssign">Close</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Job> jobs = new();
+    private List<Asset> availableAssets = new();
+    private List<Employee> availableEmployees = new();
+    private Job? selectedJob;
+    private Guid? assignAssetId;
+    private Guid? assignEmployeeId;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            jobs = (await JobService.GetAllAsync(null, 1, 50)).ToList();
+            availableAssets = (await AssetService.GetAllAsync(null, 1, 1000)).ToList();
+            availableEmployees = (await EmployeeService.GetAllAsync(null, 1, 1000)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ViewJob(Job job)
+    {
+        selectedJob = job;
+        assignAssetId = job.AssetId;
+    }
+
+    private async Task AssignResources()
+    {
+        if (selectedJob == null) return;
+
+        selectedJob.AssetId = assignAssetId;
+        // Note: Employee assignment would link to future labor or separate assignment entity.
+        // For this next-level stub, we update the job asset and note employee in description if needed.
+
+        await JobService.UpdateAsync(selectedJob);
+        ToastService.ShowSuccess("Assignment saved for job.");
+        jobs = (await JobService.GetAllAsync(null, 1, 50)).ToList();
+        selectedJob = null;
+    }
+
+    private void CloseAssign()
+    {
+        selectedJob = null;
+    }
+
+    private static string GetStatusBadge(JobStatus status) => status switch
+    {
+        JobStatus.Scheduled => "<span class=\"badge bg-secondary\">Scheduled</span>",
+        JobStatus.InProgress => "<span class=\"badge bg-primary\">In Progress</span>",
+        _ => $"<span class=\"badge bg-light\">{status}</span>"
+    };
+
+    private async Task SuggestAssignmentsWithAI()
+    {
+        try
+        {
+            string context = "Current scheduled jobs: " + string.Join(", ", jobs.Take(5).Select(j => j.Title + " (" + j.Status + ")"));
+            context += ". Available employees: " + availableEmployees.Count + ". Assets: " + availableAssets.Count + ".";
+            var suggestion = await AiAssistantService.AskCopilotAsync("Suggest the best employee and asset assignments for the upcoming jobs to minimize variance and optimize utilization, considering past performance if possible.", context);
+            if (!string.IsNullOrWhiteSpace(suggestion))
+            {
+                ToastService.ShowSuccess("AI Suggestion: " + suggestion.Substring(0, Math.Min(200, suggestion.Length)) + "... (full in Copilot)");
+            }
+            else
+            {
+                ToastService.ShowInfo("AI suggestion not available (configure AI).");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError("AI suggest failed: " + ex.Message);
+        }
+    }
+
+    private async Task RunLowStockRiskForScheduled()
+    {
+        try
+        {
+            string context = "Scheduled / in-progress jobs: " + string.Join(", ", jobs.Where(j => j.Status == JobStatus.Scheduled || j.Status == JobStatus.InProgress).Take(5).Select(j => j.Title + " on " + (j.ScheduledStart?.ToString("yyyy-MM-dd") ?? "TBD")));
+            var result = await AiAssistantService.AskCopilotAsync("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.", context);
+            if (!string.IsNullOrWhiteSpace(result))
+            {
+                ToastService.ShowSuccess("AI Low-Stock Risk: " + result.Substring(0, Math.Min(180, result.Length)) + "... (full analysis + actions in Copilot)");
+            }
+            else
+            {
+                ToastService.ShowInfo("AI risk analysis not available (configure AI).");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError("AI risk analysis failed: " + ex.Message);
+        }
+    }
+}

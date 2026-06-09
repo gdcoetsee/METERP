@@ -1,0 +1,252 @@
+@page "/opportunities"
+@using METERP.Domain
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@attribute [Authorize(Policy = "Quotes.View")]
+@inject ToastService ToastService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Opportunities (CRM)</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Opportunities <span class="badge bg-info">CRM Pipeline</span></h1>
+        <p class="text-muted mb-0">Track leads, convert to quotes. Professional sales management for contractors.</p>
+    </div>
+    <button class="btn btn-primary" @onclick="ShowCreate">+ New Opportunity</button>
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search opportunity..." value="@searchTerm" @oninput="OnSearch" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" @onclick="ClearSearch">Clear</button>
+        }
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    @foreach (var stage in stages)
+    {
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <strong>@stage</strong> <span class="badge bg-secondary">@GetCount(stage)</span>
+                </div>
+                <div class="card-body p-2">
+                    @foreach (var opp in GetByStage(stage))
+                    {
+                        <div class="card mb-2 shadow-sm" style="cursor:pointer;" @onclick="() => ViewOpp(opp)">
+                            <div class="card-body p-2 small">
+                                <strong>@opp.Title</strong><br />
+                                <span class="text-muted">@opp.Customer</span><br />
+                                <span class="text-success">R @opp.Value.ToString("N0")</span>
+                                <span class="badge bg-primary float-end">@opp.Stage</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showCreate)
+{
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">New Opportunity</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Title</label>
+                    <input class="form-control" @bind="newOpp.Title" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Customer</label>
+                    <input class="form-control" @bind="newOpp.Customer" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Value (R)</label>
+                    <input type="number" class="form-control" @bind="newOpp.Value" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Stage</label>
+                    <select class="form-select" @bind="newOpp.Stage">
+                        @foreach (var s in stages) { <option>@s</option> }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Expected Close</label>
+                    <input type="date" class="form-control" @bind="newOpp.ExpectedClose" />
+                </div>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-success" @onclick="CreateOpp">Create</button>
+                <button class="btn btn-secondary ms-2" @onclick="CancelCreate">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (selectedOpp != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <h5 class="mb-0">@selectedOpp.Title</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseView">Close</button>
+        </div>
+        <div class="card-body">
+            <p><strong>Customer:</strong> @selectedOpp.Customer</p>
+            <p><strong>Value:</strong> R @selectedOpp.Value.ToString("N0")</p>
+            <p><strong>Stage:</strong> @selectedOpp.Stage</p>
+            <p><strong>Expected Close:</strong> @selectedOpp.ExpectedClose.ToString("yyyy-MM-dd")</p>
+            <div class="mt-3">
+                <button class="btn btn-primary btn-sm me-2" @onclick="ConvertToQuote">Convert to Quote (AI Copilot)</button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="UpdateStage">Advance Stage</button>
+            </div>
+            <small class="text-muted d-block mt-2">Convert opens Copilot with pre-filled scope for AI-powered quote creation.</small>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Opportunity> opportunities = new();
+    private List<Opportunity> filtered = new();
+    private string searchTerm = "";
+    private Opportunity? selectedOpp;
+    private bool showCreate;
+    private Opportunity newOpp = new();
+
+    private string[] stages = new[] { "Lead", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // DEMO / illustrative only.
+        // In a full implementation this would use a real tenant-isolated OpportunityService + DB.
+        // We persist the pipeline in localStorage for a slightly more realistic demo experience (like AI chat history).
+        try
+        {
+            var saved = await JS.InvokeAsync<string>("localStorage.getItem", "opportunitiesPipeline");
+            if (!string.IsNullOrWhiteSpace(saved))
+            {
+                opportunities = System.Text.Json.JsonSerializer.Deserialize<List<Opportunity>>(saved) ?? new();
+            }
+        }
+        catch { }
+
+        if (opportunities.Count == 0)
+        {
+            opportunities = new List<Opportunity>
+            {
+                new Opportunity { Id = 1, Title = "Mine Transformer Upgrade", Customer = "ACME Mining", Value = 125000, Stage = "Proposal", ExpectedClose = DateTime.Today.AddDays(14) },
+                new Opportunity { Id = 2, Title = "Substation Maintenance", Customer = "Industrial Site Ltd", Value = 87500, Stage = "Qualified", ExpectedClose = DateTime.Today.AddDays(30) },
+                new Opportunity { Id = 3, Title = "New 11kV Install", Customer = "Gauteng Power", Value = 210000, Stage = "Lead", ExpectedClose = DateTime.Today.AddDays(60) }
+            };
+        }
+        filtered = opportunities;
+    }
+
+    private int GetCount(string stage) => opportunities.Count(o => o.Stage == stage);
+
+    private List<Opportunity> GetByStage(string stage) => filtered.Where(o => o.Stage == stage).ToList();
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+        Filter();
+    }
+
+    private void ClearSearch()
+    {
+        searchTerm = "";
+        Filter();
+    }
+
+    private void Filter()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+            filtered = opportunities;
+        else
+        {
+            var t = searchTerm.ToLower();
+            filtered = opportunities.Where(o => o.Title.ToLower().Contains(t) || o.Customer.ToLower().Contains(t)).ToList();
+        }
+    }
+
+    private void ShowCreate()
+    {
+        newOpp = new Opportunity { Stage = "Lead", ExpectedClose = DateTime.Today.AddDays(30) };
+        showCreate = true;
+        selectedOpp = null;
+    }
+
+    private void CreateOpp()
+    {
+        if (string.IsNullOrWhiteSpace(newOpp.Title)) return;
+        newOpp.Id = opportunities.Max(o => o.Id) + 1;
+        opportunities.Add(newOpp);
+        Filter();
+        showCreate = false;
+        ToastService.ShowSuccess("Opportunity created. Convert to quote via AI Copilot for best results.");
+    }
+
+    private void CancelCreate() => showCreate = false;
+
+    private void ViewOpp(Opportunity o)
+    {
+        selectedOpp = o;
+        showCreate = false;
+    }
+
+    private void CloseView() => selectedOpp = null;
+
+    private async Task ConvertToQuote()
+    {
+        if (selectedOpp == null) return;
+        // Pass scope to AI Copilot via localStorage for seamless pre-fill (demo integration)
+        try
+        {
+            var scope = $"{selectedOpp.Title} for {selectedOpp.Customer} - expected close {selectedOpp.ExpectedClose:yyyy-MM-dd}, value R {selectedOpp.Value:N0}";
+            await JS.InvokeVoidAsync("localStorage.setItem", "pendingAiScope", scope);
+        }
+        catch { }
+        ToastService.ShowSuccess($"Opening AI Copilot with pre-filled scope for {selectedOpp.Title}. Use it to generate a structured quote.");
+        Nav.NavigateTo("/ai-copilot");
+        await SavePipeline();
+    }
+
+    private async Task UpdateStage()
+    {
+        if (selectedOpp == null) return;
+        var idx = Array.IndexOf(stages, selectedOpp.Stage);
+        if (idx < stages.Length - 1)
+        {
+            selectedOpp.Stage = stages[idx + 1];
+            Filter();
+            await SavePipeline();
+            ToastService.ShowSuccess($"Stage advanced to {selectedOpp.Stage}.");
+        }
+    }
+
+    private async Task SavePipeline()
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(opportunities);
+            await JS.InvokeVoidAsync("localStorage.setItem", "opportunitiesPipeline", json);
+        }
+        catch { }
+    }
+
+    private class Opportunity
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Customer { get; set; } = "";
+        public decimal Value { get; set; }
+        public string Stage { get; set; } = "Lead";
+        public DateTime ExpectedClose { get; set; }
+    }
+}

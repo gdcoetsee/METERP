@@ -1,0 +1,241 @@
+@page "/sales-orders"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "SalesOrders.View")]
+@inject ISalesOrderService SalesOrderService
+@inject IQuoteService QuoteService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Sales Orders</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Sales Orders</h1>
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search SO # or customer..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading sales orders...</em></p>
+}
+else if (sos == null || !sos.Any())
+{
+    <div class="alert alert-info">No sales orders yet. Convert quotes to create them as the fulfillment step before jobs.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>SO #</th>
+                    <th>Customer / Quote</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th class="text-end">Total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var so in sos)
+                {
+                    <tr>
+                        <td><strong>@so.SoNumber</strong></td>
+                        <td>@(so.Customer?.Name ?? "—")<br /><small>@(so.Quote?.QuoteNumber ?? "")</small></td>
+                        <td>@so.SoDate.ToString("yyyy-MM-dd")</td>
+                        <td>@GetStatusBadge(so.Status)</td>
+                        <td class="text-end">R @so.Total.ToString("N2")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewSO(so)">View</button>
+                            @if (UserCanManage && so.Status == SalesOrderStatus.Draft)
+                            {
+                                <button class="btn btn-sm btn-success" @onclick="() => ConvertToJob(so)">Convert to Job</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(sos.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (selectedSO != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedSO.SoNumber — @(selectedSO.Customer?.Name)</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseSOView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <strong>Status:</strong> @GetStatusBadge(selectedSO.Status)<br />
+                    <strong>Delivery:</strong> @(selectedSO.DeliveryDate?.ToString("yyyy-MM-dd") ?? "—")
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div>Subtotal: <strong>R @selectedSO.Subtotal.ToString("N2")</strong></div>
+                    <div>Tax: R @selectedSO.Tax.ToString("N2")</div>
+                    <div class="fs-5">Total: <strong>R @selectedSO.Total.ToString("N2")</strong></div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(selectedSO.Notes))
+            {
+                <div class="mb-3"><strong>Notes:</strong> @selectedSO.Notes</div>
+            }
+
+            <h6>Lines (@selectedSO.Lines.Count(l => !l.IsDeleted))</h6>
+
+            @if (selectedSO.Lines.Any(l => !l.IsDeleted))
+            {
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Description</th><th class="text-end">Qty</th><th class="text-end">Line Total</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in selectedSO.Lines.Where(x => !x.IsDeleted))
+                        {
+                            <tr>
+                                <td>@l.Description</td>
+                                <td class="text-end">@l.Quantity @l.Unit</td>
+                                <td class="text-end">R @l.LineTotal.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @if (UserCanManage && (selectedSO.Status == SalesOrderStatus.Draft || selectedSO.Status == SalesOrderStatus.Confirmed))
+            {
+                <button class="btn btn-success btn-sm" @onclick="() => ConvertToJob(selectedSO)">Convert to Job</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<SalesOrder> sos = new();
+    private SalesOrder? selectedSO;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.SalesOrdersManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadSOs();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadSOs()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        sos = (await SalesOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadSOs();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadSOs();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadSOs();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadSOs();
+    }
+
+    private async Task ViewSO(SalesOrder so)
+    {
+        selectedSO = await SalesOrderService.GetByIdAsync(so.Id);
+    }
+
+    private void CloseSOView()
+    {
+        selectedSO = null;
+    }
+
+    private async Task ConvertToJob(SalesOrder so)
+    {
+        if (!await ConfirmDelete("Convert this Sales Order to a Job?")) return;
+
+        try
+        {
+            var job = await SalesOrderService.ConvertToJobAsync(so.Id);
+            ToastService.ShowSuccess($"Sales Order converted to Job {job.JobNumber}.");
+            selectedSO = await SalesOrderService.GetByIdAsync(so.Id);
+            await LoadSOs();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Conversion failed: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> ConfirmDelete(string message)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", message); }
+        catch { return false; }
+    }
+
+    private static string GetStatusBadge(SalesOrderStatus status)
+    {
+        return status switch
+        {
+            SalesOrderStatus.Draft => "<span class=\"badge bg-secondary\">Draft</span>",
+            SalesOrderStatus.Confirmed => "<span class=\"badge bg-info\">Confirmed</span>",
+            SalesOrderStatus.InProgress => "<span class=\"badge bg-primary\">In Progress</span>",
+            SalesOrderStatus.Completed => "<span class=\"badge bg-success\">Completed</span>",
+            SalesOrderStatus.Cancelled => "<span class=\"badge bg-dark\">Cancelled</span>",
+            _ => status.ToString()
+        };
+    }
+}

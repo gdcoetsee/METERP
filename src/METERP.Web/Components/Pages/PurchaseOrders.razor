@@ -1,0 +1,431 @@
+@page "/purchase-orders"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "PurchaseOrders.View")]
+@inject IPurchaseOrderService PurchaseOrderService
+@inject ISupplierService SupplierService
+@inject IInventoryService InventoryService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Purchase Orders</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Purchase Orders</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New PO</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search PO #, supplier or notes..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading purchase orders...</em></p>
+}
+else if (pos == null || !pos.Any())
+{
+    <div class="alert alert-info">No purchase orders yet. Create POs from suppliers to replenish inventory.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>PO #</th>
+                    <th>Supplier</th>
+                    <th>Date / Expected</th>
+                    <th>Status</th>
+                    <th class="text-end">Total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var po in pos)
+                {
+                    <tr>
+                        <td><strong>@po.PoNumber</strong></td>
+                        <td>@(po.Supplier?.Name ?? "—")</td>
+                        <td>@po.PoDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Exp: @(po.ExpectedDate?.ToString("yyyy-MM-dd") ?? "—")</small></td>
+                        <td>@GetStatusBadge(po.Status)</td>
+                        <td class="text-end">R @po.Total.ToString("N2")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewPO(po)">View</button>
+                            @if (UserCanManage && po.Status == PurchaseOrderStatus.Draft)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditPO(po)">Edit</button>
+                            }
+                            @if (UserCanManage && (po.Status == PurchaseOrderStatus.Sent || po.Status == PurchaseOrderStatus.PartiallyReceived))
+                            {
+                                <button class="btn btn-sm btn-success ms-1" @onclick="() => ReceivePO(po)">Receive</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(pos.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit PO" : "New Purchase Order")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentPO" OnValidSubmit="SavePO" FormName="POForm">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Supplier *</label>
+                        <select class="form-select" @bind="currentPO.SupplierId" required>
+                            <option value="">-- Select supplier --</option>
+                            @foreach (var s in availableSuppliers)
+                            {
+                                <option value="@s.Id">@s.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">PO Date</label>
+                        <InputDate class="form-control" @bind-Value="currentPO.PoDate" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Expected</label>
+                        <InputDate class="form-control" @bind-Value="currentPO.ExpectedDate" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="currentPO.Notes" rows="2" />
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save PO</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedPO != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedPO.PoNumber — @(selectedPO.Supplier?.Name)</h5>
+            <div>
+                <button class="btn btn-sm btn-light me-2" @onclick="ClosePOView">Close</button>
+                @if (UserCanManage && (selectedPO.Status == PurchaseOrderStatus.Sent || selectedPO.Status == PurchaseOrderStatus.PartiallyReceived))
+                {
+                    <button class="btn btn-sm btn-success" @onclick="() => ReceivePO(selectedPO)">Mark Received</button>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <strong>Status:</strong> @GetStatusBadge(selectedPO.Status)<br />
+                    <strong>PO Date:</strong> @selectedPO.PoDate.ToString("yyyy-MM-dd")<br />
+                    <strong>Expected:</strong> @(selectedPO.ExpectedDate?.ToString("yyyy-MM-dd") ?? "—")
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div>Subtotal: <strong>R @selectedPO.Subtotal.ToString("N2")</strong></div>
+                    <div>Tax: R @selectedPO.Tax.ToString("N2")</div>
+                    <div class="fs-5">Total: <strong>R @selectedPO.Total.ToString("N2")</strong></div>
+                </div>
+            </div>
+
+            <h6>Lines (@selectedPO.Lines.Count(l => !l.IsDeleted))</h6>
+
+            @if (selectedPO.Lines.Any(l => !l.IsDeleted))
+            {
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-end">Qty</th>
+                            <th>Unit</th>
+                            <th class="text-end">Unit Price</th>
+                            <th class="text-end">Line Total</th>
+                            @if (UserCanManage && selectedPO.Status != PurchaseOrderStatus.Received)
+                            {
+                                <th></th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in selectedPO.Lines.Where(l => !l.IsDeleted))
+                        {
+                            <tr>
+                                <td>@line.Description</td>
+                                <td class="text-end">@line.Quantity</td>
+                                <td>@line.Unit</td>
+                                <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
+                                <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
+                                @if (UserCanManage && selectedPO.Status != PurchaseOrderStatus.Received)
+                                {
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => DeleteLine(line)">Del</button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">No lines yet.</p>
+            }
+
+            @if (UserCanManage && selectedPO.Status == PurchaseOrderStatus.Draft)
+            {
+                <button class="btn btn-outline-success btn-sm" @onclick="ShowAddLineForm">+ Add Line</button>
+            }
+
+            @if (showLineForm && editingLine != null)
+            {
+                <div class="mt-2 p-3 border rounded bg-light">
+                    <h6>Add Line</h6>
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <InputText class="form-control form-control-sm" @bind-Value="editingLine.Description" placeholder="Description" />
+                        </div>
+                        <div class="col-md-2">
+                            <InputNumber class="form-control form-control-sm" @bind-Value="editingLine.Quantity" />
+                        </div>
+                        <div class="col-md-2">
+                            <InputText class="form-control form-control-sm" @bind-Value="editingLine.Unit" placeholder="Unit" />
+                        </div>
+                        <div class="col-md-2">
+                            <InputNumber class="form-control form-control-sm" @bind-Value="editingLine.UnitPrice" step="0.01" />
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-success" @onclick="SaveLine">Save Line</button>
+                        <button class="btn btn-sm btn-secondary ms-1" @onclick="CancelLineForm">Cancel</button>
+                    </div>
+                </div>
+            }
+
+            <p class="mt-3 text-muted small">Receiving a PO will create Receipt stock transactions and update on-hand quantities for linked inventory items.</p>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PurchaseOrder> pos = new();
+    private List<Supplier> availableSuppliers = new();
+    private PurchaseOrder currentPO = new();
+    private PurchaseOrder? selectedPO;
+    private bool showForm;
+    private bool isEditing;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool showLineForm;
+    private PurchaseOrderLine? editingLine;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadSuppliersForPicker();
+            await LoadPOs();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadSuppliersForPicker()
+    {
+        availableSuppliers = (await SupplierService.GetAllAsync()).ToList();
+    }
+
+    private async Task LoadPOs()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        pos = (await PurchaseOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadPOs();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadPOs();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadPOs();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadPOs();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentPO = new PurchaseOrder { PoDate = DateTime.UtcNow, TaxRate = 0.15m, Status = PurchaseOrderStatus.Draft };
+        isEditing = false;
+        showForm = true;
+        selectedPO = null;
+    }
+
+    private void EditPO(PurchaseOrder po)
+    {
+        currentPO = new PurchaseOrder
+        {
+            Id = po.Id,
+            SupplierId = po.SupplierId,
+            PoNumber = po.PoNumber,
+            PoDate = po.PoDate,
+            ExpectedDate = po.ExpectedDate,
+            Status = po.Status,
+            Notes = po.Notes,
+            TaxRate = po.TaxRate
+        };
+        isEditing = true;
+        showForm = true;
+        selectedPO = null;
+    }
+
+    private async Task SavePO()
+    {
+        if (isEditing)
+        {
+            await PurchaseOrderService.UpdateAsync(currentPO);
+        }
+        else
+        {
+            await PurchaseOrderService.CreateAsync(currentPO);
+        }
+
+        showForm = false;
+        await LoadPOs();
+        currentPO = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentPO = new();
+    }
+
+    private async Task ViewPO(PurchaseOrder po)
+    {
+        selectedPO = await PurchaseOrderService.GetByIdAsync(po.Id);
+        showForm = false;
+        showLineForm = false;
+    }
+
+    private void ClosePOView()
+    {
+        selectedPO = null;
+        showLineForm = false;
+    }
+
+    private async Task ReceivePO(PurchaseOrder po)
+    {
+        if (!await Confirm("Mark this PO as fully received? This will update inventory stock.")) return;
+        await PurchaseOrderService.ReceiveAsync(po.Id);
+        selectedPO = await PurchaseOrderService.GetByIdAsync(po.Id);
+        await LoadPOs();
+        ToastService.ShowSuccess("PO received. Inventory updated.");
+    }
+
+    private void ShowAddLineForm()
+    {
+        if (selectedPO == null) return;
+        editingLine = new PurchaseOrderLine { PurchaseOrderId = selectedPO.Id, Quantity = 1 };
+        showLineForm = true;
+    }
+
+    private async Task SaveLine()
+    {
+        if (editingLine == null) return;
+        await PurchaseOrderService.AddLineAsync(editingLine);
+        showLineForm = false;
+        editingLine = null;
+        selectedPO = await PurchaseOrderService.GetByIdAsync(selectedPO!.Id);
+        await LoadPOs();
+    }
+
+    private void CancelLineForm()
+    {
+        showLineForm = false;
+        editingLine = null;
+    }
+
+    private async Task DeleteLine(PurchaseOrderLine line)
+    {
+        if (!await Confirm("Delete this line?")) return;
+        await PurchaseOrderService.DeleteLineAsync(line.Id);
+        selectedPO = await PurchaseOrderService.GetByIdAsync(selectedPO!.Id);
+        await LoadPOs();
+    }
+
+    private async Task<bool> Confirm(string msg)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", msg); }
+        catch { return false; }
+    }
+
+    private static string GetStatusBadge(PurchaseOrderStatus status)
+    {
+        return status switch
+        {
+            PurchaseOrderStatus.Draft => "<span class=\"badge bg-secondary\">Draft</span>",
+            PurchaseOrderStatus.Sent => "<span class=\"badge bg-info\">Sent</span>",
+            PurchaseOrderStatus.PartiallyReceived => "<span class=\"badge bg-warning text-dark\">Partially Received</span>",
+            PurchaseOrderStatus.Received => "<span class=\"badge bg-success\">Received</span>",
+            PurchaseOrderStatus.Cancelled => "<span class=\"badge bg-dark\">Cancelled</span>",
+            _ => status.ToString()
+        };
+    }
+}

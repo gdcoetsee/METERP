@@ -1,0 +1,59 @@
+@page "/login-complete"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using METERP.Infrastructure.Identity
+@using METERP.Infrastructure.Persistence
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject AppDbContext Db
+@inject METERP.Application.Interfaces.ITenantProvider TenantProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Signing in...</PageTitle>
+
+<div class="d-flex align-items-center justify-content-center" style="min-height: 60vh;">
+    <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <h4>Signing you in...</h4>
+        <p class="text-muted">Please wait while we complete authentication.</p>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Email { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Email))
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        // Same pre-login lookup logic as Login.razor (bypass tenant filters for multi-tenancy).
+        var normalized = UserManager.NormalizeEmail(Email);
+        var user = await Db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
+
+        if (user == null)
+        {
+            TenantProvider.SetTenantId(Guid.Empty);
+            user = await UserManager.FindByEmailAsync(Email);
+        }
+
+        if (user == null)
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        // Now safe to sign in — this request is a fresh top-level navigation from forceLoad.
+        await SignInManager.SignInAsync(user, isPersistent: false);
+
+        // Full reload to bootstrap the new authenticated circuit cleanly.
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+}

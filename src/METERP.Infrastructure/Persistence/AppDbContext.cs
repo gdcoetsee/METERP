@@ -14,12 +14,15 @@ namespace METERP.Infrastructure.Persistence;
 public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>
 {
     private readonly ITenantProvider _tenantProvider;
+    private readonly ICurrentUserService _currentUserService;
 
     public AppDbContext(
         DbContextOptions<AppDbContext> options,
-        ITenantProvider tenantProvider) : base(options)
+        ITenantProvider tenantProvider,
+        ICurrentUserService currentUserService) : base(options)
     {
         _tenantProvider = tenantProvider;
+        _currentUserService = currentUserService;
     }
 
     // Platform / cross-cutting (non-Identity)
@@ -28,6 +31,43 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     // Customer module (Module 1)
     public DbSet<Customer> Customers { get; set; } = null!;
     public DbSet<Contact> Contacts { get; set; } = null!;
+
+    // Quote -> Job workflow (Module 2)
+    public DbSet<Quote> Quotes { get; set; } = null!;
+    public DbSet<QuoteLine> QuoteLines { get; set; } = null!;
+    public DbSet<Job> Jobs { get; set; } = null!;
+    public DbSet<JobCost> JobCosts { get; set; } = null!;
+
+    // Invoicing (completes sales flow)
+    public DbSet<Invoice> Invoices { get; set; } = null!;
+    public DbSet<InvoiceLine> InvoiceLines { get; set; } = null!;
+
+    // Inventory & Stock Transactions (Module 3)
+    public DbSet<InventoryItem> InventoryItems { get; set; } = null!;
+    public DbSet<StockTransaction> StockTransactions { get; set; } = null!;
+
+    // Assets / Transformers (electrical contracting specific)
+    public DbSet<Asset> Assets { get; set; } = null!;
+
+    // Job Labor / Timesheets (deep job costing)
+    public DbSet<JobLabor> JobLabors { get; set; } = null!;
+
+    // Purchasing / Supply Chain (Phase 2 - closes inventory replenishment loop)
+    public DbSet<Supplier> Suppliers { get; set; } = null!;
+    public DbSet<PurchaseOrder> PurchaseOrders { get; set; } = null!;
+    public DbSet<PurchaseOrderLine> PurchaseOrderLines { get; set; } = null!;
+
+    // Finance / Accounting (Phase 3 - minimal GL to support real costing + invoicing)
+    public DbSet<Account> Accounts { get; set; } = null!;
+    public DbSet<JournalEntry> JournalEntries { get; set; } = null!;
+    public DbSet<JournalEntryLine> JournalEntryLines { get; set; } = null!;
+
+    // HR / Payroll (Phase 4 - links labor to people)
+    public DbSet<Employee> Employees { get; set; } = null!;
+
+    // Sales Order (intermediate Quote -> SO -> Job per original roadmap)
+    public DbSet<SalesOrder> SalesOrders { get; set; } = null!;
+    public DbSet<SalesOrderLine> SalesOrderLines { get; set; } = null!;
 
     public Guid CurrentTenantId => _tenantProvider.GetCurrentTenantId();
 
@@ -65,12 +105,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         modelBuilder.Entity<Tenant>()
             .HasQueryFilter(t => !t.IsDeleted);
 
-        // 3. Identity users and roles - also tenant-isolated
+        // 3. Identity users and roles - also tenant-isolated.
+        // Allow CurrentTenantId == Guid.Empty (pre-login / anonymous) to bypass tenant filter
+        // so that PasswordSignInAsync can find the user by email across tenants during login.
+        // After successful sign-in the TenantId claim will set the real tenant for subsequent requests.
         modelBuilder.Entity<ApplicationUser>()
-            .HasQueryFilter(u => u.TenantId == CurrentTenantId);
+            .HasQueryFilter(u => CurrentTenantId == Guid.Empty || u.TenantId == CurrentTenantId);
 
         modelBuilder.Entity<ApplicationRole>()
-            .HasQueryFilter(r => r.TenantId == CurrentTenantId);
+            .HasQueryFilter(r => CurrentTenantId == Guid.Empty || r.TenantId == CurrentTenantId);
 
         // Indexes
         modelBuilder.Entity<Tenant>(entity =>
@@ -83,6 +126,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         {
             entity.HasIndex(u => new { u.TenantId, u.UserName }).IsUnique();
         });
+
+        // Enable RowVersion as a true concurrency token for optimistic concurrency where BaseEntity is used
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes()
+                     .Where(e => typeof(BaseEntity).IsAssignableFrom(e.ClrType)))
+        {
+            modelBuilder.Entity(entityType.ClrType)
+                .Property(nameof(BaseEntity.RowVersion))
+                .IsRowVersion();
+        }
     }
 
     public override int SaveChanges()
@@ -103,8 +155,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
 
         var currentTenant = _tenantProvider.GetCurrentTenantId();
         var now = DateTime.UtcNow;
-        // TODO: Replace with real current user from ICurrentUserService / HttpContext
-        const string currentUser = "system";
+        var currentUser = _currentUserService?.UserName
+            ?? _currentUserService?.UserId?.ToString()
+            ?? "system";
 
         foreach (var entry in entries)
         {

@@ -1,0 +1,21 @@
+{
+  "name": "METERP - Contracting ERP",
+  "short_name": "METERP",
+  "description": "Professional multi-tenant ERP for South African electrical and mechanical contractors. AI-powered quotes, jobs, costing with explicit travel tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#0d6efd",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

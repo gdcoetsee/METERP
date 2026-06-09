@@ -1,0 +1,310 @@
+@page "/suppliers"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Suppliers.View")]
+@inject ISupplierService SupplierService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Suppliers</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Suppliers</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Supplier</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search name, contact or email..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading suppliers...</em></p>
+}
+else if (suppliers == null || !suppliers.Any())
+{
+    <div class="alert alert-info">No suppliers yet. Add vendors to enable purchase orders and inventory replenishment.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Contact</th>
+                    <th>City / Province</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in suppliers)
+                {
+                    <tr>
+                        <td><strong>@s.Name</strong></td>
+                        <td>@s.ContactPerson<br /><small>@s.Phone | @s.Email</small></td>
+                        <td>@s.City, @s.Province</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewSupplier(s)">View</button>
+                            @if (UserCanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditSupplier(s)">Edit</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(suppliers.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit Supplier" : "New Supplier")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentSupplier" OnValidSubmit="SaveSupplier" FormName="SupplierForm">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Name *</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.Name" required />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Contact Person</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.ContactPerson" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Phone</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.Phone" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Email</label>
+                        <InputText type="email" class="form-control" @bind-Value="currentSupplier.Email" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tax Number</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.TaxNumber" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Address</label>
+                    <InputText class="form-control" @bind-Value="currentSupplier.AddressLine1" placeholder="Street" />
+                    <InputText class="form-control mt-1" @bind-Value="currentSupplier.AddressLine2" placeholder="Line 2" />
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">City</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.City" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Province</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.Province" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Postal Code</label>
+                        <InputText class="form-control" @bind-Value="currentSupplier.PostalCode" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="currentSupplier.Notes" rows="2" />
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save Supplier</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedSupplier != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <h5 class="mb-0">@selectedSupplier.Name</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseSupplierView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Contact:</strong> @selectedSupplier.ContactPerson<br />
+                    <strong>Phone:</strong> @selectedSupplier.Phone<br />
+                    <strong>Email:</strong> @selectedSupplier.Email
+                </div>
+                <div class="col-md-6">
+                    <strong>Address:</strong><br />
+                    @selectedSupplier.AddressLine1<br />
+                    @if (!string.IsNullOrWhiteSpace(selectedSupplier.AddressLine2)) { @selectedSupplier.AddressLine2<br /> }
+                    @selectedSupplier.City, @selectedSupplier.Province @selectedSupplier.PostalCode
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(selectedSupplier.Notes))
+            {
+                <div class="mt-3"><strong>Notes:</strong> @selectedSupplier.Notes</div>
+            }
+
+            <p class="mt-3 text-muted small">Purchase orders from this supplier will appear in the Purchase Orders page and can be received into Inventory.</p>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Supplier> suppliers = new();
+    private Supplier currentSupplier = new();
+    private Supplier? selectedSupplier;
+    private bool showForm;
+    private bool isEditing;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.SuppliersManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadSuppliers();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadSuppliers()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        suppliers = (await SupplierService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadSuppliers();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadSuppliers();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadSuppliers();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadSuppliers();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentSupplier = new Supplier { Country = "South Africa", IsActive = true };
+        isEditing = false;
+        showForm = true;
+        selectedSupplier = null;
+    }
+
+    private void EditSupplier(Supplier s)
+    {
+        currentSupplier = new Supplier
+        {
+            Id = s.Id,
+            Name = s.Name,
+            ContactPerson = s.ContactPerson,
+            Phone = s.Phone,
+            Email = s.Email,
+            AddressLine1 = s.AddressLine1,
+            AddressLine2 = s.AddressLine2,
+            City = s.City,
+            Province = s.Province,
+            PostalCode = s.PostalCode,
+            Country = s.Country,
+            TaxNumber = s.TaxNumber,
+            Notes = s.Notes,
+            IsActive = s.IsActive
+        };
+        isEditing = true;
+        showForm = true;
+        selectedSupplier = null;
+    }
+
+    private async Task SaveSupplier()
+    {
+        if (isEditing)
+        {
+            await SupplierService.UpdateAsync(currentSupplier);
+        }
+        else
+        {
+            await SupplierService.CreateAsync(currentSupplier);
+        }
+
+        showForm = false;
+        ToastService.ShowSuccess("Supplier saved successfully.");
+        await LoadSuppliers();
+        currentSupplier = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentSupplier = new();
+    }
+
+    private async Task ViewSupplier(Supplier s)
+    {
+        selectedSupplier = await SupplierService.GetByIdAsync(s.Id);
+        showForm = false;
+    }
+
+    private void CloseSupplierView()
+    {
+        selectedSupplier = null;
+    }
+}

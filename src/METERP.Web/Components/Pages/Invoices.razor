@@ -1,0 +1,513 @@
+@page "/invoices"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Invoices.View")]
+@inject IInvoiceService InvoiceService
+@inject IJobService JobService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Invoices</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Invoices</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Invoice</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search invoice #, customer or job..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading invoices...</em></p>
+}
+else if (invoices == null || !invoices.Any())
+{
+    @if (!string.IsNullOrEmpty(searchTerm))
+    {
+        <div class="alert alert-warning">No invoices match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
+    }
+    else
+    {
+        <div class="alert alert-info">No invoices yet. Create one manually or convert from a completed job.</div>
+    }
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Customer / Job</th>
+                    <th>Date / Due</th>
+                    <th>Status</th>
+                    <th class="text-end">Total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in invoices)
+                {
+                    <tr>
+                        <td><strong>@inv.InvoiceNumber</strong></td>
+                        <td>
+                            @(inv.Customer?.Name ?? "—")<br />
+                            <small class="text-muted">@(inv.Job?.JobNumber ?? "")</small>
+                        </td>
+                        <td>@inv.InvoiceDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Due @inv.DueDate.ToString("yyyy-MM-dd")</small></td>
+                        <td>@((MarkupString)GetStatusBadge(inv.Status))</td>
+                        <td class="text-end">R @inv.Total.ToString("N2")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewInvoice(inv)">View</button>
+                            @if (UserCanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditInvoice(inv)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteInvoice(inv)">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(invoices.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit Invoice" : "New Invoice")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentInvoice" OnValidSubmit="SaveInvoice" FormName="InvoiceForm">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Invoice Date</label>
+                        <InputDate class="form-control" @bind-Value="currentInvoice.InvoiceDate" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Due Date</label>
+                        <InputDate class="form-control" @bind-Value="currentInvoice.DueDate" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="currentInvoice.Notes" rows="2" />
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tax Rate</label>
+                        <InputNumber class="form-control" @bind-Value="currentInvoice.TaxRate" step="0.01" />
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save Invoice</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedInvoice != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedInvoice.InvoiceNumber — @(selectedInvoice.Customer?.Name)</h5>
+            <div>
+                <button class="btn btn-sm btn-light me-2" @onclick="CloseInvoiceView">Close</button>
+                @if (UserCanManage)
+                {
+                    <button class="btn btn-sm btn-success" @onclick="CreateFromJobIfPossible">Create from Job (demo)</button>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <strong>Status:</strong> @((MarkupString)GetStatusBadge(selectedInvoice.Status))<br />
+                    <strong>Due:</strong> @selectedInvoice.DueDate.ToString("yyyy-MM-dd")
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div>Subtotal: <strong>R @selectedInvoice.Subtotal.ToString("N2")</strong></div>
+                    <div>Tax: R @selectedInvoice.Tax.ToString("N2")</div>
+                    <div class="fs-5">Total: <strong>R @selectedInvoice.Total.ToString("N2")</strong></div>
+                </div>
+            </div>
+
+            @if (selectedInvoice.Job != null)
+            {
+                <div class="mb-2"><strong>Linked Job:</strong> @selectedInvoice.Job.JobNumber</div>
+            }
+
+            <h6>Line Items (@selectedInvoice.Lines.Count(l => !l.IsDeleted))</h6>
+
+            @if (selectedInvoice.Lines.Any(l => !l.IsDeleted))
+            {
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-end">Qty</th>
+                            <th>Type</th>
+                            <th class="text-end">Unit Price</th>
+                            <th class="text-end">Line Total</th>
+                            @if (UserCanManage) { <th></th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in selectedInvoice.Lines.Where(l => !l.IsDeleted))
+                        {
+                            <tr>
+                                <td>@line.Description</td>
+                                <td class="text-end">@line.Quantity @line.Unit</td>
+                                <td><span class="badge bg-light text-dark">@line.LineType</span></td>
+                                <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
+                                <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
+                                @if (UserCanManage)
+                                {
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary py-0 px-1" @onclick="() => EditLine(line)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" @onclick="() => DeleteLine(line)">Del</button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">No line items.</p>
+            }
+
+            @if (UserCanManage)
+            {
+                <button class="btn btn-outline-success btn-sm" @onclick="ShowAddLineForm">+ Add Line</button>
+            }
+
+            @if (showLineForm && editingLine != null)
+            {
+                <div class="mt-2 p-3 border rounded bg-light">
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <InputText class="form-control form-control-sm" @bind-Value="editingLine.Description" placeholder="Description" />
+                        </div>
+                        <div class="col-md-2">
+                            <InputNumber class="form-control form-control-sm" @bind-Value="editingLine.Quantity" />
+                        </div>
+                        <div class="col-md-2">
+                            <InputText class="form-control form-control-sm" @bind-Value="editingLine.Unit" placeholder="Unit" />
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select form-select-sm" @bind="editingLine.LineType">
+                                <option>Material</option>
+                                <option>Labour</option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <InputNumber class="form-control form-control-sm" @bind-Value="editingLine.UnitPrice" step="0.01" />
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-success" @onclick="SaveLine">Save Line</button>
+                        <button class="btn btn-sm btn-secondary ms-1" @onclick="CancelLineForm">Cancel</button>
+                    </div>
+                </div>
+            }
+
+            @if (UserCanManage)
+            {
+                <div class="mt-4">
+                    <strong>Update Status:</strong>
+                    <div class="btn-group mt-1" role="group">
+                        @foreach (var s in Enum.GetValues<InvoiceStatus>())
+                        {
+                            <button class="btn btn-sm @(selectedInvoice.Status == s ? "btn-primary" : "btn-outline-primary")"
+                                    @onclick="() => UpdateStatus(s)">
+                                @s
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<Invoice> invoices = new();
+    private Invoice currentInvoice = new();
+    private Invoice? selectedInvoice;
+    private bool showForm;
+    private bool isEditing;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool showLineForm;
+    private InvoiceLine? editingLine;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadInvoices();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadInvoices()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        invoices = (await InvoiceService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadInvoices();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadInvoices();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadInvoices();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadInvoices();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentInvoice = new Invoice
+        {
+            InvoiceDate = DateTime.UtcNow,
+            DueDate = DateTime.UtcNow.AddDays(30),
+            TaxRate = 0.15m
+        };
+        isEditing = false;
+        showForm = true;
+        selectedInvoice = null;
+    }
+
+    private void EditInvoice(Invoice inv)
+    {
+        currentInvoice = new Invoice
+        {
+            Id = inv.Id,
+            InvoiceNumber = inv.InvoiceNumber,
+            InvoiceDate = inv.InvoiceDate,
+            DueDate = inv.DueDate,
+            Status = inv.Status,
+            Notes = inv.Notes,
+            TaxRate = inv.TaxRate
+        };
+        isEditing = true;
+        showForm = true;
+        selectedInvoice = null;
+    }
+
+    private async Task SaveInvoice()
+    {
+        if (isEditing)
+        {
+            await InvoiceService.UpdateAsync(currentInvoice);
+        }
+        else
+        {
+            await InvoiceService.CreateAsync(currentInvoice);
+        }
+
+        showForm = false;
+        ToastService.ShowSuccess("Invoice saved successfully.");
+        await LoadInvoices();
+        currentInvoice = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentInvoice = new();
+    }
+
+    private async Task ViewInvoice(Invoice inv)
+    {
+        selectedInvoice = await InvoiceService.GetByIdAsync(inv.Id);
+        showForm = false;
+        showLineForm = false;
+        editingLine = null;
+    }
+
+    private void CloseInvoiceView()
+    {
+        selectedInvoice = null;
+        showLineForm = false;
+        editingLine = null;
+    }
+
+    private async Task CreateFromJobIfPossible()
+    {
+        // Demo helper: find a job without invoice and create one
+        var jobs = await JobService.GetAllAsync();
+        var job = jobs.FirstOrDefault(j => j.Status == JobStatus.Completed || j.Status == JobStatus.InProgress);
+        if (job != null)
+        {
+            try
+            {
+                var inv = await InvoiceService.CreateFromJobAsync(job.Id);
+                await InvoiceService.UpdateStatusAsync(inv.Id, InvoiceStatus.Sent);
+                selectedInvoice = await InvoiceService.GetByIdAsync(inv.Id);
+                ToastService.ShowSuccess("Invoice created from job (demo).");
+                await LoadInvoices();
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError($"Failed to create invoice from job: {ex.Message}");
+            }
+        }
+    }
+
+    private void ShowAddLineForm()
+    {
+        if (selectedInvoice == null) return;
+        editingLine = new InvoiceLine { InvoiceId = selectedInvoice.Id, Quantity = 1, LineType = "Material" };
+        showLineForm = true;
+    }
+
+    private void EditLine(InvoiceLine line)
+    {
+        editingLine = new InvoiceLine
+        {
+            Id = line.Id,
+            InvoiceId = line.InvoiceId,
+            Description = line.Description,
+            Quantity = line.Quantity,
+            Unit = line.Unit,
+            LineType = line.LineType,
+            UnitPrice = line.UnitPrice
+            // LineTotal is computed from Quantity * UnitPrice
+        };
+        showLineForm = true;
+    }
+
+    private async Task SaveLine()
+    {
+        if (editingLine == null || selectedInvoice == null) return;
+
+        if (editingLine.Id == Guid.Empty)
+        {
+            await InvoiceService.AddLineAsync(editingLine);
+        }
+        else
+        {
+            await InvoiceService.UpdateLineAsync(editingLine);
+        }
+
+        showLineForm = false;
+        editingLine = null;
+        selectedInvoice = await InvoiceService.GetByIdAsync(selectedInvoice.Id);
+        await LoadInvoices();
+    }
+
+    private void CancelLineForm()
+    {
+        showLineForm = false;
+        editingLine = null;
+    }
+
+    private async Task DeleteLine(InvoiceLine line)
+    {
+        if (!await ConfirmDelete($"Delete line?")) return;
+        await InvoiceService.DeleteLineAsync(line.Id);
+        selectedInvoice = await InvoiceService.GetByIdAsync(selectedInvoice!.Id);
+        await LoadInvoices();
+    }
+
+    private async Task DeleteInvoice(Invoice inv)
+    {
+        if (!await ConfirmDelete($"Delete invoice {inv.InvoiceNumber}?")) return;
+        await InvoiceService.DeleteAsync(inv.Id);
+        if (selectedInvoice?.Id == inv.Id) selectedInvoice = null;
+        ToastService.ShowSuccess("Invoice deleted.");
+        await LoadInvoices();
+    }
+
+    private async Task UpdateStatus(InvoiceStatus status)
+    {
+        if (selectedInvoice == null) return;
+        await InvoiceService.UpdateStatusAsync(selectedInvoice.Id, status);
+        selectedInvoice = await InvoiceService.GetByIdAsync(selectedInvoice.Id);
+        ToastService.ShowSuccess($"Status updated to {status}.");
+        await LoadInvoices();
+    }
+
+    private async Task<bool> ConfirmDelete(string message)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", message); }
+        catch { return false; }
+    }
+
+    private static string GetStatusBadge(InvoiceStatus status)
+    {
+        return status switch
+        {
+            InvoiceStatus.Draft => "<span class=\"badge bg-secondary\">Draft</span>",
+            InvoiceStatus.Sent => "<span class=\"badge bg-info\">Sent</span>",
+            InvoiceStatus.PartiallyPaid => "<span class=\"badge bg-warning text-dark\">Partially Paid</span>",
+            InvoiceStatus.Paid => "<span class=\"badge bg-success\">Paid</span>",
+            InvoiceStatus.Overdue => "<span class=\"badge bg-danger\">Overdue</span>",
+            InvoiceStatus.Cancelled => "<span class=\"badge bg-dark\">Cancelled</span>",
+            _ => status.ToString()
+        };
+    }
+}

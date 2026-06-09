@@ -1,0 +1,362 @@
+@page "/users"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Users.View")]
+@inject IUserService UserService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Users</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Users</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New User</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search email or username..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading users...</em></p>
+}
+else if (users == null || !users.Any())
+{
+    @if (!string.IsNullOrEmpty(searchTerm))
+    {
+        <div class="alert alert-warning">No users match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
+    }
+    else
+    {
+        <div class="alert alert-info">No users found for this tenant besides the system ones.</div>
+    }
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Email / Username</th>
+                    <th>Roles</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in users)
+                {
+                    <tr>
+                        <td>
+                            <strong>@user.Email</strong><br />
+                            <small class="text-muted">@user.UserName</small>
+                        </td>
+                        <td>
+                            @if (userRoles.TryGetValue(user.Id, out var roles) && roles.Any())
+                            {
+                                @foreach (var r in roles)
+                                {
+                                    <span class="badge bg-secondary me-1">@r</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewUser(user)">View / Edit</button>
+                            @if (UserCanManage && user.Email != "admin@acme.demo")
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteUser(user)">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(users.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>Create New User</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="newUserModel" OnValidSubmit="CreateUser" FormName="CreateUserForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Email *</label>
+                        <InputText type="email" class="form-control" @bind-Value="newUserModel.Email" required />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Password *</label>
+                        <InputText type="password" class="form-control" @bind-Value="newUserModel.Password" required />
+                        <div class="form-text">Minimum 8 characters, upper + lower + digit.</div>
+                    </div>
+                </div>
+
+                <div class="mb-3" style="max-width: 320px;">
+                    <label class="form-label">Role *</label>
+                    <select class="form-select" @bind="newUserModel.Role" required>
+                        <option value="">-- Select role --</option>
+                        @foreach (var role in availableRoles)
+                        {
+                            <option value="@role">@role</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Create User</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedUser != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedUser.Email</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseUserView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <strong>Username:</strong> @selectedUser.UserName
+            </div>
+
+            <h6>Current Roles</h6>
+            @if (selectedUserRoles.Any())
+            {
+                @foreach (var r in selectedUserRoles)
+                {
+                    <span class="badge bg-secondary me-1">@r</span>
+                }
+            }
+            else
+            {
+                <span class="text-muted">No roles assigned.</span>
+            }
+
+            @if (UserCanManage)
+            {
+                <div class="mt-3">
+                    <label class="form-label">Change Role</label>
+                    <div class="input-group" style="max-width: 320px;">
+                        <select class="form-select" @bind="selectedNewRole">
+                            @foreach (var role in availableRoles)
+                            {
+                                <option value="@role">@role</option>
+                            }
+                        </select>
+                        <button class="btn btn-outline-primary" type="button" @onclick="ChangeRole">Save Role</button>
+                    </div>
+                    <div class="form-text">Changing role will update permission claims for the next login.</div>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+    private List<UserSummary> users = new();
+    private Dictionary<Guid, List<string>> userRoles = new();
+    private List<string> availableRoles = new();
+
+    private UserSummary? selectedUser;
+    private List<string> selectedUserRoles = new();
+    private string selectedNewRole = string.Empty;
+
+    private bool showForm;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private bool _loading = true;
+    private const int PageSize = 10;
+
+    private CreateUserModel newUserModel = new();
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.UsersManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadAvailableRoles();
+            await LoadUsers();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadAvailableRoles()
+    {
+        availableRoles = (await UserService.GetAvailableRolesAsync()).ToList();
+    }
+
+    private async Task LoadUsers()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        users = (await UserService.GetAllAsync(term, currentPage, PageSize)).ToList();
+
+        userRoles.Clear();
+        foreach (var u in users)
+        {
+            var roles = await UserService.GetUserRolesAsync(u.Id);
+            userRoles[u.Id] = roles.ToList();
+        }
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadUsers();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadUsers();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadUsers();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadUsers();
+    }
+
+    private void ShowCreateForm()
+    {
+        newUserModel = new CreateUserModel();
+        showForm = true;
+        selectedUser = null;
+    }
+
+    private async Task CreateUser()
+    {
+        if (string.IsNullOrWhiteSpace(newUserModel.Role))
+        {
+            ToastService.ShowError("Please select a role.");
+            return;
+        }
+
+        var (ok, errors) = await UserService.CreateUserAsync(newUserModel.Email, newUserModel.Password, newUserModel.Role);
+
+        if (ok)
+        {
+            showForm = false;
+            ToastService.ShowSuccess($"User {newUserModel.Email} created successfully.");
+            await LoadUsers();
+            newUserModel = new();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to create user: " + string.Join("; ", errors));
+        }
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        newUserModel = new();
+    }
+
+    private async Task ViewUser(UserSummary user)
+    {
+        selectedUser = user;
+        selectedUserRoles = (await UserService.GetUserRolesAsync(user.Id)).ToList();
+        selectedNewRole = selectedUserRoles.FirstOrDefault() ?? (availableRoles.FirstOrDefault() ?? "");
+        showForm = false;
+    }
+
+    private void CloseUserView()
+    {
+        selectedUser = null;
+        selectedUserRoles = new();
+        selectedNewRole = string.Empty;
+    }
+
+    private async Task ChangeRole()
+    {
+        if (selectedUser == null || string.IsNullOrWhiteSpace(selectedNewRole)) return;
+
+        var (ok, errors) = await UserService.ChangeUserRoleAsync(selectedUser.Id, selectedNewRole);
+
+        if (ok)
+        {
+            ToastService.ShowInfo($"Role changed to {selectedNewRole}. User must log out and back in for claims to update.");
+            selectedUserRoles = (await UserService.GetUserRolesAsync(selectedUser.Id)).ToList();
+            await LoadUsers();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to change role: " + string.Join("; ", errors));
+        }
+    }
+
+    private async Task DeleteUser(UserSummary user)
+    {
+        if (!await ConfirmDelete($"Delete user {user.Email}? This cannot be undone easily.")) return;
+
+        // User deletion is intentionally limited in this MVP (Identity has many related objects).
+        // In a real implementation we would add a soft-disable flag or full cascade delete.
+        ToastService.ShowInfo("User deletion is limited in this demo (focus is create + role assignment). Users can be managed via the Identity system.");
+        await LoadUsers();
+    }
+
+    private async Task<bool> ConfirmDelete(string message)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", message); }
+        catch { return false; }
+    }
+
+    private class CreateUserModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+    }
+}

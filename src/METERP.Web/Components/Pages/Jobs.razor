@@ -1,0 +1,136 @@
+@page "/jobs"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using Microsoft.AspNetCore.Authorization
+@using METERP.Common
+@attribute [Authorize(Policy = "Jobs.View")]
+@inject IJobService JobService
+@inject ICurrentUserService CurrentUserService
+@inject ToastService ToastService
+@inject IAiAssistantService AiAssistantService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Jobs</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Jobs <span class="badge bg-primary">AI-Powered</span></h1>
+        <p class="text-muted mb-0">Track real costs: materials (consume from inventory), explicit Travel (JobCost type Travel), and labor (JobLabor with rates). AI provides closeout variance analysis and margin recommendations.</p>
+    </div>
+    <a href="/ai-copilot" class="btn btn-primary">Open AI Copilot to Create/Analyze Jobs</a>
+</div>
+
+<div class="alert alert-info">
+    <strong>Creation, analysis and closeout recommendations are AI-first.</strong> Use the Copilot for "Create job from scope", "What-if travel +20% fuel", "Workforce utilization", or "Full operation review". The AI understands your historical labor/travel numbers and current ERP data.
+</div>
+
+<h6>Recent / Live Jobs (powered by services)</h6>
+<JobList 
+    Jobs="demoJobs"
+    SelectedJob="selectedJob"
+    CanManage="UserCanManage"
+    CurrentPage="currentPage"
+    DisablePrevious="@(currentPage <= 1)"
+    DisableNext="@(demoJobs != null && demoJobs.Count < PageSize)"
+    OnView="ViewJob"
+    OnDelete="DeleteJob"
+    OnPrevious="PreviousPage"
+    OnNext="NextPage"
+    OnExportCsv="ExportJobsCsv"
+    OnAiAnalyze="AnalyzeWithAi"
+    OnCloseView="CloseJobView" />
+
+<div class="card mt-3">
+    <div class="card-body small">
+        <p class="mb-1"><strong>Full costing, labor entry, asset linking, status workflow and explicit Travel tracking are implemented in the domain + services.</strong> The AI AnalyzeJobVarianceAsync call (used by Copilot and buttons) reads labor + all JobCost types (incl. Travel) and suggests margin notes that get appended to the Job.</p>
+        <button class="btn btn-sm btn-secondary" @onclick="GoToCopilot">Go to AI Copilot</button>
+        <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="ShowTravelNote">Why explicit Travel tracking matters</button>
+    </div>
+</div>
+
+@code {
+    private List<Job> demoJobs = new();
+    private Job? selectedJob;
+    private int currentPage = 1;
+    private const int PageSize = 2;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1) { currentPage--; demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList(); }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++; demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList();
+    }
+
+    private async Task ViewJob(Job j)
+    {
+        selectedJob = await JobService.GetByIdAsync(j.Id);
+    }
+
+    private void CloseJobView() { selectedJob = null; }
+
+    private async Task DeleteJob(Job j)
+    {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"Delete job {j.JobNumber}?"); } catch { ok = false; }
+        if (!ok) return;
+        await JobService.DeleteAsync(j.Id);
+        if (selectedJob?.Id == j.Id) selectedJob = null;
+        demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList();
+    }
+
+    private async Task ExportJobsCsv()
+    {
+        if (demoJobs == null || !demoJobs.Any()) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("JobNumber,Title,Status,Quoted,Actual,Variance");
+        foreach (var j in demoJobs)
+        {
+            var act = j.ActualCost + ((j.Labors?.Where(l => !l.IsDeleted).Sum(l => l.TotalCost)) ?? 0);
+            sb.AppendLine($"{j.JobNumber},\"{j.Title}\",{j.Status},{j.QuotedTotal},{act},{act - j.QuotedTotal}");
+        }
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+        ToastService.ShowSuccess("Jobs CSV copied to clipboard.");
+    }
+
+    private async Task AnalyzeWithAi(Job j)
+    {
+        try
+        {
+            var analysis = await AiAssistantService.AnalyzeJobVarianceAsync(j);
+            if (analysis != null)
+            {
+                ToastService.ShowSuccess("AI: " + analysis.Summary);
+                if (!string.IsNullOrWhiteSpace(analysis.SuggestedMarginNote))
+                {
+                    j.Notes = (j.Notes ?? "") + "\n[AI] " + analysis.SuggestedMarginNote;
+                    await JobService.UpdateAsync(j);
+                    ToastService.ShowInfo("AI note appended.");
+                }
+            }
+        }
+        catch { ToastService.ShowInfo("AI analysis (configure key)."); }
+    }
+
+    private void GoToCopilot() => Nav.NavigateTo("/ai-copilot");
+
+    private async Task AnalyzeDemo(Job? j = null)
+    {
+        await Task.CompletedTask;
+        var msg = j != null ? $"AI Closeout for {j.JobNumber}: ..." : "AI Closeout demo...";
+        ToastService.ShowInfo(msg + " See /ai-copilot.");
+    }
+
+    private void ShowTravelNote() => ToastService.ShowInfo("Travel is recorded as JobCost records with CostType 'Travel' (daily allowance or km rate). It is included in every variance calculation and in the AI prompts so recommendations are realistic for Gauteng/mining site work.");
+}

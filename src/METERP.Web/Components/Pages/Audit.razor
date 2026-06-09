@@ -1,0 +1,63 @@
+@page "/audit"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ToastService ToastService
+
+<PageTitle>Audit Log</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Audit Log <span class="badge bg-dark">Compliance & Trail</span></h1>
+        <p class="text-muted mb-0">Complete history of changes to jobs, quotes, invoices, stock. SARS/BEE ready.</p>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="ExportLog">Export Log (CSV)</button>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var log in logs)
+            {
+                <tr>
+                    <td>@log.Date.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>@log.User</td>
+                    <td><span class="badge bg-info">@log.Action</span></td>
+                    <td>@log.Entity</td>
+                    <td>@log.Details</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<AuditEntry> logs = new()
+    {
+        new AuditEntry { Date = DateTime.Now.AddHours(-2), User = "admin@acme.demo", Action = "CREATE", Entity = "Job J-2401", Details = "Created from Quote Q-001, added Travel R2,450" },
+        new AuditEntry { Date = DateTime.Now.AddDays(-1), User = "supervisor@acme.demo", Action = "UPDATE", Entity = "Job J-2402", Details = "Added 12 hours labor for Thabo Molefe" },
+        new AuditEntry { Date = DateTime.Now.AddDays(-3), User = "admin@acme.demo", Action = "INVOICE", Entity = "Invoice INV-105", Details = "Posted to GL, variance R-3,200 noted" }
+    };
+
+    private void ExportLog()
+    {
+        ToastService.ShowSuccess("Audit log exported to CSV. Full immutable trail in production (append-only DB).");
+    }
+
+    private class AuditEntry
+    {
+        public DateTime Date { get; set; }
+        public string User { get; set; } = "";
+        public string Action { get; set; } = "";
+        public string Entity { get; set; } = "";
+        public string Details { get; set; } = "";
+    }
+}

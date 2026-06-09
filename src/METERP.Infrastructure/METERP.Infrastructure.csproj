@@ -25,6 +25,8 @@
     </PackageReference>
     <!-- For CurrentUserService (HttpContext) - acceptable for foundation; in larger systems this impl would live in Web -->
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
+    <!-- AI assistant uses typed/named HttpClient -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

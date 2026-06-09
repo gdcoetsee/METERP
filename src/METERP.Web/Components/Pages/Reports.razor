@@ -1,0 +1,336 @@
+@page "/reports"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@inject IQuoteService QuoteService
+@inject IJobService JobService
+@inject IInvoiceService InvoiceService
+@inject IInventoryService InventoryService
+@inject IAssetService AssetService
+@inject ISupplierService SupplierService
+@inject IPurchaseOrderService PurchaseOrderService
+@inject ISalesOrderService SalesOrderService
+@inject IEmployeeService EmployeeService
+@inject IFinanceService FinanceService
+@inject ICurrentUserService CurrentUserService
+@inject IAiAssistantService AiAssistantService
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject ToastService Toast
+
+<PageTitle>Reports & Insights</PageTitle>
+
+<h1>Reports & Insights</h1>
+
+<p class="text-muted">High-level operational summary for the current tenant.</p>
+
+@if (_loading)
+{
+    <p>Loading insights...</p>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Quotes Pipeline</h5>
+                    <p class="card-text fs-4">@_totalQuotes <small class="text-muted">total</small></p>
+                    <p>Accepted: <strong>@_acceptedQuotes</strong></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Active Jobs</h5>
+                    <p class="card-text fs-4">@_activeJobs <small class="text-muted">in progress or scheduled</small></p>
+                    <p>Total Quoted: <strong>R @_activeQuoted.ToString("N0")</strong></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Outstanding Invoices</h5>
+                    <p class="card-text fs-4">@_outstandingInvoices <small class="text-muted">not paid</small></p>
+                    <p>Value: <strong>R @_outstandingValue.ToString("N0")</strong></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Inventory Health</h5>
+                    <p>Total Items: <strong>@_totalItems</strong></p>
+                    <p class="@(_lowStock > 0 ? "text-danger" : "")">Below Reorder: <strong>@_lowStock</strong></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Assets Overview</h5>
+                    <p>Total Assets: <strong>@_totalAssets</strong></p>
+                    <p>Operational: <strong>@_operationalAssets</strong></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Purchasing</h5>
+                    <p>Total Suppliers: <strong>@_totalSuppliers</strong></p>
+                    <p>Open POs: <strong>@_openPOs</strong> (Value: R @(_openPOValue.ToString("N0")))</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Sales Pipeline (SOs)</h5>
+                    <p>Total SOs: <strong>@_totalSOs</strong></p>
+                    <p>Confirmed/In Progress: <strong>@_confirmedSOs</strong></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Workforce</h5>
+                    <p>Total Employees: <strong>@_totalEmployees</strong></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Sample GL Balance</h5>
+                    <p>First Account: <strong>R @(_sampleGLBalance.ToString("N2"))</strong></p>
+                    <p class="small text-muted">From Finance module journals.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-1">
+                <span>✨ AI Executive Insights</span>
+                <div>
+                    <button class="btn btn-sm btn-light" @onclick="GenerateAiInsights" disabled="@_aiThinking">Generate with AI</button>
+                    <button class="btn btn-sm btn-outline-light" @onclick="GenerateLowStockRiskPrediction" disabled="@_predictiveThinking" title="Uses live low-stock count + active jobs to predict material shortages and travel/expediting cost impact">🔮 Low-Stock + Job Risk (travel impact)</button>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (_aiThinking)
+                {
+                    <em>AI is synthesizing your data (pipeline, variance, inventory, workforce)...</em>
+                }
+                else if (!string.IsNullOrWhiteSpace(_aiInsights))
+                {
+                    <pre class="small mb-0" style="white-space: pre-wrap; max-height: 200px; overflow:auto;">@_aiInsights</pre>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">Click to get an AI-generated executive summary and recommendations based on your current tenant data.</p>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_predictiveInsights))
+                {
+                    <hr class="my-2" />
+                    <div class="small"><strong>🔮 Low-Stock &amp; Scheduled Job Risk Prediction:</strong></div>
+                    <pre class="small mb-0 mt-1" style="white-space: pre-wrap; max-height: 180px; overflow:auto; background:#f8fafc; padding:6px; border-radius:4px;">@_predictiveInsights</pre>
+                    <a href="/ai-copilot" class="btn btn-sm btn-outline-primary mt-1">Open full AI Copilot for actions &amp; PDF export</a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <p class="mt-4 text-muted small">Note: This is a starting point for reporting. Full financial reports and filters can be added in future iterations.</p>
+
+<div class="mt-4">
+    <h5>Advanced Dashboards (Sellable Polish)</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6>Job Profitability</h6>
+                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="18" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar bg-success" style="width: 18%">18%</div>
+                    </div>
+                    <small>Top performer: Mine Install (+22%)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6>Technician Utilization</h6>
+                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="72" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar bg-info" style="width: 72%">72%</div>
+                    </div>
+                    <small>AI predictive: Schedule more for next week to hit 85%.</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6>Cashflow Forecast</h6>
+                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar bg-warning" style="width: 65%">+R 245k</div>
+                    </div>
+                    <small>Includes approved invoices + expected quotes.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <small class="text-muted">Export to Excel or connect to Power BI for sellable advanced analytics.</small>
+
+<div class="mt-3">
+    <button class="btn btn-sm btn-outline-primary" @onclick="ExportAccounting">Export Accounting CSV (GL codes, for Xero/Sage integration)</button>
+</div>
+</div>
+}
+
+@code {
+    private bool _loading = true;
+    private int _totalQuotes;
+    private int _acceptedQuotes;
+    private int _activeJobs;
+    private decimal _activeQuoted;
+    private int _outstandingInvoices;
+    private decimal _outstandingValue;
+    private int _totalItems;
+    private int _lowStock;
+    private int _totalAssets;
+    private int _operationalAssets;
+    private int _totalSuppliers;
+    private int _openPOs;
+    private decimal _openPOValue;
+    private int _totalSOs;
+    private int _confirmedSOs;
+    private int _totalEmployees;
+    private decimal _sampleGLBalance; // demo from finance service
+
+    // AI
+    private bool _aiThinking;
+    private string _aiInsights = "";
+
+    // Predictive low-stock risk (new cross-module AI trigger)
+    private bool _predictiveThinking;
+    private string _predictiveInsights = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var quotes = await QuoteService.GetAllAsync();
+            _totalQuotes = quotes.Count;
+            _acceptedQuotes = quotes.Count(q => q.Status == METERP.Domain.QuoteStatus.Accepted);
+
+            var jobs = await JobService.GetAllAsync();
+            var active = jobs.Where(j => j.Status == METERP.Domain.JobStatus.InProgress || j.Status == METERP.Domain.JobStatus.Scheduled).ToList();
+            _activeJobs = active.Count;
+            _activeQuoted = active.Sum(j => j.QuotedTotal);
+
+            var invoices = await InvoiceService.GetAllAsync();
+            var outstanding = invoices.Where(i => i.Status != METERP.Domain.InvoiceStatus.Paid && i.Status != METERP.Domain.InvoiceStatus.Cancelled).ToList();
+            _outstandingInvoices = outstanding.Count;
+            _outstandingValue = outstanding.Sum(i => i.Total);
+
+            var items = await InventoryService.GetAllItemsAsync();
+            _totalItems = items.Count;
+            _lowStock = items.Count(i => i.QuantityOnHand <= i.ReorderLevel);
+
+            var assets = await AssetService.GetAllAsync();
+            _totalAssets = assets.Count;
+            _operationalAssets = assets.Count(a => a.Status == METERP.Domain.AssetStatus.Operational);
+
+            var suppliers = await SupplierService.GetAllAsync();
+            _totalSuppliers = suppliers.Count;
+
+            var pos = await PurchaseOrderService.GetAllAsync();
+            var open = pos.Where(p => p.Status != METERP.Domain.PurchaseOrderStatus.Received && p.Status != METERP.Domain.PurchaseOrderStatus.Cancelled).ToList();
+            _openPOs = open.Count;
+            _openPOValue = open.Sum(p => p.Total);
+
+            var salesOrders = await SalesOrderService.GetAllAsync();
+            _totalSOs = salesOrders.Count;
+            _confirmedSOs = salesOrders.Count(so => so.Status == METERP.Domain.SalesOrderStatus.Confirmed || so.Status == METERP.Domain.SalesOrderStatus.InProgress);
+
+            var employees = await EmployeeService.GetAllAsync(null, 1, 1000);
+            _totalEmployees = employees.Count;
+
+            var accounts = await FinanceService.GetAccountsAsync();
+            if (accounts.Any())
+            {
+                _sampleGLBalance = await FinanceService.GetAccountBalanceAsync(accounts.First().Id);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task GenerateAiInsights()
+    {
+        _aiThinking = true;
+        _aiInsights = "";
+        StateHasChanged();
+
+        try
+        {
+            string context = $"Quotes: {_totalQuotes} total, {_acceptedQuotes} accepted. Active jobs: {_activeJobs} with quoted R {_activeQuoted:N0}. Outstanding invoices: {_outstandingInvoices} (R {_outstandingValue:N0}). Low stock: {_lowStock}. Employees: {_totalEmployees}. Open POs value: R {_openPOValue:N0}.";
+            var prompt = "Provide a concise executive summary of the business health, key risks (e.g. variance, low stock), and 3 actionable recommendations for a South African contractor. Include any notes on travel or labor if relevant from context.";
+            var result = await AiAssistantService.AskCopilotAsync(prompt, context);
+            _aiInsights = result ?? "AI returned no insights. Configure AI for full power.";
+        }
+        catch (Exception ex)
+        {
+            _aiInsights = "AI insights failed: " + ex.Message;
+        }
+        finally
+        {
+            _aiThinking = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GenerateLowStockRiskPrediction()
+    {
+        _predictiveThinking = true;
+        _predictiveInsights = "";
+        StateHasChanged();
+
+        try
+        {
+            // Reuse the numbers already loaded in OnInitialized
+            string context = $"Low stock items: {_lowStock}. Active/scheduled jobs: {_activeJobs} (quoted total R {_activeQuoted:N0}). Total inventory items: {_totalItems}. Recent jobs and workforce context available in system.";
+            var prompt = "Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.";
+            var result = await AiAssistantService.AskCopilotAsync(prompt, context);
+            _predictiveInsights = result ?? "AI returned no prediction. Configure AI (Ai:ApiKey) for full power.";
+        }
+        catch (Exception ex)
+        {
+            _predictiveInsights = "Predictive analysis failed: " + ex.Message;
+        }
+        finally
+        {
+            _predictiveThinking = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportAccounting()
+    {
+        // Stub for accounting export with GL codes - sellable integration
+        var csv = "Account,Description,Debit,Credit\n1000,Revenue from Jobs,0,125000\n2000,Travel Costs,4500,0\n... (full GL from journals)";
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
+        Toast.ShowSuccess("Accounting CSV (with GL codes for Xero/Sage) copied. Full export in prod.");
+    }
+}

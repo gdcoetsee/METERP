@@ -1,0 +1,422 @@
+@page "/inventory"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Inventory.View")]
+@inject IInventoryService InventoryService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@inject NavigationManager Navigation
+
+<PageTitle>Inventory</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Inventory</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Item</button>
+    }
+</div>
+
+<div class="mb-3 d-flex gap-2" style="max-width: 520px;">
+    <div class="input-group flex-grow-1">
+        <input type="search" class="form-control" placeholder="Search name, SKU or category..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch">Clear</button>
+        }
+    </div>
+    <div class="form-check form-switch align-self-center">
+        <input class="form-check-input" type="checkbox" @bind="lowStockOnly" @bind:after="LoadItems" id="lowStockCheck">
+        <label class="form-check-label" for="lowStockCheck">Low stock only</label>
+    </div>
+
+    <div class="alert alert-info py-2 mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>
+            <strong>🔮 AI Predictive:</strong> Which scheduled jobs are at risk from current low stock levels (incl. extra travel or expediting costs)?
+        </span>
+        <button class="btn btn-sm btn-primary" @onclick="RunAiLowStockPrediction">Open AI Copilot - Run Low-Stock Risk Analysis</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading inventory...</em></p>
+}
+else if (items == null || !items.Any())
+{
+    <div class="alert alert-info">No inventory items found. Add your first stock item.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th class="text-end">On Hand</th>
+                    <th class="text-end">Unit Cost</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in items)
+                {
+                    bool isLow = item.QuantityOnHand <= item.ReorderLevel;
+                    <tr class="@(isLow ? "table-warning" : "")">
+                        <td><code>@item.Sku</code></td>
+                        <td>
+                            <strong>@item.Name</strong><br />
+                            <small class="text-muted">@item.Description</small>
+                        </td>
+                        <td>@item.Category</td>
+                        <td class="text-end">
+                            <strong>@item.QuantityOnHand</strong> @item.Unit
+                            @if (isLow) { <span class="badge bg-danger ms-1">Low</span> }
+                        </td>
+                        <td class="text-end">R @item.UnitCost.ToString("N2")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewItem(item)">View</button>
+                            @if (UserCanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => QuickAdjust(item)">Adjust Stock</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(items.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit Item" : "New Inventory Item")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentItem" OnValidSubmit="SaveItem" FormName="InventoryItemForm">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">SKU</label>
+                        <InputText class="form-control" @bind-Value="currentItem.Sku" />
+                    </div>
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">Name *</label>
+                        <InputText class="form-control" @bind-Value="currentItem.Name" required />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <InputTextArea class="form-control" @bind-Value="currentItem.Description" rows="2" />
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Unit</label>
+                        <InputText class="form-control" @bind-Value="currentItem.Unit" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Quantity On Hand</label>
+                        <InputNumber class="form-control" @bind-Value="currentItem.QuantityOnHand" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Reorder Level</label>
+                        <InputNumber class="form-control" @bind-Value="currentItem.ReorderLevel" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Unit Cost (R)</label>
+                        <InputNumber class="form-control" @bind-Value="currentItem.UnitCost" step="0.01" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Category</label>
+                        <InputText class="form-control" @bind-Value="currentItem.Category" placeholder="Electrical / Lighting / etc" />
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save Item</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedItem != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedItem.Name (@selectedItem.Sku)</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseItemView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <strong>On Hand:</strong> @selectedItem.QuantityOnHand @selectedItem.Unit<br />
+                    <strong>Reorder Level:</strong> @selectedItem.ReorderLevel<br />
+                    <strong>Unit Cost:</strong> R @selectedItem.UnitCost.ToString("N2")
+                </div>
+                <div class="col-md-6">
+                    <strong>Category:</strong> @selectedItem.Category<br />
+                    <strong>Status:</strong> @(selectedItem.IsActive ? "Active" : "Inactive")
+                </div>
+            </div>
+
+            @if (UserCanManage)
+            {
+                <div class="mb-3">
+                    <button class="btn btn-outline-warning btn-sm" @onclick="() => QuickAdjust(selectedItem)">Adjust Stock</button>
+                </div>
+            }
+
+            <h6>Recent Transactions</h6>
+            @if (transactions.Any())
+            {
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Cost</th>
+                            <th>Ref / Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tx in transactions)
+                        {
+                            <tr>
+                                <td>@tx.CreatedDate.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@tx.Type</td>
+                                <td class="text-end">@tx.Quantity</td>
+                                <td class="text-end">R @tx.TotalCost.ToString("N2")</td>
+                                <td>@tx.Reference @(!string.IsNullOrWhiteSpace(tx.Notes) ? " - " + tx.Notes : "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">No transactions recorded yet.</p>
+            }
+        </div>
+    </div>
+}
+
+@if (showAdjustForm && adjustItem != null)
+{
+    <div class="card mt-3 border-warning">
+        <div class="card-header bg-warning text-dark">Adjust Stock for @adjustItem.Name</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Quantity Change</label>
+                    <InputNumber class="form-control" @bind-Value="adjustQuantity" />
+                    <div class="form-text">Positive = receipt, negative = issue</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Type</label>
+                    <select class="form-select" @bind="adjustType">
+                        <option value="@StockTransactionType.Receipt">Receipt (IN)</option>
+                        <option value="@StockTransactionType.Issue">Issue to Job (OUT)</option>
+                        <option value="@StockTransactionType.Adjustment">Adjustment</option>
+                        <option value="@StockTransactionType.Return">Return</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Reference / Notes</label>
+                    <InputText class="form-control" @bind-Value="adjustNotes" placeholder="Job # or PO or reason" />
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-warning w-100" @onclick="SubmitAdjustment">Record</button>
+                </div>
+            </div>
+            <button class="btn btn-sm btn-secondary mt-2" @onclick="CancelAdjust">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<InventoryItem> items = new();
+    private List<StockTransaction> transactions = new();
+    private InventoryItem currentItem = new();
+    private InventoryItem? selectedItem;
+    private bool showForm;
+    private bool isEditing;
+    private string searchTerm = string.Empty;
+    private bool lowStockOnly = false;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool showAdjustForm;
+    private InventoryItem? adjustItem;
+    private decimal adjustQuantity = 1;
+    private StockTransactionType adjustType = StockTransactionType.Receipt;
+    private string adjustNotes = string.Empty;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.InventoryManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadItems();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadItems()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        items = (await InventoryService.GetAllItemsAsync(term, lowStockOnly, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadItems();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadItems();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadItems();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadItems();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentItem = new InventoryItem { Unit = "ea", QuantityOnHand = 0, ReorderLevel = 5, UnitCost = 0 };
+        isEditing = false;
+        showForm = true;
+        selectedItem = null;
+    }
+
+    private async Task SaveItem()
+    {
+        if (isEditing)
+        {
+            await InventoryService.UpdateItemAsync(currentItem);
+        }
+        else
+        {
+            await InventoryService.CreateItemAsync(currentItem);
+        }
+        showForm = false;
+        ToastService.ShowSuccess("Inventory item saved.");
+        await LoadItems();
+        currentItem = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentItem = new();
+    }
+
+    private async Task ViewItem(InventoryItem item)
+    {
+        selectedItem = item;
+        transactions = (await InventoryService.GetTransactionsForItemAsync(item.Id)).ToList();
+        showForm = false;
+        showAdjustForm = false;
+    }
+
+    private void CloseItemView()
+    {
+        selectedItem = null;
+        transactions = new();
+        showAdjustForm = false;
+    }
+
+    private void QuickAdjust(InventoryItem item)
+    {
+        adjustItem = item;
+        adjustQuantity = 1;
+        adjustType = StockTransactionType.Receipt;
+        adjustNotes = string.Empty;
+        showAdjustForm = true;
+        selectedItem = item;
+    }
+
+    private async Task SubmitAdjustment()
+    {
+        if (adjustItem == null) return;
+
+        await InventoryService.RecordStockTransactionAsync(
+            adjustItem.Id,
+            adjustQuantity,
+            adjustType,
+            adjustNotes,
+            null,
+            adjustNotes,
+            default);
+
+        ToastService.ShowSuccess("Stock adjustment recorded.");
+        showAdjustForm = false;
+        adjustItem = null;
+
+        // Refresh
+        await LoadItems();
+        if (selectedItem != null)
+        {
+            selectedItem = await InventoryService.GetItemByIdAsync(selectedItem!.Id);
+            transactions = (await InventoryService.GetTransactionsForItemAsync(selectedItem!.Id)).ToList();
+        }
+    }
+
+    private void CancelAdjust()
+    {
+        showAdjustForm = false;
+        adjustItem = null;
+    }
+
+    private void RunAiLowStockPrediction()
+    {
+        // Prominent predictive prompt (low-stock items + scheduled jobs + travel/expediting cost impact) lives in the AI Copilot.
+        // This CTA gives users direct access from the inventory screen where low-stock decisions are made.
+        Navigation.NavigateTo("/ai-copilot");
+    }
+}

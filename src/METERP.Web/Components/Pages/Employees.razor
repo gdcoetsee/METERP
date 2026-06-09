@@ -1,0 +1,298 @@
+@page "/employees"
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@attribute [Authorize(Policy = "Employees.View")]
+@inject IEmployeeService EmployeeService
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Employees</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Employees</h1>
+    @if (UserCanManage)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Employee</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search name, number or title..."
+               value="@searchTerm" @oninput="OnSearchInput" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading employees...</em></p>
+}
+else if (employees == null || !employees.Any())
+{
+    @if (!string.IsNullOrEmpty(searchTerm))
+    {
+        <div class="alert alert-warning">No employees match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
+    }
+    else
+    {
+        <div class="alert alert-info">No employees yet. Add your technicians and staff for job labor tracking.</div>
+    }
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Title</th>
+                    <th class="text-end">Default Rate</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var emp in employees)
+                {
+                    <tr>
+                        <td><strong>@emp.EmployeeNumber</strong></td>
+                        <td>@emp.FirstName @emp.LastName</td>
+                        <td>@emp.JobTitle</td>
+                        <td class="text-end">R @emp.DefaultHourlyRate.ToString("N2")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => View(emp)">View</button>
+                            @if (UserCanManage)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(emp)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Delete(emp)">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+        <span class="text-muted small">Page @currentPage</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(employees.Count < PageSize)">Next</button>
+    </div>
+}
+
+@if (showForm)
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>@(isEditing ? "Edit Employee" : "New Employee")</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="currentEmployee" OnValidSubmit="SaveEmployee" FormName="EmployeeForm">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Employee # *</label>
+                        <InputText class="form-control" @bind-Value="currentEmployee.EmployeeNumber" required />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">First Name *</label>
+                        <InputText class="form-control" @bind-Value="currentEmployee.FirstName" required />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Last Name *</label>
+                        <InputText class="form-control" @bind-Value="currentEmployee.LastName" required />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Job Title</label>
+                        <InputText class="form-control" @bind-Value="currentEmployee.JobTitle" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Default Hourly Rate (R)</label>
+                        <InputNumber class="form-control" @bind-Value="currentEmployee.DefaultHourlyRate" step="0.01" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="form-check mt-4">
+                            <InputCheckbox class="form-check-input" @bind-Value="currentEmployee.IsActive" />
+                            <label class="form-check-label">Active</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Save Employee</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (selectedEmployee != null)
+{
+    <div class="card mt-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@selectedEmployee.EmployeeNumber — @selectedEmployee.FirstName @selectedEmployee.LastName</h5>
+            <button class="btn btn-sm btn-light" @onclick="CloseEmployeeView">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Title:</strong> @selectedEmployee.JobTitle<br />
+                    <strong>Rate:</strong> R @selectedEmployee.DefaultHourlyRate.ToString("N2") / hr
+                </div>
+                <div class="col-md-6">
+                    <strong>Status:</strong> @(selectedEmployee.IsActive ? "Active" : "Inactive")
+                </div>
+            </div>
+            <p class="mt-3 text-muted small">Labor entries on jobs will use this employee's rate unless overridden.</p>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Employee> employees = new();
+    private Employee currentEmployee = new();
+    private Employee? selectedEmployee;
+    private bool showForm;
+    private bool isEditing;
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private bool _loading = true;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.EmployeesManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            await LoadEmployees();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadEmployees()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        employees = (await EmployeeService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadEmployees();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadEmployees();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadEmployees();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadEmployees();
+    }
+
+    private void ShowCreateForm()
+    {
+        currentEmployee = new Employee
+        {
+            EmployeeNumber = $"EMP-{DateTime.UtcNow:yyMMddHHmmss}",
+            IsActive = true,
+            DefaultHourlyRate = 350m
+        };
+        isEditing = false;
+        showForm = true;
+        selectedEmployee = null;
+    }
+
+    private void Edit(Employee emp)
+    {
+        currentEmployee = new Employee
+        {
+            Id = emp.Id,
+            EmployeeNumber = emp.EmployeeNumber,
+            FirstName = emp.FirstName,
+            LastName = emp.LastName,
+            JobTitle = emp.JobTitle,
+            DefaultHourlyRate = emp.DefaultHourlyRate,
+            IsActive = emp.IsActive
+        };
+        isEditing = true;
+        showForm = true;
+        selectedEmployee = null;
+    }
+
+    private async Task SaveEmployee()
+    {
+        if (isEditing)
+        {
+            await EmployeeService.UpdateAsync(currentEmployee);
+            ToastService.ShowSuccess("Employee updated successfully.");
+        }
+        else
+        {
+            await EmployeeService.CreateAsync(currentEmployee);
+            ToastService.ShowSuccess("Employee created successfully.");
+        }
+
+        showForm = false;
+        await LoadEmployees();
+        currentEmployee = new();
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        currentEmployee = new();
+    }
+
+    private async Task View(Employee emp)
+    {
+        selectedEmployee = await EmployeeService.GetByIdAsync(emp.Id);
+        showForm = false;
+    }
+
+    private void CloseEmployeeView()
+    {
+        selectedEmployee = null;
+    }
+
+    private async Task Delete(Employee emp)
+    {
+        if (emp == null) return;
+        await EmployeeService.DeleteAsync(emp.Id);
+        ToastService.ShowSuccess("Employee deleted.");
+        if (selectedEmployee?.Id == emp.Id) selectedEmployee = null;
+        await LoadEmployees();
+    }
+}

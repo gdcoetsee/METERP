@@ -34,15 +34,25 @@ public class TenantService : ITenantService
             .FirstOrDefaultAsync(t => t.Subdomain == subdomain && !t.IsDeleted, ct);
     }
 
-    public async Task<IReadOnlyList<Tenant>> GetAllAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<Tenant>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
-        var tenants = await _dbContext.Tenants
+        var query = _dbContext.Tenants
             .IgnoreQueryFilters()
-            .Where(t => !t.IsDeleted)
-            .OrderBy(t => t.Name)
-            .ToListAsync(ct);
+            .Where(t => !t.IsDeleted);
 
-        return tenants;
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            query = query.Where(t =>
+                t.Name.ToLower().Contains(term) ||
+                t.Subdomain.ToLower().Contains(term));
+        }
+
+        return await query
+            .OrderBy(t => t.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
     }
 
     public async Task<Guid> CreateAsync(string name, string subdomain, CancellationToken ct = default)
@@ -51,7 +61,8 @@ public class TenantService : ITenantService
         {
             Name = name.Trim(),
             Subdomain = subdomain.Trim().ToLowerInvariant(),
-            IsActive = true
+            IsActive = true,
+            EnabledFeatures = "ai,usage-tracking" // default sellable features stub
         };
 
         // Note: TenantId will be set by DbContext SaveChanges, but for the very first tenant(s)
@@ -64,16 +75,17 @@ public class TenantService : ITenantService
         return tenant.Id;
     }
 
-    public async Task UpdateAsync(Guid id, string name, bool isActive, CancellationToken ct = default)
+    public async Task UpdateAsync(Tenant tenant, CancellationToken ct = default)
     {
-        var tenant = await _dbContext.Tenants
+        var existing = await _dbContext.Tenants
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == id, ct);
+            .FirstOrDefaultAsync(t => t.Id == tenant.Id, ct);
 
-        if (tenant == null) return;
+        if (existing == null) return;
 
-        tenant.Name = name.Trim();
-        tenant.IsActive = isActive;
+        existing.Name = tenant.Name?.Trim() ?? string.Empty;
+        existing.Subdomain = tenant.Subdomain?.Trim().ToLowerInvariant() ?? string.Empty;
+        existing.IsActive = tenant.IsActive;
 
         await _dbContext.SaveChangesAsync(ct);
     }
@@ -88,5 +100,61 @@ public class TenantService : ITenantService
 
         tenant.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task IncrementJobCountAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+
+        if (tenant != null)
+        {
+            tenant.TotalJobsCreated++;
+            await _dbContext.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task IncrementAiCallCountAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+
+        if (tenant != null)
+        {
+            tenant.TotalAiCalls++;
+            tenant.LastActivityUtc = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task IncrementQuoteCountAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+
+        if (tenant != null)
+        {
+            tenant.TotalQuotesCreated++;
+            tenant.LastActivityUtc = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task IncrementInvoiceCountAsync(Guid tenantId, decimal revenueAmount = 0, CancellationToken ct = default)
+    {
+        var tenant = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+
+        if (tenant != null)
+        {
+            tenant.TotalInvoicesIssued++;
+            tenant.TotalRevenueBilled += revenueAmount;
+            tenant.LastActivityUtc = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(ct);
+        }
     }
 }

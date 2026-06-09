@@ -24,14 +24,111 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="login">
-                <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Login
+            <NavLink class="nav-link" href="quotes">
+                <span class="bi bi-file-earmark-text-nav-menu" aria-hidden="true"></span> Quotes
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="logout">
-                <span class="bi bi-box-arrow-right-nav-menu" aria-hidden="true"></span> Logout
+            <NavLink class="nav-link" href="jobs">
+                <span class="bi bi-briefcase-nav-menu" aria-hidden="true"></span> Jobs
             </NavLink>
         </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="opportunities">
+                <span class="bi bi-graph-up-nav-menu" aria-hidden="true"></span> Opportunities (CRM)
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="notifications">
+                <span class="bi bi-bell-nav-menu" aria-hidden="true"></span> Notifications
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="payroll">
+                <span class="bi bi-cash-stack-nav-menu" aria-hidden="true"></span> Payroll & HR
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="audit">
+                <span class="bi bi-journal-text-nav-menu" aria-hidden="true"></span> Audit Log
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="users">
+                <span class="bi bi-person-badge-nav-menu" aria-hidden="true"></span> Users
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="invoices">
+                <span class="bi bi-receipt-nav-menu" aria-hidden="true"></span> Invoices
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="inventory">
+                <span class="bi bi-box-seam-nav-menu" aria-hidden="true"></span> Inventory
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="assets">
+                <span class="bi bi-lightning-charge-nav-menu" aria-hidden="true"></span> Assets
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="reports">
+                <span class="bi bi-graph-up-nav-menu" aria-hidden="true"></span> Reports
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="ai-copilot">
+                <span class="bi bi-robot" aria-hidden="true"></span> AI Copilot
+                <span class="badge bg-primary ms-1" style="font-size: 0.6rem;">BETA</span>
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="suppliers">
+                <span class="bi bi-truck-nav-menu" aria-hidden="true"></span> Suppliers
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="purchase-orders">
+                <span class="bi bi-file-earmark-plus-nav-menu" aria-hidden="true"></span> Purchase Orders
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="finance">
+                <span class="bi bi-calculator-nav-menu" aria-hidden="true"></span> Finance
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="employees">
+                <span class="bi bi-people-nav-menu" aria-hidden="true"></span> Employees
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="sales-orders">
+                <span class="bi bi-file-earmark-check-nav-menu" aria-hidden="true"></span> Sales Orders
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="scheduling">
+                <span class="bi bi-calendar-nav-menu" aria-hidden="true"></span> Scheduling
+            </NavLink>
+        </div>
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="logout">
+                        <span class="bi bi-box-arrow-right-nav-menu" aria-hidden="true"></span> Logout
+                    </NavLink>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="login">
+                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Login
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
     </nav>
 </div>

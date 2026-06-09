@@ -1,24 +1,275 @@
 @page "/"
 
-<PageTitle>METERP - Foundation</PageTitle>
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@inject ICustomerService CustomerService
+@inject IQuoteService QuoteService
+@inject IJobService JobService
+@inject IInvoiceService InvoiceService
+@inject IUserService UserService
+@inject IInventoryService InventoryService
+@inject IAssetService AssetService
+@inject IJobService JobService
+@inject ISupplierService SupplierService
+@inject ICurrentUserService CurrentUserService
+@inject ITenantService TenantService
+@inject IAiAssistantService AiAssistantService
+@inject NotificationService NotificationService
+@inject IJobService JobService
+@inject IQuoteService QuoteService
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject NavigationManager Nav
 
-<h1>Welcome to METERP</h1>
+<PageTitle>METERP</PageTitle>
 
-<p>
-    This is the clean foundation for the multi-tenant ERP system (Electrical &amp; Mechanical Contracting, South Africa).
+<h1 class="mb-4">METERP Dashboard @if (AiAssistantService.IsConfigured) { <span class="badge bg-primary align-middle" style="font-size:0.6rem;">AI Enabled</span> }</h1>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-primary">@customerCount</h3>
+                <div class="text-muted">Customers</div>
+                <a href="customers" class="btn btn-sm btn-outline-primary mt-2">Manage</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-info">@quoteCount</h3>
+                <div class="text-muted">Quotes</div>
+                <a href="quotes" class="btn btn-sm btn-outline-info mt-2">View Quotes</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-warning">@jobCount</h3>
+                <div class="text-muted">Jobs</div>
+                <a href="jobs" class="btn btn-sm btn-outline-warning mt-2">Track Jobs</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-success">@invoiceCount</h3>
+                <div class="text-muted">Invoices</div>
+                <a href="invoices" class="btn btn-sm btn-outline-success mt-2">Invoicing</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-secondary">@inventoryCount</h3>
+                <div class="text-muted">Inventory Items</div>
+                <a href="inventory" class="btn btn-sm btn-outline-secondary mt-2">Manage Stock</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-info">@assetCount</h3>
+                <div class="text-muted">Assets</div>
+                <a href="assets" class="btn btn-sm btn-outline-info mt-2">Manage Assets</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-dark">@_supplierCount</h3>
+                <div class="text-muted">Suppliers</div>
+                <a href="suppliers" class="btn btn-sm btn-outline-dark mt-2">Purchasing</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Commercial usage visibility (from tracked counters on Tenant) -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-center border-dark">
+            <div class="card-body">
+                <h3 class="text-dark">@(currentTenant?.TotalJobsCreated ?? 0)</h3>
+                <div class="text-muted small">Jobs (tenant)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center border-dark">
+            <div class="card-body">
+                <h3 class="text-dark">@(currentTenant?.TotalAiCalls ?? 0)</h3>
+                <div class="text-muted small">AI Calls (tenant)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center border-dark">
+            <div class="card-body">
+                <h3 class="text-success">@(currentTenant?.TotalQuotesCreated ?? 0)</h3>
+                <div class="text-muted small">Quotes (tenant)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center border-dark">
+            <div class="card-body">
+                <h3 class="text-warning">R @(currentTenant?.TotalRevenueBilled.ToString("N0") ?? "0")</h3>
+                <div class="text-muted small">Revenue Billed (tenant)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="mt-3 small text-muted">New in complete ERP: Purchasing (Suppliers + POs with inventory receipt), Finance (CoA + Journals), HR/Employees (labor linkage). See /finance, /employees, /suppliers, /purchase-orders.</p>
+
+@if (lowStockCount > 0 || Math.Abs(activeJobVariance) > 0)
+{
+    <div class="alert alert-@(lowStockCount > 0 ? "warning" : "info") py-2 mb-3">
+        @if (lowStockCount > 0)
+        {
+            <span><strong>@lowStockCount</strong> items below reorder level. </span>
+        }
+        @if (Math.Abs(activeJobVariance) > 0)
+        {
+            <span>Active jobs variance (incl. labor & travel): <strong class="@(activeJobVariance > 0 ? "text-danger" : "text-success")">R @activeJobVariance.ToString("N2")</strong>.</span>
+        }
+    </div>
+}
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Quick Links</div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">• <a href="customers">Customers &amp; Contacts</a> — manage your client base</li>
+                    <li class="mb-2">• <a href="quotes">Quotes</a> — create detailed estimates with line items + VAT</li>
+                    <li class="mb-2">• <a href="jobs">Jobs</a> — convert quotes, track actual costs &amp; variance</li>
+                    <li class="mb-2">• <a href="invoices">Invoices</a> — bill customers from completed jobs</li>
+                    <li class="mb-2">• <a href="inventory">Inventory</a> — stock items, adjustments &amp; job usage tracking</li>
+                    <li class="mb-2">• <a href="assets">Assets</a> — transformers, switchgear &amp; customer equipment</li>
+                    <li class="mb-2">• <a href="users">Users</a> — manage team members &amp; roles per tenant</li>
+                    <li>• <a href="tenants">Tenants</a> — platform tenant administration</li>
+                    <li class="mt-2"><strong>✨ New:</strong> <a href="ai-copilot">AI Copilot</a> — ask natural language questions, get quote suggestions, variance analysis, and contractor-specific recommendations powered by your live data. Actionable: create real Quotes/Jobs from responses.</li>
+                    <li class="mt-1">• <a href="ai-copilot">🔮 Low-stock + travel risk predictor</a> for scheduled jobs — also directly available from the Reports AI card and Inventory screen.</li>
+                </ul>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="GenerateHomeAiInsight">✨ Get AI Insight</button>
+                    @if (!string.IsNullOrWhiteSpace(homeAiInsight))
+                    {
+                        <div class="small mt-1 p-2 bg-light border">@homeAiInsight</div>
+                    }
+                </div>
+
+                <!-- Onboarding wizard stub for new users (sellable polish) -->
+                @if (!onboarded)
+                {
+                    <div class="alert alert-primary mt-2 small">
+                        Welcome! <button class="btn btn-sm btn-link p-0" @onclick="StartOnboarding">Start quick onboarding tour</button> (3 steps: AI Copilot, Jobs with travel, Reports).
+                        <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="() => onboarded = true">Skip</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Getting Started (Demo)</div>
+            <div class="card-body">
+                <p class="mb-2">Login: <code>admin@acme.demo</code> / <code>Demo123!</code></p>
+                <p class="small text-muted mb-2">
+                    A full Quote → Job → Invoice demo dataset is seeded automatically on first run.
+                    Explore the flow end-to-end.
+                </p>
+                <div>
+                    <a href="quotes" class="btn btn-primary btn-sm">Start with Quotes</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="mt-4 text-muted small">
+    METERP — Clean Architecture • .NET 9 • Blazor Server • PostgreSQL • Multi-tenant from day one • Claim-based permissions.
+    <br />Full flow demo: Quote (inventory-backed lines) → Job (labor + materials + asset) → Invoice.
 </p>
 
-<p>
-    <strong>Current architecture:</strong> Clean Architecture with multi-tenancy built in from day one.
-</p>
+@code {
+    private int customerCount;
+    private int quoteCount;
+    private int jobCount;
+    private int invoiceCount;
+    private string homeAiInsight = "";
+    private bool onboarded = true; // set false for new users in real (from localStorage or user profile)
+    private int inventoryCount;
+    private int lowStockCount;
+    private int assetCount;
+    private decimal activeJobVariance;
+    private int _supplierCount;
+    private Tenant? currentTenant;
 
-<ul>
-    <li>Domain: BaseEntity + Tenant</li>
-    <li>Application: Contracts for tenant management</li>
-    <li>Infrastructure: EF Core + global query filters for tenant isolation + soft delete</li>
-    <li>Web: Blazor Server</li>
-</ul>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            customerCount = (await CustomerService.GetAllAsync()).Count;
+            quoteCount = (await QuoteService.GetAllAsync()).Count;
+            jobCount = (await JobService.GetAllAsync()).Count;
+            invoiceCount = (await InvoiceService.GetAllAsync()).Count;
+            inventoryCount = (await InventoryService.GetAllItemsAsync()).Count;
+            lowStockCount = (await InventoryService.GetAllItemsAsync(lowStockOnly: true)).Count;
+            assetCount = (await AssetService.GetAllAsync()).Count;
+            _supplierCount = (await SupplierService.GetAllAsync()).Count;
 
-<p>
-    Next steps in Phase 1: full tenant provisioning, ASP.NET Identity integration with tenant-aware users, permissions, etc.
-</p>
+            // Trigger real notification for demo (low stock is a key alert)
+            if (lowStockCount > 0)
+            {
+                try { await NotificationService.AddAsync("Low Stock Alert", $"{lowStockCount} items below reorder level. Check Inventory and upcoming jobs for travel impact."); } catch { }
+            }
+
+            var activeJobs = await JobService.GetAllAsync();
+            activeJobVariance = activeJobs
+                .Where(j => j.Status == JobStatus.InProgress || j.Status == JobStatus.Scheduled)
+                .Sum(j => (j.ActualCost + (j.Labors?.Sum(l => l.TotalCost) ?? 0)) - j.QuotedTotal);
+
+            // Load current tenant commercial usage (for demo visibility)
+            var tid = CurrentUserService.TenantId;
+            if (tid != Guid.Empty)
+            {
+                currentTenant = await TenantService.GetByIdAsync(tid);
+            }
+        }
+        catch
+        {
+            // ignore on initial load if DB not ready
+        }
+    }
+
+    private async Task GenerateHomeAiInsight()
+    {
+        try
+        {
+            string context = $"Customers: {customerCount}, Quotes: {quoteCount}, Jobs: {jobCount}, Invoices: {invoiceCount}. Recent variance and low stock alerts in system.";
+            homeAiInsight = await AiAssistantService.AskCopilotAsync("Give one key actionable insight for this contracting business today, focusing on margin or efficiency.", context) ?? "AI insight unavailable.";
+        }
+        catch
+        {
+            homeAiInsight = "AI temporarily unavailable (configure key).";
+        }
+    }
+
+    private void StartOnboarding()
+    {
+        Toast.ShowSuccess("Onboarding started - see AI Copilot for your first quote!");
+        Nav.NavigateTo("/ai-copilot");
+        onboarded = true;
+    }
+}
