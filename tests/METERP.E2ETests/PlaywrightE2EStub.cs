@@ -713,6 +713,56 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Audit_Shows_Invoice_Create_After_Job_Invoice()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/jobs");
+        await page.WaitForTestIdAsync("jobs-table", 30000);
+
+        var jobRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await jobRow.CountAsync() == 0)
+            jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+
+        await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
+        await page.ClickByTestIdAsync("create-invoice-from-job-detail");
+
+        await page.WaitForURLAsync("**/invoices**", new() { Timeout = 30000 });
+        await page.WaitForTestIdAsync("invoices-table", 30000);
+
+        await page.GotoRelativeAsync("/audit");
+        await page.WaitForTestIdAsync("audit-table", 15000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("CREATE", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Invoice", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Inventory_Page_Loads_Stock_Table()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/inventory");
+
+        try
+        {
+            await page.WaitForTestIdAsync("inventory-ready", 15000);
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForTestIdAsync("inventory-table", 15000);
+        }
+
+        var content = await page.ContentAsync();
+        Assert.Contains("DB-12W-001", content);
+        Assert.Contains("Inventory", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
         var page = await _browser.LoginAsync();

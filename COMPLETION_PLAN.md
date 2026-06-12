@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Inventory tests + health burst + audit convert E2E (2026-06-12 latest).**
+**Stock guard + notification test + audit invoice + inventory E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 32)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 33)
+- **Phase 4 — Inventory + notifications**:
+  - `InventoryServiceTests` (+1): `RecordStockTransactionAsync` no-op when item missing.
+  - `NotificationServiceTests` (+1): `MarkReadAsync` marks single item read.
+  - `Inventory.razor`: `inventory-ready` + `inventory-table` test ids.
+- **Phase 2 E2E**:
+  - `Audit_Shows_Invoice_Create_After_Job_Invoice` (25th) — job→invoice then audit shows `CREATE` + `Invoice`.
+  - `Inventory_Page_Loads_Stock_Table` (26th) — demo SKU `DB-12W-001` visible.
+- **Testing**: **255/255 green** (218 unit + 11 web + 26 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 32)
 - **Phase 4 — Inventory service tests**:
   - `InventoryServiceTests` (+2): `UpdateItemAsync` persists qty/reorder; `GetAllItemsAsync` excludes inactive items.
 - **Phase 5 — Health rate-limit coverage**:

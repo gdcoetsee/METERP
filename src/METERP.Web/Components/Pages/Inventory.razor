@@ -15,6 +15,11 @@
 
 <PageTitle>Inventory</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="inventory-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Inventory</h1>
     @if (UserCanManage)
@@ -55,7 +60,7 @@ else if (items == null || !items.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="inventory-table">
         <table class="table table-hover">
             <thead>
                 <tr>

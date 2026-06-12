@@ -138,4 +138,16 @@ public class InventoryServiceTests
         Assert.Single(all);
         Assert.Equal("VISIBLE", all[0].Sku);
     }
+
+    [Fact]
+    public async Task RecordStockTransactionAsync_NoOpWhenItemMissing()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        await service.RecordStockTransactionAsync(Guid.NewGuid(), -5, StockTransactionType.Issue);
+
+        var txns = await service.GetRecentTransactionsAsync();
+        Assert.Empty(txns);
+    }
 }

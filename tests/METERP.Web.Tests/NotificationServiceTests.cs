@@ -25,6 +25,22 @@ public class NotificationServiceTests
     }
 
     [Fact]
+    public async Task MarkReadAsync_MarksSingleItemRead()
+    {
+        var js = new InMemoryJsRuntime();
+        var service = new NotificationService(js);
+        await service.AddAsync("Unread alert", "Needs attention");
+        await service.AddAsync("Already read", "Done", isRead: true);
+
+        var unread = (await service.GetAllAsync()).First(i => i.Title == "Unread alert");
+        await service.MarkReadAsync(unread.Id);
+
+        var items = await service.GetAllAsync();
+        Assert.True(items.First(i => i.Id == unread.Id).IsRead);
+        Assert.True(items.First(i => i.Title == "Already read").IsRead);
+    }
+
+    [Fact]
     public async Task MarkAllReadAsync_MarksEveryItemRead()
     {
         var js = new InMemoryJsRuntime();
