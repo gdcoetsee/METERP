@@ -42,8 +42,8 @@ public class SmtpEmailSender : IEmailSender
         message.Body = new TextPart("html") { Text = htmlBody };
 
         using var client = new SmtpClient();
-        await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort,
-            _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto, ct);
+        var socketOptions = _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None;
+        await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, socketOptions, ct);
 
         if (!string.IsNullOrWhiteSpace(_options.Username))
             await client.AuthenticateAsync(_options.Username, _options.Password ?? string.Empty, ct);

@@ -2,9 +2,20 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Phase 4 Asset/PO/Employee tests + Phase 3 mocked HTTP AI tests (2026-06-12 latest).**
+**Phase 4 SalesOrder/Finance tests + Phase 3 full AI HTTP + Phase 5 loopback SMTP (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, after d75a396)
+### Exact Work Completed — Latest (2026-06-12, after 05ed879)
+- **Phase 4 — supporting module tests (continued)**:
+  - `SalesOrderServiceTests` (4): SO number + totals, line recalc, soft delete, convert-to-job.
+  - `FinanceServiceTests` expanded (+3): unbalanced journal guard, entry number, account balance.
+- **Phase 3 — full AI HTTP path**:
+  - `AiAssistantServiceHttpTests` (+2): `AnalyzeJobVarianceAsync` + `AskCopilotAsync` with mocked LLM.
+- **Phase 5 — real SMTP integration**:
+  - `LoopbackSmtpServer` test harness; `SendEmailAsync_DeliversToLoopbackSmtpServer` integration test.
+  - `SmtpEmailSender` uses `SecureSocketOptions.None` when SSL disabled (plain SMTP/dev).
+- **Testing**: **120/120 green** (110 unit + 4 web + 6 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, after d75a396)
 - **Phase 4 — supporting module tests (continued)**:
   - `AssetServiceTests` (5): asset number, search, status, maintenance notes, soft delete.
   - `PurchaseOrderServiceTests` (4): PO number + totals, line recalc, soft delete lines, receive → inventory.
@@ -104,17 +115,17 @@
   - Verified: `dotnet build` E2E clean, units 35 green after every step.
 
 ### Current Exact State (pick up here)
-- **Testing**: **110/110 green** — 100 unit + 4 web integration + 6 E2E.
+- **Testing**: **120/120 green** — 110 unit + 4 web integration + 6 E2E.
 - **Phase 2**: **Complete**.
-- **Phase 3**: **Complete** — apply services + parser + mocked HTTP `SuggestQuoteLinesAsync` path.
-- **Phase 5**: **Largely complete** — Seq, quota UI, Serilog, health, AI rate limit, SMTP no-op tests. Remaining: real SMTP server test, 2FA, OpenTelemetry.
-- **Phase 4**: **Largely complete** — Inventory, Notification, Customer, Supplier, Asset, PO, Employee tested. Remaining: Opportunities (when entity exists), Finance/GL services.
+- **Phase 3**: **Complete** — apply services + parser + full mocked HTTP paths (suggest, analyze, ask).
+- **Phase 5**: **Largely complete** — Seq, quota UI, Serilog, health, AI rate limit, loopback SMTP integration test. Remaining: 2FA, OpenTelemetry, MailKit CVE bump.
+- **Phase 4**: **Largely complete** — Inventory, Notification, Customer, Supplier, Asset, PO, Employee, SalesOrder, Finance/GL tested. Remaining: Opportunities (needs real entity/service).
 - **Git**: pending commit for this chunk.
 
 ### Immediate Next Steps for Cursor (Start Here to Continue Exactly)
-1. **Phase 4**: Finance/GL or SalesOrder service tests; CRM Opportunities when entity exists.
-2. **Phase 3**: Mocked HTTP tests for `AnalyzeJobVarianceAsync` and `AskCopilotAsync`.
-3. **Phase 5**: Real SMTP integration (test container or mock server); 2FA stub hardening.
+1. **Phase 4**: Opportunity entity + `IOpportunityService` (replace localStorage stub); unit tests.
+2. **Phase 5**: 2FA stub hardening; bump MailKit for NU1902; OpenTelemetry wiring.
+3. **E2E**: Expand Playwright for Sales Orders page or Finance CSV export if UI flows stabilize.
 4. Run `dotnet test` before any commit.
 
 **Key files for continuity**: This COMPLETION_PLAN.md (always read top first), AGENTS.md, .cursor/rules/meterp-*.mdc, the E2E files (helpers + stub), AiAssistantServiceTests.cs, and recently touched Razor files (for data-testid).
