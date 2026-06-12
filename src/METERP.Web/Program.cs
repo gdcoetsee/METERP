@@ -1150,6 +1150,21 @@ public class DatabaseSeeder : IHostedService
             }
         }
 
+        // Idempotent second supplier for suppliers search filter E2E.
+        tenantProvider.SetTenantId(defaultTenantId);
+        if (!(await supplierService.GetAllAsync(ct: cancellationToken)).Any(s => s.Name.Contains("Panel Supplies", StringComparison.OrdinalIgnoreCase)))
+        {
+            await supplierService.CreateAsync(new Supplier
+            {
+                Name = "Panel Supplies CC",
+                ContactPerson = "Thabo Mokoena",
+                Phone = "011 555 1122",
+                Email = "orders@panelsupplies.test",
+                City = "Pretoria",
+                Province = "Gauteng"
+            }, cancellationToken);
+        }
+
         // Idempotent low-stock demo item (inventory filter E2E + low-stock alerts).
         tenantProvider.SetTenantId(defaultTenantId);
         if (!(await inventoryService.GetAllItemsAsync(ct: cancellationToken)).Any(i => i.Sku == "OIL-TR-5L"))

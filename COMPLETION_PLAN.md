@@ -2,9 +2,20 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Inventory search E2E + PO receive edge cases + suppliers E2E (2026-06-12 latest).**
+**PO page E2E + suppliers search E2E + PO search unit test (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 36)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 37)
+- **Phase 4 — Purchasing UI + tests**:
+  - `PurchaseOrderServiceTests` (+1): `GetAllAsync_FiltersBySupplierName`.
+  - `PurchaseOrders.razor`: `purchase-orders-ready`, `purchase-orders-table`, `purchase-orders-search`, `purchase-order-view`, `purchase-order-detail` test ids; `_posLoadGeneration` async guard.
+  - `Suppliers.razor`: `_suppliersLoadGeneration` async guard.
+  - Seeder: idempotent `Panel Supplies CC` second supplier for search filter E2E.
+- **Phase 2 E2E**:
+  - `PurchaseOrders_Page_Loads_Demo_Po` (30th) — demo `PO-` + `ElectroSupply SA`, view detail shows totals.
+  - `Suppliers_Search_FiltersByName` (31st) — search `Panel` filters table rows.
+- **Testing**: **270/270 green** (228 unit + 11 web + 31 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 36)
 - **Phase 4 — PO receive edge cases**:
   - `PurchaseOrderServiceTests` (+3): `ReceiveAsync_WhenPoNotFound_DoesNotThrow`, `ReceiveAsync_WithoutInventoryLinks_StillMarksReceived`, `ReceiveAsync_OnlyReceiptsLinkedInventoryLines`.
 - **Phase 2 E2E**:

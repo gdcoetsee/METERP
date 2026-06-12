@@ -816,6 +816,46 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Suppliers_Search_FiltersByName()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/suppliers");
+        await page.WaitForTestIdAsync("suppliers-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" })).ToHaveCountAsync(1);
+
+        await page.FillByTestIdAsync("suppliers-search", "Panel");
+
+        await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(0);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task PurchaseOrders_Page_Loads_Demo_Po()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/purchase-orders");
+        await page.WaitForTestIdAsync("purchase-orders-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "PO-" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
+
+        await page.Locator("[data-testid='purchase-order-view']").First.ClickAsync();
+        await page.WaitForTestIdAsync("purchase-order-detail", 10000);
+
+        var detail = await page.ContentAsync();
+        Assert.Contains("Total:", detail);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
         var page = await _browser.LoginAsync();

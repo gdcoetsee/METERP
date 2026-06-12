@@ -214,6 +214,28 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_FiltersBySupplierName()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var electroId = Guid.NewGuid();
+            var panelId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = electroId, TenantId = tenantId, Name = "ElectroSupply SA" });
+            db.Set<Supplier>().Add(new Supplier { Id = panelId, TenantId = tenantId, Name = "Panel Supplies CC" });
+
+            await service.CreateAsync(new PurchaseOrder { SupplierId = electroId, TaxRate = 0m });
+            await service.CreateAsync(new PurchaseOrder { SupplierId = panelId, TaxRate = 0m });
+
+            var results = await service.GetAllAsync("electro");
+
+            Assert.Single(results);
+            Assert.Equal("ElectroSupply SA", results[0].Supplier?.Name);
+        }
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_SetsPurchaseOrderStatus()
     {
         var tenantId = Guid.NewGuid();

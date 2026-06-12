@@ -196,6 +196,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _suppliersLoadGeneration;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.SuppliersManage);
 
@@ -214,8 +215,12 @@ else
 
     private async Task LoadSuppliers()
     {
+        var generation = ++_suppliersLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        suppliers = (await SupplierService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var loaded = (await SupplierService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _suppliersLoadGeneration)
+            return;
+        suppliers = loaded;
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)

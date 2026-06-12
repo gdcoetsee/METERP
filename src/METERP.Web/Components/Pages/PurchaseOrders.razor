@@ -16,6 +16,11 @@
 
 <PageTitle>Purchase Orders</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="purchase-orders-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Purchase Orders</h1>
     @if (UserCanManage)
@@ -26,7 +31,7 @@
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search PO #, supplier or notes..."
+        <input type="search" class="form-control" data-testid="purchase-orders-search" placeholder="Search PO #, supplier or notes..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -45,7 +50,7 @@ else if (pos == null || !pos.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="purchase-orders-table">
         <table class="table table-hover">
             <thead>
                 <tr>
@@ -67,7 +72,7 @@ else
                         <td>@GetStatusBadge(po.Status)</td>
                         <td class="text-end">R @po.Total.ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewPO(po)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="purchase-order-view" @onclick="() => ViewPO(po)">View</button>
                             @if (UserCanManage && po.Status == PurchaseOrderStatus.Draft)
                             {
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditPO(po)">Edit</button>
@@ -135,7 +140,7 @@ else
 
 @if (selectedPO != null)
 {
-    <div class="card mt-4 border-primary">
+    <div class="card mt-4 border-primary" data-testid="purchase-order-detail">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">@selectedPO.PoNumber — @(selectedPO.Supplier?.Name)</h5>
             <div>
@@ -249,6 +254,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _posLoadGeneration;
 
     private bool showLineForm;
     private PurchaseOrderLine? editingLine;
@@ -276,8 +282,12 @@ else
 
     private async Task LoadPOs()
     {
+        var generation = ++_posLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        pos = (await PurchaseOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var loaded = (await PurchaseOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _posLoadGeneration)
+            return;
+        pos = loaded;
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)
