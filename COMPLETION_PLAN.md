@@ -2,9 +2,24 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Phase 3 AI apply (quote+job) + Phase 4/5 quota UI & supporting tests (2026-06-12 latest).**
+**Phase 3 AI apply complete + Phase 4 Customer/Supplier tests + Phase 5 quota toasts & SMTP tests (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, after 051085a)
+### Exact Work Completed — Latest (2026-06-12, after cc7cd84)
+- **Phase 3 — AI apply fully extracted**:
+  - `IAiProjectPlanApplyService` / `AiProjectPlanApplyService` — quote + job skeleton from AI text; feature-gated.
+  - `AiQuoteSuggestionParser` — pure JSON parsing extracted from `AiAssistantService` (unit-tested).
+  - `AICopilot.razor` delegates all three apply paths (quote, job, project plan).
+  - Tests: `AiQuoteSuggestionParserTests` (4), `AiProjectPlanApplyServiceTests` (4).
+- **Phase 4 — supporting module tests**:
+  - `CustomerServiceTests` (4): create, search, soft-delete + contact cascade, primary contact.
+  - `SupplierServiceTests` (4): create, inactive filter, search, soft delete.
+- **Phase 5 — email + quota UX**:
+  - `SmtpEmailSenderTests` (4): configured flag + no-op when unconfigured/empty recipient.
+  - `InvoiceIntegrationTests`: email path when tenant `NotificationEmail` set.
+  - `QuotaExceededException` toasts on Quotes convert, Jobs invoice create, AICopilot apply actions.
+- **Testing**: **95/95 green** (85 unit + 4 web + 6 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, after 051085a)
 - **Phase 3 — AI apply complete (quote + job)**:
   - `IAiJobApplyService` / `AiJobApplyService` — draft job + explicit `Travel` JobCost; feature-gated via `AiCopilotAccessGuard`.
   - `AiQuoteApplyService` now enforces `HasFeature("ai")` (`AiFeatureDisabledException`).
@@ -78,17 +93,17 @@
   - Verified: `dotnet build` E2E clean, units 35 green after every step.
 
 ### Current Exact State (pick up here)
-- **Testing**: **74/74 green** — 64 unit + 4 web integration + 6 E2E.
+- **Testing**: **95/95 green** — 85 unit + 4 web integration + 6 E2E.
 - **Phase 2**: **Complete**.
-- **Phase 3**: **AI apply (quote+job) complete** with feature gating + unit tests. Remaining: `CreateProjectPlanFromAiText` extraction, deeper AI suggestion output tests.
-- **Phase 5**: **Largely complete** — Seq enabled in compose, quota UI on Home + AICopilot, Serilog, health tests, AI rate limit, counters. Remaining: real email/2FA, quota block at service layer for non-AI creates.
-- **Phase 4**: **Started** — Inventory + Notification tests. Remaining: Customer, Supplier, Opportunities (when module exists).
-- **Git**: through `051085a`; latest commits pending for this chunk.
+- **Phase 3**: **Complete** — quote/job/project-plan apply extracted + `AiQuoteSuggestionParser` tested.
+- **Phase 5**: **Largely complete** — Seq, quota UI (Home + AICopilot + Quotes/Jobs toasts), Serilog, health, AI rate limit, SMTP no-op tests. Remaining: real SMTP E2E, 2FA, OpenTelemetry.
+- **Phase 4**: **In progress** — Inventory, Notification, Customer, Supplier tested. Remaining: Assets, POs, Employees, Opportunities (when entity exists).
+- **Git**: pending commit for this chunk.
 
 ### Immediate Next Steps for Cursor (Start Here to Continue Exactly)
-1. **Phase 3**: Extract `CreateProjectPlanFromAiText`; test `SuggestQuoteLinesAsync` with mocked LLM response parsing.
-2. **Phase 4**: CustomerService / SupplierService unit tests; CRM Opportunities when entity exists.
-3. **Phase 5**: Real email (SMTP) integration tests; optional quota enforcement toast on Quotes/Jobs create in UI.
+1. **Phase 4**: AssetService, PurchaseOrderService, EmployeeService unit tests (same InMemory + tenant pattern).
+2. **Phase 3/5**: Deeper `AiAssistantService` integration tests with mocked HTTP for full `SuggestQuoteLinesAsync` path.
+3. **Phase 5**: Real SMTP integration (test container or mock server); 2FA stub hardening.
 4. Run `dotnet test` before any commit.
 
 **Key files for continuity**: This COMPLETION_PLAN.md (always read top first), AGENTS.md, .cursor/rules/meterp-*.mdc, the E2E files (helpers + stub), AiAssistantServiceTests.cs, and recently touched Razor files (for data-testid).

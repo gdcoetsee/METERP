@@ -140,6 +140,10 @@
             ToastService.ShowSuccess($"Quote converted to Job {job.JobNumber}.");
             Nav.NavigateTo("/jobs");
         }
+        catch (QuotaExceededException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
         catch (Exception ex)
         {
             ToastService.ShowError($"Conversion failed: {ex.Message}");

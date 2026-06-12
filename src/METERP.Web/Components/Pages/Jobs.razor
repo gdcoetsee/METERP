@@ -144,6 +144,10 @@
             ToastService.ShowSuccess($"Invoice {inv.InvoiceNumber} created from job {j.JobNumber}.");
             Nav.NavigateTo("/invoices");
         }
+        catch (QuotaExceededException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
         catch (Exception ex)
         {
             ToastService.ShowError($"Failed to create invoice from job: {ex.Message}");

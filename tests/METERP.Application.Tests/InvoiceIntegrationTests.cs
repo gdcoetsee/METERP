@@ -15,6 +15,54 @@ namespace METERP.Application.Tests;
 public class InvoiceIntegrationTests
 {
     [Fact]
+    public async Task NotifyInvoiceCreatedAsync_SendsEmailWhenConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateDb(tenantId);
+
+        db.Tenants.Add(new Tenant
+        {
+            Id = tenantId,
+            Name = "Acme",
+            Subdomain = "acme",
+            NotificationEmail = "billing@acme.demo"
+        });
+
+        var customer = new Customer { TenantId = tenantId, Name = "Client Co" };
+        db.Set<Customer>().Add(customer);
+
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-EM-001",
+            Total = 1500m,
+            Subtotal = 1304.35m,
+            Tax = 195.65m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var emailMock = new Mock<IEmailSender>();
+        emailMock.Setup(e => e.IsConfigured).Returns(true);
+
+        var service = new InvoiceIntegrationService(
+            db,
+            emailMock.Object,
+            new StubHttpClientFactory(new HttpClient(new RecordingHandler(HttpStatusCode.OK))),
+            Microsoft.Extensions.Options.Options.Create(new EmailOptions()),
+            NullLogger<InvoiceIntegrationService>.Instance);
+
+        await service.NotifyInvoiceCreatedAsync(invoice.Id);
+
+        emailMock.Verify(e => e.SendEmailAsync(
+            "billing@acme.demo",
+            It.Is<string>(s => s.Contains("INV-EM-001")),
+            It.Is<string>(b => b.Contains("Client Co")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task NotifyInvoiceCreatedAsync_PostsWebhookWhenTenantUrlConfigured()
     {
         var tenantId = Guid.NewGuid();
