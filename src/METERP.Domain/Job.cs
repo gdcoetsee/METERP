@@ -74,4 +74,15 @@ public class Job : BaseEntity
     /// Variance = ActualTotal - QuotedTotal. Positive = over budget.
     /// </summary>
     public decimal GetVariance() => GetActualTotal() - QuotedTotal;
+
+    /// <summary>
+    /// Budget margin percent: positive = under budget (favorable). Zero quoted returns 0.
+    /// </summary>
+    public decimal GetMarginPercent()
+    {
+        if (QuotedTotal <= 0)
+            return 0m;
+
+        return Math.Round((QuotedTotal - GetActualTotal()) / QuotedTotal * 100m, 1);
+    }
 }

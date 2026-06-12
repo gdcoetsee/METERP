@@ -12,6 +12,7 @@
 @inject ISalesOrderService SalesOrderService
 @inject IEmployeeService EmployeeService
 @inject IWorkforceReportService WorkforceReportService
+@inject IJobReportService JobReportService
 @inject IFinanceService FinanceService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
@@ -157,13 +158,29 @@ else
     <h5>Advanced Dashboards (Sellable Polish)</h5>
     <div class="row g-3">
         <div class="col-md-4">
-            <div class="card">
+            <div class="card" data-testid="reports-profitability-card">
                 <div class="card-body">
                     <h6>Job Profitability</h6>
-                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="18" aria-valuemin="0" aria-valuemax="100">
-                        <div class="progress-bar bg-success" style="width: 18%">18%</div>
+                    @{
+                        var marginBar = Math.Min(100, Math.Max(0, (int)Math.Round(Math.Abs(_jobProfitability.AverageMarginPercent))));
+                        var marginBarClass = _jobProfitability.AverageMarginPercent >= 0 ? "bg-success" : "bg-danger";
+                    }
+                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="@marginBar" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar @marginBarClass" style="width: @(marginBar)%" data-testid="reports-profitability-bar">
+                            @_jobProfitability.AverageMarginPercent%
+                        </div>
                     </div>
-                    <small>Top performer: Mine Install (+22%)</small>
+                    @if (_jobProfitability.JobsAnalyzed > 0 && _jobProfitability.TopPerformer is { } top)
+                    {
+                        <small data-testid="reports-profitability-top">
+                            Top performer: @top.Title (@(top.MarginPercent >= 0 ? "+" : "")@top.MarginPercent%)
+                        </small>
+                        <small class="text-muted d-block">@_jobProfitability.JobsAnalyzed job(s) with recorded costs (quoted vs actual incl. travel &amp; labor).</small>
+                    }
+                    else
+                    {
+                        <small class="text-muted">No jobs with recorded costs yet — add JobCost or JobLabor to see margin.</small>
+                    }
                 </div>
             </div>
         </div>
@@ -238,6 +255,7 @@ else
     private int _totalEmployees;
     private decimal _sampleGLBalance; // demo from finance service
     private List<TechnicianUtilizationSummary> _technicianUtilization = new();
+    private JobProfitabilitySummary _jobProfitability = new(0m, 0, null);
 
     // AI
     private bool _aiThinking;
@@ -289,6 +307,7 @@ else
             _totalEmployees = employees.Count;
 
             _technicianUtilization = (await WorkforceReportService.GetTechnicianUtilizationAsync()).ToList();
+            _jobProfitability = await JobReportService.GetJobProfitabilitySummaryAsync();
 
             var accounts = await FinanceService.GetAccountsAsync();
             if (accounts.Any())

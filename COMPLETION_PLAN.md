@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Reports technician utilization from JobLabor (2026-06-12 latest).**
+**Reports job profitability from real variance (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 17)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 18)
+- **Phase 4 — Job profitability reporting**:
+  - `Job.GetMarginPercent()` — pure margin from quoted vs actual (travel + labor + costs).
+  - `IJobReportService` / `JobReportService`: average margin + top performer from jobs with recorded costs.
+  - `Reports.razor`: real profitability card (`reports-profitability-card`) replaces hardcoded 18% stub.
+  - `JobReportServiceTests` (3); E2E `Reports_Page_Shows_Job_Profitability_From_Variance` (18th Playwright test).
+- **Testing**: **205/205 green** (180 unit + 7 web + 18 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 17)
 - **Phase 4 — Technician utilization reporting**:
   - `IWorkforceReportService` / `WorkforceReportService`: monthly hours vs 160h capacity per active employee.
   - `Reports.razor`: real utilization card (`reports-utilization-card`), team average bar, per-tech rows from JobLabor.

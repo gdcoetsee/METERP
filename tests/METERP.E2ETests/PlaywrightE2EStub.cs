@@ -326,6 +326,36 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reports_Page_Shows_Job_Profitability_From_Variance()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 20000);
+        await page.WaitForTestIdAsync("reports-profitability-card", 10000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Job Profitability", content);
+        Assert.DoesNotContain("Mine Install (+22%)", content);
+
+        var bar = page.Locator("[data-testid='reports-profitability-bar']");
+        if (await bar.CountAsync() > 0)
+        {
+            var barText = (await bar.TextContentAsync()) ?? string.Empty;
+            Assert.Matches(@"-?\d+(\.\d+)?%", barText.Trim());
+        }
+
+        var top = page.Locator("[data-testid='reports-profitability-top']");
+        if (await top.CountAsync() > 0)
+        {
+            var topText = (await top.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Top performer:", topText);
+            Assert.Contains("%", topText);
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Payroll_Page_Shows_JobLabor_Summaries()
     {
         var page = await _browser.LoginAsync();
