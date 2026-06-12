@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Payroll page wired to real JobLabor summaries (2026-06-12 latest).**
+**Reports technician utilization from JobLabor (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 16)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 17)
+- **Phase 4 — Technician utilization reporting**:
+  - `IWorkforceReportService` / `WorkforceReportService`: monthly hours vs 160h capacity per active employee.
+  - `Reports.razor`: real utilization card (`reports-utilization-card`), team average bar, per-tech rows from JobLabor.
+  - `WorkforceReportServiceTests` (2); E2E `Reports_Page_Shows_Technician_Utilization` (17th Playwright test).
+- **Testing**: **201/201 green** (177 unit + 7 web + 17 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 16)
 - **Phase 4 — Payroll from JobLabor**:
   - `IPayrollService` / `PayrollService`: monthly summaries per employee (hours, gross, entry count from linked `JobLabor`).
   - `Payroll.razor` refactored off hardcoded stubs — real data, `data-testid` markers, payslip card from summaries.

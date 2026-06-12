@@ -11,11 +11,11 @@
 @inject IPurchaseOrderService PurchaseOrderService
 @inject ISalesOrderService SalesOrderService
 @inject IEmployeeService EmployeeService
+@inject IWorkforceReportService WorkforceReportService
 @inject IFinanceService FinanceService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
 @inject IJSRuntime JS
-@inject ToastService Toast
 @inject ToastService Toast
 
 <PageTitle>Reports & Insights</PageTitle>
@@ -30,6 +30,7 @@
 }
 else
 {
+    <div data-testid="reports-ready">
     <div class="row g-3">
         <div class="col-md-4">
             <div class="card">
@@ -167,13 +168,32 @@ else
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card">
+            <div class="card" data-testid="reports-utilization-card">
                 <div class="card-body">
                     <h6>Technician Utilization</h6>
-                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="72" aria-valuemin="0" aria-valuemax="100">
-                        <div class="progress-bar bg-info" style="width: 72%">72%</div>
+                    @{
+                        var avgUtil = _technicianUtilization.Count > 0
+                            ? Math.Round(_technicianUtilization.Average(t => t.UtilizationPercent), 1)
+                            : 0m;
+                        var barWidth = Math.Min(100, (int)Math.Round(avgUtil));
+                    }
+                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="@barWidth" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar bg-info" style="width: @(barWidth)%">@avgUtil%</div>
                     </div>
-                    <small>AI predictive: Schedule more for next week to hit 85%.</small>
+                    <small>Team average (@_technicianUtilization.Count active techs, 160h capacity/month).</small>
+                    @if (_technicianUtilization.Any(t => t.HoursLogged > 0))
+                    {
+                        <ul class="small mb-0 mt-2 ps-3">
+                            @foreach (var tech in _technicianUtilization.Where(t => t.HoursLogged > 0).Take(3))
+                            {
+                                <li data-testid="reports-utilization-row">@tech.Name: @tech.HoursLogged.ToString("N1")h (@tech.UtilizationPercent%)</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <small class="text-muted d-block mt-1">No linked JobLabor this month yet.</small>
+                    }
                 </div>
             </div>
         </div>
@@ -195,6 +215,7 @@ else
     <button class="btn btn-sm btn-outline-primary" @onclick="ExportAccounting">Export Accounting CSV (GL codes, for Xero/Sage integration)</button>
 </div>
 </div>
+    </div>
 }
 
 @code {
@@ -216,6 +237,7 @@ else
     private int _confirmedSOs;
     private int _totalEmployees;
     private decimal _sampleGLBalance; // demo from finance service
+    private List<TechnicianUtilizationSummary> _technicianUtilization = new();
 
     // AI
     private bool _aiThinking;
@@ -265,6 +287,8 @@ else
 
             var employees = await EmployeeService.GetAllAsync(null, 1, 1000);
             _totalEmployees = employees.Count;
+
+            _technicianUtilization = (await WorkforceReportService.GetTechnicianUtilizationAsync()).ToList();
 
             var accounts = await FinanceService.GetAccountsAsync();
             if (accounts.Any())

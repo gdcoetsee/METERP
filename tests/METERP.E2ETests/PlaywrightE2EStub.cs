@@ -301,6 +301,31 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reports_Page_Shows_Technician_Utilization()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 20000);
+        await page.WaitForTestIdAsync("reports-utilization-card", 10000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Technician Utilization", content);
+        Assert.Contains("Team average", content);
+
+        var utilizationRows = page.Locator("[data-testid='reports-utilization-row']");
+        if (await utilizationRows.CountAsync() > 0)
+        {
+            var rowText = (await utilizationRows.First.TextContentAsync()) ?? string.Empty;
+            Assert.True(
+                rowText.Contains("Thabo", StringComparison.OrdinalIgnoreCase)
+                || rowText.Contains("Johan", StringComparison.OrdinalIgnoreCase)
+                || rowText.Contains("h", StringComparison.OrdinalIgnoreCase));
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Payroll_Page_Shows_JobLabor_Summaries()
     {
         var page = await _browser.LoginAsync();
