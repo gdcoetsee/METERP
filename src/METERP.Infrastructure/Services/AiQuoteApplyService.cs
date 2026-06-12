@@ -1,3 +1,4 @@
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 
@@ -13,11 +14,19 @@ public class AiQuoteApplyService : IAiQuoteApplyService
 
     private readonly IQuoteService _quoteService;
     private readonly IAiAssistantService _aiAssistantService;
+    private readonly ITenantProvider? _tenantProvider;
+    private readonly ITenantService? _tenantService;
 
-    public AiQuoteApplyService(IQuoteService quoteService, IAiAssistantService aiAssistantService)
+    public AiQuoteApplyService(
+        IQuoteService quoteService,
+        IAiAssistantService aiAssistantService,
+        ITenantProvider? tenantProvider = null,
+        ITenantService? tenantService = null)
     {
         _quoteService = quoteService;
         _aiAssistantService = aiAssistantService;
+        _tenantProvider = tenantProvider;
+        _tenantService = tenantService;
     }
 
     public async Task<Quote> CreateQuoteFromAiTextAsync(
@@ -31,6 +40,8 @@ public class AiQuoteApplyService : IAiQuoteApplyService
 
         if (customerId == Guid.Empty)
             throw new ArgumentException("A customer is required.", nameof(customerId));
+
+        await AiCopilotAccessGuard.EnsureAiApplyAllowedAsync(_tenantProvider, _tenantService, ct);
 
         var newQuote = new Quote
         {

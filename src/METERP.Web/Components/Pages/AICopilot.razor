@@ -3,6 +3,8 @@
 @using METERP.Application.Interfaces
 @using METERP.Domain
 @using METERP.Common
+@inject ITenantProvider TenantProvider
+@inject IAiJobApplyService AiJobApplyService
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "Jobs.View")]
 @* Broad access for now; tighten per permissions in real use *@
@@ -24,6 +26,19 @@
 @if (_copilotReady)
 {
     <span data-testid="ai-copilot-ready" class="visually-hidden">ready</span>
+}
+
+@if (!_aiFeatureEnabled)
+{
+    <div class="alert alert-warning" data-testid="ai-feature-disabled-banner">
+        AI Copilot is not enabled for your tenant. Contact your administrator or upgrade your subscription tier.
+    </div>
+}
+else if (_aiQuotaExhausted)
+{
+    <div class="alert alert-danger" data-testid="ai-quota-exhausted-banner">
+        Monthly AI call quota reached (@_periodAiCalls / @_aiCallLimit). Apply and ask actions are disabled until the next billing period.
+    </div>
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -50,22 +65,22 @@
                 <strong>Quick Actions & Bid Optimizer</strong>
             </div>
             <div class="card-body">
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Analyze my 3 jobs with the highest variance. Focus on travel and labor costs.")' disabled="@_thinking" data-testid="ai-quick-prompt-variance">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Analyze my 3 jobs with the highest variance. Focus on travel and labor costs.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-variance">
                     Analyze worst variance jobs (travel & labor focus)
                 </button>
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("What are realistic ways to reduce travel costs on site jobs in mining areas? Give 4 practical tips with cost impact examples in R.")' disabled="@_thinking" data-testid="ai-quick-prompt-travel">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("What are realistic ways to reduce travel costs on site jobs in mining areas? Give 4 practical tips with cost impact examples in R.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-travel">
                     Travel cost reduction ideas for mining sites
                 </button>
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Suggest a complete quote line item structure (incl. travel) for installing a new 11kV/400V transformer at a remote site. Use realistic SA rates and quantities.")' disabled="@_thinking" data-testid="ai-quick-prompt-transformer">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Suggest a complete quote line item structure (incl. travel) for installing a new 11kV/400V transformer at a remote site. Use realistic SA rates and quantities.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-transformer">
                     Generate transformer install quote template
                 </button>
-                <button class="btn btn-outline-primary w-100" @onclick='() => RunQuickPrompt("Based on current data, which employee types or skills are over/under utilized? Any recommendations?")' disabled="@_thinking" data-testid="ai-quick-prompt-utilization">
+                <button class="btn btn-outline-primary w-100" @onclick='() => RunQuickPrompt("Based on current data, which employee types or skills are over/under utilized? Any recommendations?")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-utilization">
                     Workforce utilization insights
                 </button>
-                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("What-if: if we reduce travel costs by 20% on upcoming jobs, what is the estimated margin impact? Use realistic numbers from data.")' disabled="@_thinking">
+                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("What-if: if we reduce travel costs by 20% on upcoming jobs, what is the estimated margin impact? Use realistic numbers from data.")' disabled="@(AiCopilotBlocked || _thinking)">
                     What-if travel cost reduction impact
                 </button>
-                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.")' disabled="@_thinking" data-testid="ai-quick-prompt-lowstock">
+                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-lowstock">
                     🔮 Low-stock risk for scheduled jobs (travel impact)
                 </button>
 
@@ -220,6 +235,13 @@
     private string? lastResponse;
     private bool _thinking;
     private bool _copilotReady;
+    private bool _aiFeatureEnabled = true;
+    private bool _aiQuotaExhausted;
+    private int _periodAiCalls;
+    private string _aiCallLimit = "∞";
+
+    /// <summary>Feature flag + monthly AI quota (apply + ask still work without API key — service returns fallback text).</summary>
+    private bool AiCopilotBlocked => !_aiFeatureEnabled || _aiQuotaExhausted;
 
     // Real created entities for immediate professional PDF download after AI creation
     private Quote? lastCreatedQuote;
@@ -234,21 +256,6 @@
     private string bidScope = "";
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage) || CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
-
-    // Real feature flag enforcement (sellable tiers)
-    private bool AiEnabled
-    {
-        get
-        {
-            try
-            {
-                // Simple sync check; full async load happens in service too
-                // For demo we assume enabled unless tenant explicitly lacks it (service will block calls)
-                return true; // UI always shows; service enforces HasFeature("ai")
-            }
-            catch { return true; }
-        }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -265,6 +272,20 @@
             _lowStockCount = items.Count;
 
             availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
+
+            var tenantId = TenantProvider.GetCurrentTenantId();
+            if (tenantId != Guid.Empty)
+            {
+                var tenant = await TenantService.GetByIdAsync(tenantId);
+                if (tenant != null)
+                {
+                    _aiFeatureEnabled = tenant.HasFeature("ai");
+                    _periodAiCalls = tenant.PeriodAiCalls;
+                    var limit = TenantQuotaDefaults.GetEffectiveLimit(tenant, QuotaType.AiCall);
+                    _aiCallLimit = limit?.ToString() ?? "∞";
+                    _aiQuotaExhausted = limit.HasValue && tenant.PeriodAiCalls >= limit.Value;
+                }
+            }
         }
         catch { /* non-critical for copilot */ }
 
@@ -572,6 +593,10 @@
             ToastService.ShowSuccess("Draft Quote created with AI-suggested lines! See /quotes.");
             Navigation.NavigateTo("/quotes", forceLoad: true);
         }
+        catch (AiFeatureDisabledException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
         catch (Exception ex)
         {
             ToastService.ShowError("Failed to create Quote from AI: " + ex.Message);
@@ -585,19 +610,18 @@
 
         try
         {
-            var newJob = new Job
-            {
-                Title = "AI Generated Job",
-                Description = "Created from AI Copilot response",
-                Notes = "AI Generated: " + text,
-                Status = JobStatus.Scheduled,
-                QuotedTotal = 0
-            };
-            var createdId = await JobService.CreateAsync(newJob);
-            lastCreatedJob = await JobService.GetByIdAsync(createdId);
+            if (!availableCustomers.Any())
+                availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
+
+            var customerId = availableCustomers.FirstOrDefault()?.Id;
+            lastCreatedJob = await AiJobApplyService.CreateJobFromAiTextAsync(text, customerId);
             lastAiTextForPdf = text;
-            ToastService.ShowSuccess("Draft Job created from this AI response! See /jobs.");
+            ToastService.ShowSuccess("Draft Job created with explicit travel cost! See /jobs.");
             Navigation.NavigateTo("/jobs");
+        }
+        catch (AiFeatureDisabledException ex)
+        {
+            ToastService.ShowError(ex.Message);
         }
         catch (Exception ex)
         {

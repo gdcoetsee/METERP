@@ -87,6 +87,7 @@ builder.Services.AddHealthChecks()
 // === AI Assistant (optional - powers smart quoting & post-job learning) ===
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 builder.Services.AddScoped<IAiQuoteApplyService, AiQuoteApplyService>();
+builder.Services.AddScoped<IAiJobApplyService, AiJobApplyService>();
 
 // === HTTP rate limiting (complements in-service AI throttle) ===
 builder.Services.AddRateLimiter(options =>

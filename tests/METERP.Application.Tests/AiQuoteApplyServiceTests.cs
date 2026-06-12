@@ -1,3 +1,4 @@
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Services;
@@ -10,13 +11,24 @@ public class AiQuoteApplyServiceTests
 {
     private readonly Mock<IQuoteService> _quoteService = new();
     private readonly Mock<IAiAssistantService> _aiService = new();
+    private readonly Mock<ITenantProvider> _tenantProvider = new();
+    private readonly Mock<ITenantService> _tenantService = new();
 
     private AiQuoteApplyService CreateService() =>
-        new(_quoteService.Object, _aiService.Object);
+        new(_quoteService.Object, _aiService.Object, _tenantProvider.Object, _tenantService.Object);
+
+    private void SetupAiEnabledTenant(Guid tenantId)
+    {
+        _tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        _tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai,usage-tracking" });
+    }
 
     [Fact]
     public async Task CreateQuoteFromAiTextAsync_AddsSuggestedLines_WhenAiReturnsStructuredSuggestion()
     {
+        var tenantId = Guid.NewGuid();
+        SetupAiEnabledTenant(tenantId);
         var customerId = Guid.NewGuid();
         var quoteId = Guid.NewGuid();
         var createdQuote = new Quote { Id = quoteId, CustomerId = customerId, TaxRate = 0.15m };
@@ -47,6 +59,7 @@ public class AiQuoteApplyServiceTests
     [Fact]
     public async Task CreateQuoteFromAiTextAsync_AddsFallbackTravelLine_WhenSuggestionIsNull()
     {
+        SetupAiEnabledTenant(Guid.NewGuid());
         var customerId = Guid.NewGuid();
         var quoteId = Guid.NewGuid();
 
@@ -68,6 +81,7 @@ public class AiQuoteApplyServiceTests
     [Fact]
     public async Task CreateQuoteFromAiTextAsync_AddsFallbackTravelLine_WhenSuggestionThrows()
     {
+        SetupAiEnabledTenant(Guid.NewGuid());
         var customerId = Guid.NewGuid();
         var quoteId = Guid.NewGuid();
 
@@ -82,6 +96,18 @@ public class AiQuoteApplyServiceTests
 
         _quoteService.Verify(s => s.AddLineAsync(It.Is<QuoteLine>(l =>
             l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateQuoteFromAiTextAsync_Throws_When_AiFeatureDisabled()
+    {
+        var tenantId = Guid.NewGuid();
+        _tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        _tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "usage-tracking" });
+
+        await Assert.ThrowsAsync<AiFeatureDisabledException>(() =>
+            CreateService().CreateQuoteFromAiTextAsync("travel scope", Guid.NewGuid()));
     }
 
     [Fact]
