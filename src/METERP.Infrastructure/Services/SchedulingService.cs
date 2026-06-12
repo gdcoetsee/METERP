@@ -36,18 +36,15 @@ public class SchedulingService : ISchedulingService
 
         job.AssetId = assetId;
 
-        // Employee assignment stub: note on job until dedicated assignment entity exists.
         if (employeeId.HasValue && employeeId.Value != Guid.Empty)
         {
             var employees = await _employeeService.GetAllAsync(null, 1, 1000, ct);
             var employee = employees.FirstOrDefault(e => e.Id == employeeId.Value);
-            if (employee != null)
-            {
-                var tag = $"[Assigned: {employee.FirstName} {employee.LastName}]";
-                job.Notes = string.IsNullOrWhiteSpace(job.Notes)
-                    ? tag
-                    : job.Notes.Contains(tag, StringComparison.Ordinal) ? job.Notes : $"{job.Notes.Trim()} {tag}";
-            }
+            job.AssignedEmployeeId = employee?.Id;
+        }
+        else
+        {
+            job.AssignedEmployeeId = null;
         }
 
         await _jobService.UpdateAsync(job, ct);

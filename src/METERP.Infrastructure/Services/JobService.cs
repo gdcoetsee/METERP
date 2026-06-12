@@ -36,6 +36,7 @@ public class JobService : IJobService
             .Include(j => j.Labors)
             .Include(j => j.Customer)
             .Include(j => j.Asset)
+            .Include(j => j.AssignedEmployee)
             .Include(j => j.Quote)
                 .ThenInclude(q => q != null ? q.Lines : null)
             .Include(j => j.SalesOrder)
@@ -61,6 +62,8 @@ public class JobService : IJobService
         var query = _dbContext.Set<Job>()
             .AsNoTracking()
             .Include(j => j.Customer)
+            .Include(j => j.Asset)
+            .Include(j => j.AssignedEmployee)
             .Include(j => j.Quote)
             .Include(j => j.ActualCosts)
             .AsQueryable();

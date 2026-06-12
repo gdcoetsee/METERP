@@ -48,9 +48,12 @@ else
                         <td>@job.Title<br /><small>@(job.Customer?.Name)</small></td>
                         <td>@(job.ScheduledStart?.ToString("yyyy-MM-dd") ?? "TBD")</td>
                         <td>@((MarkupString)GetStatusBadge(job.Status))</td>
-                        <td>
-                            @if (job.Asset != null) { <span class="badge bg-info">@job.Asset.Name</span><br /> }
-                            <!-- Employee assignment stub -->
+                        <td data-testid="scheduling-assigned-cell">
+                            @if (job.Asset != null) { <span class="badge bg-info" data-testid="scheduling-assigned-asset">@job.Asset.Name</span><br /> }
+                            @if (job.AssignedEmployee != null)
+                            {
+                                <span class="badge bg-success" data-testid="scheduling-assigned-employee">@job.AssignedEmployee.FirstName @job.AssignedEmployee.LastName</span>
+                            }
                         </td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary" data-testid="scheduling-view-assign" @onclick="() => ViewJob(job)">View/Assign</button>
@@ -124,6 +127,7 @@ else
     {
         selectedJob = job;
         assignAssetId = job.AssetId;
+        assignEmployeeId = job.AssignedEmployeeId;
     }
 
     private async Task AssignResources()

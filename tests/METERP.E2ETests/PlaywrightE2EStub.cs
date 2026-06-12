@@ -292,7 +292,24 @@ public class E2EFlowTests : IAsyncLifetime
             await page.WaitForTestIdAsync("scheduling-assign-panel", 10000);
             await page.WaitForTestIdAsync("scheduling-asset-select", 5000);
             await page.WaitForTestIdAsync("scheduling-employee-select", 5000);
-            await page.ClickByTestIdAsync("scheduling-close-assign");
+
+            var employeeSelect = page.Locator("[data-testid='scheduling-employee-select']");
+            var optionCount = await employeeSelect.Locator("option").CountAsync();
+            if (optionCount > 1)
+            {
+                var firstEmployeeValue = await employeeSelect.Locator("option").Nth(1).GetAttributeAsync("value");
+                Assert.False(string.IsNullOrWhiteSpace(firstEmployeeValue));
+                await employeeSelect.SelectOptionAsync(new[] { firstEmployeeValue! });
+                await page.ClickByTestIdAsync("scheduling-save-assignments");
+                await page.Locator(".toast-body").First.WaitForAsync(new() { Timeout = 15000 });
+                var toast = (await page.Locator(".toast-body").First.TextContentAsync()) ?? string.Empty;
+                Assert.Contains("Assignment saved", toast, StringComparison.OrdinalIgnoreCase);
+                await page.WaitForTestIdAsync("scheduling-assigned-employee", 10000);
+            }
+            else
+            {
+                await page.ClickByTestIdAsync("scheduling-close-assign");
+            }
         }
         catch (TimeoutException)
         {

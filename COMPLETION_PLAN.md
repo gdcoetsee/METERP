@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Finance E2E clipboard + GL journal backfill (2026-06-12 latest).**
+**Job employee assignment entity + scheduling E2E save (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 9)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 10)
+- **Phase 4 — Scheduling employee assignment (real field)**:
+  - `Job.AssignedEmployeeId` + `AssignedEmployee` navigation (replaces notes-tag stub).
+  - EF migration `AddJobAssignedEmployee`.
+  - `SchedulingService.AssignJobResourcesAsync` sets/clears `AssignedEmployeeId`; `JobService` includes employee on list/detail.
+  - `Scheduling.razor`: employee badge (`scheduling-assigned-employee`), pre-select on View/Assign.
+  - `SchedulingServiceTests` (+1): assign + clear employee; E2E scheduling test saves assignment + asserts toast + badge.
+- **Dev UX**: `scripts/stop-local-e2e.ps1` — frees port 8080 / stops `METERP.Web` (pair with `run-local-e2e.ps1`).
+- **Testing**: **184/184 green** (165 unit + 5 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 9)
 - **Phase 2 E2E — Finance export hardened**:
   - `Finance_Page_Loads_Chart_Of_Accounts_And_Export` asserts success toast + captured CSV (`EntryDate` header, account `4000`).
   - `meterp-clipboard.js` + `meterpClipboard.write` JS interop (testable in headless Playwright).

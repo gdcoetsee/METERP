@@ -55,7 +55,7 @@ public class SchedulingServiceTests
     }
 
     [Fact]
-    public async Task AssignJobResourcesAsync_SetsAssetAndNotesEmployee()
+    public async Task AssignJobResourcesAsync_SetsAssetAndAssignedEmployee()
     {
         var (db, service, jobService, assetService, employeeService, tenantId) = CreateHarness();
         using (db)
@@ -73,8 +73,31 @@ public class SchedulingServiceTests
             var updated = await jobService.GetByIdAsync(jobId);
             Assert.NotNull(updated);
             Assert.Equal(assetId, updated!.AssetId);
-            Assert.Contains("Johan", updated.Notes);
-            Assert.Contains("Assigned", updated.Notes);
+            Assert.Equal(employeeId, updated.AssignedEmployeeId);
+            Assert.NotNull(updated.AssignedEmployee);
+            Assert.Equal("Johan", updated.AssignedEmployee!.FirstName);
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_ClearsEmployeeWhenNull()
+    {
+        var (db, service, jobService, assetService, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "Clear test", QuotedTotal = 500m });
+            var employeeId = await employeeService.CreateAsync(new Employee { FirstName = "Sam", LastName = "Lee", IsActive = true });
+
+            await service.AssignJobResourcesAsync(jobId, null, employeeId);
+            await service.AssignJobResourcesAsync(jobId, null, null);
+
+            var updated = await jobService.GetByIdAsync(jobId);
+            Assert.NotNull(updated);
+            Assert.Null(updated!.AssignedEmployeeId);
         }
     }
 }

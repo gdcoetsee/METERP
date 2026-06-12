@@ -18,6 +18,12 @@ public class Job : BaseEntity
     public Guid? AssetId { get; set; }
     public Asset? Asset { get; set; }
 
+    /// <summary>
+    /// Primary crew lead / technician assigned to execute the job (scheduling).
+    /// </summary>
+    public Guid? AssignedEmployeeId { get; set; }
+    public Employee? AssignedEmployee { get; set; }
+
     public string JobNumber { get; set; } = string.Empty;
 
     public string Title { get; set; } = string.Empty;
