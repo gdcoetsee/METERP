@@ -212,4 +212,68 @@ public class QuoteTests
         reloaded.RecalculateTotals();
         Assert.Equal(0m, reloaded.Subtotal); // excluded due to soft delete
     }
+
+    [Fact]
+    public async Task QuoteService_UpdateLineAsync_RecalculatesParentTotals()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var line = new QuoteLine { Quantity = 2, UnitPrice = 100, IsDeleted = false };
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0m,
+            Lines = new List<QuoteLine> { line }
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+        line.Quantity = 5;
+        await service.UpdateLineAsync(line);
+
+        var reloaded = await db.Set<Quote>()
+            .Include(q => q.Lines)
+            .FirstAsync(q => q.Id == quote.Id);
+
+        Assert.Equal(500m, reloaded.Subtotal);
+    }
+
+    [Fact]
+    public async Task QuoteService_DeleteAsync_SoftDeletesQuoteAndLines()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Del Co" };
+        db.Set<Customer>().Add(customer);
+
+        var line = new QuoteLine { Quantity = 1, UnitPrice = 500, IsDeleted = false };
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0m,
+            Lines = new List<QuoteLine> { line }
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+        await service.DeleteAsync(quote.Id);
+
+        Assert.Null(await service.GetByIdAsync(quote.Id));
+
+        var quoteRow = await db.Set<Quote>().IgnoreQueryFilters().FirstAsync(q => q.Id == quote.Id);
+        Assert.True(quoteRow.IsDeleted);
+
+        var lines = await db.Set<QuoteLine>()
+            .IgnoreQueryFilters()
+            .Where(l => l.QuoteId == quote.Id)
+            .ToListAsync();
+        Assert.Single(lines);
+        Assert.True(lines[0].IsDeleted);
+    }
 }

@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Job service delete/status/margin unit tests (2026-06-12 latest).**
+**Spine line ops + job invoiced status + CRM stage guard (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 27)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 28)
+- **Phase 1 — Core spine service tests (continued)**:
+  - `QuoteTests` (+2): `UpdateLineAsync` recalc, `DeleteAsync` soft-deletes quote + lines.
+  - `InvoiceTests` (+2): `UpdateLineAsync` recalc, `DeleteLineAsync` soft-delete + recalc.
+  - `JobTests` (+1): `UpdateStatusAsync` sets `CompletedDate` when `Invoiced`.
+  - `OpportunityServiceTests` (+1): `AdvanceStageAsync` does not advance from `ClosedLost`.
+- **Testing**: **235/235 green** (204 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 27)
 - **Phase 1 — JobService spine hardening (continued)**:
   - `JobTests` (+4): `DeleteCostAsync` recalc + soft-delete, `DeleteAsync` cascades costs, `UpdateStatusAsync` sets `CompletedDate`, `GetMarginPercent` zero-quoted edge.
   - Shared `SeedJobAsync` helper for service tests with proper Customer + `CreateAsync` path.

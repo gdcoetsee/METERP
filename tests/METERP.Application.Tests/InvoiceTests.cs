@@ -144,4 +144,65 @@ public class InvoiceTests
         reloaded.RecalculateTotals();
         Assert.Equal(2000m, reloaded.Subtotal);
     }
+
+    [Fact]
+    public async Task InvoiceService_UpdateLineAsync_RecalculatesTotals()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var line = new InvoiceLine { Quantity = 1, UnitPrice = 1000, IsDeleted = false };
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0m,
+            Lines = new List<InvoiceLine> { line }
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        line.Quantity = 3;
+        await service.UpdateLineAsync(line);
+
+        var reloaded = await db.Set<Invoice>()
+            .Include(i => i.Lines)
+            .FirstAsync(i => i.Id == invoice.Id);
+
+        Assert.Equal(3000m, reloaded.Subtotal);
+    }
+
+    [Fact]
+    public async Task InvoiceService_DeleteLineAsync_SoftDeletesAndRecalculates()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var keepLine = new InvoiceLine { Quantity = 2, UnitPrice = 500, IsDeleted = false };
+        var removeLine = new InvoiceLine { Quantity = 1, UnitPrice = 999, IsDeleted = false };
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0m,
+            Lines = new List<InvoiceLine> { keepLine, removeLine }
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        await service.DeleteLineAsync(removeLine.Id);
+
+        var reloaded = await db.Set<Invoice>()
+            .Include(i => i.Lines)
+            .FirstAsync(i => i.Id == invoice.Id);
+
+        Assert.Equal(1000m, reloaded.Subtotal);
+
+        var deletedLine = await db.Set<InvoiceLine>()
+            .IgnoreQueryFilters()
+            .FirstAsync(l => l.Id == removeLine.Id);
+        Assert.True(deletedLine.IsDeleted);
+    }
 }

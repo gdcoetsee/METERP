@@ -84,6 +84,26 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task AdvanceStageAsync_DoesNotAdvanceFromClosedLost()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Lost deal",
+            CustomerName = "Test",
+            Value = 500m,
+            Stage = OpportunityStage.ClosedLost
+        });
+
+        await service.AdvanceStageAsync(id);
+
+        var loaded = await service.GetByIdAsync(id);
+        Assert.Equal(OpportunityStage.ClosedLost, loaded!.Stage);
+    }
+
+    [Fact]
     public void BuildAiScopeText_IncludesTravelHint()
     {
         var service = new OpportunityService(CreateContext(Guid.NewGuid()));

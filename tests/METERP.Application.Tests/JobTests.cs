@@ -356,6 +356,22 @@ public class JobTests
         Assert.NotNull(job.CompletedDate);
     }
 
+    [Fact]
+    public async Task JobService_UpdateStatusAsync_SetsCompletedDate_WhenInvoiced()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        await service.UpdateStatusAsync(jobId, JobStatus.Invoiced);
+
+        var job = await service.GetByIdAsync(jobId);
+        Assert.NotNull(job);
+        Assert.Equal(JobStatus.Invoiced, job!.Status);
+        Assert.NotNull(job.CompletedDate);
+    }
+
     private static async Task<Guid> SeedJobAsync(AppDbContext db, JobService service, Guid tenantId)
     {
         var customerId = Guid.NewGuid();
