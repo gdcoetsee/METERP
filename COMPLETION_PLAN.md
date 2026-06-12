@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Startup billing webhook retention purge (2026-06-12 latest).**
+**Job crew assignment unit tests + billing env docs (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 25)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 26)
+- **Phase 1/4 — `JobService.SetCrewAssignmentsAsync` direct unit tests**:
+  - `JobTests` (+4): distinct crew add (dedupe + skip `Guid.Empty`), soft-delete sync on removal, re-activate previously deleted crew, job-not-found guard.
+  - Complements indirect coverage via `SchedulingServiceTests`; validates `IgnoreQueryFilters` re-activation path.
+- **Phase 5 — Dev config**: `.env.example` documents `Billing__WebhookEventRetentionDays`.
+- **Testing**: **225/225 green** (194 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 25)
 - **Phase 5 — Webhook idempotency retention on startup**:
   - `BillingOptions.WebhookEventRetentionDays` (default 90; 0 = disabled).
   - `DatabaseSeeder` calls `IBillingWebhookMaintenanceService` after migrate/seed (idempotent purge).

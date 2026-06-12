@@ -262,4 +262,103 @@ public class JobTests
         Assert.Equal(2400m, actual); // 1200 travel + 1200 labor
         Assert.Equal(-7600m, variance); // under
     }
+
+    private static async Task<(Guid JobId, Guid Emp1, Guid Emp2)> SeedJobWithTwoEmployeesAsync(
+        AppDbContext db, JobService service, Guid tenantId)
+    {
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Crew Co" });
+        await db.SaveChangesAsync();
+
+        var emp1 = Guid.NewGuid();
+        var emp2 = Guid.NewGuid();
+        db.Set<Employee>().AddRange(
+            new Employee { Id = emp1, TenantId = tenantId, FirstName = "A", LastName = "One", IsActive = true },
+            new Employee { Id = emp2, TenantId = tenantId, FirstName = "B", LastName = "Two", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var jobId = await service.CreateAsync(new Job
+        {
+            CustomerId = customerId,
+            Title = "Crew sync",
+            QuotedTotal = 1000m
+        });
+
+        return (jobId, emp1, emp2);
+    }
+
+    [Fact]
+    public async Task JobService_SetCrewAssignmentsAsync_AddsDistinctCrewMembers()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var (jobId, emp1, emp2) = await SeedJobWithTwoEmployeesAsync(db, service, tenantId);
+
+        await service.SetCrewAssignmentsAsync(jobId, new[] { emp1, emp2, emp1, Guid.Empty });
+
+        var reloaded = await service.GetByIdAsync(jobId);
+        Assert.NotNull(reloaded);
+        var crewIds = reloaded!.GetCrewEmployees().Select(e => e.Id).ToList();
+        Assert.Equal(2, crewIds.Count);
+        Assert.Contains(emp1, crewIds);
+        Assert.Contains(emp2, crewIds);
+    }
+
+    [Fact]
+    public async Task JobService_SetCrewAssignmentsAsync_SoftDeletesRemovedCrew()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var (jobId, emp1, emp2) = await SeedJobWithTwoEmployeesAsync(db, service, tenantId);
+
+        await service.SetCrewAssignmentsAsync(jobId, new[] { emp1, emp2 });
+        await service.SetCrewAssignmentsAsync(jobId, new[] { emp1 });
+
+        var reloaded = await service.GetByIdAsync(jobId);
+        Assert.NotNull(reloaded);
+        Assert.Single(reloaded!.GetCrewEmployees());
+
+        var allRows = await db.Set<JobCrewAssignment>()
+            .IgnoreQueryFilters()
+            .Where(a => a.JobId == jobId)
+            .ToListAsync();
+        Assert.Equal(2, allRows.Count);
+        Assert.True(allRows.Single(a => a.EmployeeId == emp2).IsDeleted);
+        Assert.False(allRows.Single(a => a.EmployeeId == emp1).IsDeleted);
+    }
+
+    [Fact]
+    public async Task JobService_SetCrewAssignmentsAsync_ReactivatesSoftDeletedCrew()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var (jobId, emp1, _) = await SeedJobWithTwoEmployeesAsync(db, service, tenantId);
+
+        await service.SetCrewAssignmentsAsync(jobId, new[] { emp1 });
+        await service.SetCrewAssignmentsAsync(jobId, Array.Empty<Guid>());
+        await service.SetCrewAssignmentsAsync(jobId, new[] { emp1 });
+
+        var reloaded = await service.GetByIdAsync(jobId);
+        Assert.NotNull(reloaded);
+        Assert.Single(reloaded!.GetCrewEmployees());
+
+        var row = await db.Set<JobCrewAssignment>()
+            .IgnoreQueryFilters()
+            .SingleAsync(a => a.JobId == jobId && a.EmployeeId == emp1);
+        Assert.False(row.IsDeleted);
+    }
+
+    [Fact]
+    public async Task JobService_SetCrewAssignmentsAsync_ThrowsWhenJobNotFound()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SetCrewAssignmentsAsync(Guid.NewGuid(), new[] { Guid.NewGuid() }));
+    }
 }
