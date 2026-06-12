@@ -66,15 +66,45 @@ public class BillingWebhookService : IBillingWebhookService
             if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("object", out var obj))
                 return BillingWebhookResult.InvalidPayload("missing_data_object");
 
-            return eventType switch
+            var eventId = root.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(eventId))
+            {
+                var alreadyProcessed = await _dbContext.ProcessedStripeWebhookEvents
+                    .AsNoTracking()
+                    .AnyAsync(e => e.EventId == eventId, ct);
+
+                if (alreadyProcessed)
+                    return new BillingWebhookResult(BillingWebhookOutcome.Duplicate, eventId);
+            }
+
+            var result = eventType switch
             {
                 "customer.subscription.updated" => await HandleSubscriptionUpdatedAsync(obj, ct),
                 "customer.subscription.deleted" => await HandleSubscriptionDeletedAsync(obj, ct),
                 "checkout.session.completed" => await HandleCheckoutCompletedAsync(obj, ct),
                 _ => new BillingWebhookResult(BillingWebhookOutcome.Ignored, eventType)
             };
+
+            if (ShouldRecordIdempotency(result) && !string.IsNullOrWhiteSpace(eventId))
+            {
+                _dbContext.ProcessedStripeWebhookEvents.Add(new ProcessedStripeWebhookEvent
+                {
+                    EventId = eventId,
+                    EventType = eventType,
+                    ProcessedAtUtc = DateTime.UtcNow
+                });
+                await _dbContext.SaveChangesAsync(ct);
+            }
+
+            return result;
         }
     }
+
+    private static bool ShouldRecordIdempotency(BillingWebhookResult result) =>
+        result.Outcome is BillingWebhookOutcome.TierUpdated
+            or BillingWebhookOutcome.SubscriptionCanceled
+            or BillingWebhookOutcome.CustomerLinked
+            or BillingWebhookOutcome.Ignored;
 
     private async Task<BillingWebhookResult> HandleSubscriptionUpdatedAsync(JsonElement subscription, CancellationToken ct)
     {

@@ -73,6 +73,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     // CRM Opportunities + compliance audit trail
     public DbSet<Opportunity> Opportunities { get; set; } = null!;
     public DbSet<AuditLogEntry> AuditLogEntries { get; set; } = null!;
+    public DbSet<ProcessedStripeWebhookEvent> ProcessedStripeWebhookEvents { get; set; } = null!;
 
     public Guid CurrentTenantId => _tenantProvider.GetCurrentTenantId();
 
@@ -124,6 +125,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         modelBuilder.Entity<Tenant>(entity =>
         {
             entity.HasIndex(t => t.Subdomain).IsUnique();
+        });
+
+        modelBuilder.Entity<ProcessedStripeWebhookEvent>(entity =>
+        {
+            entity.HasKey(e => e.EventId);
+            entity.Property(e => e.EventId).HasMaxLength(128);
+            entity.Property(e => e.EventType).HasMaxLength(128);
         });
 
         // Configure Identity tables to include TenantId in keys where useful (optional but good for multi-tenant)

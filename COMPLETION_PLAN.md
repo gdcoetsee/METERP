@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Unified My Account hub — billing + security (2026-06-12 latest).**
+**Stripe webhook idempotency for billing tier updates (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 22)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 23)
+- **Phase 5 — Billing webhook idempotency**:
+  - `ProcessedStripeWebhookEvent` ledger + EF migration `AddProcessedStripeWebhookEvents`.
+  - `BillingWebhookService`: dedupe by Stripe `event.id`; `BillingWebhookOutcome.Duplicate`.
+  - `BillingWebhookServiceTests` (+1 duplicate); `BillingWebhookEndpointTests` (+2 duplicate + not rate limited).
+- **Testing**: **218/218 green** (187 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 22)
 - **Phase 5 — Unified Account hub**:
   - `Account.razor` at `/account`, `/account-billing`, `/account-security` — tabbed hub (`account-hub-ready`).
   - `AccountBillingPanel` + `AccountSecurityPanel` components (all prior `data-testid` markers preserved).

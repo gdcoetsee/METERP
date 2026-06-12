@@ -59,6 +59,7 @@ public class BillingWebhookServiceTests
         {
             var payload = """
                 {
+                  "id": "evt_upgrade_professional",
                   "type": "customer.subscription.updated",
                   "data": {
                     "object": {
@@ -102,6 +103,7 @@ public class BillingWebhookServiceTests
 
             var payload = """
                 {
+                  "id": "evt_subscription_deleted",
                   "type": "customer.subscription.deleted",
                   "data": {
                     "object": {
@@ -152,6 +154,7 @@ public class BillingWebhookServiceTests
 
             var payload = """
                 {
+                  "id": "evt_past_due",
                   "type": "customer.subscription.updated",
                   "data": {
                     "object": {
@@ -183,6 +186,7 @@ public class BillingWebhookServiceTests
         {
             var payload = """
                 {
+                  "id": "evt_checkout_completed",
                   "type": "checkout.session.completed",
                   "data": {
                     "object": {
@@ -199,6 +203,43 @@ public class BillingWebhookServiceTests
 
             var tenant = await db.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
             Assert.Equal("cus_beta_99", tenant.StripeCustomerId);
+        }
+    }
+
+    [Fact]
+    public async Task DuplicateEventId_ReturnsDuplicateWithoutReprocessing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId);
+        await using (db)
+        {
+            var payload = """
+                {
+                  "id": "evt_duplicate_guard",
+                  "type": "customer.subscription.updated",
+                  "data": {
+                    "object": {
+                      "customer": "cus_acme_dup",
+                      "status": "active",
+                      "metadata": {
+                        "tenant_subdomain": "acme",
+                        "tier": "professional"
+                      }
+                    }
+                  }
+                }
+                """;
+
+            var signature = StripeWebhookSignatureValidator.BuildSignatureHeader(WebhookSecret, payload);
+            var first = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
+            var second = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
+
+            Assert.Equal(BillingWebhookOutcome.TierUpdated, first.Outcome);
+            Assert.Equal(BillingWebhookOutcome.Duplicate, second.Outcome);
+
+            var tenant = await db.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+            Assert.Equal(SubscriptionTier.Professional, tenant.Tier);
+            Assert.Single(db.ProcessedStripeWebhookEvents.Where(e => e.EventId == "evt_duplicate_guard"));
         }
     }
 }

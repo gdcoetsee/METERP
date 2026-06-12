@@ -18,6 +18,7 @@ public enum BillingWebhookOutcome
     TierUpdated,
     SubscriptionCanceled,
     CustomerLinked,
+    Duplicate,
     InvalidSignature,
     InvalidPayload
 }
