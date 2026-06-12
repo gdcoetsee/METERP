@@ -3,6 +3,7 @@
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Domain
+@using METERP.Common
 @inject ICustomerService CustomerService
 @inject IQuoteService QuoteService
 @inject IJobService JobService
@@ -25,6 +26,26 @@
 <PageTitle>METERP</PageTitle>
 
 <h1 class="mb-4">METERP Dashboard @if (AiAssistantService.IsConfigured) { <span class="badge bg-primary align-middle" style="font-size:0.6rem;">AI Enabled</span> }</h1>
+
+@if (currentTenant != null)
+{
+    <div class="card mb-4 border-info" data-testid="home-quota-usage-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Monthly usage — <strong>@currentTenant.Name</strong> <span class="badge bg-dark">@currentTenant.Tier</span></span>
+            <a href="/tenants" class="btn btn-sm btn-outline-secondary">Manage tenants</a>
+        </div>
+        <div class="card-body d-flex flex-wrap gap-2">
+            @RenderQuotaBadge("Quotes", currentTenant.PeriodQuotesCreated, QuotaType.Quote)
+            @RenderQuotaBadge("Jobs", currentTenant.PeriodJobsCreated, QuotaType.Job)
+            @RenderQuotaBadge("Invoices", currentTenant.PeriodInvoicesIssued, QuotaType.Invoice)
+            @RenderQuotaBadge("AI calls", currentTenant.PeriodAiCalls, QuotaType.AiCall)
+        </div>
+        @if (!currentTenant.HasFeature("ai"))
+        {
+            <div class="card-footer small text-warning">AI Copilot is disabled for this tenant (feature flag). Upgrade tier or enable <code>ai</code> in tenant settings.</div>
+        }
+    </div>
+}
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
@@ -272,4 +293,23 @@
         Nav.NavigateTo("/ai-copilot");
         onboarded = true;
     }
+
+    private RenderFragment RenderQuotaBadge(string label, int used, QuotaType type) => builder =>
+    {
+        if (currentTenant == null) return;
+        var limit = TenantQuotaDefaults.GetEffectiveLimit(currentTenant, type);
+        var limitText = limit?.ToString() ?? "∞";
+        var css = "bg-secondary";
+        if (limit.HasValue)
+        {
+            if (used >= limit.Value) css = "bg-danger";
+            else if (used >= limit.Value * 0.8m) css = "bg-warning text-dark";
+            else css = "bg-success";
+        }
+
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", $"badge {css}");
+        builder.AddContent(2, $"{label}: {used} / {limitText}");
+        builder.CloseElement();
+    };
 }
