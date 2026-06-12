@@ -783,6 +783,39 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Inventory_Search_FiltersBySku()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/inventory");
+        await page.WaitForTestIdAsync("inventory-table", 30000);
+
+        var contentBefore = await page.ContentAsync();
+        Assert.Contains("DB-12W-001", contentBefore);
+
+        await page.FillByTestIdAsync("inventory-search", "OIL-TR");
+
+        var tableBody = page.Locator("[data-testid='inventory-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "OIL-TR-5L" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "DB-12W-001" })).ToHaveCountAsync(0);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Suppliers_Page_Loads_Demo_Vendor()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/suppliers");
+        await page.WaitForTestIdAsync("suppliers-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
         var page = await _browser.LoginAsync();

@@ -86,4 +86,24 @@ public class SupplierServiceTests
         var deleted = await db.Set<Supplier>().IgnoreQueryFilters().FirstAsync(s => s.Id == id);
         Assert.True(deleted.IsDeleted);
     }
+
+    [Fact]
+    public async Task UpdateAsync_PersistsContactAndEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+        var id = await service.CreateAsync(new Supplier { Name = "Cable Co", ContactPerson = "Sam" });
+
+        var supplier = await service.GetByIdAsync(id);
+        Assert.NotNull(supplier);
+        supplier!.ContactPerson = "Jane Doe";
+        supplier.Email = "jane@cable.test";
+
+        await service.UpdateAsync(supplier);
+
+        var reloaded = await service.GetByIdAsync(id);
+        Assert.Equal("Jane Doe", reloaded!.ContactPerson);
+        Assert.Equal("jane@cable.test", reloaded.Email);
+    }
 }

@@ -182,4 +182,32 @@ public class InventoryServiceTests
         Assert.Equal("Second", recent[0].Notes);
         Assert.Equal("First", recent[1].Notes);
     }
+
+    [Fact]
+    public async Task GetAllItemsAsync_FiltersBySearchTerm()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "CABLE-4MM",
+            Name = "SWA Cable 50m",
+            QuantityOnHand = 10,
+            ReorderLevel = 2,
+            Category = "Electrical"
+        });
+        await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "FUSE-32A",
+            Name = "DIN Fuse 32A",
+            QuantityOnHand = 50,
+            ReorderLevel = 10,
+            Category = "Electrical"
+        });
+
+        var results = await service.GetAllItemsAsync(search: "cable");
+
+        Assert.Single(results);
+        Assert.Equal("CABLE-4MM", results[0].Sku);
+    }
 }

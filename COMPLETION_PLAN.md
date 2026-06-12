@@ -2,9 +2,27 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**PO line ops + low-stock demo + inventory filter E2E (2026-06-12 latest).**
+**Inventory search E2E + PO receive edge cases + suppliers E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 34)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 36)
+- **Phase 4 — PO receive edge cases**:
+  - `PurchaseOrderServiceTests` (+3): `ReceiveAsync_WhenPoNotFound_DoesNotThrow`, `ReceiveAsync_WithoutInventoryLinks_StillMarksReceived`, `ReceiveAsync_OnlyReceiptsLinkedInventoryLines`.
+- **Phase 2 E2E**:
+  - `Suppliers_Page_Loads_Demo_Vendor` (29th) — demo `ElectroSupply SA` in suppliers table.
+  - `Suppliers.razor`: `suppliers-ready`, `suppliers-table`, `suppliers-search` test ids.
+- **Testing**: **267/267 green** (227 unit + 11 web + 29 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 35)
+- **Phase 4 — Inventory + PO + suppliers**:
+  - `InventoryServiceTests` (+1): `GetAllItemsAsync_FiltersBySearchTerm`.
+  - `PurchaseOrderServiceTests` (+1): `UpdateStatusAsync_SetsPurchaseOrderStatus`.
+  - `SupplierServiceTests` (+1): `UpdateAsync_PersistsContactAndEmail`.
+  - `Inventory.razor`: `inventory-search` test id; search uses `value` + `@oninput` (matches other list pages); `_itemsLoadGeneration` prevents stale async search results.
+- **Phase 2 E2E**:
+  - `Inventory_Search_FiltersBySku` (28th) — table row count + SKU filter assertions (not whole-page HTML).
+- **Testing**: **263/263 green** (224 unit + 11 web + 28 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 34)
 - **Phase 4 — Inventory + PO line operations**:
   - `InventoryServiceTests` (+1): `GetRecentTransactionsAsync` newest-first across items.
   - `PurchaseOrderServiceTests` (+2): `UpdateLineAsync` recalc, `DeleteLineAsync` soft-delete + recalc.

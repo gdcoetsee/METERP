@@ -14,6 +14,11 @@
 
 <PageTitle>Suppliers</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="suppliers-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Suppliers</h1>
     @if (UserCanManage)
@@ -24,7 +29,7 @@
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search name, contact or email..."
+        <input type="search" class="form-control" data-testid="suppliers-search" placeholder="Search name, contact or email..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -43,7 +48,7 @@ else if (suppliers == null || !suppliers.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="suppliers-table">
         <table class="table table-hover">
             <thead>
                 <tr>

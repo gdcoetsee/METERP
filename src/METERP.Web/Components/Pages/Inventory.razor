@@ -30,7 +30,7 @@
 
 <div class="mb-3 d-flex gap-2" style="max-width: 520px;">
     <div class="input-group flex-grow-1">
-        <input type="search" class="form-control" placeholder="Search name, SKU or category..."
+        <input type="search" class="form-control" data-testid="inventory-search" placeholder="Search name, SKU or category..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -274,6 +274,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _itemsLoadGeneration;
 
     private bool showAdjustForm;
     private InventoryItem? adjustItem;
@@ -298,8 +299,12 @@ else
 
     private async Task LoadItems()
     {
+        var generation = ++_itemsLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        items = (await InventoryService.GetAllItemsAsync(term, lowStockOnly, currentPage, PageSize)).ToList();
+        var loaded = (await InventoryService.GetAllItemsAsync(term, lowStockOnly, currentPage, PageSize)).ToList();
+        if (generation != _itemsLoadGeneration)
+            return;
+        items = loaded;
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)

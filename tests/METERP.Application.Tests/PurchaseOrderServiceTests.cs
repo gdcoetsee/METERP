@@ -212,4 +212,106 @@ public class PurchaseOrderServiceTests
             Assert.True(deletedLine.IsDeleted);
         }
     }
+
+    [Fact]
+    public async Task UpdateStatusAsync_SetsPurchaseOrderStatus()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder { SupplierId = supplierId, TaxRate = 0m });
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            var loaded = await service.GetByIdAsync(poId);
+            Assert.Equal(PurchaseOrderStatus.Sent, loaded!.Status);
+        }
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_WhenPoNotFound_DoesNotThrow()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            await service.ReceiveAsync(Guid.NewGuid());
+        }
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_WithoutInventoryLinks_StillMarksReceived()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new PurchaseOrderLine { Description = "Consumables", Quantity = 3, UnitPrice = 25m }
+                }
+            });
+
+            await service.ReceiveAsync(poId);
+
+            var loaded = await service.GetByIdAsync(poId);
+            Assert.Equal(PurchaseOrderStatus.Received, loaded!.Status);
+            Assert.Empty(await inventory.GetRecentTransactionsAsync(10));
+        }
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_OnlyReceiptsLinkedInventoryLines()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var linkedItemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "LINK-01",
+                Name = "Linked part",
+                QuantityOnHand = 4,
+                ReorderLevel = 1,
+                UnitCost = 10m
+            });
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new PurchaseOrderLine
+                    {
+                        Description = "Linked part",
+                        Quantity = 6,
+                        UnitPrice = 10m,
+                        InventoryItemId = linkedItemId
+                    },
+                    new PurchaseOrderLine { Description = "Office supplies", Quantity = 2, UnitPrice = 50m }
+                }
+            });
+
+            await service.ReceiveAsync(poId);
+
+            var item = await inventory.GetItemByIdAsync(linkedItemId);
+            Assert.Equal(10, item!.QuantityOnHand);
+
+            var txs = await inventory.GetRecentTransactionsAsync(5);
+            Assert.Single(txs);
+            Assert.Equal(6, txs[0].Quantity);
+        }
+    }
 }
