@@ -675,6 +675,44 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Audit_Shows_Convert_After_Quote_To_Job()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        var convertible = page.Locator("[data-testid='quote-row-with-travel-convertible']").First;
+        if (await convertible.CountAsync() == 0)
+            convertible = page.Locator("[data-testid='quote-row-convertible']").First;
+        if (await convertible.CountAsync() == 0)
+            convertible = page.Locator("[data-testid='quotes-table'] tbody tr").First;
+
+        await convertible.Locator("[data-testid='quote-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("convert-to-job", 15000);
+        await page.ClickByTestIdAsync("convert-to-job");
+
+        try
+        {
+            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 12000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/jobs");
+        }
+
+        await page.WaitForTestIdAsync("jobs-table", 30000);
+
+        await page.GotoRelativeAsync("/audit");
+        await page.WaitForTestIdAsync("audit-table", 15000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("CONVERT", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Quote", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
         var page = await _browser.LoginAsync();

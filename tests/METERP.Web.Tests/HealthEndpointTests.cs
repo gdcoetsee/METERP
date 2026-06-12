@@ -35,4 +35,14 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         Assert.Contains("database", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ai", body, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Health_Liveness_IsNotRateLimited_UnderBurst()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.GetAsync("/health");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
 }

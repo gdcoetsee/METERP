@@ -2,9 +2,18 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Invoice audit + opportunity stage E2E (2026-06-12 latest).**
+**Inventory tests + health burst + audit convert E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 31)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 32)
+- **Phase 4 — Inventory service tests**:
+  - `InventoryServiceTests` (+2): `UpdateItemAsync` persists qty/reorder; `GetAllItemsAsync` excludes inactive items.
+- **Phase 5 — Health rate-limit coverage**:
+  - `HealthEndpointTests` (+1): `/health` liveness not rate-limited under burst (35 requests).
+- **Phase 2 E2E — Audit after spine conversion**:
+  - `Audit_Shows_Convert_After_Quote_To_Job` (24th Playwright test) — quote→job then audit page shows `CONVERT` + `Quote`.
+- **Testing**: **251/251 green** (217 unit + 10 web + 24 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 31)
 - **Phase 1/5 — Invoice audit on job conversion**:
   - `InvoiceService.CreateFromJobAsync` logs `CREATE` audit entry (job number + total) via optional `IAuditService`.
   - `InvoiceTests` (+1): audit entry on `CreateFromJobAsync`.

@@ -78,4 +78,64 @@ public class InventoryServiceTests
         Assert.Single(lowOnly);
         Assert.Equal("LOW", lowOnly[0].Sku);
     }
+
+    [Fact]
+    public async Task UpdateItemAsync_PersistsQuantityAndReorderLevel()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "UPD-001",
+            Name = "Cable drum",
+            QuantityOnHand = 12,
+            ReorderLevel = 4,
+            UnitCost = 85m
+        });
+
+        var item = await service.GetItemByIdAsync(id);
+        Assert.NotNull(item);
+        item!.QuantityOnHand = 20;
+        item.ReorderLevel = 8;
+
+        await service.UpdateItemAsync(item);
+
+        var reloaded = await service.GetItemByIdAsync(id);
+        Assert.NotNull(reloaded);
+        Assert.Equal(20, reloaded!.QuantityOnHand);
+        Assert.Equal(8, reloaded.ReorderLevel);
+    }
+
+    [Fact]
+    public async Task GetAllItemsAsync_ExcludesInactiveItems()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var activeId = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "ACTIVE",
+            Name = "Active fuse",
+            QuantityOnHand = 15,
+            ReorderLevel = 3,
+            IsActive = true
+        });
+
+        var inactive = await service.GetItemByIdAsync(activeId);
+        Assert.NotNull(inactive);
+        inactive!.IsActive = false;
+        await service.UpdateItemAsync(inactive);
+
+        await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "VISIBLE",
+            Name = "Visible item",
+            QuantityOnHand = 10,
+            ReorderLevel = 2,
+            IsActive = true
+        });
+
+        var all = await service.GetAllItemsAsync();
+        Assert.Single(all);
+        Assert.Equal("VISIBLE", all[0].Sku);
+    }
 }
