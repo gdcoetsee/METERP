@@ -16,6 +16,7 @@ public class E2EFlowTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         _playwright = await Playwright.CreateAsync();
         _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
     }

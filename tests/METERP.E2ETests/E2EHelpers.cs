@@ -84,6 +84,32 @@ public static class E2EHelpers
         return fileName;
     }
 
+    /// <summary>
+    /// Polls /health/ready before E2E runs (docker-compose or local dotnet run).
+    /// </summary>
+    public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                var response = await client.GetAsync($"{url}/health/ready");
+                if (response.IsSuccessStatusCode)
+                    return;
+            }
+            catch
+            {
+                // App still starting
+            }
+
+            await Task.Delay(delayMs);
+        }
+
+        throw new InvalidOperationException($"App not ready at {url}/health/ready after {maxAttempts} attempts.");
+    }
+
     public static async Task WaitForAppReadyAsync(this IPage page, int timeoutMs = 15000)
     {
         try
