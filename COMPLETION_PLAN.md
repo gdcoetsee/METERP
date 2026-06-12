@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Spine line ops + job invoiced status + CRM stage guard (2026-06-12 latest).**
+**Full spine chain + ConvertToJob edge cases (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 28)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 29)
+- **Phase 1 — Quote → Job → Invoice spine (unit chain)**:
+  - `SpineChainTests` (+1): full chain preserves explicit travel `JobCost` + invoice travel line + matching totals.
+  - `QuoteTests` (+3): `ConvertToJobAsync` travel `JobCost`, quote-not-found guard, all-lines-soft-deleted still converts.
+  - `InvoiceTests` (+1): `DeleteAsync` soft-deletes invoice + lines.
+- **Testing**: **240/240 green** (209 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 28)
 - **Phase 1 — Core spine service tests (continued)**:
   - `QuoteTests` (+2): `UpdateLineAsync` recalc, `DeleteAsync` soft-deletes quote + lines.
   - `InvoiceTests` (+2): `UpdateLineAsync` recalc, `DeleteLineAsync` soft-delete + recalc.

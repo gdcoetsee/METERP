@@ -276,4 +276,77 @@ public class QuoteTests
         Assert.Single(lines);
         Assert.True(lines[0].IsDeleted);
     }
+
+    [Fact]
+    public async Task QuoteService_ConvertToJobAsync_CreatesExplicitTravelJobCost()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Travel Co" };
+        db.Set<Customer>().Add(customer);
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-TRAVEL-001",
+            TaxRate = 0m,
+            Lines = new List<QuoteLine>
+            {
+                new QuoteLine { Description = "Travel to site", Quantity = 1, UnitPrice = 1200m, LineType = "Travel", IsDeleted = false }
+            }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+        var job = await service.ConvertToJobAsync(quote.Id);
+
+        var travelCost = job.ActualCosts.Single(c => c.CostType == "Travel");
+        Assert.Equal(1200m, travelCost.Amount);
+        Assert.Contains("Travel", travelCost.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task QuoteService_ConvertToJobAsync_ThrowsWhenQuoteNotFound()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConvertToJobAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task QuoteService_ConvertToJobAsync_WithAllLinesSoftDeleted_StillCreatesJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Empty Co" };
+        db.Set<Customer>().Add(customer);
+
+        var deletedLine = new QuoteLine { Quantity = 5, UnitPrice = 500m, IsDeleted = true };
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-EMPTY-001",
+            TaxRate = 0.15m,
+            Lines = new List<QuoteLine> { deletedLine }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+        var job = await service.ConvertToJobAsync(quote.Id);
+
+        Assert.Equal(0m, job.QuotedTotal);
+        Assert.Empty(job.ActualCosts);
+        Assert.Equal(QuoteStatus.Accepted, (await db.Set<Quote>().FindAsync(quote.Id))!.Status);
+    }
 }

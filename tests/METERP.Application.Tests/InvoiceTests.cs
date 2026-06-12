@@ -205,4 +205,37 @@ public class InvoiceTests
             .FirstAsync(l => l.Id == removeLine.Id);
         Assert.True(deletedLine.IsDeleted);
     }
+
+    [Fact]
+    public async Task InvoiceService_DeleteAsync_SoftDeletesInvoiceAndLines()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var line = new InvoiceLine { Quantity = 1, UnitPrice = 750m, IsDeleted = false };
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0m,
+            Lines = new List<InvoiceLine> { line }
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        await service.DeleteAsync(invoice.Id);
+
+        Assert.Null(await service.GetByIdAsync(invoice.Id));
+
+        var invoiceRow = await db.Set<Invoice>().IgnoreQueryFilters().FirstAsync(i => i.Id == invoice.Id);
+        Assert.True(invoiceRow.IsDeleted);
+
+        var lines = await db.Set<InvoiceLine>()
+            .IgnoreQueryFilters()
+            .Where(l => l.InvoiceId == invoice.Id)
+            .ToListAsync();
+        Assert.Single(lines);
+        Assert.True(lines[0].IsDeleted);
+    }
 }
