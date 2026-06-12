@@ -6,6 +6,7 @@
 @using METERP.Common
 @attribute [Authorize(Policy = "Jobs.View")]
 @inject IJobService JobService
+@inject IInvoiceService InvoiceService
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
 @inject IAiAssistantService AiAssistantService
@@ -137,9 +138,15 @@
 
     private async Task CreateInvoiceFromJob(Job j)
     {
-        // Demo: navigate to Invoices page which has "Create from Job" button
-        // In a fuller implementation this would call the service directly here
-        Nav.NavigateTo("/invoices");
-        ToastService.ShowInfo("Navigate to Invoices → use 'Create from Job (demo)' for the flow.");
+        try
+        {
+            var inv = await InvoiceService.CreateFromJobAsync(j.Id);
+            ToastService.ShowSuccess($"Invoice {inv.InvoiceNumber} created from job {j.JobNumber}.");
+            Nav.NavigateTo("/invoices");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to create invoice from job: {ex.Message}");
+        }
     }
 }

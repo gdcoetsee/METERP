@@ -56,6 +56,7 @@ else
                 <tr>
                     <th>Name</th>
                     <th>Subdomain</th>
+                    <th>Tier</th>
                     <th>Status</th>
                     <th>Jobs</th>
                     <th>Quotes</th>
@@ -72,6 +73,7 @@ else
                     <tr>
                         <td><strong>@tenant.Name</strong></td>
                         <td><code>@tenant.Subdomain</code></td>
+                        <td><span class="badge bg-dark">@tenant.Tier</span></td>
                         <td>
                             @if (tenant.IsActive)
                             {
@@ -128,9 +130,51 @@ else
                     </div>
                 </div>
 
-                <div class="mb-3 form-check">
-                    <InputCheckbox class="form-check-input" @bind-Value="currentTenant.IsActive" id="isActiveCheck" />
-                    <label class="form-check-label" for="isActiveCheck">Active</label>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Subscription Tier</label>
+                        <InputSelect class="form-select" @bind-Value="currentTenant.Tier">
+                            @foreach (var tier in Enum.GetValues<SubscriptionTier>())
+                            {
+                                <option value="@tier">@tier</option>
+                            }
+                        </InputSelect>
+                        <div class="form-text">Controls default monthly quotas and feature set.</div>
+                    </div>
+                    <div class="col-md-6 mb-3 form-check mt-4">
+                        <InputCheckbox class="form-check-input" @bind-Value="currentTenant.IsActive" id="isActiveCheck" />
+                        <label class="form-check-label" for="isActiveCheck">Active</label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label text-muted small">Monthly quota overrides (leave blank for tier default; Enterprise = unlimited)</label>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label small">Quotes / month</label>
+                            <input type="number" class="form-control form-control-sm" min="0"
+                                   value="@FormatOverride(currentTenant.MaxQuotesPerMonth)"
+                                   @onchange="e => currentTenant.MaxQuotesPerMonth = ParseOverride(e.Value)" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Jobs / month</label>
+                            <input type="number" class="form-control form-control-sm" min="0"
+                                   value="@FormatOverride(currentTenant.MaxJobsPerMonth)"
+                                   @onchange="e => currentTenant.MaxJobsPerMonth = ParseOverride(e.Value)" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Invoices / month</label>
+                            <input type="number" class="form-control form-control-sm" min="0"
+                                   value="@FormatOverride(currentTenant.MaxInvoicesPerMonth)"
+                                   @onchange="e => currentTenant.MaxInvoicesPerMonth = ParseOverride(e.Value)" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">AI calls / month</label>
+                            <input type="number" class="form-control form-control-sm" min="0"
+                                   value="@FormatOverride(currentTenant.MaxAiCallsPerMonth)"
+                                   @onchange="e => currentTenant.MaxAiCallsPerMonth = ParseOverride(e.Value)" />
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -139,10 +183,23 @@ else
                     <div class="form-text">Controls sellable/tiered features like AI Copilot. Changes take effect on next use.</div>
                 </div>
 
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Invoice Webhook URL</label>
+                        <InputText class="form-control" @bind-Value="currentTenant.InvoiceWebhookUrl" placeholder="https://hooks.example.com/invoice" />
+                        <div class="form-text">POST JSON on invoice.created (Zapier, custom ERP). HTTPS recommended.</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Notification Email</label>
+                        <InputText class="form-control" @bind-Value="currentTenant.NotificationEmail" placeholder="ops@tenant.com" />
+                        <div class="form-text">Operational alerts when SMTP is configured (falls back to Email:DefaultNotificationTo).</div>
+                    </div>
+                </div>
+
                 @if (isEditing)
                 {
                     <div class="mb-3">
-                        <label class="form-label text-muted small">Usage (auto-tracked for commercial / billing)</label>
+                        <label class="form-label text-muted small">Lifetime usage (auto-tracked)</label>
                         <div class="d-flex flex-wrap gap-2 small">
                             <span class="badge bg-info text-dark">Jobs: @currentTenant.TotalJobsCreated</span>
                             <span class="badge bg-secondary">Quotes: @currentTenant.TotalQuotesCreated</span>
@@ -150,8 +207,14 @@ else
                             <span class="badge bg-primary">AI Calls: @currentTenant.TotalAiCalls</span>
                             <span class="badge bg-dark">Revenue: R @currentTenant.TotalRevenueBilled.ToString("N0")</span>
                         </div>
-                        <div class="form-text mt-1">Counters increment automatically on job/quote/invoice creation and AI use. Last activity: @(currentTenant.LastActivityUtc?.ToString("yyyy-MM-dd HH:mm") ?? "n/a")</div>
-                        <div class="mt-1"><small>Features: <code>@currentTenant.EnabledFeatures</code></small></div>
+                        <label class="form-label text-muted small mt-2">Current monthly period usage</label>
+                        <div class="d-flex flex-wrap gap-2 small">
+                            <span class="badge bg-outline-secondary border">Quotes: @currentTenant.PeriodQuotesCreated / @FormatLimit(currentTenant, QuotaType.Quote)</span>
+                            <span class="badge bg-outline-secondary border">Jobs: @currentTenant.PeriodJobsCreated / @FormatLimit(currentTenant, QuotaType.Job)</span>
+                            <span class="badge bg-outline-secondary border">Invoices: @currentTenant.PeriodInvoicesIssued / @FormatLimit(currentTenant, QuotaType.Invoice)</span>
+                            <span class="badge bg-outline-secondary border">AI: @currentTenant.PeriodAiCalls / @FormatLimit(currentTenant, QuotaType.AiCall)</span>
+                        </div>
+                        <div class="form-text mt-1">Period started: @(currentTenant.UsagePeriodStartUtc?.ToString("yyyy-MM-dd") ?? "n/a"). Last activity: @(currentTenant.LastActivityUtc?.ToString("yyyy-MM-dd HH:mm") ?? "n/a")</div>
                     </div>
                 }
 
@@ -198,7 +261,12 @@ else
 
     private void ShowCreateForm()
     {
-        currentTenant = new Tenant { IsActive = true };
+        currentTenant = new Tenant
+        {
+            IsActive = true,
+            Tier = SubscriptionTier.Starter,
+            EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Starter)
+        };
         isEditing = false;
         showForm = true;
     }
@@ -211,13 +279,25 @@ else
             Name = tenant.Name,
             Subdomain = tenant.Subdomain,
             IsActive = tenant.IsActive,
+            Tier = tenant.Tier,
+            UsagePeriodStartUtc = tenant.UsagePeriodStartUtc,
+            PeriodQuotesCreated = tenant.PeriodQuotesCreated,
+            PeriodJobsCreated = tenant.PeriodJobsCreated,
+            PeriodInvoicesIssued = tenant.PeriodInvoicesIssued,
+            PeriodAiCalls = tenant.PeriodAiCalls,
+            MaxQuotesPerMonth = tenant.MaxQuotesPerMonth,
+            MaxJobsPerMonth = tenant.MaxJobsPerMonth,
+            MaxInvoicesPerMonth = tenant.MaxInvoicesPerMonth,
+            MaxAiCallsPerMonth = tenant.MaxAiCallsPerMonth,
             TotalJobsCreated = tenant.TotalJobsCreated,
             TotalQuotesCreated = tenant.TotalQuotesCreated,
             TotalInvoicesIssued = tenant.TotalInvoicesIssued,
             TotalAiCalls = tenant.TotalAiCalls,
             TotalRevenueBilled = tenant.TotalRevenueBilled,
             LastActivityUtc = tenant.LastActivityUtc,
-            EnabledFeatures = tenant.EnabledFeatures
+            EnabledFeatures = tenant.EnabledFeatures,
+            InvoiceWebhookUrl = tenant.InvoiceWebhookUrl,
+            NotificationEmail = tenant.NotificationEmail
         };
         isEditing = true;
         showForm = true;
@@ -225,19 +305,42 @@ else
 
     private async Task SaveTenant()
     {
-        if (isEditing)
+        try
         {
-            await TenantService.UpdateAsync(currentTenant);
-        }
-        else
-        {
-            await TenantService.CreateAsync(currentTenant.Name, currentTenant.Subdomain);
-        }
+            if (isEditing)
+            {
+                await TenantService.UpdateAsync(currentTenant);
+            }
+            else
+            {
+                var id = await TenantService.CreateAsync(currentTenant.Name, currentTenant.Subdomain);
+                currentTenant.Id = id;
+                await TenantService.UpdateAsync(currentTenant);
+            }
 
-        showForm = false;
-        ToastService.ShowSuccess("Tenant saved successfully.");
-        await LoadTenants();
-        currentTenant = new();
+            showForm = false;
+            ToastService.ShowSuccess("Tenant saved successfully.");
+            await LoadTenants();
+            currentTenant = new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save tenant: {ex.Message}");
+        }
+    }
+
+    private static string FormatOverride(int? value) => value?.ToString() ?? "";
+
+    private static int? ParseOverride(object? value)
+    {
+        var text = value?.ToString();
+        return string.IsNullOrWhiteSpace(text) ? null : int.Parse(text);
+    }
+
+    private static string FormatLimit(Tenant tenant, QuotaType type)
+    {
+        var limit = TenantQuotaDefaults.GetEffectiveLimit(tenant, type);
+        return limit?.ToString() ?? "∞";
     }
 
     private void CancelForm()

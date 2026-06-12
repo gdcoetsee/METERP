@@ -26,6 +26,30 @@ public class Tenant : BaseEntity
 
     public DateTime? LastActivityUtc { get; set; }
 
+    // === Subscription tier + enforceable monthly quotas (sellable SaaS) ===
+    public SubscriptionTier Tier { get; set; } = SubscriptionTier.Starter;
+
+    /// <summary>Start of the current monthly usage period (UTC, first day of month).</summary>
+    public DateTime? UsagePeriodStartUtc { get; set; }
+
+    public int PeriodQuotesCreated { get; set; }
+    public int PeriodJobsCreated { get; set; }
+    public int PeriodInvoicesIssued { get; set; }
+    public int PeriodAiCalls { get; set; }
+
+    /// <summary>Override tier defaults; null = use tier default (Enterprise = unlimited).</summary>
+    public int? MaxQuotesPerMonth { get; set; }
+    public int? MaxJobsPerMonth { get; set; }
+    public int? MaxInvoicesPerMonth { get; set; }
+    public int? MaxAiCallsPerMonth { get; set; }
+
+    // === Integrations (per-tenant hooks for sellable SaaS) ===
+    /// <summary>Optional HTTPS endpoint for invoice.created webhook payloads (Zapier, custom ERP, etc.).</summary>
+    public string? InvoiceWebhookUrl { get; set; }
+
+    /// <summary>Optional email for operational alerts (invoice created, low stock). Falls back to Email:DefaultNotificationTo.</summary>
+    public string? NotificationEmail { get; set; }
+
     // === Simple feature flag stub for sellable / tiered features (per README) ===
     // Comma-separated for demo (e.g. "ai,usage-tracking,advanced-reports"). In prod: proper flags service.
     public string EnabledFeatures { get; set; } = "ai,usage-tracking";
@@ -38,5 +62,13 @@ public class Tenant : BaseEntity
         return flags.Contains(feature.Trim().ToLowerInvariant());
     }
 
-    // Future: connection string override, settings, subscription tier, quotas, etc.
+    public int GetPeriodUsage(QuotaType type) =>
+        type switch
+        {
+            QuotaType.Quote => PeriodQuotesCreated,
+            QuotaType.Job => PeriodJobsCreated,
+            QuotaType.Invoice => PeriodInvoicesIssued,
+            QuotaType.AiCall => PeriodAiCalls,
+            _ => 0
+        };
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -8,12 +9,23 @@ namespace METERP.Infrastructure.Services;
 public class JobService : IJobService
 {
     private readonly AppDbContext _dbContext;
-    private readonly ITenantService? _tenantService; // for commercial usage
+    private readonly ITenantService? _tenantService;
+    private readonly ITenantProvider? _tenantProvider;
+    private readonly IQuotaService? _quotaService;
+    private readonly ITenantCacheService? _cache;
 
-    public JobService(AppDbContext dbContext, ITenantService? tenantService = null)
+    public JobService(
+        AppDbContext dbContext,
+        ITenantService? tenantService = null,
+        ITenantProvider? tenantProvider = null,
+        IQuotaService? quotaService = null,
+        ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
+        _tenantProvider = tenantProvider;
+        _quotaService = quotaService;
+        _cache = cache;
     }
 
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -31,9 +43,25 @@ public class JobService : IJobService
 
     public async Task<IReadOnlyList<Job>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "jobs",
+                $"p{page}:s{pageSize}",
+                () => LoadJobsAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadJobsAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Job>> LoadJobsAsync(string? search, int page, int pageSize, CancellationToken ct)
+    {
         var query = _dbContext.Set<Job>()
+            .AsNoTracking()
             .Include(j => j.Customer)
             .Include(j => j.Quote)
+            .Include(j => j.ActualCosts)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -56,6 +84,10 @@ public class JobService : IJobService
 
     public async Task<Guid> CreateAsync(Job job, CancellationToken ct = default)
     {
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? job.TenantId;
+        if (_quotaService != null && tenantId != Guid.Empty)
+            await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Job, ct);
+
         if (string.IsNullOrWhiteSpace(job.JobNumber))
         {
             job.JobNumber = $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
@@ -64,17 +96,8 @@ public class JobService : IJobService
         _dbContext.Set<Job>().Add(job);
         await _dbContext.SaveChangesAsync(ct);
 
-        // Commercial usage tracking (best effort)
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var tid = job.TenantId; // set by DbContext on save
-                if (tid != Guid.Empty && _tenantService != null)
-                    await _tenantService.IncrementJobCountAsync(tid);
-            }
-            catch { /* ignore */ }
-        });
+        await TryIncrementJobCountAsync(job.TenantId, ct);
+        InvalidateListCaches();
 
         return job.Id;
     }
@@ -83,6 +106,7 @@ public class JobService : IJobService
     {
         _dbContext.Set<Job>().Update(job);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -100,6 +124,7 @@ public class JobService : IJobService
         job.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task UpdateStatusAsync(Guid jobId, JobStatus newStatus, CancellationToken ct = default)
@@ -115,6 +140,7 @@ public class JobService : IJobService
         }
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<Guid> AddCostAsync(JobCost cost, CancellationToken ct = default)
@@ -135,6 +161,7 @@ public class JobService : IJobService
             await _dbContext.SaveChangesAsync(ct);
         }
 
+        InvalidateListCaches();
         return cost.Id;
     }
 
@@ -159,6 +186,8 @@ public class JobService : IJobService
                 .Sum(c => c.Amount);
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task<Guid> AddLaborAsync(JobLabor labor, CancellationToken ct = default)
@@ -177,6 +206,7 @@ public class JobService : IJobService
             await _dbContext.SaveChangesAsync(ct);
         }
 
+        InvalidateListCaches();
         return labor.Id;
     }
 
@@ -197,6 +227,23 @@ public class JobService : IJobService
         if (job != null)
         {
             await _dbContext.SaveChangesAsync(ct);
+        }
+
+        InvalidateListCaches();
+    }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("jobs");
+
+    private async Task TryIncrementJobCountAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty || _tenantService == null) return;
+        try
+        {
+            await _tenantService.IncrementJobCountAsync(tenantId, ct);
+        }
+        catch
+        {
+            // Best-effort commercial tracking — must not break business operations.
         }
     }
 }

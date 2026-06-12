@@ -7,6 +7,7 @@
 @using Microsoft.JSInterop
 @attribute [Authorize(Policy = "Quotes.View")]
 @inject IQuoteService QuoteService
+@inject IJobService JobService
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
 @inject NavigationManager Nav
@@ -25,7 +26,7 @@
 
 <div class="mb-3" style="max-width: 480px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search quote #, customer or notes..." 
+        <input type="search" class="form-control" placeholder="Search quote #, customer or notes..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -34,42 +35,114 @@
     </div>
 </div>
 
-<h6>Recent / Live Quotes (from services)</h6>
-<ul class="list-group mb-3">
-    @foreach (var q in demoQuotes)
-    {
-        <li class="list-group-item d-flex justify-content-between" data-testid="quote-list-item">
-            <span>@q.QuoteNumber — @(q.Customer?.Name ?? "—") (R @q.Total.ToString("N0"), @q.Status, @(q.Lines?.Count(l => !l.IsDeleted) ?? 0) lines)</span>
-            <a href="/ai-copilot" class="btn btn-sm btn-outline-primary" data-testid="enhance-with-ai">Enhance with AI</a>
-        </li>
-    }
-</ul>
-
-<div class="card">
-    <div class="card-body">
-        <p class="mb-1"><strong>Full data layer complete.</strong> Server pagination, soft-delete, status, ConvertToJob, VAT. AI Copilot for creation and enhancement. Component ready for richer lists.</p>
-        <button class="btn btn-sm btn-secondary" @onclick="GoToCopilot">Go to AI Copilot</button>
-    </div>
-</div>
+<QuoteList
+    Quotes="quotes"
+    SelectedQuote="selectedQuote"
+    CanManage="UserCanManage"
+    CurrentPage="currentPage"
+    DisablePrevious="@(currentPage <= 1)"
+    DisableNext="@(quotes != null && quotes.Count < PageSize)"
+    OnView="ViewQuote"
+    OnDelete="DeleteQuote"
+    OnPrevious="PreviousPage"
+    OnNext="NextPage"
+    OnExportCsv="ExportQuotesCsv"
+    OnConvert="ConvertToJob"
+    OnCloseView="CloseQuoteView" />
 
 @code {
-    private List<Quote> demoQuotes = new();
+    private List<Quote> quotes = new();
+    private Quote? selectedQuote;
     private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+
+    private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
 
     protected override async Task OnInitializedAsync()
     {
-        demoQuotes = (await QuoteService.GetAllAsync(null, 1, 2)).ToList();
+        await LoadQuotes();
     }
 
-    private void OnSearchInput(ChangeEventArgs e)
+    private async Task LoadQuotes()
+    {
+        quotes = (await QuoteService.GetAllAsync(
+            string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
+            currentPage,
+            PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
         searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadQuotes();
     }
 
-    private void ClearSearch()
+    private async Task ClearSearch()
     {
         searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadQuotes();
     }
 
-    private void GoToCopilot() => Nav.NavigateTo("/ai-copilot");
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadQuotes();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        currentPage++;
+        await LoadQuotes();
+    }
+
+    private async Task ViewQuote(Quote q)
+    {
+        selectedQuote = await QuoteService.GetByIdAsync(q.Id);
+    }
+
+    private void CloseQuoteView() => selectedQuote = null;
+
+    private async Task DeleteQuote(Quote q)
+    {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"Delete quote {q.QuoteNumber}?"); } catch { ok = false; }
+        if (!ok) return;
+        await QuoteService.DeleteAsync(q.Id);
+        if (selectedQuote?.Id == q.Id) selectedQuote = null;
+        await LoadQuotes();
+        ToastService.ShowSuccess("Quote deleted.");
+    }
+
+    private async Task ExportQuotesCsv()
+    {
+        if (quotes == null || !quotes.Any()) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("QuoteNumber,Customer,Status,Total,Lines");
+        foreach (var q in quotes)
+        {
+            sb.AppendLine($"{q.QuoteNumber},\"{q.Customer?.Name}\",{q.Status},{q.Total},{q.Lines?.Count(l => !l.IsDeleted) ?? 0}");
+        }
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+        ToastService.ShowSuccess("Quotes CSV copied to clipboard.");
+    }
+
+    private async Task ConvertToJob(Quote q)
+    {
+        try
+        {
+            var job = await QuoteService.ConvertToJobAsync(q.Id);
+            ToastService.ShowSuccess($"Quote converted to Job {job.JobNumber}.");
+            Nav.NavigateTo("/jobs");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Conversion failed: {ex.Message}");
+        }
+    }
 }

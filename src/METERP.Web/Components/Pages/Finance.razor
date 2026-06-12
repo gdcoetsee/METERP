@@ -7,15 +7,21 @@
 @attribute [Authorize(Policy = "Finance.View")]
 @inject IFinanceService FinanceService
 @inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
+@inject ToastService ToastService
 
 <PageTitle>Finance</PageTitle>
 
 <h1>Finance & Accounting</h1>
 <p class="text-muted">Minimal GL / Chart of Accounts for job costing and invoicing visibility (Phase 3).</p>
 
-@if (accounts == null)
+@if (_loading)
 {
     <p>Loading accounts...</p>
+}
+else if (!accountRows.Any())
+{
+    <p class="text-muted">No accounts yet. Run the demo seeder or create accounts in production.</p>
 }
 else
 {
@@ -27,13 +33,13 @@ else
                     <tr><th>Code</th><th>Name</th><th>Type</th><th class="text-end">Balance (demo)</th></tr>
                 </thead>
                 <tbody>
-                    @foreach (var a in accounts)
+                    @foreach (var row in accountRows)
                     {
                         <tr>
-                            <td><code>@a.AccountCode</code></td>
-                            <td>@a.Name</td>
-                            <td>@a.Type</td>
-                            <td class="text-end">R @(FinanceService.GetAccountBalanceAsync(a.Id).Result.ToString("N2"))</td>
+                            <td><code>@row.Account.AccountCode</code></td>
+                            <td>@row.Account.Name</td>
+                            <td>@row.Account.Type</td>
+                            <td class="text-end">R @row.Balance.ToString("N2")</td>
                         </tr>
                     }
                 </tbody>
@@ -44,7 +50,8 @@ else
                 <div class="card-body">
                     <h6>Post Journal (demo)</h6>
                     <p class="small text-muted">In a full system this would be driven from invoices/costs/POs. For MVP the seeder posts example entries.</p>
-                    <button class="btn btn-sm btn-outline-primary" @onclick="Refresh">Refresh Balances</button>
+                    <button class="btn btn-sm btn-outline-primary mb-2" @onclick="Refresh">Refresh Balances</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ExportGlCsv" data-testid="finance-export-gl-csv">Export GL CSV</button>
                 </div>
             </div>
         </div>
@@ -52,7 +59,8 @@ else
 }
 
 @code {
-    private List<Account> accounts = new();
+    private List<AccountBalanceRow> accountRows = new();
+    private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -61,11 +69,32 @@ else
 
     private async Task Load()
     {
-        accounts = (await FinanceService.GetAccountsAsync()).ToList();
+        _loading = true;
+        try
+        {
+            accountRows = (await FinanceService.GetAccountsWithBalancesAsync()).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private async Task Refresh()
     {
         await Load();
+    }
+
+    private async Task ExportGlCsv()
+    {
+        var csv = await FinanceService.ExportGlCsvAsync();
+        if (csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length <= 1)
+        {
+            ToastService.ShowInfo("No journal entries to export yet.");
+            return;
+        }
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
+        ToastService.ShowSuccess("GL journal CSV copied to clipboard.");
     }
 }

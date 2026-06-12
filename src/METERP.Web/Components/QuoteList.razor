@@ -28,7 +28,7 @@ else
             <tbody>
                 @foreach (var q in Quotes)
                 {
-                    <tr>
+                    <tr data-testid="@GetQuoteRowTestId(q)">
                         <td><strong>@q.QuoteNumber</strong></td>
                         <td>@(q.Customer?.Name ?? "-")</td>
                         <td>@q.QuoteDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Valid @q.ValidUntil.ToString("yyyy-MM-dd")</small></td>
@@ -36,7 +36,7 @@ else
                         <td class="text-end">R @q.Total.ToString("N2")</td>
                         <td class="text-center"><span class="badge bg-secondary">@(q.Lines?.Count(l => !l.IsDeleted) ?? 0)</span></td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(q)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(q)" data-testid="quote-view-button">View</button>
                             @if (CanManage)
                             {
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(q)">Delete</button>
@@ -99,6 +99,12 @@ else
     [Parameter] public EventCallback OnExportCsv { get; set; }
     [Parameter] public EventCallback<Quote> OnConvert { get; set; }
     [Parameter] public EventCallback OnCloseView { get; set; }
+
+    private static string GetQuoteRowTestId(Quote q)
+    {
+        var hasTravel = q.Lines?.Any(l => !l.IsDeleted && l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)) == true;
+        return hasTravel ? "quote-row-with-travel" : "quote-row";
+    }
 
     private static string GetStatusBadge(QuoteStatus s)
     {

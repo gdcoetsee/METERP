@@ -23,6 +23,7 @@ public class InventoryService : IInventoryService
     public async Task<IReadOnlyList<InventoryItem>> GetAllItemsAsync(string? search = null, bool lowStockOnly = false, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = _dbContext.Set<InventoryItem>()
+            .AsNoTracking()
             .Where(i => i.IsActive)
             .AsQueryable();
 
@@ -92,6 +93,7 @@ public class InventoryService : IInventoryService
     public async Task<IReadOnlyList<StockTransaction>> GetTransactionsForItemAsync(Guid itemId, CancellationToken ct = default)
     {
         return await _dbContext.Set<StockTransaction>()
+            .AsNoTracking()
             .Where(t => t.InventoryItemId == itemId)
             .OrderByDescending(t => t.CreatedDate)
             .ToListAsync(ct);
@@ -100,6 +102,7 @@ public class InventoryService : IInventoryService
     public async Task<IReadOnlyList<StockTransaction>> GetRecentTransactionsAsync(int take = 20, CancellationToken ct = default)
     {
         return await _dbContext.Set<StockTransaction>()
+            .AsNoTracking()
             .Include(t => t.InventoryItem)
             .OrderByDescending(t => t.CreatedDate)
             .Take(take)

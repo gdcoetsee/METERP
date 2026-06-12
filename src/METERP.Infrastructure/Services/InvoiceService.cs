@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -9,11 +10,25 @@ public class InvoiceService : IInvoiceService
 {
     private readonly AppDbContext _dbContext;
     private readonly ITenantService? _tenantService;
+    private readonly ITenantProvider? _tenantProvider;
+    private readonly IQuotaService? _quotaService;
+    private readonly IInvoiceIntegrationService? _invoiceIntegration;
+    private readonly ITenantCacheService? _cache;
 
-    public InvoiceService(AppDbContext dbContext, ITenantService? tenantService = null)
+    public InvoiceService(
+        AppDbContext dbContext,
+        ITenantService? tenantService = null,
+        ITenantProvider? tenantProvider = null,
+        IQuotaService? quotaService = null,
+        IInvoiceIntegrationService? invoiceIntegration = null,
+        ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
+        _tenantProvider = tenantProvider;
+        _quotaService = quotaService;
+        _invoiceIntegration = invoiceIntegration;
+        _cache = cache;
     }
 
     public async Task<Invoice?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -27,7 +42,22 @@ public class InvoiceService : IInvoiceService
 
     public async Task<IReadOnlyList<Invoice>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "invoices",
+                $"p{page}:s{pageSize}",
+                () => LoadInvoicesAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadInvoicesAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Invoice>> LoadInvoicesAsync(string? search, int page, int pageSize, CancellationToken ct)
+    {
         var query = _dbContext.Set<Invoice>()
+            .AsNoTracking()
             .Include(i => i.Lines)
             .Include(i => i.Customer)
             .Include(i => i.Job)
@@ -52,6 +82,10 @@ public class InvoiceService : IInvoiceService
 
     public async Task<Guid> CreateAsync(Invoice invoice, CancellationToken ct = default)
     {
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? invoice.TenantId;
+        if (_quotaService != null && tenantId != Guid.Empty)
+            await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
+
         if (string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
         {
             invoice.InvoiceNumber = $"INV-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
@@ -61,6 +95,11 @@ public class InvoiceService : IInvoiceService
 
         _dbContext.Set<Invoice>().Add(invoice);
         await _dbContext.SaveChangesAsync(ct);
+
+        await TryIncrementInvoiceCountAsync(invoice.TenantId, invoice.Total, ct);
+        await TryNotifyInvoiceCreatedAsync(invoice.Id, ct);
+        InvalidateListCaches();
+
         return invoice.Id;
     }
 
@@ -69,6 +108,7 @@ public class InvoiceService : IInvoiceService
         invoice.RecalculateTotals();
         _dbContext.Set<Invoice>().Update(invoice);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -86,6 +126,7 @@ public class InvoiceService : IInvoiceService
         invoice.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<Guid> AddLineAsync(InvoiceLine line, CancellationToken ct = default)
@@ -104,6 +145,7 @@ public class InvoiceService : IInvoiceService
             await _dbContext.SaveChangesAsync(ct);
         }
 
+        InvalidateListCaches();
         return line.Id;
     }
 
@@ -122,6 +164,8 @@ public class InvoiceService : IInvoiceService
             invoice.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
@@ -142,6 +186,8 @@ public class InvoiceService : IInvoiceService
             invoice.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task<Invoice> CreateFromJobAsync(Guid jobId, CancellationToken ct = default)
@@ -154,6 +200,10 @@ public class InvoiceService : IInvoiceService
 
         if (job == null)
             throw new InvalidOperationException("Job not found.");
+
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? job.TenantId;
+        if (_quotaService != null && tenantId != Guid.Empty)
+            await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
 
         var invoice = new Invoice
         {
@@ -216,22 +266,42 @@ public class InvoiceService : IInvoiceService
             saved.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
 
-            // Commercial usage + revenue tracking (after final total known)
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var tid = saved.TenantId;
-                    if (tid != Guid.Empty && _tenantService != null)
-                        await _tenantService.IncrementInvoiceCountAsync(tid, saved.Total);
-                }
-                catch { /* ignore */ }
-            });
+            await TryIncrementInvoiceCountAsync(saved.TenantId, saved.Total, ct);
+            await TryNotifyInvoiceCreatedAsync(saved.Id, ct);
+            InvalidateListCaches();
 
             return saved;
         }
 
         return invoice;
+    }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("invoices");
+
+    private async Task TryNotifyInvoiceCreatedAsync(Guid invoiceId, CancellationToken ct)
+    {
+        if (_invoiceIntegration == null) return;
+        try
+        {
+            await _invoiceIntegration.NotifyInvoiceCreatedAsync(invoiceId, ct);
+        }
+        catch
+        {
+            // Best-effort integrations — must not break invoicing.
+        }
+    }
+
+    private async Task TryIncrementInvoiceCountAsync(Guid tenantId, decimal revenue, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty || _tenantService == null) return;
+        try
+        {
+            await _tenantService.IncrementInvoiceCountAsync(tenantId, revenue, ct);
+        }
+        catch
+        {
+            // Best-effort commercial tracking — must not break business operations.
+        }
     }
 
     public async Task UpdateStatusAsync(Guid invoiceId, InvoiceStatus newStatus, CancellationToken ct = default)
@@ -241,5 +311,6 @@ public class InvoiceService : IInvoiceService
 
         invoice.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 }

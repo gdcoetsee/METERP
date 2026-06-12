@@ -24,6 +24,7 @@ public class AssetService : IAssetService
     public async Task<IReadOnlyList<Asset>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = _dbContext.Set<Asset>()
+            .AsNoTracking()
             .Include(a => a.Customer)
             .AsQueryable();
 

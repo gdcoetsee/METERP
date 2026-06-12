@@ -7,4 +7,8 @@
     <ProjectGuid>{66F75E2B-ACAE-4915-9ECE-033B666E03CF}</ProjectGuid>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\METERP.Domain\METERP.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

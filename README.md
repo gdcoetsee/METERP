@@ -33,11 +33,17 @@
 - Monitoring: add Seq/OpenTelemetry.
 - Sell: per-tenant, brand via CSS, bill on usage (jobs/AI calls).
 
-**How to Test (as suggested):**
-- `dotnet test` for unit (domain calcs).
-- `dotnet run`, manual flows: AI create + PDF, add travel, variance, convert, CRM pipeline, payroll, notifications, audit, reports export.
-- E2E: expand tests/METERP.E2ETests with Playwright for browser AI creation, PDF download, mobile PWA.
-- Multi-tenant: create tenant, verify isolation.
+**How to Test:**
+- **Unit tests (35):** `dotnet test tests/METERP.Application.Tests/METERP.Application.Tests.csproj`
+- **E2E tests (6 Playwright flows):**
+  1. Start the app: `docker-compose up --build` (or `dotnet run --project src/METERP.Web --urls http://localhost:8080`)
+  2. Install browsers once: `pwsh tests/METERP.E2ETests/bin/Debug/net9.0/playwright.ps1 install chromium`
+  3. Run: `dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj --filter "Category=E2E"`
+  - Override base URL: `METERP_BASE_URL=http://localhost:5080` (local profile default is 5080)
+  - E2E works **without** an AI API key (quick-prompt + fallback travel line)
+  - CI: `.github/workflows/ci.yml` runs unit + E2E against docker-compose
+- **Multi-tenant E2E:** Beta tenant `admin@beta.demo` / `Demo123!` seeded for isolation checks
+- Manual flows: AI create + PDF, travel variance, quote→job→invoice, CRM, payroll, notifications, audit
 - Performance: large data, check pagination/caching.
 - AI: test with/without key, feedback, RAG context.
 - Sellable: usage in Tenants, feature flags, white-label CSS.
@@ -73,3 +79,5 @@ All features built per suggestions. Professional UI, ready for contractors. Buil
    - First run will create DB and seed demo data (Acme tenant + full sample jobs/quotes with travel, AI disabled until key is set).
 
 See "How to Test" section above for manual flows. AI features require an `Ai:ApiKey`.
+
+**Production config:** Copy [`.env.example`](.env.example) to `.env` for docker-compose. Health: `/health` (liveness), `/health/ready` (DB + AI probe). Optional Seq logging via `Seq__ServerUrl`.

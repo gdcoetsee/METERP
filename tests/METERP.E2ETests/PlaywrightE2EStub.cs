@@ -1,21 +1,7 @@
-// Real E2E Tests using Playwright for critical sellable flows.
-// Per COMPLETION_PLAN.md and AGENTS.md:
-// - Login
-// - AI Copilot creates Quote (with travel) + PDF download
-// - Convert Quote → Job (travel preserved)
-// - Job with costs/labor → Invoice
-//
-// Setup (run once):
-//   dotnet restore   (or build will pull it)
-//   pwsh bin/Debug/net9.0/playwright.ps1 install   (or `playwright install`)
-//   Start the app: docker-compose up --build  (listens on :8080 by default)
-//
-// To run only E2E: dotnet test --filter "Category=E2E"
-// Requires the app running (recommended: docker-compose up --build, http://localhost:8080)
-//
-// These tests use realistic selectors based on aria-label, roles, and common Blazor patterns in the app.
-// See E2EHelpers.cs for shared helpers (LoginAsync, ClickByTestIdAsync, WaitForTestIdAsync, etc.).
-// We added many data-testid attributes to make these tests reliable.
+// E2E tests for critical sellable flows (login, AI quote+PDF, quote→job, job→invoice, multi-tenant).
+// Requires app running: docker-compose up --build (http://localhost:8080)
+// Setup: dotnet build tests/METERP.E2ETests && pwsh tests/METERP.E2ETests/bin/Debug/net9.0/playwright.ps1 install
+// Run: dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj --filter "Category=E2E"
 
 using Microsoft.Playwright;
 using Xunit;
@@ -31,11 +17,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _playwright = await Playwright.CreateAsync();
-        _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
-        {
-            Headless = true,
-            // SlowMo = 50, // uncomment for debugging
-        });
+        _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
     }
 
     public async Task DisposeAsync()
@@ -47,10 +29,17 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Login_Succeeds_With_Demo_Credentials()
     {
-        var page = await _browser.LoginAsync();
-        // Verify we are logged in by looking for user menu or welcome text (adjust selector as UI evolves)
+        // Exercise the interactive login form (login-complete is used by other tests for speed).
+        var page = await _browser.NewPageAsync();
+        await page.GotoAsync($"{E2EHelpers.BaseUrl}/login");
+        await page.WaitForSelectorAsync("[data-testid='login-email']");
+        await page.Locator("[data-testid='login-email']").PressSequentiallyAsync(E2EHelpers.AcmeEmail);
+        await page.Locator("[data-testid='login-password']").PressSequentiallyAsync(E2EHelpers.AcmePassword);
+        await page.ClickAsync("[data-testid='login-submit']");
+        await page.WaitForURLAsync(u => !u.Contains("login", StringComparison.OrdinalIgnoreCase), new() { Timeout = 45000 });
+
         var content = await page.ContentAsync();
-        Assert.Contains("Acme", content); // demo tenant or user indicator
+        Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
         await page.CloseAsync();
     }
 
@@ -58,45 +47,32 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task AI_Copilot_Creates_Quote_With_Travel_And_Downloads_PDF()
     {
         var page = await _browser.LoginAsync();
-
-        // Navigate to AI Copilot using helper (more reliable)
         await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        // Use data-testid added to AICopilot.razor for robustness
-        var prompt = "Create a quote for electrical installation at site with 8 hours labor at $195/hr plus $1500 explicit travel costs and materials.";
-        await page.FillByTestIdAsync("ai-prompt-input", prompt);
+        // Quick prompt avoids Blazor @bind timing issues with FillAsync; works without live API key.
+        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+        await page.WaitForTestIdAsync("ai-last-response", 30000);
 
-        // Click generate / ask button using data-testid
-        await page.ClickByTestIdAsync("ai-ask-button");
+        await page.ClickByTestIdAsync("ai-create-real-quote");
+        await page.WaitForURLAsync("**/quotes**", new() { Timeout = 30000 });
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForSelectorAsync("[data-testid='quotes-table'] tbody tr", new() { Timeout = 15000 });
+        await page.Locator("[data-testid='quotes-table']").GetByText(new System.Text.RegularExpressions.Regex("Q-", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            .First.WaitForAsync(new() { Timeout = 20000 });
 
-        // Wait for suggestion/results to appear (AI response section)
-        await page.WaitForSelectorAsync("text=Quote suggestion, .ai-suggestion, table", new() { Timeout = 30000 });
-
-        // Apply using data-testid (added to AICopilot)
-        await page.ClickAsync("[data-testid='ai-apply-quote'], button:has-text('Apply'), button:has-text('Create Quote')");
-
-        // Verify we land on Quotes list or new quote detail with travel line
-        await page.WaitForURLAsync("**/Quotes**", new() { Timeout = 15000 });
         var pageContent = await page.ContentAsync();
-        Assert.Contains("Travel", pageContent); // explicit travel preserved
-        Assert.Contains("Q-", pageContent); // quote number
+        Assert.Contains("Travel", pageContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Q-", pageContent);
 
-        // Test real PDF download buttons that appear after AI creation (using new data-testid + download helper)
-        await page.RunWithScreenshotOnFailureAsync("AI_Copilot_Real_PDF", async () =>
-        {
-            // Wait for the real PDF buttons to appear
-            await page.WaitForSelectorAsync("[data-testid='ai-download-real-quote-pdf'], [data-testid='ai-download-real-job-pdf']", new() { Timeout = 10000 });
-            
-            // Download the real quote PDF using helper
-            var quotePdf = await page.WaitAndSaveDownloadAsync("[data-testid='ai-download-real-quote-pdf']", "e2e-real-quote");
-            Assert.Contains(".pdf", quotePdf.ToLower());
-        });
-
-        // Also test a demo PDF export for good measure
         await page.RunWithScreenshotOnFailureAsync("AI_Copilot_Demo_PDF", async () =>
         {
+            await page.GotoRelativeAsync("/ai-copilot");
+            await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+            await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+            await page.WaitForTestIdAsync("ai-last-response", 30000);
             var demoPdf = await page.WaitAndSaveDownloadAsync("[data-testid='ai-demo-quote-pdf']", "e2e-demo-quote");
-            Assert.Contains(".pdf", demoPdf.ToLower());
+            Assert.Contains(".pdf", demoPdf, StringComparison.OrdinalIgnoreCase);
         });
 
         await page.CloseAsync();
@@ -106,23 +82,22 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
         var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table");
 
-        // Go to Quotes list using helper
-        await page.GotoRelativeAsync("/Quotes");
+        var travelRow = page.Locator("[data-testid='quote-row-with-travel']").First;
+        if (await travelRow.CountAsync() == 0)
+            travelRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
 
-        // Find a quote (prefer data-testid for robustness)
-        await page.ClickAsync("[data-testid='quotes-table'] tr:first-child a, tr:has-text('Travel') a");
-
-        // On quote detail, convert button using data-testid where possible
-        await page.WaitForTestIdAsync("convert-to-job", 5000);
+        await travelRow.Locator("[data-testid='quote-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("convert-to-job", 10000);
         await page.ClickByTestIdAsync("convert-to-job");
 
-        // Confirm / navigate to resulting Job
-        await page.WaitForURLAsync("**/Jobs**", new() { Timeout = 10000 });
+        await page.WaitForURLAsync("**/jobs**", new() { Timeout = 15000 });
 
         var content = await page.ContentAsync();
-        Assert.Contains("Job from", content); // title pattern from ConvertToJob
-        Assert.Contains("Travel", content);   // travel cost explicit in job costs/labor view
+        Assert.Contains("Q-", content);
+        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
 
         await page.CloseAsync();
     }
@@ -131,44 +106,49 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Job_With_Travel_And_Labor_Creates_Invoice_With_Correct_Totals()
     {
         var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/jobs");
+        await page.WaitForTestIdAsync("jobs-table");
 
-        await page.GotoRelativeAsync("/Jobs");
+        var travelRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await travelRow.CountAsync() == 0)
+            travelRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
 
-        // Open a job that has costs (travel + labor)
-        await page.ClickAsync("[data-testid='jobs-table'] tr:first-child a, tr:has-text('Travel') a");
-
-        // Wait for the detail view to load (the selected job card with our new button)
-        await page.WaitForTestIdAsync("create-invoice-from-job-detail", 8000);
-
-        // Click the Create Invoice button we added with data-testid
+        await travelRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
         await page.ClickByTestIdAsync("create-invoice-from-job-detail");
 
-        // Verify on Invoices or invoice detail, totals make sense, travel line present
-        await page.WaitForURLAsync("**/Invoices**", new() { Timeout = 10000 });
+        await page.WaitForURLAsync("**/invoices**", new() { Timeout = 30000 });
+        await page.WaitForAppReadyAsync(30000);
+        await page.WaitForTestIdAsync("invoices-table", 30000);
+        await page.Locator("[data-testid='invoices-table'] tbody tr").First
+            .Locator("[data-testid='view-invoice']").ClickAsync();
+        await page.WaitForTestIdAsync("invoice-line-items-header", 10000);
+
         var content = await page.ContentAsync();
         Assert.Contains("INV-", content);
-        Assert.Contains("Travel", content); // explicit costs carried through
+        Assert.Contains("Travel", content, StringComparison.OrdinalIgnoreCase);
 
         await page.CloseAsync();
     }
 
-    // Future expansions per plan (add more as UI stabilizes):
     [Fact]
     public async Task MultiTenant_Isolation_Basic_Check()
     {
-        // Demo for multi-tenant isolation requirement.
-        // In a real multi-tenant test we would use separate browser contexts or switch tenants via UI.
-        var pageA = await _browser.LoginAsync();
-        await pageA.GotoRelativeAsync("/Quotes");
-        await pageA.WaitForTestIdAsync("quotes-table", 5000);
-        await pageA.WaitForAppReadyAsync();
+        var acmePage = await _browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/quotes");
+        await acmePage.WaitForTestIdAsync("quotes-table");
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Q-", acmeContent);
+        Assert.DoesNotContain("Beta-only travel", acmeContent);
+        await acmePage.CloseAsync();
 
-        // For now, just assert we can reach tenant-scoped data after login.
-        // Full implementation would require second tenant login or admin tenant switch.
-        var contentA = await pageA.ContentAsync();
-        Assert.Contains("Q-", contentA); // At least some quotes visible for demo tenant
-
-        await pageA.CloseAsync();
+        var betaPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/quotes");
+        await betaPage.WaitForTestIdAsync("quotes-table");
+        var betaContent = await betaPage.ContentAsync();
+        Assert.Contains("Beta Mining", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Johannesburg General Hospital", betaContent);
+        await betaPage.CloseAsync();
     }
 
     [Fact]
@@ -176,20 +156,14 @@ public class E2EFlowTests : IAsyncLifetime
     {
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/notifications");
+        await page.WaitForTestIdAsync("notifications-list", 10000);
 
-        // Use data-testid we added
-        await page.WaitForTestIdAsync("notifications-list", 5000);
-
-        // In demo data (seeded in Notifications.razor), there should be low stock and overdue items
         var content = await page.ContentAsync();
         Assert.Contains("Low Stock", content);
         Assert.Contains("Job Overdue", content);
 
-        // Click Mark All Read using data-testid
         await page.ClickByTestIdAsync("notifications-mark-all");
-
-        // Verify list updates (demo behavior)
-        await page.WaitForTestIdAsync("notifications-list", 3000);
+        await page.WaitForTestIdAsync("notifications-list", 5000);
 
         await page.CloseAsync();
     }

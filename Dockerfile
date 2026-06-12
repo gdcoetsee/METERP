@@ -25,5 +25,8 @@ RUN dotnet publish "METERP.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /
 
 FROM base AS final
 WORKDIR /app
+# curl for container health checks (docker-compose / orchestration)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "METERP.Web.dll"]

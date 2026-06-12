@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -9,11 +10,22 @@ public class QuoteService : IQuoteService
 {
     private readonly AppDbContext _dbContext;
     private readonly ITenantService? _tenantService;
+    private readonly ITenantProvider? _tenantProvider;
+    private readonly IQuotaService? _quotaService;
+    private readonly ITenantCacheService? _cache;
 
-    public QuoteService(AppDbContext dbContext, ITenantService? tenantService = null)
+    public QuoteService(
+        AppDbContext dbContext,
+        ITenantService? tenantService = null,
+        ITenantProvider? tenantProvider = null,
+        IQuotaService? quotaService = null,
+        ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
+        _tenantProvider = tenantProvider;
+        _quotaService = quotaService;
+        _cache = cache;
     }
 
     public async Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -26,7 +38,22 @@ public class QuoteService : IQuoteService
 
     public async Task<IReadOnlyList<Quote>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "quotes",
+                $"p{page}:s{pageSize}",
+                () => LoadQuotesAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadQuotesAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Quote>> LoadQuotesAsync(string? search, int page, int pageSize, CancellationToken ct)
+    {
         var query = _dbContext.Set<Quote>()
+            .AsNoTracking()
             .Include(q => q.Lines)
             .Include(q => q.Customer)
             .AsQueryable();
@@ -49,6 +76,10 @@ public class QuoteService : IQuoteService
 
     public async Task<Guid> CreateAsync(Quote quote, CancellationToken ct = default)
     {
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? quote.TenantId;
+        if (_quotaService != null && tenantId != Guid.Empty)
+            await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Quote, ct);
+
         // Generate a simple quote number if not provided
         if (string.IsNullOrWhiteSpace(quote.QuoteNumber))
         {
@@ -60,17 +91,8 @@ public class QuoteService : IQuoteService
         _dbContext.Set<Quote>().Add(quote);
         await _dbContext.SaveChangesAsync(ct);
 
-        // Commercial usage tracking
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var tid = quote.TenantId; // stamped by DbContext
-                if (tid != Guid.Empty && _tenantService != null)
-                    await _tenantService.IncrementQuoteCountAsync(tid);
-            }
-            catch { /* ignore */ }
-        });
+        await TryIncrementQuoteCountAsync(quote.TenantId, ct);
+        InvalidateListCaches();
 
         return quote.Id;
     }
@@ -80,6 +102,7 @@ public class QuoteService : IQuoteService
         quote.RecalculateTotals();
         _dbContext.Set<Quote>().Update(quote);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -97,6 +120,7 @@ public class QuoteService : IQuoteService
         quote.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default)
@@ -114,6 +138,7 @@ public class QuoteService : IQuoteService
             await _dbContext.SaveChangesAsync(ct);
         }
 
+        InvalidateListCaches();
         return line.Id;
     }
 
@@ -130,6 +155,8 @@ public class QuoteService : IQuoteService
             quote.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
@@ -150,10 +177,16 @@ public class QuoteService : IQuoteService
             quote.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)
     {
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+        if (_quotaService != null && tenantId != Guid.Empty)
+            await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Job, ct);
+
         var quote = await _dbContext.Set<Quote>()
             .Include(q => q.Lines)
             .Include(q => q.Customer)
@@ -186,23 +219,46 @@ public class QuoteService : IQuoteService
         }
 
         _dbContext.Set<Job>().Add(job);
+        await _dbContext.SaveChangesAsync(ct);
 
-        // Optionally seed some initial actual cost placeholders from the quote lines (commented for clean start)
-        // foreach (var line in quote.Lines)
-        // {
-        //     _dbContext.Set<JobCost>().Add(new JobCost
-        //     {
-        //         JobId = job.Id,
-        //         Description = line.Description,
-        //         Amount = line.LineTotal,
-        //         CostType = line.LineType
-        //     });
-        // }
+        // Explicit travel from quote lines — contractor differentiator; carried into job costing.
+        foreach (var line in quote.Lines.Where(l => !l.IsDeleted))
+        {
+            var isTravel = line.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(line.LineType, "Travel", StringComparison.OrdinalIgnoreCase);
+            if (!isTravel) continue;
+
+            _dbContext.Set<JobCost>().Add(new JobCost
+            {
+                JobId = job.Id,
+                Description = line.Description,
+                Amount = line.LineTotal,
+                CostType = "Travel",
+                CostDate = DateTime.UtcNow
+            });
+        }
 
         await _dbContext.SaveChangesAsync(ct);
 
-        // Return loaded job
+        InvalidateListCaches();
+        _cache?.InvalidateCategory("jobs");
+
         return (await GetByIdForJobAsync(job.Id, ct))!;
+    }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("quotes");
+
+    private async Task TryIncrementQuoteCountAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty || _tenantService == null) return;
+        try
+        {
+            await _tenantService.IncrementQuoteCountAsync(tenantId, ct);
+        }
+        catch
+        {
+            // Best-effort commercial tracking — must not break business operations.
+        }
     }
 
     private async Task<Job?> GetByIdForJobAsync(Guid id, CancellationToken ct)

@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using METERP.Application.Services;
+using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 
@@ -13,10 +15,12 @@ namespace METERP.Infrastructure.Services;
 public class TenantService : ITenantService
 {
     private readonly AppDbContext _dbContext;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public TenantService(AppDbContext dbContext)
+    public TenantService(AppDbContext dbContext, IServiceScopeFactory scopeFactory)
     {
         _dbContext = dbContext;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<Tenant?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -38,6 +42,7 @@ public class TenantService : ITenantService
     {
         var query = _dbContext.Tenants
             .IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(t => !t.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -62,8 +67,10 @@ public class TenantService : ITenantService
             Name = name.Trim(),
             Subdomain = subdomain.Trim().ToLowerInvariant(),
             IsActive = true,
-            EnabledFeatures = "ai,usage-tracking" // default sellable features stub
+            Tier = SubscriptionTier.Starter,
+            UsagePeriodStartUtc = QuotaService.GetCurrentPeriodStartUtc()
         };
+        TenantQuotaDefaults.ApplyTierDefaults(tenant);
 
         // Note: TenantId will be set by DbContext SaveChanges, but for the very first tenant(s)
         // we may want to allow empty or use a special value. For foundation we let it be Guid.Empty
@@ -86,6 +93,18 @@ public class TenantService : ITenantService
         existing.Name = tenant.Name?.Trim() ?? string.Empty;
         existing.Subdomain = tenant.Subdomain?.Trim().ToLowerInvariant() ?? string.Empty;
         existing.IsActive = tenant.IsActive;
+        existing.Tier = tenant.Tier;
+        existing.EnabledFeatures = tenant.EnabledFeatures ?? string.Empty;
+        existing.MaxQuotesPerMonth = tenant.MaxQuotesPerMonth;
+        existing.MaxJobsPerMonth = tenant.MaxJobsPerMonth;
+        existing.MaxInvoicesPerMonth = tenant.MaxInvoicesPerMonth;
+        existing.MaxAiCallsPerMonth = tenant.MaxAiCallsPerMonth;
+        existing.InvoiceWebhookUrl = string.IsNullOrWhiteSpace(tenant.InvoiceWebhookUrl)
+            ? null
+            : tenant.InvoiceWebhookUrl.Trim();
+        existing.NotificationEmail = string.IsNullOrWhiteSpace(tenant.NotificationEmail)
+            ? null
+            : tenant.NotificationEmail.Trim();
 
         await _dbContext.SaveChangesAsync(ct);
     }
@@ -102,59 +121,58 @@ public class TenantService : ITenantService
         await _dbContext.SaveChangesAsync(ct);
     }
 
-    public async Task IncrementJobCountAsync(Guid tenantId, CancellationToken ct = default)
-    {
-        var tenant = await _dbContext.Tenants
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
-
-        if (tenant != null)
+    public Task IncrementJobCountAsync(Guid tenantId, CancellationToken ct = default) =>
+        IncrementCounterAsync(tenantId, ct, tenant =>
         {
             tenant.TotalJobsCreated++;
-            await _dbContext.SaveChangesAsync(ct);
-        }
-    }
+            tenant.PeriodJobsCreated++;
+        });
 
-    public async Task IncrementAiCallCountAsync(Guid tenantId, CancellationToken ct = default)
-    {
-        var tenant = await _dbContext.Tenants
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
-
-        if (tenant != null)
+    public Task IncrementAiCallCountAsync(Guid tenantId, CancellationToken ct = default) =>
+        IncrementCounterAsync(tenantId, ct, tenant =>
         {
             tenant.TotalAiCalls++;
-            tenant.LastActivityUtc = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(ct);
-        }
-    }
+            tenant.PeriodAiCalls++;
+        });
 
-    public async Task IncrementQuoteCountAsync(Guid tenantId, CancellationToken ct = default)
-    {
-        var tenant = await _dbContext.Tenants
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
-
-        if (tenant != null)
+    public Task IncrementQuoteCountAsync(Guid tenantId, CancellationToken ct = default) =>
+        IncrementCounterAsync(tenantId, ct, tenant =>
         {
             tenant.TotalQuotesCreated++;
-            tenant.LastActivityUtc = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(ct);
-        }
-    }
+            tenant.PeriodQuotesCreated++;
+        });
 
-    public async Task IncrementInvoiceCountAsync(Guid tenantId, decimal revenueAmount = 0, CancellationToken ct = default)
+    public Task IncrementInvoiceCountAsync(Guid tenantId, decimal revenueAmount = 0, CancellationToken ct = default) =>
+        IncrementCounterAsync(tenantId, ct, tenant =>
+        {
+            tenant.TotalInvoicesIssued++;
+            tenant.PeriodInvoicesIssued++;
+            tenant.TotalRevenueBilled += revenueAmount;
+        });
+
+    /// <summary>
+    /// Usage counters run in an isolated scope so Blazor Server circuits never contend
+    /// with the caller's active DbContext (e.g. invoice create + navigate overlap).
+    /// </summary>
+    private async Task IncrementCounterAsync(
+        Guid tenantId,
+        CancellationToken ct,
+        Action<Tenant> applyIncrement)
     {
-        var tenant = await _dbContext.Tenants
+        if (tenantId == Guid.Empty) return;
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var tenant = await db.Tenants
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
 
-        if (tenant != null)
-        {
-            tenant.TotalInvoicesIssued++;
-            tenant.TotalRevenueBilled += revenueAmount;
-            tenant.LastActivityUtc = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        if (tenant == null) return;
+
+        await QuotaService.EnsureCurrentPeriodAsync(tenant, db, ct);
+        applyIncrement(tenant);
+        tenant.LastActivityUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 }

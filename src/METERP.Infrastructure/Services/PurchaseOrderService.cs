@@ -27,6 +27,7 @@ public class PurchaseOrderService : IPurchaseOrderService
     public async Task<IReadOnlyList<PurchaseOrder>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = _dbContext.Set<PurchaseOrder>()
+            .AsNoTracking()
             .Include(po => po.Supplier)
             .AsQueryable();
 

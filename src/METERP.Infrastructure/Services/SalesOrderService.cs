@@ -28,6 +28,7 @@ public class SalesOrderService : ISalesOrderService
     public async Task<IReadOnlyList<SalesOrder>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = _dbContext.Set<SalesOrder>()
+            .AsNoTracking()
             .Include(so => so.Customer)
             .Include(so => so.Quote)
             .AsQueryable();

@@ -20,6 +20,11 @@
 
 <PageTitle>AI Copilot</PageTitle>
 
+@if (_copilotReady)
+{
+    <span data-testid="ai-copilot-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1>✨ AI Copilot</h1>
@@ -140,7 +145,7 @@
 
                 @if (!string.IsNullOrWhiteSpace(lastResponse))
                 {
-                    <div class="border rounded p-3 bg-light">
+                    <div class="border rounded p-3 bg-light" data-testid="ai-last-response">
                         <div class="d-flex justify-content-between mb-2">
                             <strong>Latest AI Response</strong>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse" data-testid="ai-copy-response">Copy</button>
@@ -213,6 +218,7 @@
     private string userQuestion = "";
     private string? lastResponse;
     private bool _thinking;
+    private bool _copilotReady;
 
     // Real created entities for immediate professional PDF download after AI creation
     private Quote? lastCreatedQuote;
@@ -260,6 +266,8 @@
             availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
         }
         catch { /* non-critical for copilot */ }
+
+        _copilotReady = true;
 
         // Persist chat history across sessions (localStorage demo; per-tenant DB in real)
         try
@@ -548,7 +556,15 @@
 
         try
         {
+            if (!availableCustomers.Any())
+                availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
+
             var customerId = availableCustomers.FirstOrDefault()?.Id ?? Guid.Empty;
+            if (customerId == Guid.Empty)
+            {
+                ToastService.ShowError("No customers available — create a customer first.");
+                return;
+            }
 
             var newQuote = new Quote
             {
@@ -599,7 +615,7 @@
             lastCreatedQuote = await QuoteService.GetByIdAsync(createdId);
             lastAiTextForPdf = text;
             ToastService.ShowSuccess("Draft Quote created with AI-suggested lines! See /quotes.");
-            Navigation.NavigateTo("/quotes");
+            Navigation.NavigateTo("/quotes", forceLoad: true);
         }
         catch (Exception ex)
         {

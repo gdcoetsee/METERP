@@ -23,6 +23,7 @@ public class SupplierService : ISupplierService
     public async Task<IReadOnlyList<Supplier>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = _dbContext.Set<Supplier>()
+            .AsNoTracking()
             .Where(s => s.IsActive)
             .AsQueryable();
 

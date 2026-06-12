@@ -1,6 +1,7 @@
 @page "/reports"
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
+@using METERP.Common
 @inject IQuoteService QuoteService
 @inject IJobService JobService
 @inject IInvoiceService InvoiceService
@@ -328,9 +329,14 @@ else
 
     private async Task ExportAccounting()
     {
-        // Stub for accounting export with GL codes - sellable integration
-        var csv = "Account,Description,Debit,Credit\n1000,Revenue from Jobs,0,125000\n2000,Travel Costs,4500,0\n... (full GL from journals)";
+        var csv = await FinanceService.ExportGlCsvAsync();
+        if (csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length <= 1)
+        {
+            Toast.ShowInfo("No journal entries to export yet. Post journals from Finance or run the demo seeder.");
+            return;
+        }
+
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
-        Toast.ShowSuccess("Accounting CSV (with GL codes for Xero/Sage) copied. Full export in prod.");
+        Toast.ShowSuccess("GL journal CSV copied (Xero/Sage-compatible columns).");
     }
 }

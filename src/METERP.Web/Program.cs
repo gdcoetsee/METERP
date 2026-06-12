@@ -1,50 +1,65 @@
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 using Serilog;
 using Serilog.Events;
 using METERP.Application.Interfaces;
+using METERP.Application.Options;
 using METERP.Application.Services;
+using METERP.Infrastructure.Caching;
+using METERP.Infrastructure.Integrations;
+using METERP.Infrastructure.Seeding;
 using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Services;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
 using METERP.Web.Components;
+using METERP.Web.HealthChecks;
+using METERP.Web.Middleware;
 using METERP.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// === Production-ready structured logging (Serilog) ===
-// Replaces ad-hoc Console.WriteLine / comments. Console for dev, rolling file for basic prod persistence.
-// For live deployment: Add Serilog.Sinks.Seq (or Datadog/Elastic) via env config, enrich with tenant ID.
-// See COMPLETION_PLAN.md handoff for full production hardening checklist.
-Log.Logger = new LoggerConfiguration()
+// === Structured logging (Serilog) — tenant id enriched via TenantLoggingMiddleware ===
+const string logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [Tenant:{TenantId}] {Message:lj}{NewLine}{Exception}";
+var loggerConfiguration = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Application", "METERP")
-    .WriteTo.Console()
-    .WriteTo.File("logs/meterp-.log", 
+    .WriteTo.Console(outputTemplate: logTemplate)
+    .WriteTo.File("logs/meterp-.log",
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 14,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
+        outputTemplate: logTemplate);
 
-builder.Host.UseSerilog();  // Important: must be before other builder config in some cases
+var seqServerUrl = builder.Configuration["Seq:ServerUrl"];
+if (!string.IsNullOrWhiteSpace(seqServerUrl))
+{
+    loggerConfiguration = loggerConfiguration.WriteTo.Seq(seqServerUrl);
+}
+
+Log.Logger = loggerConfiguration.CreateLogger();
+builder.Host.UseSerilog();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddMemoryCache();
 
 // === Multi-tenancy + Current User ===
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantCacheService, TenantMemoryCacheService>();
 builder.Services.AddScoped<ITenantProvider, CurrentTenantProvider>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
+builder.Services.AddScoped<IQuotaService, QuotaService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IQuoteService, QuoteService>();
 builder.Services.AddScoped<IJobService, JobService>();
@@ -57,21 +72,48 @@ builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<IFinanceService, FinanceService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.AddHttpClient("integrations", client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IInvoiceIntegrationService, InvoiceIntegrationService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<NotificationService>();
 
 // === Health checks (production readiness) ===
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<AppDbContext>("database");  // Checks EF can connect and basic query
+    .AddDbContextCheck<AppDbContext>("database", tags: ["ready"])
+    .AddCheck<AiConfigurationHealthCheck>("ai", tags: ["ready"]);
 
 // === AI Assistant (optional - powers smart quoting & post-job learning) ===
-// The implementation creates its own short-lived HttpClient (acceptable for infrequent LLM calls).
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 
-// === Rate limiting note ===
-// Framework rate limiter can be enabled here with AddRateLimiter + UseRateLimiter for HTTP endpoints.
-// For AI/LLM cost control (the expensive part in a sellable product) we use a lightweight
-// tenant-aware throttle directly inside AiAssistantService (no extra packages required).
+// === HTTP rate limiting (complements in-service AI throttle) ===
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        await context.HttpContext.Response.WriteAsync("Rate limit exceeded. Please retry later.", token);
+    };
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        if (httpContext.Request.Path.StartsWithSegments("/health"))
+            return RateLimitPartition.GetNoLimiter("health");
+
+        var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
+            ? httpContext.User.Identity.Name ?? "authenticated"
+            : httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 300,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+});
 
 // === Database (PostgreSQL chosen for cost and scalability in a sellable multi-tenant ERP) ===
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -214,18 +256,21 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TenantLoggingMiddleware>();
 
-// === Health checks endpoints (for live deployment / container orchestration / load balancers) ===
-// /health = liveness, /health/ready = readiness (includes DB check).
-// See Microsoft.AspNetCore.Diagnostics.HealthChecks and the package we added.
-app.MapHealthChecks("/health");
+// === Health checks: /health = liveness, /health/ready = readiness (DB + AI probe) ===
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+}).DisableRateLimiting();
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
-    Predicate = _ => true
-});
+    Predicate = check => check.Tags.Contains("ready")
+}).DisableRateLimiting();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -239,10 +284,12 @@ app.Run();
 public class DatabaseSeeder : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<DatabaseSeeder> _logger;
 
-    public DatabaseSeeder(IServiceProvider serviceProvider)
+    public DatabaseSeeder(IServiceProvider serviceProvider, ILogger<DatabaseSeeder> logger)
     {
         _serviceProvider = serviceProvider;
+        _logger = logger;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -310,7 +357,7 @@ public class DatabaseSeeder : IHostedService
             catch (Exception ex)
             {
                 // Non-fatal: surface in console so user sees why, then let Migrate surface the real problem if any.
-                Console.WriteLine($"[DatabaseSeeder] Dev DB reset note (only happens when METERP_SEED_RESET=true): {ex.Message}");
+                _logger.LogWarning(ex, "Dev DB reset note (only when METERP_SEED_RESET=true)");
             }
         }
 
@@ -330,19 +377,36 @@ public class DatabaseSeeder : IHostedService
             var demoTenant = await tenantService.GetByIdAsync(defaultTenantId, cancellationToken);
             if (demoTenant != null)
             {
-                demoTenant.EnabledFeatures = "ai,usage-tracking,advanced-reports,compliance";
+                demoTenant.Tier = SubscriptionTier.Professional;
+                demoTenant.MaxQuotesPerMonth = null;
+                demoTenant.MaxJobsPerMonth = null;
+                demoTenant.MaxInvoicesPerMonth = null;
+                demoTenant.MaxAiCallsPerMonth = null;
+                demoTenant.EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Professional) + ",compliance";
                 await tenantService.UpdateAsync(demoTenant, cancellationToken);
             }
         }
         else
         {
             defaultTenantId = existingTenants.First().Id;
+            var acme = await tenantService.GetBySubdomainAsync("acme", cancellationToken);
+            if (acme != null && acme.Tier != SubscriptionTier.Professional)
+            {
+                acme.Tier = SubscriptionTier.Professional;
+                acme.MaxQuotesPerMonth = null;
+                acme.MaxJobsPerMonth = null;
+                acme.MaxInvoicesPerMonth = null;
+                acme.MaxAiCallsPerMonth = null;
+                if (string.IsNullOrWhiteSpace(acme.EnabledFeatures) || !acme.HasFeature("ai"))
+                    acme.EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Professional) + ",compliance";
+                await tenantService.UpdateAsync(acme, cancellationToken);
+            }
         }
 
         // 2. Ensure roles with permissions exist for the tenant
         tenantProvider.SetTenantId(defaultTenantId);
 
-        await EnsureRoleWithPermissions(roleManager, "Admin", new[]
+        await EnsureRoleWithPermissions(roleManager, tenantProvider, "Admin", new[]
         {
             Permissions.TenantsView,
             Permissions.TenantsManage,
@@ -372,7 +436,7 @@ public class DatabaseSeeder : IHostedService
             Permissions.SalesOrdersManage
         }, defaultTenantId, cancellationToken);
 
-        await EnsureRoleWithPermissions(roleManager, "Manager", new[]
+        await EnsureRoleWithPermissions(roleManager, tenantProvider, "Manager", new[]
         {
             Permissions.TenantsView,
             Permissions.CustomersView,
@@ -401,7 +465,7 @@ public class DatabaseSeeder : IHostedService
             Permissions.SalesOrdersManage
         }, defaultTenantId, cancellationToken);
 
-        await EnsureRoleWithPermissions(roleManager, "Technician", new[]
+        await EnsureRoleWithPermissions(roleManager, tenantProvider, "Technician", new[]
         {
             Permissions.CustomersView,
             Permissions.JobsView
@@ -423,7 +487,7 @@ public class DatabaseSeeder : IHostedService
             var result = await userManager.CreateAsync(adminUser, "Demo123!");
             if (result.Succeeded)
             {
-                await userManager.AddToRoleAsync(adminUser, "Admin");
+                await AddUserToGlobalRoleAsync(userManager, tenantProvider, adminUser, "Admin");
                 // Add explicit permission claims as well (defense in depth)
                 await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", Permissions.TenantsManage));
                 await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", Permissions.CustomersManage));
@@ -528,6 +592,16 @@ public class DatabaseSeeder : IHostedService
                     UnitPrice = 420m,
                     LineType = "Material",
                     Unit = "ea"
+                }, cancellationToken);
+
+                await quoteService.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = quoteId,
+                    Description = "Travel & site transport (explicit contractor cost)",
+                    Quantity = 1,
+                    UnitPrice = 620m,
+                    LineType = "Other",
+                    Unit = "lot"
                 }, cancellationToken);
 
                 // Demo Sales Order (Quote -> SO -> Job per original vision)
@@ -803,19 +877,38 @@ public class DatabaseSeeder : IHostedService
                             var expenseTravel = new Account { AccountCode = "5200", Name = "Travel & Transport", Type = AccountType.Expense };
                             await financeService.CreateAccountAsync(expenseTravel, cancellationToken);
 
-                            // Sample journal: recognize revenue + AR from the demo invoice (simplified)
+                            // Sample journal: recognize revenue + AR from the demo invoice (balanced double-entry)
                             var demoInvoiceForJournal = (await invoiceService.GetAllAsync(ct: cancellationToken)).FirstOrDefault();
                             if (demoInvoiceForJournal != null)
                             {
+                                var revenueAccount = await db.Set<Account>()
+                                    .FirstAsync(a => a.AccountCode == "4000", cancellationToken);
+                                var arAccount = await db.Set<Account>()
+                                    .FirstAsync(a => a.AccountCode == "1100", cancellationToken);
+
                                 var je = new JournalEntry
                                 {
                                     EntryDate = DateTime.UtcNow,
                                     Description = "Demo invoice revenue recognition",
                                     Reference = demoInvoiceForJournal.InvoiceNumber,
-                                    JobId = demoInvoiceForJournal.JobId
+                                    JobId = demoInvoiceForJournal.JobId,
+                                    Lines = new List<JournalEntryLine>
+                                    {
+                                        new()
+                                        {
+                                            AccountId = arAccount.Id,
+                                            Debit = demoInvoiceForJournal.Total,
+                                            Memo = "AR from demo invoice"
+                                        },
+                                        new()
+                                        {
+                                            AccountId = revenueAccount.Id,
+                                            Credit = demoInvoiceForJournal.Total,
+                                            Memo = "Contracting revenue"
+                                        }
+                                    }
                                 };
-                                // For demo simplicity we create lines directly (service will validate balance on post)
-                                _ = await financeService.PostJournalAsync(je, cancellationToken); // lines would be added in real impl
+                                _ = await financeService.PostJournalAsync(je, cancellationToken);
                             }
                         }
 
@@ -846,6 +939,9 @@ public class DatabaseSeeder : IHostedService
             }
         }
 
+        // Optional large dataset for performance demos (Seed:LargeDataset or METERP_SEED_LARGE=true)
+        await LargeDatasetSeeder.SeedAsync(_serviceProvider, defaultTenantId, cancellationToken);
+
         // 6. Create an additional demo user (Manager role) so the Users page has something interesting to show
         var managerEmail = "manager@acme.demo";
         var existingManager = await userManager.FindByEmailAsync(managerEmail);
@@ -862,26 +958,206 @@ public class DatabaseSeeder : IHostedService
             var mgrResult = await userManager.CreateAsync(managerUser, "Demo123!");
             if (mgrResult.Succeeded)
             {
-                await userManager.AddToRoleAsync(managerUser, "Manager");
+                await AddUserToGlobalRoleAsync(userManager, tenantProvider, managerUser, "Manager");
                 await userManager.AddClaimAsync(managerUser, new System.Security.Claims.Claim("TenantId", defaultTenantId.ToString()));
                 // Manager permissions are already granted via the role claims in the role setup above
             }
         }
+
+        // === Beta tenant for multi-tenant E2E isolation (safe: only creates when missing) ===
+        tenantProvider.SetTenantId(Guid.Empty);
+        var betaTenant = await tenantService.GetBySubdomainAsync("beta", cancellationToken);
+        Guid betaTenantId;
+        if (betaTenant == null)
+        {
+            betaTenantId = await tenantService.CreateAsync("Beta Corp (Demo)", "beta", cancellationToken);
+            var beta = await tenantService.GetByIdAsync(betaTenantId, cancellationToken);
+            if (beta != null)
+            {
+                beta.Tier = SubscriptionTier.Starter;
+                beta.EnabledFeatures = "ai,usage-tracking";
+                await tenantService.UpdateAsync(beta, cancellationToken);
+            }
+        }
+        else
+        {
+            betaTenantId = betaTenant.Id;
+            if (betaTenant.Tier != SubscriptionTier.Starter)
+            {
+                betaTenant.Tier = SubscriptionTier.Starter;
+                betaTenant.EnabledFeatures = "ai,usage-tracking";
+                await tenantService.UpdateAsync(betaTenant, cancellationToken);
+            }
+        }
+
+        // Reuse global Admin role (Identity RoleNameIndex is unique; tenant isolation is via user.TenantId claim).
+        tenantProvider.SetTenantId(betaTenantId);
+
+        var betaAdminEmail = "admin@beta.demo";
+        var existingBetaAdmin = await userManager.FindByEmailAsync(betaAdminEmail);
+        ApplicationUser? betaAdminUser = existingBetaAdmin;
+        if (existingBetaAdmin == null)
+        {
+            betaAdminUser = new ApplicationUser
+            {
+                UserName = betaAdminEmail,
+                Email = betaAdminEmail,
+                EmailConfirmed = true,
+                TenantId = betaTenantId
+            };
+            var betaResult = await userManager.CreateAsync(betaAdminUser, "Demo123!");
+            if (!betaResult.Succeeded)
+                betaAdminUser = null;
+        }
+
+        if (betaAdminUser != null)
+        {
+            var betaClaims = await userManager.GetClaimsAsync(betaAdminUser);
+            if (!betaClaims.Any(c => c.Type == "TenantId" && c.Value == betaTenantId.ToString()))
+            {
+                await userManager.AddClaimAsync(betaAdminUser, new System.Security.Claims.Claim("TenantId", betaTenantId.ToString()));
+            }
+
+            if (!await IsInGlobalRoleAsync(userManager, tenantProvider, betaAdminUser, "Admin"))
+                await AddUserToGlobalRoleAsync(userManager, tenantProvider, betaAdminUser, "Admin");
+            tenantProvider.SetTenantId(betaTenantId);
+        }
+
+        var betaCustomers = await customerService.GetAllAsync(ct: cancellationToken);
+        if (!betaCustomers.Any())
+        {
+            await customerService.CreateAsync(new Customer
+            {
+                Name = "Beta Mining Services",
+                Email = "ops@betamining.demo",
+                City = "Pretoria",
+                Province = "Gauteng"
+            }, cancellationToken);
+        }
+
+        var betaQuotes = await quoteService.GetAllAsync(ct: cancellationToken);
+        if (!betaQuotes.Any())
+        {
+            var betaCust = (await customerService.GetAllAsync(ct: cancellationToken)).First();
+            var betaQuoteId = await quoteService.CreateAsync(new Quote
+            {
+                CustomerId = betaCust.Id,
+                QuoteDate = DateTime.UtcNow.AddDays(-2),
+                ValidUntil = DateTime.UtcNow.AddDays(28),
+                Status = QuoteStatus.Sent,
+                Notes = "Beta tenant isolated quote — panel upgrade.",
+                TaxRate = 0.15m
+            }, cancellationToken);
+            await quoteService.AddLineAsync(new QuoteLine
+            {
+                QuoteId = betaQuoteId,
+                Description = "Beta-only travel allowance",
+                Quantity = 1,
+                UnitPrice = 400m,
+                LineType = "Other",
+                Unit = "lot"
+            }, cancellationToken);
+        }
+
+        // Ensure Acme quotes include explicit travel line (E2E + demo; safe patch for existing DBs).
+        tenantProvider.SetTenantId(defaultTenantId);
+        var acmeQuotes = await quoteService.GetAllAsync(ct: cancellationToken);
+        foreach (var q in acmeQuotes)
+        {
+            var full = await quoteService.GetByIdAsync(q.Id, cancellationToken);
+            if (full?.Lines.Any(l => !l.IsDeleted && l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)) == true)
+                break;
+
+            if (full != null)
+            {
+                await quoteService.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = full.Id,
+                    Description = "Travel & site transport (explicit contractor cost)",
+                    Quantity = 1,
+                    UnitPrice = 620m,
+                    LineType = "Other",
+                    Unit = "lot"
+                }, cancellationToken);
+            }
+        }
+
+        tenantProvider.SetTenantId(defaultTenantId);
     }
 
-    private async Task EnsureRoleWithPermissions(RoleManager<ApplicationRole> roleManager, string roleName, string[] permissions, Guid tenantId, CancellationToken ct)
+    /// <summary>
+    /// Identity role names are globally unique (RoleNameIndex). Use Guid.Empty tenant so role lookup
+    /// is not blocked by per-tenant query filters during seeding.
+    /// </summary>
+    private static async Task AddUserToGlobalRoleAsync(
+        UserManager<ApplicationUser> userManager,
+        ITenantProvider tenantProvider,
+        ApplicationUser user,
+        string roleName)
     {
-        var role = await roleManager.FindByNameAsync(roleName);
-        if (role == null)
+        var previousTenant = tenantProvider.GetCurrentTenantId();
+        tenantProvider.SetTenantId(Guid.Empty);
+        try
         {
-            role = new ApplicationRole
-            {
-                Name = roleName,
-                TenantId = tenantId,
-                NormalizedName = roleName.ToUpper()
-            };
-            await roleManager.CreateAsync(role);
+            if (!await userManager.IsInRoleAsync(user, roleName))
+                await userManager.AddToRoleAsync(user, roleName);
         }
+        finally
+        {
+            tenantProvider.SetTenantId(previousTenant);
+        }
+    }
+
+    private static async Task<bool> IsInGlobalRoleAsync(
+        UserManager<ApplicationUser> userManager,
+        ITenantProvider tenantProvider,
+        ApplicationUser user,
+        string roleName)
+    {
+        var previousTenant = tenantProvider.GetCurrentTenantId();
+        tenantProvider.SetTenantId(Guid.Empty);
+        try
+        {
+            return await userManager.IsInRoleAsync(user, roleName);
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(previousTenant);
+        }
+    }
+
+    private async Task EnsureRoleWithPermissions(
+        RoleManager<ApplicationRole> roleManager,
+        ITenantProvider tenantProvider,
+        string roleName,
+        string[] permissions,
+        Guid tenantId,
+        CancellationToken ct)
+    {
+        var previousTenant = tenantProvider.GetCurrentTenantId();
+        tenantProvider.SetTenantId(Guid.Empty);
+
+        ApplicationRole? role;
+        try
+        {
+            role = await roleManager.FindByNameAsync(roleName);
+            if (role == null)
+            {
+                role = new ApplicationRole
+                {
+                    Name = roleName,
+                    TenantId = Guid.Empty,
+                    NormalizedName = roleName.ToUpperInvariant()
+                };
+                await roleManager.CreateAsync(role);
+            }
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(previousTenant);
+        }
+
+        if (role == null) return;
 
         // Add permission claims to the role
         var existingClaims = await roleManager.GetClaimsAsync(role);

@@ -1377,6 +1377,9 @@ namespace METERP.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("InvoiceWebhookUrl")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -1392,9 +1395,36 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<DateTime?>("LastModifiedDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("MaxAiCallsPerMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxInvoicesPerMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxJobsPerMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxQuotesPerMonth")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("NotificationEmail")
+                        .HasColumnType("text");
+
+                    b.Property<int>("PeriodAiCalls")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PeriodInvoicesIssued")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PeriodJobsCreated")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PeriodQuotesCreated")
+                        .HasColumnType("integer");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -1407,6 +1437,9 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Tier")
+                        .HasColumnType("integer");
 
                     b.Property<int>("TotalAiCalls")
                         .HasColumnType("integer");
@@ -1422,6 +1455,9 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<decimal>("TotalRevenueBilled")
                         .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("UsagePeriodStartUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

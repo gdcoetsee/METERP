@@ -20,6 +20,7 @@ public class AiAssistantService : IAiAssistantService
     private readonly ILogger<AiAssistantService> _logger;
     private readonly ITenantService? _tenantService;     // for commercial usage tracking
     private readonly ITenantProvider? _tenantProvider;   // to know which tenant to attribute usage to
+    private readonly IQuotaService? _quotaService;
     private readonly string? _apiKey;
     private readonly string _baseUrl;
     private readonly string _model;
@@ -42,11 +43,17 @@ public class AiAssistantService : IAiAssistantService
         return true;
     }
 
-    public AiAssistantService(IConfiguration config, ILogger<AiAssistantService> logger, ITenantService? tenantService = null, ITenantProvider? tenantProvider = null)
+    public AiAssistantService(
+        IConfiguration config,
+        ILogger<AiAssistantService> logger,
+        ITenantService? tenantService = null,
+        ITenantProvider? tenantProvider = null,
+        IQuotaService? quotaService = null)
     {
         _logger = logger;
         _tenantService = tenantService;
         _tenantProvider = tenantProvider;
+        _quotaService = quotaService;
 
         var aiSection = config.GetSection("Ai");
         _apiKey = aiSection["ApiKey"];
@@ -101,6 +108,13 @@ public class AiAssistantService : IAiAssistantService
             }
         }
         catch { /* non-fatal */ }
+
+        var quotaMessage = await CheckAiQuotaAsync(ct);
+        if (quotaMessage != null)
+        {
+            _logger.LogInformation("AI quote suggestion blocked: {Reason}", quotaMessage);
+            return null;
+        }
 
         try
         {
@@ -165,17 +179,7 @@ public class AiAssistantService : IAiAssistantService
             if (string.IsNullOrWhiteSpace(messageContent))
                 return null;
 
-            // Commercial usage tracking (best effort, fire-and-forget)
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
-                    if (tid != Guid.Empty && _tenantService != null)
-                        await _tenantService.IncrementAiCallCountAsync(tid);
-                }
-                catch { /* ignore usage tracking failures */ }
-            });
+            await TryIncrementAiCallCountAsync(ct);
 
             // The model was asked to return raw JSON inside the content
             using var suggestionDoc = JsonDocument.Parse(messageContent);
@@ -234,6 +238,13 @@ public class AiAssistantService : IAiAssistantService
             }
         }
         catch { /* non-fatal */ }
+
+        var quotaMessage = await CheckAiQuotaAsync(ct);
+        if (quotaMessage != null)
+        {
+            _logger.LogInformation("AI job analysis blocked for job {JobId}: {Reason}", job.Id, quotaMessage);
+            return null;
+        }
 
         try
         {
@@ -323,6 +334,8 @@ public class AiAssistantService : IAiAssistantService
                     recommendations.Add(r.GetString() ?? "");
             }
 
+            await TryIncrementAiCallCountAsync(ct);
+
             return new AiJobAnalysis(
                 analysisDoc.RootElement.TryGetProperty("summary", out var s) ? s.GetString() ?? "" : "",
                 analysisDoc.RootElement.TryGetProperty("varianceDrivers", out var v) ? v.GetString() ?? "" : "",
@@ -364,6 +377,10 @@ public class AiAssistantService : IAiAssistantService
         }
         catch { /* non-fatal */ }
 
+        var quotaMessage = await CheckAiQuotaAsync(ct);
+        if (quotaMessage != null)
+            return quotaMessage;
+
         try
         {
             var system = """
@@ -403,17 +420,7 @@ public class AiAssistantService : IAiAssistantService
                 .GetProperty("content")
                 .GetString();
 
-            // Commercial usage tracking (best effort)
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
-                    if (tid != Guid.Empty && _tenantService != null)
-                        await _tenantService.IncrementAiCallCountAsync(tid);
-                }
-                catch { /* ignore */ }
-            });
+            await TryIncrementAiCallCountAsync(ct);
 
             return responseText;
         }
@@ -421,6 +428,36 @@ public class AiAssistantService : IAiAssistantService
         {
             _logger.LogWarning(ex, "AI Copilot general query failed");
             return "Sorry, the AI co-pilot is temporarily unavailable. Please try again or check your AI configuration.";
+        }
+    }
+
+    private async Task<string?> CheckAiQuotaAsync(CancellationToken ct)
+    {
+        var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+        if (tid == Guid.Empty || _quotaService == null) return null;
+
+        try
+        {
+            await _quotaService.EnsureAllowedAsync(tid, QuotaType.AiCall, ct);
+            return null;
+        }
+        catch (QuotaExceededException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private async Task TryIncrementAiCallCountAsync(CancellationToken ct)
+    {
+        var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+        if (tid == Guid.Empty || _tenantService == null) return;
+        try
+        {
+            await _tenantService.IncrementAiCallCountAsync(tid, ct);
+        }
+        catch
+        {
+            // Best-effort commercial tracking — must not break AI flows.
         }
     }
 }

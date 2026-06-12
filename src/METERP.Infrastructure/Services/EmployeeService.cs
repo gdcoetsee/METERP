@@ -21,7 +21,7 @@ public class EmployeeService : IEmployeeService
 
     public async Task<IReadOnlyList<Employee>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
-        var query = _dbContext.Set<Employee>().Where(e => e.IsActive).AsQueryable();
+        var query = _dbContext.Set<Employee>().AsNoTracking().Where(e => e.IsActive).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
         {

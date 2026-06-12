@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ProjectGuid>{D984DDDB-7AEE-437C-97EA-8B48271EB87B}</ProjectGuid>
     <UserSecretsId>bdc12c8f-c53c-46c8-b25d-60bb7c4c91f9</UserSecretsId>
+    <!-- Plain `dotnet run` uses Development + localhost:8080 (required for local Postgres / E2E). -->
+    <DefaultLaunchProfile>local-8080</DefaultLaunchProfile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,10 +37,12 @@
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.2" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
 
     <!-- Health checks for live deployment (DB, basic liveness). Expose /health and /health/ready.
          Per COMPLETION_PLAN handoff for production readiness. -->
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

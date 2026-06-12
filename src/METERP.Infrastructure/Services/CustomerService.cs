@@ -23,7 +23,7 @@ public class CustomerService : ICustomerService
 
     public async Task<IReadOnlyList<Customer>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
-        var query = _dbContext.Set<Customer>().AsQueryable();
+        var query = _dbContext.Set<Customer>().AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
         {

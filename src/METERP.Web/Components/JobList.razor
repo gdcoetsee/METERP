@@ -28,7 +28,7 @@ else
             <tbody>
                 @foreach (var j in Jobs)
                 {
-                    <tr>
+                    <tr data-testid="@GetJobRowTestId(j)">
                         <td><strong>@j.JobNumber</strong></td>
                         <td><strong>@j.Title</strong><br /><small class="text-muted">@(j.Customer?.Name ?? "")</small></td>
                         <td>@((MarkupString)GetJobStatusBadge(j.Status))</td>
@@ -36,7 +36,7 @@ else
                         <td class="text-end">R @(GetActualTotal(j).ToString("N2"))</td>
                         <td class="text-end @(GetVariance(j) > 0 ? "text-danger" : GetVariance(j) < 0 ? "text-success" : "")">R @GetVariance(j).ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(j)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(j)" data-testid="job-view-button">View</button>
                             @if (CanManage)
                             {
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(j)">Delete</button>
@@ -143,6 +143,13 @@ else
     }
 
     private decimal GetVariance(Job j) => GetActualTotal(j) - j.QuotedTotal;
+
+    private static string GetJobRowTestId(Job j)
+    {
+        var hasTravel = (j.ActualCosts ?? new List<JobCost>())
+            .Any(c => !c.IsDeleted && c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase));
+        return hasTravel ? "job-row-with-travel" : "job-row";
+    }
 
     private static string GetJobStatusBadge(JobStatus s)
     {
