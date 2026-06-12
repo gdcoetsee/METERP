@@ -255,6 +255,47 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Scheduling_Page_Loads_Jobs_And_Assignment_Panel()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/scheduling");
+
+        try
+        {
+            await page.WaitForTestIdAsync("scheduling-ready", 8000);
+        }
+        catch (TimeoutException)
+        {
+            // Older builds expose the table without the ready marker
+            await page.WaitForSelectorAsync("table.table tbody tr", new() { Timeout = 30000 });
+        }
+
+        var content = await page.ContentAsync();
+        Assert.Contains("J-", content);
+
+        var assignButton = page.Locator("[data-testid='scheduling-view-assign']").First;
+        if (await assignButton.CountAsync() == 0)
+            assignButton = page.GetByRole(AriaRole.Button, new() { Name = "View/Assign" }).First;
+
+        await assignButton.ClickAsync();
+
+        try
+        {
+            await page.WaitForTestIdAsync("scheduling-assign-panel", 10000);
+            await page.WaitForTestIdAsync("scheduling-asset-select", 5000);
+            await page.WaitForTestIdAsync("scheduling-employee-select", 5000);
+            await page.ClickByTestIdAsync("scheduling-close-assign");
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForSelectorAsync(".card .card-header:has-text('Assign for')", new() { Timeout = 10000 });
+            await page.GetByRole(AriaRole.Button, new() { Name = "Close" }).ClickAsync();
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Notifications_Triggered_From_LowStock_Or_JobEvent()
     {
         var page = await _browser.LoginAsync();

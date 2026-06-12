@@ -17,21 +17,21 @@
 
 <h1>Job Scheduling</h1>
 <p class="text-muted">Basic view of upcoming and scheduled jobs. Assign employees and assets for next-level operations.</p>
-<button class="btn btn-primary btn-sm mb-3" @onclick="SuggestAssignmentsWithAI">✨ AI Suggest Best Assignments</button>
-<button class="btn btn-outline-primary btn-sm mb-3 ms-2" @onclick="RunLowStockRiskForScheduled">🔮 AI: Low-stock + travel risk for these scheduled jobs</button>
+<button class="btn btn-primary btn-sm mb-3" data-testid="scheduling-ai-suggest" @onclick="SuggestAssignmentsWithAI">✨ AI Suggest Best Assignments</button>
+<button class="btn btn-outline-primary btn-sm mb-3 ms-2" data-testid="scheduling-ai-risk" @onclick="RunLowStockRiskForScheduled">🔮 AI: Low-stock + travel risk for these scheduled jobs</button>
 
 @if (_loading)
 {
-    <p><em>Loading schedule...</em></p>
+    <p data-testid="scheduling-loading"><em>Loading schedule...</em></p>
 }
 else if (jobs == null || !jobs.Any())
 {
-    <div class="alert alert-info">No scheduled jobs.</div>
+    <div class="alert alert-info" data-testid="scheduling-empty">No scheduled jobs.</div>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table">
+    <div class="table-responsive" data-testid="scheduling-ready">
+        <table class="table" data-testid="scheduling-table">
             <thead>
                 <tr>
                     <th>Job #</th>
@@ -45,7 +45,7 @@ else
             <tbody>
                 @foreach (var job in jobs.OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue))
                 {
-                    <tr>
+                    <tr data-testid="scheduling-row">
                         <td>@job.JobNumber</td>
                         <td>@job.Title<br /><small>@(job.Customer?.Name)</small></td>
                         <td>@(job.ScheduledStart?.ToString("yyyy-MM-dd") ?? "TBD")</td>
@@ -55,7 +55,7 @@ else
                             <!-- Employee assignment stub -->
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewJob(job)">View/Assign</button>
+                            <button class="btn btn-sm btn-outline-primary" data-testid="scheduling-view-assign" @onclick="() => ViewJob(job)">View/Assign</button>
                         </td>
                     </tr>
                 }
@@ -66,13 +66,13 @@ else
 
 @if (selectedJob != null)
 {
-    <div class="card mt-3">
+    <div class="card mt-3" data-testid="scheduling-assign-panel">
         <div class="card-header">Assign for @selectedJob.JobNumber</div>
         <div class="card-body">
             <div class="row">
                 <div class="col-md-6">
                     <label>Assign Asset</label>
-                    <select class="form-select" @bind="assignAssetId">
+                    <select class="form-select" data-testid="scheduling-asset-select" @bind="assignAssetId">
                         <option value="">-- None --</option>
                         @foreach (var a in availableAssets)
                         {
@@ -82,7 +82,7 @@ else
                 </div>
                 <div class="col-md-6">
                     <label>Assign Employee (for labor)</label>
-                    <select class="form-select" @bind="assignEmployeeId">
+                    <select class="form-select" data-testid="scheduling-employee-select" @bind="assignEmployeeId">
                         <option value="">-- None --</option>
                         @foreach (var e in availableEmployees)
                         {
@@ -91,8 +91,8 @@ else
                     </select>
                 </div>
             </div>
-            <button class="btn btn-success mt-2" @onclick="AssignResources">Save Assignments</button>
-            <button class="btn btn-secondary mt-2 ms-1" @onclick="CloseAssign">Close</button>
+            <button class="btn btn-success mt-2" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save Assignments</button>
+            <button class="btn btn-secondary mt-2 ms-1" data-testid="scheduling-close-assign" @onclick="CloseAssign">Close</button>
         </div>
     </div>
 }

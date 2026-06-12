@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Redis distributed cache + Tenants E2E (2026-06-12 latest).**
+**Scheduling E2E + quote cache integration tests (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 3)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 4)
+- **Phase 2 E2E — Scheduling**:
+  - `data-testid` on `Scheduling.razor` (table, rows, assign panel, AI buttons).
+  - `Scheduling_Page_Loads_Jobs_And_Assignment_Panel` (10th Playwright test; fallbacks for older builds).
+- **Phase 5 — quote list cache integration**:
+  - `QuoteServiceCacheTests` (3): cached stale reads until invalidation, `CreateAsync` invalidates, search bypasses cache.
+- **Phase 5 — billing/webhook hardening**:
+  - `InvoiceIntegrationTests`: invalid webhook URL skipped (no HTTP call).
+- **Testing**: **158/158 green** (144 unit + 4 web + 10 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 3)
 - **Phase 5 — Redis distributed cache**:
   - `TenantDistributedCacheService` via `IDistributedCache` (Redis when `Cache:RedisConnection` set, else distributed memory).
   - `CacheOptions`, docker-compose `redis:7-alpine`, `Cache__RedisConnection=redis:6379` on web.

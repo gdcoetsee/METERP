@@ -63,6 +63,52 @@ public class InvoiceIntegrationTests
     }
 
     [Fact]
+    public async Task NotifyInvoiceCreatedAsync_SkipsInvalidWebhookUrl()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateDb(tenantId);
+
+        db.Tenants.Add(new Tenant
+        {
+            Id = tenantId,
+            Name = "Acme",
+            Subdomain = "acme",
+            InvoiceWebhookUrl = "not-a-valid-url"
+        });
+
+        var customer = new Customer { TenantId = tenantId, Name = "Client Co" };
+        db.Set<Customer>().Add(customer);
+
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-BAD-WH-001",
+            Total = 900m,
+            Subtotal = 782.61m,
+            Tax = 117.39m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        var factory = new StubHttpClientFactory(new HttpClient(handler));
+        var emailMock = new Mock<IEmailSender>();
+        emailMock.Setup(e => e.IsConfigured).Returns(false);
+
+        var service = new InvoiceIntegrationService(
+            db,
+            emailMock.Object,
+            factory,
+            Microsoft.Extensions.Options.Options.Create(new EmailOptions()),
+            NullLogger<InvoiceIntegrationService>.Instance);
+
+        await service.NotifyInvoiceCreatedAsync(invoice.Id);
+
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task NotifyInvoiceCreatedAsync_PostsWebhookWhenTenantUrlConfigured()
     {
         var tenantId = Guid.NewGuid();
