@@ -14,6 +14,11 @@
 
 <PageTitle>Customers</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="customers-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Customers</h1>
     @if (UserCanManage)
@@ -24,7 +29,7 @@
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search name, email or phone..."
+        <input type="search" class="form-control" data-testid="customers-search" placeholder="Search name, email or phone..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -54,7 +59,7 @@ else if (!customers.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="customers-table">
         <table class="table table-hover">
             <thead>
                 <tr>
@@ -272,6 +277,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _customersLoadGeneration;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.CustomersManage);
 
@@ -290,8 +296,12 @@ else
 
     private async Task LoadCustomers()
     {
+        var generation = ++_customersLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        customers = (await CustomerService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var loaded = (await CustomerService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _customersLoadGeneration)
+            return;
+        customers = loaded;
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)

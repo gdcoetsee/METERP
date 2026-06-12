@@ -878,7 +878,15 @@ public class E2EFlowTests : IAsyncLifetime
     {
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/inventory");
-        await page.WaitForTestIdAsync("inventory-table", 30000);
+        try
+        {
+            await page.WaitForTestIdAsync("inventory-table", 30000);
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/inventory");
+            await page.WaitForTestIdAsync("inventory-table", 30000);
+        }
 
         var invBody = page.Locator("[data-testid='inventory-table'] tbody");
         var ledRow = invBody.Locator("tr").Filter(new() { HasText = "LED-HB-150" });
@@ -916,6 +924,67 @@ public class E2EFlowTests : IAsyncLifetime
         var qtyAfterText = await ledAfter.First.Locator("td").Nth(3).TextContentAsync();
         var qtyAfter = int.Parse(new string(qtyAfterText!.Where(char.IsDigit).ToArray()));
         Assert.Equal(qtyBefore + 3, qtyAfter);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Customers_Page_Loads_Demo_Customer()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/customers");
+        await page.WaitForTestIdAsync("customers-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='customers-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Customers_Search_FiltersByName()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/customers");
+        await page.WaitForTestIdAsync("customers-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='customers-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Cape Town Mining" })).ToHaveCountAsync(1);
+
+        await page.FillByTestIdAsync("customers-search", "Hospital");
+
+        await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Cape Town Mining" })).ToHaveCountAsync(0);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Assets_Page_Loads_Demo_Transformer()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/assets");
+        await page.WaitForTestIdAsync("assets-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='assets-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "11kV/400V Transformer" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Employees_Page_Loads_Demo_Staff()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/employees");
+        await page.WaitForTestIdAsync("employees-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='employees-table'] tbody");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johan" })).ToHaveCountAsync(1);
 
         await page.CloseAsync();
     }

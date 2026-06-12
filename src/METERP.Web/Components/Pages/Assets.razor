@@ -15,6 +15,11 @@
 
 <PageTitle>Assets</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="assets-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Assets</h1>
     @if (UserCanManage)
@@ -25,7 +30,7 @@
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search name, serial, location or customer..."
+        <input type="search" class="form-control" data-testid="assets-search" placeholder="Search name, serial, location or customer..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -51,7 +56,7 @@ else if (assets == null || !assets.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="assets-table">
         <table class="table table-hover">
             <thead>
                 <tr>
@@ -241,6 +246,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _assetsLoadGeneration;
 
     private bool showNoteForm;
     private string newNote = string.Empty;
@@ -268,8 +274,12 @@ else
 
     private async Task LoadAssets()
     {
+        var generation = ++_assetsLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        assets = (await AssetService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var loaded = (await AssetService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _assetsLoadGeneration)
+            return;
+        assets = loaded;
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)

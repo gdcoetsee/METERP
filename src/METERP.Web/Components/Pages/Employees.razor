@@ -14,6 +14,11 @@
 
 <PageTitle>Employees</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="employees-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Employees</h1>
     @if (UserCanManage)
@@ -24,7 +29,7 @@
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search name, number or title..."
+        <input type="search" class="form-control" data-testid="employees-search" placeholder="Search name, number or title..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
@@ -50,7 +55,7 @@ else if (employees == null || !employees.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="employees-table">
         <table class="table table-hover">
             <thead>
                 <tr>
@@ -171,6 +176,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _employeesLoadGeneration;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.EmployeesManage);
 
@@ -189,8 +195,12 @@ else
 
     private async Task LoadEmployees()
     {
+        var generation = ++_employeesLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        employees = (await EmployeeService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var loaded = (await EmployeeService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _employeesLoadGeneration)
+            return;
+        employees = loaded;
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)

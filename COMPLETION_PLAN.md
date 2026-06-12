@@ -2,9 +2,22 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**PO receive + search E2E + Sent PO seeder (2026-06-12 latest).**
+**CRM module E2E — Customers, Assets, Employees (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 38)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 39)
+- **Phase 4 — CRM / HR / Assets UI markers**:
+  - `Customers.razor`: `customers-ready`, `customers-table`, `customers-search`; `_customersLoadGeneration`.
+  - `Assets.razor`: `assets-ready`, `assets-table`, `assets-search`; `_assetsLoadGeneration`.
+  - `Employees.razor`: `employees-ready`, `employees-table`, `employees-search`; `_employeesLoadGeneration`.
+- **Phase 2 E2E**:
+  - `Customers_Page_Loads_Demo_Customer` (34th) — `Johannesburg General Hospital`.
+  - `Customers_Search_FiltersByName` (35th) — search `Hospital` filters table.
+  - `Assets_Page_Loads_Demo_Transformer` (36th) — hospital 11kV transformer asset.
+  - `Employees_Page_Loads_Demo_Staff` (37th) — `EMP-001` + `Johan`.
+  - `PurchaseOrders_Receive_Updates_Inventory` hardened (inventory page reload retry).
+- **Testing**: **276/276 green** (228 unit + 11 web + 37 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 38)
 - **Phase 4 — Purchasing receive flow**:
   - Seeder: idempotent Sent `E2E receive demo PO` (Panel Supplies → `LED-HB-150` qty 3); soft-deletes stale received demo POs on startup.
   - `PurchaseOrders.razor`: `purchase-order-receive` test id on list + detail receive buttons.
