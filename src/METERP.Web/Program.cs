@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 using Serilog;
 using Serilog.Events;
+using METERP.Application.Integrations;
 using METERP.Application.Interfaces;
 using METERP.Application.Options;
 using METERP.Application.Services;
@@ -112,9 +113,15 @@ builder.Services.AddSingleton<IPendingTwoFactorChallengeStore, PendingTwoFactorC
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
 builder.Services.AddHttpClient("integrations", client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddHttpClient("stripe", client =>
+{
+    client.BaseAddress = new Uri("https://api.stripe.com/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IInvoiceIntegrationService, InvoiceIntegrationService>();
 builder.Services.AddScoped<IBillingWebhookService, BillingWebhookService>();
+builder.Services.AddScoped<IStripeCustomerPortalClient, StripeCustomerPortalClient>();
 builder.Services.AddScoped<IBillingPortalService, BillingPortalService>();
 builder.Services.AddScoped<ISchedulingService, SchedulingService>();
 builder.Services.AddScoped<ToastService>();

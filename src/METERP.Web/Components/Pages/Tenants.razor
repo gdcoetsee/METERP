@@ -98,10 +98,7 @@ else
                         <td>R @tenant.TotalRevenueBilled.ToString("N0")</td>
                         <td>@tenant.CreatedDate.ToString("yyyy-MM-dd")</td>
                         <td class="text-end">
-                            @{
-                                var portalUrl = BillingPortalService.GetCustomerPortalUrl(tenant);
-                            }
-                            @if (!string.IsNullOrWhiteSpace(portalUrl))
+                            @if (portalUrls.TryGetValue(tenant.Id, out var portalUrl) && !string.IsNullOrWhiteSpace(portalUrl))
                             {
                                 <a class="btn btn-sm btn-outline-info me-1" href="@portalUrl" target="_blank" rel="noopener noreferrer" data-testid="tenant-billing-portal">Billing</a>
                             }
@@ -209,13 +206,10 @@ else
                     </div>
                 </div>
 
-                @{
-                    var editPortalUrl = BillingPortalService.GetCustomerPortalUrl(currentTenant);
-                }
-                @if (!string.IsNullOrWhiteSpace(editPortalUrl))
+                @if (!string.IsNullOrWhiteSpace(currentTenant.StripeCustomerId) && BillingPortalService.IsConfigured)
                 {
                     <div class="mb-3">
-                        <a class="btn btn-sm btn-outline-info" href="@editPortalUrl" target="_blank" rel="noopener noreferrer" data-testid="tenant-edit-billing-portal">Open Stripe Customer Portal</a>
+                        <button type="button" class="btn btn-sm btn-outline-info" data-testid="tenant-edit-billing-portal" @onclick="() => OpenBillingPortal(currentTenant)">Open Stripe Customer Portal</button>
                     </div>
                 }
 
@@ -265,6 +259,7 @@ else
 
 @code {
     private List<Tenant> tenants = new();
+    private readonly Dictionary<Guid, string?> portalUrls = new();
     private Tenant currentTenant = new();
     private bool showForm;
     private bool isEditing;
@@ -293,6 +288,28 @@ else
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
         var result = await TenantService.GetAllAsync(term, currentPage, PageSize);
         tenants = result.ToList();
+        await RefreshPortalUrlsAsync();
+    }
+
+    private async Task RefreshPortalUrlsAsync()
+    {
+        portalUrls.Clear();
+        foreach (var tenant in tenants)
+        {
+            portalUrls[tenant.Id] = await BillingPortalService.ResolveCustomerPortalUrlAsync(tenant);
+        }
+    }
+
+    private async Task OpenBillingPortal(Tenant tenant)
+    {
+        var url = await BillingPortalService.ResolveCustomerPortalUrlAsync(tenant);
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            ToastService.ShowInfo("Billing portal is not available for this tenant.");
+            return;
+        }
+
+        await JS.InvokeVoidAsync("open", url, "_blank");
     }
 
     private void ShowCreateForm()

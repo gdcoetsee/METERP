@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Job employee assignment entity + scheduling E2E save (2026-06-12 latest).**
+**Stripe Customer Portal API sessions + static fallback (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 10)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 11)
+- **Phase 5 — Stripe Customer Portal API**:
+  - `IStripeCustomerPortalClient` / `StripeCustomerPortalClient` — POST `billing_portal/sessions` via named `stripe` HttpClient.
+  - `BillingOptions`: `StripeSecretKey`, `CustomerPortalReturnUrl`; `CanCreateApiSessions` when key + return URL set.
+  - `IBillingPortalService.ResolveCustomerPortalUrlAsync` — API session first, static `CustomerPortalBaseUrl` fallback.
+  - `Tenants.razor`: pre-resolved portal URLs on load; edit form opens fresh session via JS.
+  - Config: `appsettings.json`, `docker-compose.yml`, `.env.example`.
+  - `StripeCustomerPortalClientTests` (3) + `BillingPortalServiceTests` (+3 async/fallback).
+- **Testing**: **190/190 green** (171 unit + 5 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 10)
 - **Phase 4 — Scheduling employee assignment (real field)**:
   - `Job.AssignedEmployeeId` + `AssignedEmployee` navigation (replaces notes-tag stub).
   - EF migration `AddJobAssignedEmployee`.

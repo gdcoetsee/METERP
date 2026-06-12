@@ -11,13 +11,25 @@ public class BillingOptions
     /// <summary>Stripe webhook signing secret (whsec_*).</summary>
     public string WebhookSecret { get; set; } = string.Empty;
 
+    /// <summary>Stripe secret API key (sk_test_* / sk_live_*). Enables real portal session creation.</summary>
+    public string StripeSecretKey { get; set; } = string.Empty;
+
     /// <summary>
     /// Base URL for Stripe Customer Portal login (e.g. https://billing.stripe.com/p/login/...).
-    /// When set, tenants with <see cref="Tenant.StripeCustomerId"/> get a manage-billing link.
+    /// Demo fallback when <see cref="StripeSecretKey"/> is not set.
     /// </summary>
     public string CustomerPortalBaseUrl { get; set; } = string.Empty;
 
+    /// <summary>Absolute URL Stripe redirects to after portal (required for API sessions).</summary>
+    public string CustomerPortalReturnUrl { get; set; } = string.Empty;
+
     public bool IsSignatureRequired => !string.IsNullOrWhiteSpace(WebhookSecret);
 
-    public bool IsPortalConfigured => !string.IsNullOrWhiteSpace(CustomerPortalBaseUrl);
+    public bool IsApiConfigured => !string.IsNullOrWhiteSpace(StripeSecretKey);
+
+    public bool CanCreateApiSessions =>
+        IsApiConfigured && !string.IsNullOrWhiteSpace(CustomerPortalReturnUrl);
+
+    public bool IsPortalConfigured =>
+        CanCreateApiSessions || !string.IsNullOrWhiteSpace(CustomerPortalBaseUrl);
 }
