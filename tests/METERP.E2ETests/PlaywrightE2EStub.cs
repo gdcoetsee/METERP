@@ -494,6 +494,44 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Scheduling_Quick_Adds_Labor_From_Assigned_Crew()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForTestIdAsync("scheduling-ready", 20000);
+
+        await page.Locator("[data-testid='scheduling-view-assign']").First.ClickAsync();
+        await page.WaitForTestIdAsync("scheduling-assign-panel", 10000);
+
+        var employeeSelect = page.Locator("[data-testid='scheduling-employee-select']");
+        var optionCount = await employeeSelect.Locator("option").CountAsync();
+        if (optionCount <= 1)
+        {
+            await page.ClickByTestIdAsync("scheduling-close-assign");
+            await page.CloseAsync();
+            return;
+        }
+
+        var firstEmployeeValue = await employeeSelect.Locator("option").Nth(1).GetAttributeAsync("value");
+        await employeeSelect.SelectOptionAsync(new[] { firstEmployeeValue! });
+        await page.ClickByTestIdAsync("scheduling-save-assignments");
+        await page.Locator(".toast-body").First.WaitForAsync(new() { Timeout = 15000 });
+
+        await page.Locator("[data-testid='scheduling-view-assign']").First.ClickAsync();
+        await page.WaitForTestIdAsync("scheduling-quick-labor-panel", 10000);
+        await page.FillByTestIdAsync("scheduling-labor-hours", "4");
+        await page.ClickByTestIdAsync("scheduling-quick-add-labor");
+
+        var laborToast = page.Locator(".toast-body").Filter(new() { HasText = "Logged" });
+        await laborToast.First.WaitForAsync(new() { Timeout = 15000 });
+
+        var toast = (await laborToast.First.TextContentAsync()) ?? string.Empty;
+        Assert.Contains("labor", toast, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Audit_Page_Loads_Compliance_Trail()
     {
         var page = await _browser.LoginAsync();

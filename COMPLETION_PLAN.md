@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Reports cashflow forecast from receivables + pipeline (2026-06-12 latest).**
+**Scheduling quick-add labor from assigned crew (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 19)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 20)
+- **Phase 4 — Scheduling → JobLabor quick-add**:
+  - `ISchedulingService.AddCrewLaborAsync` — one-click JobLabor for lead + crew (EmployeeId, rates, work date).
+  - `Scheduling.razor`: quick-add panel (`scheduling-quick-labor-panel`) with hours, date, crew checkboxes.
+  - `SchedulingServiceTests` (+2); E2E `Scheduling_Quick_Adds_Labor_From_Assigned_Crew` (20th Playwright test).
+- **Testing**: **211/211 green** (184 unit + 7 web + 20 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 19)
 - **Phase 4 — Cashflow forecast reporting**:
   - `ICashflowReportService` / `CashflowReportService`: receivables (sent/partial/overdue invoices) + accepted quote pipeline − open PO commitments.
   - `Reports.razor`: real cashflow card (`reports-cashflow-card`) replaces hardcoded +R 245k stub; compact currency formatting.

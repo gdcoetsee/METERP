@@ -127,4 +127,65 @@ public class SchedulingServiceTests
             Assert.Equal(2, crew.Count);
         }
     }
+
+    [Fact]
+    public async Task AddCrewLaborAsync_AddsLinkedLaborForAssignedCrew()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "Labor job", QuotedTotal = 4000m });
+            var leadId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Thabo",
+                LastName = "Lead",
+                DefaultHourlyRate = 195m,
+                IsActive = true
+            });
+            var crewId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Johan",
+                LastName = "Crew",
+                DefaultHourlyRate = 210m,
+                IsActive = true
+            });
+
+            await service.AssignJobResourcesAsync(jobId, null, leadId, new[] { crewId });
+
+            var workDate = new DateTime(2026, 6, 12, 0, 0, 0, DateTimeKind.Utc);
+            var result = await service.AddCrewLaborAsync(jobId, 6m, workDate);
+
+            Assert.Equal(2, result.EntriesAdded);
+
+            var job = await jobService.GetByIdAsync(jobId);
+            Assert.NotNull(job);
+            Assert.Equal(2, job!.Labors.Count(l => !l.IsDeleted));
+            Assert.All(job.Labors.Where(l => !l.IsDeleted), l =>
+            {
+                Assert.Equal(6m, l.Hours);
+                Assert.Equal(workDate, l.WorkDate);
+                Assert.NotNull(l.EmployeeId);
+            });
+        }
+    }
+
+    [Fact]
+    public async Task AddCrewLaborAsync_ThrowsWhenNoCrewAssigned()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "No crew", QuotedTotal = 1000m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddCrewLaborAsync(jobId, 4m));
+        }
+    }
 }

@@ -62,4 +62,61 @@ public class SchedulingService : ISchedulingService
         await _jobService.UpdateAsync(job, ct);
         await _jobService.SetCrewAssignmentsAsync(jobId, crewIds.ToList(), ct);
     }
+
+    public async Task<CrewLaborAddResult> AddCrewLaborAsync(
+        Guid jobId,
+        decimal hours,
+        DateTime? workDate = null,
+        IReadOnlyList<Guid>? crewEmployeeIds = null,
+        string? description = null,
+        CancellationToken ct = default)
+    {
+        if (hours <= 0)
+            throw new ArgumentOutOfRangeException(nameof(hours), "Hours must be greater than zero.");
+
+        var job = await _jobService.GetByIdAsync(jobId, ct)
+            ?? throw new InvalidOperationException($"Job {jobId} was not found.");
+
+        var crew = job.GetCrewEmployees().ToList();
+        if (job.AssignedEmployee != null && crew.All(e => e.Id != job.AssignedEmployeeId))
+            crew.Insert(0, job.AssignedEmployee);
+
+        if (crew.Count == 0)
+            throw new InvalidOperationException("Assign crew before logging labor.");
+
+        IEnumerable<Employee> targets = crew;
+        if (crewEmployeeIds is { Count: > 0 })
+        {
+            var requested = crewEmployeeIds.Where(id => id != Guid.Empty).ToHashSet();
+            targets = crew.Where(e => requested.Contains(e.Id));
+        }
+
+        var targetList = targets.ToList();
+        if (targetList.Count == 0)
+            throw new InvalidOperationException("No matching crew members selected.");
+
+        var workDay = (workDate ?? DateTime.UtcNow).Date;
+        var laborDescription = string.IsNullOrWhiteSpace(description)
+            ? "Field work (scheduling)"
+            : description.Trim();
+
+        var laborIds = new List<Guid>();
+        foreach (var employee in targetList)
+        {
+            var laborId = await _jobService.AddLaborAsync(new JobLabor
+            {
+                JobId = jobId,
+                EmployeeId = employee.Id,
+                WorkDate = workDay,
+                Hours = hours,
+                HourlyRate = employee.DefaultHourlyRate,
+                Technician = $"{employee.FirstName} {employee.LastName}".Trim(),
+                Description = laborDescription
+            }, ct);
+
+            laborIds.Add(laborId);
+        }
+
+        return new CrewLaborAddResult(laborIds.Count, laborIds);
+    }
 }

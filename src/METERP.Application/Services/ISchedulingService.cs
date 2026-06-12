@@ -15,7 +15,20 @@ public interface ISchedulingService
         Guid? leadEmployeeId,
         IReadOnlyList<Guid>? additionalCrewEmployeeIds = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs JobLabor for assigned crew (lead + crew assignments) in one action.
+    /// </summary>
+    Task<CrewLaborAddResult> AddCrewLaborAsync(
+        Guid jobId,
+        decimal hours,
+        DateTime? workDate = null,
+        IReadOnlyList<Guid>? crewEmployeeIds = null,
+        string? description = null,
+        CancellationToken ct = default);
 }
+
+public sealed record CrewLaborAddResult(int EntriesAdded, IReadOnlyList<Guid> LaborIds);
 
 public sealed record SchedulingBoard(
     IReadOnlyList<Job> Jobs,

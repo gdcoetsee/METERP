@@ -115,6 +115,46 @@ else
             </div>
             <button class="btn btn-success mt-2" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save Assignments</button>
             <button class="btn btn-secondary mt-2 ms-1" data-testid="scheduling-close-assign" @onclick="CloseAssign">Close</button>
+
+            <hr class="my-3" />
+            <div data-testid="scheduling-quick-labor-panel">
+                <h6 class="mb-2">Quick-add labor (assigned crew)</h6>
+                @if (GetCrewForQuickLabor().Any())
+                {
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label">Hours</label>
+                            <input type="number" class="form-control" min="0.25" step="0.25" data-testid="scheduling-labor-hours" @bind="laborHours" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Work date</label>
+                            <input type="date" class="form-control" data-testid="scheduling-labor-date" @bind="laborWorkDate" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Crew to log</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                @foreach (var e in GetCrewForQuickLabor())
+                                {
+                                    var laborChecked = laborCrewEmployeeIds.Contains(e.Id);
+                                    <label class="form-check form-check-inline mb-0">
+                                        <input type="checkbox"
+                                               class="form-check-input"
+                                               data-testid="scheduling-labor-crew-checkbox"
+                                               checked="@laborChecked"
+                                               @onchange="(ChangeEventArgs args) => ToggleLaborCrewMember(e.Id, args.Value is bool b && b)" />
+                                        @e.FirstName @e.LastName
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-success mt-2" data-testid="scheduling-quick-add-labor" @onclick="QuickAddCrewLabor">Log crew hours</button>
+                }
+                else
+                {
+                    <p class="text-muted small mb-0">Save crew assignments above to enable one-click JobLabor entry (links to payroll &amp; utilization).</p>
+                }
+            </div>
         </div>
     </div>
 }
@@ -127,6 +167,9 @@ else
     private Guid? assignAssetId;
     private Guid? assignEmployeeId;
     private HashSet<Guid> assignCrewEmployeeIds = new();
+    private decimal laborHours = 8m;
+    private DateTime laborWorkDate = DateTime.UtcNow.Date;
+    private HashSet<Guid> laborCrewEmployeeIds = new();
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
@@ -154,6 +197,28 @@ else
             .Where(e => e.Id != job.AssignedEmployeeId)
             .Select(e => e.Id)
             .ToHashSet();
+        laborWorkDate = DateTime.UtcNow.Date;
+        laborCrewEmployeeIds = GetCrewForQuickLabor().Select(e => e.Id).ToHashSet();
+    }
+
+    private IEnumerable<Employee> GetCrewForQuickLabor()
+    {
+        if (selectedJob == null)
+            return Enumerable.Empty<Employee>();
+
+        var crew = selectedJob.GetCrewEmployees().ToList();
+        if (selectedJob.AssignedEmployee != null && crew.All(e => e.Id != selectedJob.AssignedEmployeeId))
+            crew.Insert(0, selectedJob.AssignedEmployee);
+
+        return crew;
+    }
+
+    private void ToggleLaborCrewMember(Guid employeeId, bool isChecked)
+    {
+        if (isChecked)
+            laborCrewEmployeeIds.Add(employeeId);
+        else
+            laborCrewEmployeeIds.Remove(employeeId);
     }
 
     private void ToggleCrewMember(Guid employeeId, bool isChecked)
@@ -181,6 +246,42 @@ else
     private void CloseAssign()
     {
         selectedJob = null;
+    }
+
+    private async Task QuickAddCrewLabor()
+    {
+        if (selectedJob == null) return;
+
+        if (laborHours <= 0)
+        {
+            ToastService.ShowError("Enter hours greater than zero.");
+            return;
+        }
+
+        if (laborCrewEmployeeIds.Count == 0)
+        {
+            ToastService.ShowError("Select at least one crew member.");
+            return;
+        }
+
+        try
+        {
+            var result = await SchedulingService.AddCrewLaborAsync(
+                selectedJob.Id,
+                laborHours,
+                laborWorkDate,
+                laborCrewEmployeeIds.ToList());
+
+            ToastService.ShowSuccess($"Logged {result.EntriesAdded} crew labor entr{(result.EntriesAdded == 1 ? "y" : "ies")} for job.");
+            jobs = (await SchedulingService.GetBoardAsync()).Jobs.ToList();
+            selectedJob = jobs.FirstOrDefault(j => j.Id == selectedJob.Id);
+            if (selectedJob != null)
+                laborCrewEmployeeIds = GetCrewForQuickLabor().Select(e => e.Id).ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private static string GetStatusBadge(JobStatus status) => status switch
