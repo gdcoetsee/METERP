@@ -2,9 +2,23 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**2FA E2E + Finance E2E + billing UX (2026-06-12 latest).**
+**SchedulingService + Stripe customer portal links (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 7)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 8)
+- **Phase 4 — Scheduling service layer**:
+  - `ISchedulingService` / `SchedulingService`: `GetBoardAsync`, `AssignJobResourcesAsync` (asset + employee note stub).
+  - `Scheduling.razor` refactored to use `ISchedulingService` only (no direct `IJobService`/`IAssetService`/`IEmployeeService` in page).
+  - `SchedulingServiceTests` (2): board load, resource assignment.
+- **Phase 5 — Stripe customer portal (static URL)**:
+  - `IBillingPortalService` / `BillingPortalService`; `BillingOptions.CustomerPortalBaseUrl`.
+  - `Tenants.razor`: billing portal link (`tenant-billing-portal`), Stripe fields in edit form.
+  - Seeder: Acme demo `StripeCustomerId = cus_demo_acme`, `SubscriptionStatus = active`.
+  - `appsettings.json` + `docker-compose.yml`: `Billing__CustomerPortalBaseUrl`.
+  - `BillingPortalServiceTests` (3).
+  - E2E: `Tenants_Page_Loads_Commercial_Usage_Table` asserts portal `href` contains `cus_` when link present.
+- **Testing**: **183/183 green** (164 unit + 5 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 7)
 - **Phase 2 E2E — 2FA + Finance**:
   - `AccountSecurity_Enables_TwoFactor_And_Login_Challenge` — beta user TOTP setup, login challenge, cleanup.
   - `Finance_Page_Loads_Chart_Of_Accounts_And_Export` — GL table + CSV export button.

@@ -11,5 +11,13 @@ public class BillingOptions
     /// <summary>Stripe webhook signing secret (whsec_*).</summary>
     public string WebhookSecret { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Base URL for Stripe Customer Portal login (e.g. https://billing.stripe.com/p/login/...).
+    /// When set, tenants with <see cref="Tenant.StripeCustomerId"/> get a manage-billing link.
+    /// </summary>
+    public string CustomerPortalBaseUrl { get; set; } = string.Empty;
+
     public bool IsSignatureRequired => !string.IsNullOrWhiteSpace(WebhookSecret);
+
+    public bool IsPortalConfigured => !string.IsNullOrWhiteSpace(CustomerPortalBaseUrl);
 }

@@ -6,9 +6,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @attribute [Authorize(Policy = "Jobs.View")]
-@inject IJobService JobService
-@inject IEmployeeService EmployeeService
-@inject IAssetService AssetService
+@inject ISchedulingService SchedulingService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
 @inject ToastService ToastService
@@ -111,9 +109,10 @@ else
         _loading = true;
         try
         {
-            jobs = (await JobService.GetAllAsync(null, 1, 50)).ToList();
-            availableAssets = (await AssetService.GetAllAsync(null, 1, 1000)).ToList();
-            availableEmployees = (await EmployeeService.GetAllAsync(null, 1, 1000)).ToList();
+            var board = await SchedulingService.GetBoardAsync();
+            jobs = board.Jobs.ToList();
+            availableAssets = board.Assets.ToList();
+            availableEmployees = board.Employees.ToList();
         }
         finally
         {
@@ -131,13 +130,9 @@ else
     {
         if (selectedJob == null) return;
 
-        selectedJob.AssetId = assignAssetId;
-        // Note: Employee assignment would link to future labor or separate assignment entity.
-        // For this next-level stub, we update the job asset and note employee in description if needed.
-
-        await JobService.UpdateAsync(selectedJob);
+        await SchedulingService.AssignJobResourcesAsync(selectedJob.Id, assignAssetId, assignEmployeeId);
         ToastService.ShowSuccess("Assignment saved for job.");
-        jobs = (await JobService.GetAllAsync(null, 1, 50)).ToList();
+        jobs = (await SchedulingService.GetBoardAsync()).Jobs.ToList();
         selectedJob = null;
     }
 

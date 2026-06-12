@@ -115,6 +115,8 @@ builder.Services.AddHttpClient("integrations", client => client.Timeout = TimeSp
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IInvoiceIntegrationService, InvoiceIntegrationService>();
 builder.Services.AddScoped<IBillingWebhookService, BillingWebhookService>();
+builder.Services.AddScoped<IBillingPortalService, BillingPortalService>();
+builder.Services.AddScoped<ISchedulingService, SchedulingService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<NotificationService>();
 
@@ -493,6 +495,8 @@ public class DatabaseSeeder : IHostedService
                 demoTenant.MaxInvoicesPerMonth = null;
                 demoTenant.MaxAiCallsPerMonth = null;
                 demoTenant.EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Professional) + ",compliance";
+                demoTenant.StripeCustomerId ??= "cus_demo_acme";
+                demoTenant.SubscriptionStatus ??= "active";
                 await tenantService.UpdateAsync(demoTenant, cancellationToken);
             }
         }

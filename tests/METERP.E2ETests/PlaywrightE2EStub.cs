@@ -236,6 +236,14 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tier", content);
 
+        var portalLink = page.Locator("[data-testid='tenant-billing-portal']").First;
+        if (await portalLink.CountAsync() > 0)
+        {
+            var href = await portalLink.GetAttributeAsync("href");
+            Assert.False(string.IsNullOrWhiteSpace(href));
+            Assert.Contains("cus_", href!, StringComparison.OrdinalIgnoreCase);
+        }
+
         await page.CloseAsync();
     }
 

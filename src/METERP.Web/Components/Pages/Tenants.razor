@@ -8,6 +8,7 @@
 @using Microsoft.JSInterop
 @attribute [Authorize(Policy = "Tenants.View")]
 @inject ITenantService TenantService
+@inject IBillingPortalService BillingPortalService
 @inject ICurrentUserService CurrentUserService
 @inject IJSRuntime JS
 @inject ToastService ToastService
@@ -97,6 +98,13 @@ else
                         <td>R @tenant.TotalRevenueBilled.ToString("N0")</td>
                         <td>@tenant.CreatedDate.ToString("yyyy-MM-dd")</td>
                         <td class="text-end">
+                            @{
+                                var portalUrl = BillingPortalService.GetCustomerPortalUrl(tenant);
+                            }
+                            @if (!string.IsNullOrWhiteSpace(portalUrl))
+                            {
+                                <a class="btn btn-sm btn-outline-info me-1" href="@portalUrl" target="_blank" rel="noopener noreferrer" data-testid="tenant-billing-portal">Billing</a>
+                            }
                             @if (UserCanManage)
                             {
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EditTenant(tenant)">Edit</button>
@@ -188,6 +196,28 @@ else
                     <InputText class="form-control" @bind-Value="currentTenant.EnabledFeatures" />
                     <div class="form-text">Controls sellable/tiered features like AI Copilot. Changes take effect on next use.</div>
                 </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Stripe Customer ID</label>
+                        <InputText class="form-control" @bind-Value="currentTenant.StripeCustomerId" placeholder="cus_..." />
+                        <div class="form-text">Set by checkout webhook or manually for billing portal links.</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Subscription Status</label>
+                        <InputText class="form-control" @bind-Value="currentTenant.SubscriptionStatus" placeholder="active, past_due, canceled" />
+                    </div>
+                </div>
+
+                @{
+                    var editPortalUrl = BillingPortalService.GetCustomerPortalUrl(currentTenant);
+                }
+                @if (!string.IsNullOrWhiteSpace(editPortalUrl))
+                {
+                    <div class="mb-3">
+                        <a class="btn btn-sm btn-outline-info" href="@editPortalUrl" target="_blank" rel="noopener noreferrer" data-testid="tenant-edit-billing-portal">Open Stripe Customer Portal</a>
+                    </div>
+                }
 
                 <div class="row">
                     <div class="col-md-6 mb-3">
@@ -303,7 +333,9 @@ else
             LastActivityUtc = tenant.LastActivityUtc,
             EnabledFeatures = tenant.EnabledFeatures,
             InvoiceWebhookUrl = tenant.InvoiceWebhookUrl,
-            NotificationEmail = tenant.NotificationEmail
+            NotificationEmail = tenant.NotificationEmail,
+            StripeCustomerId = tenant.StripeCustomerId,
+            SubscriptionStatus = tenant.SubscriptionStatus
         };
         isEditing = true;
         showForm = true;
