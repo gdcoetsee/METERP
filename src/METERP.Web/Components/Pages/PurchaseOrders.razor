@@ -79,7 +79,7 @@ else
                             }
                             @if (UserCanManage && (po.Status == PurchaseOrderStatus.Sent || po.Status == PurchaseOrderStatus.PartiallyReceived))
                             {
-                                <button class="btn btn-sm btn-success ms-1" @onclick="() => ReceivePO(po)">Receive</button>
+                                <button class="btn btn-sm btn-success ms-1" data-testid="purchase-order-receive" @onclick="() => ReceivePO(po)">Receive</button>
                             }
                         </td>
                     </tr>
@@ -147,7 +147,7 @@ else
                 <button class="btn btn-sm btn-light me-2" @onclick="ClosePOView">Close</button>
                 @if (UserCanManage && (selectedPO.Status == PurchaseOrderStatus.Sent || selectedPO.Status == PurchaseOrderStatus.PartiallyReceived))
                 {
-                    <button class="btn btn-sm btn-success" @onclick="() => ReceivePO(selectedPO)">Mark Received</button>
+                    <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => ReceivePO(selectedPO)">Mark Received</button>
                 }
             </div>
         </div>

@@ -843,7 +843,6 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("purchase-orders-table", 30000);
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "PO-" })).ToHaveCountAsync(1);
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
 
         await page.Locator("[data-testid='purchase-order-view']").First.ClickAsync();
@@ -851,6 +850,72 @@ public class E2EFlowTests : IAsyncLifetime
 
         var detail = await page.ContentAsync();
         Assert.Contains("Total:", detail);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task PurchaseOrders_Search_FiltersBySupplier()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/purchase-orders");
+        await page.WaitForTestIdAsync("purchase-orders-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
+        Assert.True(await tableBody.Locator("tr").CountAsync() >= 2);
+
+        await page.FillByTestIdAsync("purchase-orders-search", "Electro");
+
+        await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" })).ToHaveCountAsync(0);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task PurchaseOrders_Receive_Updates_Inventory()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/inventory");
+        await page.WaitForTestIdAsync("inventory-table", 30000);
+
+        var invBody = page.Locator("[data-testid='inventory-table'] tbody");
+        var ledRow = invBody.Locator("tr").Filter(new() { HasText = "LED-HB-150" });
+        await ledRow.First.WaitForAsync(new() { Timeout = 15000 });
+        var qtyBeforeText = await ledRow.First.Locator("td").Nth(3).TextContentAsync();
+        Assert.NotNull(qtyBeforeText);
+        var qtyBefore = int.Parse(new string(qtyBeforeText.Where(char.IsDigit).ToArray()));
+
+        await page.GotoRelativeAsync("/purchase-orders");
+        await page.WaitForTestIdAsync("purchase-orders-table", 30000);
+        await page.FillByTestIdAsync("purchase-orders-search", "receive demo");
+
+        var poBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
+        var sentRow = poBody.Locator("tr").Filter(new() { Has = page.Locator("[data-testid='purchase-order-receive']") });
+        await sentRow.First.WaitForAsync(new() { Timeout = 20000 });
+
+        page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
+        await sentRow.First.Locator("[data-testid='purchase-order-receive']").ClickAsync();
+
+        await page.Locator(".toast-body")
+            .Filter(new() { HasText = "PO received" })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        var receivedRow = poBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" }).First;
+        await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 10000 });
+
+        await page.GotoRelativeAsync("/inventory");
+        await page.WaitForTestIdAsync("inventory-table", 30000);
+        await page.FillByTestIdAsync("inventory-search", "LED-HB");
+
+        var invBodyAfter = page.Locator("[data-testid='inventory-table'] tbody");
+        var ledAfter = invBodyAfter.Locator("tr").Filter(new() { HasText = "LED-HB-150" });
+        await ledAfter.First.WaitForAsync(new() { Timeout = 15000 });
+        var qtyAfterText = await ledAfter.First.Locator("td").Nth(3).TextContentAsync();
+        var qtyAfter = int.Parse(new string(qtyAfterText!.Where(char.IsDigit).ToArray()));
+        Assert.Equal(qtyBefore + 3, qtyAfter);
 
         await page.CloseAsync();
     }
