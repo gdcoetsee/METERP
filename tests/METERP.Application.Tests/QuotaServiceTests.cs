@@ -129,6 +129,26 @@ public class QuotaServiceTests
             () => service.EnsureAllowedAsync(tenantId, QuotaType.Quote));
     }
 
+    [Theory]
+    [InlineData(QuotaType.Job, 10)]
+    [InlineData(QuotaType.Invoice, 10)]
+    [InlineData(QuotaType.AiCall, 30)]
+    public async Task EnsureAllowedAsync_Throws_ForOtherQuotaTypesAtLimit(QuotaType type, int atLimit)
+    {
+        var scopeFactory = CreateScopeFactory(out var db);
+        var tenantId = Guid.NewGuid();
+        var tenant = CreateTenant(tenantId);
+        tenant.PeriodJobsCreated = type == QuotaType.Job ? atLimit : 0;
+        tenant.PeriodInvoicesIssued = type == QuotaType.Invoice ? atLimit : 0;
+        tenant.PeriodAiCalls = type == QuotaType.AiCall ? atLimit : 0;
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var service = new QuotaService(scopeFactory);
+        await Assert.ThrowsAsync<QuotaExceededException>(
+            () => service.EnsureAllowedAsync(tenantId, type));
+    }
+
     [Fact]
     public async Task EnsureAllowedAsync_IsolatesTenants()
     {

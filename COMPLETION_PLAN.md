@@ -2,9 +2,18 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**CRM E2E + UserService tests + per-tenant AI throttle (2026-06-12 latest).**
+**Quota enforcement spine tests + billing UX E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 2)
+- **Phase 1/4 — quota enforcement on spine**:
+  - `SpineQuotaEnforcementTests` (4): Quote/Job/Invoice create + Quote→Job blocked at monthly limits via real `QuotaService`.
+  - `TenantQuotaDefaultsTests` (7): tier limits, enterprise unlimited, overrides, `ApplyTierDefaults`.
+  - `QuotaServiceTests` expanded (+3 theory cases): Job, Invoice, AiCall at limit.
+- **Phase 2 E2E**: `Home_Quota_Usage_Card_Shows_Monthly_Usage` (8th Playwright test).
+- **UI**: `tenants-table` data-testid on Tenants page.
+- **Testing**: **150/150 green** (138 unit + 4 web + 8 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session)
 - **E2E — CRM handoff**: `Opportunity_Converts_To_Quote_Via_Ai_Copilot` (Opportunities → AI Copilot → draft quote).
 - **Phase 4 — UserService tests** (6): tenant isolation, search, create+claims, role change, available roles.
 - **Seeder**: `SyncUserPermissionClaimsFromRoleAsync` — existing demo admins pick up new role permissions on startup.
