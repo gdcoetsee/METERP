@@ -88,6 +88,17 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateFromJobAsync_ThrowsWhenJobNotFound()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new InvoiceService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateFromJobAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateFromJobAsync_FallsBackToSummaryLine_WhenNoQuote()
     {
         var tenantId = Guid.NewGuid();

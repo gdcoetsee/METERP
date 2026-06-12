@@ -149,4 +149,16 @@ public class SalesOrderServiceTests
             Assert.Equal(SalesOrderStatus.InProgress, loadedSo!.Status);
         }
     }
+
+    [Fact]
+    public async Task ConvertToJobAsync_ThrowsWhenSalesOrderNotFound()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ConvertToJobAsync(Guid.NewGuid()));
+        }
+    }
 }

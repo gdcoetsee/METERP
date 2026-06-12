@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Full spine chain + ConvertToJob edge cases (2026-06-12 latest).**
+**SO spine chain + conversion guards + quote audit (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 29)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 30)
+- **Phase 1 — Extended spine + compliance hooks**:
+  - `SpineChainTests` (+1): Sales Order → Job → Invoice chain; SO status `InProgress`; invoice copies quote travel lines.
+  - `InvoiceTests` (+1): `CreateFromJobAsync` job-not-found guard.
+  - `SalesOrderServiceTests` (+1): `ConvertToJobAsync` SO-not-found guard.
+  - `QuoteTests` (+1): `ConvertToJobAsync` writes `CONVERT` audit entry via `IAuditService`.
+- **Testing**: **244/244 green** (213 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 29)
 - **Phase 1 — Quote → Job → Invoice spine (unit chain)**:
   - `SpineChainTests` (+1): full chain preserves explicit travel `JobCost` + invoice travel line + matching totals.
   - `QuoteTests` (+3): `ConvertToJobAsync` travel `JobCost`, quote-not-found guard, all-lines-soft-deleted still converts.

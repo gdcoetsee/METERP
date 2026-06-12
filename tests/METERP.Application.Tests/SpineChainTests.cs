@@ -72,4 +72,60 @@ public class SpineChainTests
         Assert.Equal(quote.Total, invoice.Total);
         Assert.Equal(quote.Subtotal, invoice.Subtotal);
     }
+
+    [Fact]
+    public async Task SalesOrderToJobToInvoice_ChainLinksSalesOrderAndCopiesQuoteTravel()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        db.Set<Tenant>().Add(new Tenant { Id = tenantId, Name = "SO Spine Co", Subdomain = "so-spine" });
+        var customer = new Customer { TenantId = tenantId, Name = "SO Client" };
+        db.Set<Customer>().Add(customer);
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-SO-001",
+            TaxRate = 0.15m,
+            Lines = new List<QuoteLine>
+            {
+                new QuoteLine { Description = "Switchgear", Quantity = 1, UnitPrice = 8000m, IsDeleted = false },
+                new QuoteLine { Description = "Mobilization travel", Quantity = 1, UnitPrice = 900m, LineType = "Travel", IsDeleted = false }
+            }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var jobService = new JobService(db);
+        var salesOrderService = new SalesOrderService(db, jobService);
+        var soId = await salesOrderService.CreateAsync(new SalesOrder
+        {
+            QuoteId = quote.Id,
+            CustomerId = customer.Id,
+            Status = SalesOrderStatus.Confirmed,
+            TaxRate = 0.15m,
+            Lines =
+            {
+                new SalesOrderLine { Description = "Switchgear", Quantity = 1, UnitPrice = 8000m },
+                new SalesOrderLine { Description = "Mobilization travel", Quantity = 1, UnitPrice = 900m, LineType = "Travel" }
+            }
+        });
+
+        var job = await salesOrderService.ConvertToJobAsync(soId);
+        Assert.Equal(soId, job.SalesOrderId);
+        Assert.Equal(quote.Id, job.QuoteId);
+
+        var loadedSo = await salesOrderService.GetByIdAsync(soId);
+        Assert.Equal(SalesOrderStatus.InProgress, loadedSo!.Status);
+
+        var invoiceService = new InvoiceService(db);
+        var invoice = await invoiceService.CreateFromJobAsync(job.Id);
+
+        Assert.Contains(invoice.Lines, l => l.LineType == "Travel" && l.UnitPrice == 900m);
+        Assert.Equal(quote.Subtotal, invoice.Subtotal);
+        Assert.Equal(quote.Total, invoice.Total);
+    }
 }

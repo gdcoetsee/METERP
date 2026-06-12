@@ -349,4 +349,43 @@ public class QuoteTests
         Assert.Empty(job.ActualCosts);
         Assert.Equal(QuoteStatus.Accepted, (await db.Set<Quote>().FindAsync(quote.Id))!.Status);
     }
+
+    [Fact]
+    public async Task QuoteService_ConvertToJobAsync_LogsAuditEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Audit Co" };
+        db.Set<Customer>().Add(customer);
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-AUDIT-001",
+            TaxRate = 0m,
+            Lines = new List<QuoteLine>
+            {
+                new QuoteLine { Description = "Work", Quantity = 1, UnitPrice = 2000m, IsDeleted = false }
+            }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new QuoteService(db, auditService: auditService);
+
+        await service.ConvertToJobAsync(quote.Id);
+
+        var entries = await auditService.GetRecentAsync();
+        var convertEntry = Assert.Single(entries);
+        Assert.Equal("CONVERT", convertEntry.Action);
+        Assert.Equal("Quote", convertEntry.EntityType);
+        Assert.Equal("Q-AUDIT-001", convertEntry.EntityReference);
+        Assert.Contains("travel", convertEntry.Details, StringComparison.OrdinalIgnoreCase);
+    }
 }
