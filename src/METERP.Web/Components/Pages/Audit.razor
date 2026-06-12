@@ -17,7 +17,8 @@
     <button class="btn btn-outline-secondary btn-sm" data-testid="audit-export-csv" @onclick="ExportLog">Export Log (CSV)</button>
 </div>
 
-<div class="table-responsive" data-testid="audit-table">
+<div class="table-responsive" data-testid="audit-ready">
+    <div data-testid="audit-table">
     <table class="table table-sm table-hover">
         <thead>
             <tr>
@@ -41,6 +42,7 @@
             }
         </tbody>
     </table>
+    </div>
 </div>
 
 @code {

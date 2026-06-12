@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using METERP.Application.Interfaces;
 using METERP.Application.Options;
+using METERP.Domain;
 using METERP.Infrastructure.Caching;
 using Moq;
 using Xunit;
@@ -66,6 +67,42 @@ public class TenantDistributedCacheServiceTests
 
             Assert.Equal("value-3", third[0]);
             Assert.Equal(2, callCount);
+        }
+    }
+
+    [Fact]
+    public async Task GetOrCreateAsync_SerializesQuotesWithLinesWithoutCycle()
+    {
+        var tenantId = Guid.NewGuid();
+        var (service, provider) = CreateService(tenantId);
+        using (provider)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = Guid.NewGuid(),
+                QuoteNumber = "Q-SER-001",
+                Lines =
+                {
+                    new QuoteLine { Description = "Travel", Quantity = 1, UnitPrice = 620m }
+                }
+            };
+            quote.Lines.First().Quote = quote;
+            ListCacheGraphHelper.PrepareQuotesForCache(new[] { quote });
+
+            var cached = await service.GetOrCreateAsync<List<Quote>>(
+                "quotes",
+                "p1:s20",
+                () => Task.FromResult(new List<Quote> { quote }));
+
+            var second = await service.GetOrCreateAsync<List<Quote>>(
+                "quotes",
+                "p1:s20",
+                () => throw new InvalidOperationException("Factory should not run on cache hit"));
+
+            Assert.Equal("Q-SER-001", second[0].QuoteNumber);
+            Assert.Single(second[0].Lines);
+            Assert.Equal(cached[0].Lines.First().Description, second[0].Lines.First().Description);
         }
     }
 

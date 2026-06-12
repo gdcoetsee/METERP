@@ -296,6 +296,40 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Audit_Page_Loads_Compliance_Trail()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/audit");
+
+        try
+        {
+            await page.WaitForTestIdAsync("audit-ready", 15000);
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForTestIdAsync("audit-table", 15000);
+        }
+
+        await page.WaitForTestIdAsync("audit-export-csv", 10000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Audit Log", content);
+
+        var rowCount = await page.Locator("[data-testid='audit-row']").CountAsync();
+        if (rowCount > 0)
+        {
+            Assert.True(
+                content.Contains("Quote", StringComparison.OrdinalIgnoreCase)
+                || content.Contains("CREATE", StringComparison.OrdinalIgnoreCase)
+                || content.Contains("CONVERT", StringComparison.OrdinalIgnoreCase)
+                || content.Contains("Opportunity", StringComparison.OrdinalIgnoreCase),
+                "Expected audit rows to reference spine or CRM entities.");
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Notifications_Triggered_From_LowStock_Or_JobEvent()
     {
         var page = await _browser.LoginAsync();

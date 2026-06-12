@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -70,11 +71,14 @@ public class QuoteService : IQuoteService
                 (q.Customer != null && q.Customer.Name.ToLower().Contains(term)));
         }
 
-        return await query
+        var results = await query
             .OrderByDescending(q => q.QuoteDate)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+
+        ListCacheGraphHelper.PrepareQuotesForCache(results);
+        return results;
     }
 
     public async Task<Guid> CreateAsync(Quote quote, CancellationToken ct = default)

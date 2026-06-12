@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -75,11 +76,14 @@ public class JobService : IJobService
                 (j.Quote != null && j.Quote.QuoteNumber.ToLower().Contains(term)));
         }
 
-        return await query
+        var results = await query
             .OrderByDescending(j => j.CreatedDate)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+
+        ListCacheGraphHelper.PrepareJobsForCache(results);
+        return results;
     }
 
     public async Task<Guid> CreateAsync(Job job, CancellationToken ct = default)

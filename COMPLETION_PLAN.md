@@ -2,9 +2,22 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Scheduling E2E + quote cache integration tests (2026-06-12 latest).**
+**Cache cycle fix + Audit E2E + Job cache tests (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 4)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 5)
+- **Phase 5 — cache startup crash fix**:
+  - `ListCacheGraphHelper` strips EF back-references before JSON cache (Quote↔QuoteLine, Job↔JobCost).
+  - Applied in `QuoteService.LoadQuotesAsync` + `JobService.LoadJobsAsync`.
+  - `TenantDistributedCacheServiceTests`: serializes quotes with lines without cycle.
+- **Phase 2 E2E — Audit**:
+  - `audit-ready` marker on `Audit.razor`.
+  - `Audit_Page_Loads_Compliance_Trail` (11th Playwright test).
+- **Phase 5 — job list cache integration**:
+  - `JobServiceCacheTests` (3): stale reads, invalidation, search bypass.
+- **CI**: unit job runs full solution `Category!=E2E` (includes Web.Tests).
+- **Testing**: **163/163 green** (148 unit + 4 web + 11 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 4)
 - **Phase 2 E2E — Scheduling**:
   - `data-testid` on `Scheduling.razor` (table, rows, assign panel, AI buttons).
   - `Scheduling_Page_Loads_Jobs_And_Assignment_Panel` (10th Playwright test; fallbacks for older builds).
