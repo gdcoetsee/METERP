@@ -88,6 +88,7 @@ builder.Services.AddHealthChecks()
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 builder.Services.AddScoped<IAiQuoteApplyService, AiQuoteApplyService>();
 builder.Services.AddScoped<IAiJobApplyService, AiJobApplyService>();
+builder.Services.AddScoped<IAiProjectPlanApplyService, AiProjectPlanApplyService>();
 
 // === HTTP rate limiting (complements in-service AI throttle) ===
 builder.Services.AddRateLimiter(options =>

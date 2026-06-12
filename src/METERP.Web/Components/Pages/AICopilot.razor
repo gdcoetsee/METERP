@@ -10,6 +10,7 @@
 @* Broad access for now; tighten per permissions in real use *@
 @inject IAiAssistantService AiAssistantService
 @inject IAiQuoteApplyService AiQuoteApplyService
+@inject IAiProjectPlanApplyService AiProjectPlanApplyService
 @inject IJobService JobService
 @inject IQuoteService QuoteService
 @inject IInventoryService InventoryService
@@ -597,6 +598,10 @@ else if (_aiQuotaExhausted)
         {
             ToastService.ShowError(ex.Message);
         }
+        catch (QuotaExceededException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
         catch (Exception ex)
         {
             ToastService.ShowError("Failed to create Quote from AI: " + ex.Message);
@@ -623,6 +628,10 @@ else if (_aiQuotaExhausted)
         {
             ToastService.ShowError(ex.Message);
         }
+        catch (QuotaExceededException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
         catch (Exception ex)
         {
             ToastService.ShowError("Failed to create Job from AI: " + ex.Message);
@@ -636,32 +645,31 @@ else if (_aiQuotaExhausted)
 
         try
         {
-            var newQuote = new Quote
-            {
-                QuoteDate = DateTime.UtcNow,
-                ValidUntil = DateTime.UtcNow.AddDays(30),
-                TaxRate = 0.15m,
-                Notes = "AI Project Plan - Quote: " + text,
-                CustomerId = availableCustomers.FirstOrDefault()?.Id ?? Guid.Empty
-            };
-            var quoteId = await QuoteService.CreateAsync(newQuote);
-            lastCreatedQuote = await QuoteService.GetByIdAsync(quoteId);
+            if (!availableCustomers.Any())
+                availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
 
-            var newJob = new Job
+            var customerId = availableCustomers.FirstOrDefault()?.Id ?? Guid.Empty;
+            if (customerId == Guid.Empty)
             {
-                Title = "AI Project Plan - Job",
-                Description = "Linked to AI generated plan",
-                Notes = "AI Generated Project Plan: " + text + "\n\nLinked Quote created.",
-                Status = JobStatus.Scheduled,
-                QuotedTotal = 0
-            };
-            var jobId = await JobService.CreateAsync(newJob);
-            lastCreatedJob = await JobService.GetByIdAsync(jobId);
+                ToastService.ShowError("No customers available — create a customer first.");
+                return;
+            }
 
+            var result = await AiProjectPlanApplyService.CreateProjectPlanFromAiTextAsync(text, customerId);
+            lastCreatedQuote = result.Quote;
+            lastCreatedJob = result.Job;
             lastAiTextForPdf = text;
 
             ToastService.ShowSuccess("Full Project Plan created (Quote + Job) from this response. Check /quotes and /jobs.");
             Navigation.NavigateTo("/ai-copilot");
+        }
+        catch (AiFeatureDisabledException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        catch (QuotaExceededException ex)
+        {
+            ToastService.ShowError(ex.Message);
         }
         catch (Exception ex)
         {
