@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -296,6 +297,29 @@ public class E2EFlowTests : IAsyncLifetime
             var label = (await manageButton.TextContentAsync()) ?? string.Empty;
             Assert.Contains("Manage billing", label, StringComparison.OrdinalIgnoreCase);
         }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Account_Hub_Shows_Billing_And_Security_Tabs()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/account");
+        await page.WaitForTestIdAsync("account-hub-ready", 15000);
+        await page.WaitForTestIdAsync("account-billing-ready", 15000);
+
+        var billingTab = page.Locator("[data-testid='account-tab-billing']");
+        await Assertions.Expect(billingTab).ToHaveClassAsync(new Regex("active"));
+
+        await page.ClickByTestIdAsync("account-tab-security");
+        await page.WaitForTestIdAsync("account-security-ready", 15000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Two-Factor Authentication", content);
+
+        await page.ClickByTestIdAsync("account-tab-billing");
+        await page.WaitForTestIdAsync("account-billing-tier", 10000);
 
         await page.CloseAsync();
     }

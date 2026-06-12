@@ -1,0 +1,79 @@
+@page "/account"
+@page "/account-billing"
+@page "/account-security"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@attribute [Authorize]
+@inject NavigationManager NavigationManager
+
+<PageTitle>My Account</PageTitle>
+
+<h1>My Account</h1>
+<p class="text-muted">Manage your subscription, usage quotas, and account security in one place.</p>
+
+<div data-testid="account-hub-ready">
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button type="button"
+                    class="nav-link @(_activeTab == AccountHubTab.Billing ? "active" : "")"
+                    role="tab"
+                    aria-selected="@(_activeTab == AccountHubTab.Billing)"
+                    data-testid="account-tab-billing"
+                    @onclick="() => SelectTab(AccountHubTab.Billing)">
+                Billing &amp; Plan
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button type="button"
+                    class="nav-link @(_activeTab == AccountHubTab.Security ? "active" : "")"
+                    role="tab"
+                    aria-selected="@(_activeTab == AccountHubTab.Security)"
+                    data-testid="account-tab-security"
+                    @onclick="() => SelectTab(AccountHubTab.Security)">
+                Security
+            </button>
+        </li>
+    </ul>
+
+    <div class="account-hub-panel" style="max-width: 720px;" role="tabpanel">
+        @if (_activeTab == AccountHubTab.Billing)
+        {
+            <AccountBillingPanel />
+        }
+        else
+        {
+            <AccountSecurityPanel />
+        }
+    </div>
+</div>
+
+@code {
+    private enum AccountHubTab { Billing, Security }
+
+    private AccountHubTab _activeTab = AccountHubTab.Billing;
+
+    protected override void OnInitialized()
+    {
+        _activeTab = ResolveTabFromUri();
+    }
+
+    protected override void OnParametersSet() => _activeTab = ResolveTabFromUri();
+
+    private AccountHubTab ResolveTabFromUri()
+    {
+        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?')[0].TrimEnd('/');
+        if (path.Equals("account-security", StringComparison.OrdinalIgnoreCase))
+            return AccountHubTab.Security;
+        if (path.Equals("account-billing", StringComparison.OrdinalIgnoreCase))
+            return AccountHubTab.Billing;
+        return AccountHubTab.Billing;
+    }
+
+    private void SelectTab(AccountHubTab tab)
+    {
+        _activeTab = tab;
+        var url = tab == AccountHubTab.Security ? "account-security" : "account-billing";
+        NavigationManager.NavigateTo(url, forceLoad: false);
+    }
+}

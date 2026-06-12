@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Billing webhook refreshes Account Billing tier (2026-06-12 latest).**
+**Unified My Account hub — billing + security (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 21)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 22)
+- **Phase 5 — Unified Account hub**:
+  - `Account.razor` at `/account`, `/account-billing`, `/account-security` — tabbed hub (`account-hub-ready`).
+  - `AccountBillingPanel` + `AccountSecurityPanel` components (all prior `data-testid` markers preserved).
+  - Nav: single **My Account** link replaces separate Billing & Security entries.
+  - E2E `Account_Hub_Shows_Billing_And_Security_Tabs` (22nd Playwright test).
+- **Testing**: **215/215 green** (186 unit + 7 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 21)
 - **Phase 5 — Webhook → Account Billing tier refresh**:
   - `ITenantBillingViewService` / `TenantBillingViewService`: fresh billing read model (tier, status, AI feature, past-due).
   - `AccountBilling.razor`: uses view service + **Refresh plan** button (`account-billing-refresh-button`).
