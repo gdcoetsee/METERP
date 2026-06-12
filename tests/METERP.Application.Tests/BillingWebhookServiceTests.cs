@@ -140,6 +140,41 @@ public class BillingWebhookServiceTests
     }
 
     [Fact]
+    public async Task SubscriptionUpdated_PastDue_SetsStatusWithoutTierDowngrade()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId);
+        await using (db)
+        {
+            var tenant = await db.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+            tenant.Tier = SubscriptionTier.Professional;
+            await db.SaveChangesAsync();
+
+            var payload = """
+                {
+                  "type": "customer.subscription.updated",
+                  "data": {
+                    "object": {
+                      "customer": "cus_acme_past",
+                      "status": "past_due",
+                      "metadata": { "tenant_subdomain": "acme", "tier": "professional" }
+                    }
+                  }
+                }
+                """;
+
+            var signature = StripeWebhookSignatureValidator.BuildSignatureHeader(WebhookSecret, payload);
+            var result = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
+
+            Assert.Equal(BillingWebhookOutcome.TierUpdated, result.Outcome);
+
+            tenant = await db.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+            Assert.Equal("past_due", tenant.SubscriptionStatus);
+            Assert.Equal(SubscriptionTier.Professional, tenant.Tier);
+        }
+    }
+
+    [Fact]
     public async Task UnsignedPayload_AcceptedInDevWhenSecretNotConfigured()
     {
         var tenantId = Guid.NewGuid();

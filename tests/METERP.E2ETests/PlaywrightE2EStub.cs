@@ -361,6 +361,115 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Finance_Page_Loads_Chart_Of_Accounts_And_Export()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/finance");
+
+        try
+        {
+            await page.WaitForTestIdAsync("finance-ready", 20000);
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForTestIdAsync("finance-accounts-table", 20000);
+        }
+
+        var content = await page.ContentAsync();
+        Assert.Contains("4000", content);
+        Assert.Contains("Chart of Accounts", content);
+
+        await page.ClickByTestIdAsync("finance-export-gl-csv");
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task AccountSecurity_Enables_TwoFactor_And_Login_Challenge()
+    {
+        var secretMaterial = await EnableTwoFactorForBetaAsync();
+
+        var loginPage = await _browser.NewPageAsync();
+        await loginPage.GotoAsync($"{E2EHelpers.BaseUrl}/login");
+        await loginPage.WaitForTestIdAsync("login-email");
+        await loginPage.Locator("[data-testid='login-email']").PressSequentiallyAsync(E2EHelpers.BetaEmail);
+        await loginPage.Locator("[data-testid='login-password']").PressSequentiallyAsync(E2EHelpers.BetaPassword);
+        await loginPage.ClickByTestIdAsync("login-submit");
+        await loginPage.WaitForURLAsync("**/login-2fa**", new() { Timeout = 30000 });
+
+        var loggedIn = false;
+        foreach (var candidate in TotpHelper.GetCandidateCodes(secretMaterial))
+        {
+            await loginPage.Locator("[data-testid='login-2fa-code']").FillAsync("");
+            await loginPage.Locator("[data-testid='login-2fa-code']").PressSequentiallyAsync(candidate, new() { Delay = 80 });
+            await loginPage.ClickByTestIdAsync("login-2fa-submit");
+
+            try
+            {
+                await loginPage.WaitForURLAsync(
+                    u => !u.Contains("login-2fa", StringComparison.OrdinalIgnoreCase),
+                    new() { Timeout = 15000 });
+                await loginPage.WaitForURLAsync("**/", new() { Timeout = 45000 });
+                loggedIn = true;
+                break;
+            }
+            catch (TimeoutException)
+            {
+                var url = loginPage.Url;
+                if (!url.Contains("login-2fa", StringComparison.OrdinalIgnoreCase))
+                    throw;
+            }
+        }
+
+        Assert.True(loggedIn, "Expected authenticator login to succeed after 2FA enable.");
+        var home = await loginPage.ContentAsync();
+        Assert.Contains("Beta", home, StringComparison.OrdinalIgnoreCase);
+        await loginPage.CloseAsync();
+
+        await DisableTwoFactorForBetaAsync();
+    }
+
+    private async Task<string> EnableTwoFactorForBetaAsync()
+    {
+        var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await setupPage.GotoRelativeAsync("/account-security");
+        await setupPage.WaitForTestIdAsync("account-security-ready", 15000);
+
+        if (await setupPage.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
+        {
+            await setupPage.ClickByTestIdAsync("2fa-disable-button");
+            await setupPage.WaitForTestIdAsync("2fa-status-disabled", 15000);
+        }
+
+        await setupPage.ClickByTestIdAsync("2fa-enable-button");
+        await setupPage.WaitForTestIdAsync("2fa-shared-key", 10000);
+        var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
+        var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
+        var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
+
+        var setupCode = TotpHelper.ComputeCurrentCode(secretMaterial);
+        await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
+        await setupPage.ClickByTestIdAsync("2fa-confirm-button");
+        await setupPage.WaitForTestIdAsync("2fa-status-enabled", 20000);
+        await setupPage.CloseAsync();
+
+        return secretMaterial;
+    }
+
+    private async Task DisableTwoFactorForBetaAsync()
+    {
+        var cleanup = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await cleanup.GotoRelativeAsync("/account-security");
+        await cleanup.WaitForTestIdAsync("account-security-ready", 15000);
+        if (await cleanup.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
+        {
+            await cleanup.ClickByTestIdAsync("2fa-disable-button");
+            await cleanup.WaitForTestIdAsync("2fa-status-disabled", 15000);
+        }
+
+        await cleanup.CloseAsync();
+    }
+
+    [Fact]
     public async Task Notifications_Triggered_From_LowStock_Or_JobEvent()
     {
         var page = await _browser.LoginAsync();

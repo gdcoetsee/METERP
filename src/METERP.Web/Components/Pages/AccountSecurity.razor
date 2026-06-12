@@ -19,6 +19,7 @@
 }
 else
 {
+    <div data-testid="account-security-ready">
     <div class="card mb-4" style="max-width: 560px;" data-testid="account-security-card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <strong>Two-Factor Authentication (2FA)</strong>
@@ -48,7 +49,7 @@ else
 
                 <div class="mb-3" style="max-width: 220px;">
                     <label class="form-label">Verification code</label>
-                    <input class="form-control" maxlength="6" @bind="_confirmCode" placeholder="6-digit code" data-testid="2fa-confirm-code" />
+                    <input class="form-control" maxlength="6" value="@_confirmCode" @oninput="OnConfirmCodeInput" placeholder="6-digit code" data-testid="2fa-confirm-code" inputmode="numeric" />
                 </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-success" @onclick="ConfirmSetup" disabled="@_busy" data-testid="2fa-confirm-button">Confirm &amp; Enable</button>
@@ -64,6 +65,7 @@ else
             }
         </div>
     </div>
+    </div>
 }
 
 @code {
@@ -78,6 +80,8 @@ else
         await RefreshStatusAsync();
         _loading = false;
     }
+
+    private void OnConfirmCodeInput(ChangeEventArgs e) => _confirmCode = e.Value?.ToString() ?? string.Empty;
 
     private async Task RefreshStatusAsync()
     {

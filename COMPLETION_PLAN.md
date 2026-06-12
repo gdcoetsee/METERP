@@ -2,9 +2,20 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Stripe billing webhooks + Sales Orders E2E (2026-06-12 latest).**
+**2FA E2E + Finance E2E + billing UX (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 6)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 7)
+- **Phase 2 E2E — 2FA + Finance**:
+  - `AccountSecurity_Enables_TwoFactor_And_Login_Challenge` — beta user TOTP setup, login challenge, cleanup.
+  - `Finance_Page_Loads_Chart_Of_Accounts_And_Export` — GL table + CSV export button.
+  - `data-testid` on Finance + `account-security-ready`; Playwright-friendly `@oninput` on 2FA code fields.
+- **Phase 5 — 2FA + billing UX**:
+  - `TwoFactorAuthServiceTests` (5): setup, confirm, verify, disable with Identity token provider.
+  - `TotpHelper` (Otp.NET) for E2E codes; `home-billing-past-due-banner` on dashboard.
+  - `BillingWebhookServiceTests`: `past_due` status preserves tier.
+- **Testing**: **178/178 green** (159 unit + 5 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 6)
 - **Phase 5 — SaaS billing webhooks (Stripe-compatible)**:
   - `BillingOptions`, `IBillingWebhookService` / `BillingWebhookService`.
   - `POST /webhooks/stripe` with signature validation (`StripeWebhookSignatureValidator`).

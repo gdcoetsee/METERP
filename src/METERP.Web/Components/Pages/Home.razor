@@ -45,6 +45,13 @@
             <div class="card-footer small text-warning">AI Copilot is disabled for this tenant (feature flag). Upgrade tier or enable <code>ai</code> in tenant settings.</div>
         }
     </div>
+
+    @if (currentTenant.SubscriptionStatus is "past_due" or "unpaid")
+    {
+        <div class="alert alert-warning mb-4" data-testid="home-billing-past-due-banner" role="alert">
+            <strong>Subscription payment issue.</strong> Your <code>@currentTenant.SubscriptionStatus</code> status may limit premium features. Update billing in tenant settings or contact support.
+        </div>
+    }
 }
 
 <div class="row g-3 mb-4">

@@ -17,7 +17,7 @@
 
 <div class="mb-3" style="max-width: 280px;">
     <label class="form-label">Authenticator code</label>
-    <input class="form-control" @bind="code" data-testid="login-2fa-code" autocomplete="one-time-code" />
+    <input class="form-control" value="@_totpCode" @oninput="OnCodeInput" data-testid="login-2fa-code" autocomplete="one-time-code" inputmode="numeric" />
 </div>
 
 <button class="btn btn-primary" @onclick="VerifyCode" data-testid="login-2fa-submit">Verify</button>
@@ -27,9 +27,11 @@
     [SupplyParameterFromQuery]
     public string? Token { get; set; }
 
-    private string code = "";
+    private string _totpCode = "";
     private string? errorMessage;
     private Guid? _userId;
+
+    private void OnCodeInput(ChangeEventArgs e) => _totpCode = e.Value?.ToString() ?? string.Empty;
 
     protected override void OnInitialized()
     {
@@ -47,13 +49,13 @@
     private async Task VerifyCode()
     {
         errorMessage = null;
-        if (_userId == null || string.IsNullOrWhiteSpace(Token) || string.IsNullOrWhiteSpace(code))
+        if (_userId == null || string.IsNullOrWhiteSpace(Token) || string.IsNullOrWhiteSpace(_totpCode))
         {
             errorMessage = "Enter your authenticator code.";
             return;
         }
 
-        var ok = await TwoFactorAuthService.VerifyCodeAsync(_userId.Value, code.Trim());
+        var ok = await TwoFactorAuthService.VerifyCodeAsync(_userId.Value, _totpCode.Trim());
         if (!ok)
         {
             errorMessage = "Invalid code. Try again.";

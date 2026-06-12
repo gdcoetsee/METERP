@@ -17,18 +17,18 @@
 
 @if (_loading)
 {
-    <p>Loading accounts...</p>
+    <p data-testid="finance-loading">Loading accounts...</p>
 }
 else if (!accountRows.Any())
 {
-    <p class="text-muted">No accounts yet. Run the demo seeder or create accounts in production.</p>
+    <p class="text-muted" data-testid="finance-empty">No accounts yet. Run the demo seeder or create accounts in production.</p>
 }
 else
 {
-    <div class="row">
+    <div class="row" data-testid="finance-ready">
         <div class="col-md-8">
             <h5>Chart of Accounts</h5>
-            <table class="table table-sm">
+            <table class="table table-sm" data-testid="finance-accounts-table">
                 <thead>
                     <tr><th>Code</th><th>Name</th><th>Type</th><th class="text-end">Balance (demo)</th></tr>
                 </thead>
