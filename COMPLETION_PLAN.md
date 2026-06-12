@@ -2,9 +2,18 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Quota enforcement spine tests + billing UX E2E (2026-06-12 latest).**
+**Redis distributed cache + Tenants E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 2)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 3)
+- **Phase 5 — Redis distributed cache**:
+  - `TenantDistributedCacheService` via `IDistributedCache` (Redis when `Cache:RedisConnection` set, else distributed memory).
+  - `CacheOptions`, docker-compose `redis:7-alpine`, `Cache__RedisConnection=redis:6379` on web.
+  - JSON serialization with cycle handling for EF list caches.
+  - `TenantDistributedCacheServiceTests` (2): invalidation + tenant isolation.
+- **E2E**: `Tenants_Page_Loads_Commercial_Usage_Table` (9th Playwright test).
+- **Testing**: **153/153 green** (140 unit + 4 web + 9 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 2)
 - **Phase 1/4 — quota enforcement on spine**:
   - `SpineQuotaEnforcementTests` (4): Quote/Job/Invoice create + Quote→Job blocked at monthly limits via real `QuotaService`.
   - `TenantQuotaDefaultsTests` (7): tier limits, enterprise unlimited, overrides, `ApplyTierDefaults`.

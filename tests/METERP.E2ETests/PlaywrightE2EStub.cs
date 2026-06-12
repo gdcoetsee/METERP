@@ -226,6 +226,20 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Tenants_Page_Loads_Commercial_Usage_Table()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/tenants");
+        await page.WaitForTestIdAsync("tenants-table", 20000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tier", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Home_Quota_Usage_Card_Shows_Monthly_Usage()
     {
         var page = await _browser.LoginAsync();

@@ -16,6 +16,7 @@ services:
       # Connection string uses docker service name "postgres" as host. This overrides appsettings.
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=METERP;Username=postgres;Password=postgres;Port=5432
       - Seq__ServerUrl=http://seq:5341
+      - Cache__RedisConnection=redis:6379
       # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
       # - METERP_SEED_RESET=true
       # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.
@@ -28,6 +29,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
       seq:
         condition: service_started
 
@@ -47,6 +50,16 @@ services:
       start_period: 10s
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   seq:
     image: datalust/seq:2024.3

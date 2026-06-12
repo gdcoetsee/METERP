@@ -38,6 +38,7 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.0" />
 
     <!-- Health checks for live deployment (DB, basic liveness). Expose /health and /health/ready.
          Per COMPLETION_PLAN handoff for production readiness. -->

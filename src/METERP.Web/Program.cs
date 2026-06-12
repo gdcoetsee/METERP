@@ -68,9 +68,27 @@ builder.Services.AddRazorComponents()
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddMemoryCache();
 
+// === Distributed cache (Redis when configured, else in-process memory for demo/local) ===
+builder.Services.Configure<METERP.Application.Options.CacheOptions>(
+    builder.Configuration.GetSection(METERP.Application.Options.CacheOptions.SectionName));
+var redisConnection = builder.Configuration.GetSection(METERP.Application.Options.CacheOptions.SectionName)["RedisConnection"]
+    ?? builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrWhiteSpace(redisConnection))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnection;
+        options.InstanceName = "meterp:";
+    });
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+
 // === Multi-tenancy + Current User ===
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ITenantCacheService, TenantMemoryCacheService>();
+builder.Services.AddScoped<ITenantCacheService, TenantDistributedCacheService>();
 builder.Services.AddScoped<ITenantProvider, CurrentTenantProvider>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
