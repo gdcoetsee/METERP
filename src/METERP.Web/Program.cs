@@ -1112,6 +1112,48 @@ public class DatabaseSeeder : IHostedService
             }
         }
 
+        // Backfill demo GL journal when CoA exists from older seeds but no exportable lines (Finance export E2E).
+        tenantProvider.SetTenantId(defaultTenantId);
+        if (!await db.Set<JournalEntryLine>().AnyAsync(l => !l.IsDeleted, cancellationToken))
+        {
+            var seededAccounts = await financeService.GetAccountsAsync(ct: cancellationToken);
+            if (seededAccounts.Any())
+            {
+                var demoInvoiceForJournal = (await invoiceService.GetAllAsync(ct: cancellationToken)).FirstOrDefault();
+                if (demoInvoiceForJournal != null)
+                {
+                    var revenueAccount = await db.Set<Account>()
+                        .FirstAsync(a => a.AccountCode == "4000", cancellationToken);
+                    var arAccount = await db.Set<Account>()
+                        .FirstAsync(a => a.AccountCode == "1100", cancellationToken);
+
+                    var je = new JournalEntry
+                    {
+                        EntryDate = DateTime.UtcNow,
+                        Description = "Demo invoice revenue recognition",
+                        Reference = demoInvoiceForJournal.InvoiceNumber,
+                        JobId = demoInvoiceForJournal.JobId,
+                        Lines = new List<JournalEntryLine>
+                        {
+                            new()
+                            {
+                                AccountId = arAccount.Id,
+                                Debit = demoInvoiceForJournal.Total,
+                                Memo = "AR from demo invoice"
+                            },
+                            new()
+                            {
+                                AccountId = revenueAccount.Id,
+                                Credit = demoInvoiceForJournal.Total,
+                                Memo = "Contracting revenue"
+                            }
+                        }
+                    };
+                    _ = await financeService.PostJournalAsync(je, cancellationToken);
+                }
+            }
+        }
+
         // Optional large dataset for performance demos (Seed:LargeDataset or METERP_SEED_LARGE=true)
         await LargeDatasetSeeder.SeedAsync(_serviceProvider, defaultTenantId, cancellationToken);
 

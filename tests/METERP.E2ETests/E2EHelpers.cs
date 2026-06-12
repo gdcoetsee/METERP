@@ -110,6 +110,17 @@ public static class E2EHelpers
         throw new InvalidOperationException($"App not ready at {url}/health/ready after {maxAttempts} attempts.");
     }
 
+    public static Task InstallMeterpClipboardStubAsync(this IPage page) =>
+        page.EvaluateAsync(@"() => {
+            window.__meterpClipboard = '';
+            window.meterpClipboard = {
+                write: async (text) => { window.__meterpClipboard = text; }
+            };
+        }");
+
+    public static Task<string> ReadCapturedClipboardAsync(this IPage page) =>
+        page.EvaluateAsync<string>("() => window.__meterpClipboard ?? ''");
+
     public static async Task WaitForAppReadyAsync(this IPage page, int timeoutMs = 15000)
     {
         try

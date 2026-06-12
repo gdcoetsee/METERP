@@ -1,10 +1,10 @@
+using Microsoft.Playwright;
+using Xunit;
+
 // E2E tests for critical sellable flows (login, AI quote+PDF, quote→job, job→invoice, multi-tenant).
 // Requires app running: docker-compose up --build (http://localhost:8080)
 // Setup: dotnet build tests/METERP.E2ETests && pwsh tests/METERP.E2ETests/bin/Debug/net9.0/playwright.ps1 install
 // Run: dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj --filter "Category=E2E"
-
-using Microsoft.Playwright;
-using Xunit;
 
 namespace METERP.E2ETests;
 
@@ -371,7 +371,11 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Finance_Page_Loads_Chart_Of_Accounts_And_Export()
     {
-        var page = await _browser.LoginAsync();
+        var page = await _browser.NewPageAsync();
+        await page.GotoAsync($"{E2EHelpers.BaseUrl}/login-complete?email={Uri.EscapeDataString(E2EHelpers.AcmeEmail)}");
+        await page.WaitForURLAsync(
+            u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
+            new() { Timeout = 45000 });
         await page.GotoRelativeAsync("/finance");
 
         try
@@ -387,7 +391,17 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.Contains("4000", content);
         Assert.Contains("Chart of Accounts", content);
 
+        await page.InstallMeterpClipboardStubAsync();
         await page.ClickByTestIdAsync("finance-export-gl-csv");
+        await page.Locator(".toast-body").First.WaitForAsync(new() { Timeout = 15000 });
+
+        var toast = (await page.Locator(".toast-body").First.TextContentAsync()) ?? string.Empty;
+        Assert.Contains("GL journal CSV", toast);
+
+        var csv = await page.ReadCapturedClipboardAsync();
+        Assert.Contains("EntryDate,EntryNumber,Reference,AccountCode", csv);
+        Assert.Contains("4000", csv);
+
         await page.CloseAsync();
     }
 

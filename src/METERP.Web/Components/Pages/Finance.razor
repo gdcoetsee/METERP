@@ -94,7 +94,7 @@ else
             return;
         }
 
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
+        await JS.InvokeVoidAsync("meterpClipboard.write", csv);
         ToastService.ShowSuccess("GL journal CSV copied to clipboard.");
     }
 }

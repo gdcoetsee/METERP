@@ -2,9 +2,18 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**SchedulingService + Stripe customer portal links (2026-06-12 latest).**
+**Finance E2E clipboard + GL journal backfill (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 8)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 9)
+- **Phase 2 E2E — Finance export hardened**:
+  - `Finance_Page_Loads_Chart_Of_Accounts_And_Export` asserts success toast + captured CSV (`EntryDate` header, account `4000`).
+  - `meterp-clipboard.js` + `meterpClipboard.write` JS interop (testable in headless Playwright).
+  - `E2EHelpers.InstallMeterpClipboardStubAsync` / `ReadCapturedClipboardAsync`.
+- **Seeder**: idempotent GL journal **line** backfill when CoA exists but `JournalEntryLines` empty (fixes older dev DBs).
+- **Dev UX**: `scripts/run-local-e2e.ps1` stops processes bound to port 8080 before `dotnet run` (fixes port-in-use exit 1).
+- **Testing**: **183/183 green** (164 unit + 5 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 8)
 - **Phase 4 — Scheduling service layer**:
   - `ISchedulingService` / `SchedulingService`: `GetBoardAsync`, `AssignJobResourcesAsync` (asset + employee note stub).
   - `Scheduling.razor` refactored to use `ISchedulingService` only (no direct `IJobService`/`IAssetService`/`IEmployeeService` in page).
