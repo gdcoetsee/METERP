@@ -156,7 +156,7 @@ public class AiAssistantServiceTests
         // We mainly verify the wiring
         var result = await service.AskCopilotAsync("What are my top travel cost risks this month?");
 
-        // Counter is fire-and-forget, so we can't easily assert it was called without deeper mocking of the internal path.
+        // Counter increment is awaited on the success path; without a live LLM we verify wiring does not throw.
         // For this test we at least ensure no crash and IsConfigured was true.
         Assert.True(service.IsConfigured);
     }

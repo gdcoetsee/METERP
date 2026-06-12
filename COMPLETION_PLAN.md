@@ -1,11 +1,26 @@
 # METERP Completion & Full Testing Plan
 
-## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of latest commit)
+## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**This session (Grok interactive work) completed major E2E stabilization (Phase 2) + light Phase 3 AI test expansion, while heavily maintaining the plan for continuity.**
+**This session completed Phase 2 E2E execution (6/6 green) and meaningful Phase 5 production hardening.**
 
-### Exact Work Completed in This Session
-- **E2E (Phase 2) - Code now production-ready for key flows**:
+### Exact Work Completed in This Session (2026-06-12)
+- **E2E (Phase 2) — EXECUTED & VERIFIED**:
+  - Ran full E2E suite against live app at `http://localhost:8080` (docker unavailable in agent env; app was already running locally).
+  - **6/6 Playwright tests passed** (~24s): Login, AI quote+travel+PDF, quote→job, job→invoice, multi-tenant isolation, notifications.
+  - Added `E2EHelpers.EnsureAppReadyAsync()` — polls `/health/ready` before browser launch for CI/docker reliability.
+  - No selector fixes required; existing data-testid + helpers are stable.
+
+- **Phase 5 (Production Hardening) — completed items**:
+  - **Serilog**: Added `UseSerilogRequestLogging` with tenant id in request log template (after `TenantLoggingMiddleware`).
+  - **Health checks**: `/health` and `/health/ready` now return structured JSON via `UIResponseWriter` (verified HTTP 200).
+  - **Counter reliability**: Added `TenantServiceTests.cs` (6 tests) for all `Increment*` methods + tenant isolation; counters use isolated scoped DbContext (no `Task.Run`). Updated stale fire-and-forget comment in `AiAssistantServiceTests.cs`.
+  - **Security**: Gated `/login-complete` to Development/Testing environments only (E2E still works via docker `ASPNETCORE_ENVIRONMENT=Development`).
+
+- **Testing totals**: **58/58 green** (52 unit + 6 E2E) after `dotnet test`.
+
+### Prior session work (still valid — do not redo)
+- **E2E (Phase 2) - Code production-ready for key flows**:
   - New `tests/METERP.E2ETests/E2EHelpers.cs`: Centralized helpers including `LoginAsync` (uses data-testid), `ClickByTestIdAsync`/`FillByTestIdAsync`/`WaitForTestIdAsync`, `GotoRelativeAsync`, `WaitAndSaveDownloadAsync` (for PDFs), `RunWithScreenshotOnFailureAsync`, `WaitForAppReadyAsync`, `TakeScreenshotAsync`.
   - Major refactor of `tests/METERP.E2ETests/PlaywrightE2EStub.cs`: Now uses helpers everywhere, data-testid selectors, auto-screenshots on failure, proper waits. Covers:
     1. Login with demo creds.
@@ -37,26 +52,20 @@
   - Verified: `dotnet build` E2E clean, units 35 green after every step.
 
 ### Current Exact State (pick up here)
-- **Testing**: 35 unit tests (spine + AI service guards). E2E code is complete/robust for all critical sellable flows (see list above). Tests use helpers + data-testid extensively. **E2E execution not yet run in this env** (requires live app + browsers) — see steps below.
-- **Codebase**: Core spine solid. AI has guards + E2E coverage. Many production items still stubs.
-- **For live deployment readiness** (per AGENTS.md "production" section): Focus now on Phase 5 items (Serilog, health checks, rate limiting, secrets, reliable counters instead of Task.Run, etc.) while finishing test verification. Do **not** rip out working demo paths.
+- **Testing**: **58/58 green** — 52 unit tests (spine, AI guards, TenantService increments, quota, finance, etc.) + **6 E2E tests executed and passing**.
+- **Phase 2**: **Complete** — E2E code + execution verified locally.
+- **Phase 5**: **Partially complete** — Serilog (console/file/Seq + request logging + tenant middleware), health checks (`/health`, `/health/ready` with JSON), rate limiting, `.env.example`, counter reliability (scoped increments + tests), login-complete gated. Remaining: Seq in docker-compose, WebApplicationFactory health tests, quota enforcement, real email/2FA.
+- **Codebase**: Core spine solid. AI has guards + E2E coverage. Demo paths preserved.
 
 ### Immediate Next Steps for Cursor (Start Here to Continue Exactly)
-1. **E2E Execution & Polish (finish Phase 2)**: 
-   - Run the app: `docker-compose up --build`.
-   - Install browsers: `pwsh tests/METERP.E2ETests/bin/Debug/net9.0/playwright.ps1 install`.
-   - Execute: `dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj --filter "Category=E2E"`.
-   - Fix any failing selectors (use the data-testid we added). Update tests/plan with results. Aim for all 6 flows green.
-2. **Deepen Phase 3**: Add tests for actual AI apply logic (e.g., `CreateQuoteFromAiText` in AICopilot calling services, integration with QuoteService). Test full counter increments + feature gating in real flows.
-3. **Production / Live Deployment Readiness (Phase 5 priority for "ready for live")**:
-   - **Serilog**: Replace any Console logging. Add to Program.cs: `UseSerilog()`, structured logging with tenant ID correlation (enrichers). Add file/Seq sink for prod. Update docker-compose env.
-   - **Health Checks**: Add `AddHealthChecks()` in Program.cs (DB connectivity via EF, AI config check, basic). Expose /health endpoint.
-   - **Secrets & Config**: Ensure no hardcoded keys. Use `AddUserSecrets` in dev, env vars in Docker. Document required vars (Ai:ApiKey, ConnectionStrings, etc.).
-   - **Counter Reliability**: Refactor fire-and-forget `Task.Run` in Quote/Job/Invoice/Ai services (e.g., use a simple queue or make increments transactional where possible).
-   - **Rate Limiting**: Ensure AI endpoints have protection (already some throttle in service; add ASP.NET rate limiter middleware for prod).
-   - **Other**: Basic error pages, HSTS in prod, review Docker (multi-stage build if not), add .env.example.
-4. Follow DoD in this plan + new-feature checklist in .cursor/rules/meterp-code.mdc. Run `dotnet test` before any commit. Update this plan after each chunk.
-5. **Handoff back**: When done with a subtask, append to this "Handoff" section or the progress log at bottom.
+1. **Phase 3 — AI apply logic tests**: Test `CreateQuoteFromAiText` path (QuoteService integration, travel line fallback, feature gating, counter side effects).
+2. **Phase 5 — remaining production items**:
+   - Optional Seq service in docker-compose for structured log aggregation.
+   - WebApplicationFactory test for `/health` + `/health/ready`.
+   - AI-specific rate limiter partition (global 300/min exists; consider tighter AI path).
+   - Quota enforcement beyond `QuotaServiceTests` (UI visibility).
+3. **Phase 4**: Supporting module test coverage (Inventory, Opportunities, Notifications service layer).
+4. Run `dotnet test` before any commit. Update this plan after each chunk.
 
 **Key files for continuity**: This COMPLETION_PLAN.md (always read top first), AGENTS.md, .cursor/rules/meterp-*.mdc, the E2E files (helpers + stub), AiAssistantServiceTests.cs, and recently touched Razor files (for data-testid).
 
@@ -172,9 +181,9 @@ Goal: Every important method on Quote/Job/Invoice services + the conversion flow
 - All tests use `[Trait("Category", "E2E")]`.
 - Realistic selectors based on current UI (aria-labels, button text like "Apply", "PDF", "Generate", table roles, etc.). Base URL set to docker 8080.
 - Detailed comments for setup (`playwright install`) and running (`dotnet test --filter "Category=E2E"`).
-- **Current status (E2E code complete for key flows):** E2E project builds successfully. 6 test methods using new E2EHelpers.cs (LoginAsync, ClickByTestId, WaitForTestId, GotoRelative, RunWithScreenshotOnFailure, WaitAndSaveDownload, WaitForAppReady helpers). Added extensive data-testid across UI (AI quick prompts, feedback, copy, optimize, real/demo PDF downloads, launcher, tables, convert/create-invoice buttons, login, notifications, invoices, quotes list, etc.). AI test now covers apply + multiple PDF downloads (real + demo) using helpers + new ids. Expansion tests improved with waits/assertions. E2E phase code-ready and robust; execution requires app + `playwright install`. Units at 34 green. Use `dotnet test --filter "Category=E2E"`.
+- **Current status (Phase 2 COMPLETE — 2026-06-12):** 6/6 E2E tests executed and green (~24s). Added `EnsureAppReadyAsync` health polling. Full suite: 58/58 green.
 
-- **Exit:** At least the 4-5 key flows have working, non-flaky E2E tests that can run locally and in CI. (This phase is now structurally complete and far beyond the original stub.)
+- **Exit:** ✅ At least the 4-5 key flows have working, non-flaky E2E tests that can run locally and in CI. **Phase 2 exit criteria met.**
 
 ## Phase 3: AI Copilot & Commercial Features — Full Test Coverage
 **Progress (started after E2E stabilization):**
@@ -207,13 +216,16 @@ Specific callouts:
 - Audit log for sensitive actions.
 
 ## Phase 5: Production Hardening + Sellable Maturity
-- Make usage counter increments reliable (move away from pure fire-and-forget where possible; add tests for the reliability path).
-- Structured logging (Serilog) + correlation with tenant.
-- Health checks, rate limiting (especially on AI), proper error handling.
-- Secrets management notes / user-secrets + env for docker.
-- Performance: pagination, Includes strategy, caching (MemoryCache → Redis later).
-- Billing model: document and prototype quota enforcement + revenue reporting.
-- E2E + unit tests must still pass after any hardening.
+**Progress (2026-06-12):**
+- ✅ Usage counter increments reliable (isolated scoped DbContext; `TenantServiceTests` — 6 tests).
+- ✅ Structured logging (Serilog console/file/Seq + `TenantLoggingMiddleware` + `UseSerilogRequestLogging`).
+- ✅ Health checks (`/health` liveness, `/health/ready` DB+AI with JSON response); docker-compose healthcheck wired.
+- ✅ Rate limiting (global 300/min; health excluded).
+- ✅ Secrets: `.env.example`, UserSecretsId on Web project.
+- ✅ Security: `/login-complete` gated to Development/Testing.
+- Remaining: Seq in compose, WebApplicationFactory health tests, AI-specific rate limits, Redis cache, real email, billing quota UI.
+
+- E2E + unit tests must still pass after any hardening. **Currently 58/58 green.**
 
 ## Execution Guidelines
 - **Work in this order** unless the user directs otherwise: Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5.

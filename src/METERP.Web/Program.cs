@@ -262,14 +262,27 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<TenantLoggingMiddleware>();
 
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        var tenantId = httpContext.RequestServices.GetService<ITenantProvider>()?.GetCurrentTenantId() ?? Guid.Empty;
+        diagnosticContext.Set("TenantId", tenantId == Guid.Empty ? "none" : tenantId.ToString());
+    };
+    options.MessageTemplate =
+        "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms [Tenant:{TenantId}]";
+});
+
 // === Health checks: /health = liveness, /health/ready = readiness (DB + AI probe) ===
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
-    Predicate = _ => false
+    Predicate = _ => false,
+    ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
 }).DisableRateLimiting();
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
-    Predicate = check => check.Tags.Contains("ready")
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
 }).DisableRateLimiting();
 
 app.MapRazorComponents<App>()

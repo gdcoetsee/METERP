@@ -9,6 +9,7 @@
 @inject AppDbContext Db
 @inject METERP.Application.Interfaces.ITenantProvider TenantProvider
 @inject NavigationManager Navigation
+@inject IWebHostEnvironment Environment
 
 <PageTitle>Signing in...</PageTitle>
 
@@ -26,6 +27,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Passwordless dev/E2E shortcut — never expose in production.
+        if (!Environment.IsDevelopment()
+            && !string.Equals(Environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(Email))
         {
             Navigation.NavigateTo("/login", forceLoad: true);
