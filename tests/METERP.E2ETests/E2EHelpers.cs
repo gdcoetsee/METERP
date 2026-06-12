@@ -87,6 +87,14 @@ public static class E2EHelpers
     /// <summary>
     /// Polls /health/ready before E2E runs (docker-compose or local dotnet run).
     /// </summary>
+    public static async Task<HttpResponseMessage> PostStripeWebhookAsync(string payload, string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+        return await client.PostAsync($"{url}/webhooks/stripe", content);
+    }
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

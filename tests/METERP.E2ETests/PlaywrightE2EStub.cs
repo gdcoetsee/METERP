@@ -301,6 +301,44 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountBilling_Reflects_Webhook_Tier_Update()
+    {
+        var payload = """
+            {
+              "type": "customer.subscription.updated",
+              "data": {
+                "object": {
+                  "customer": "cus_demo_beta",
+                  "status": "active",
+                  "metadata": {
+                    "tenant_subdomain": "beta",
+                    "tier": "professional"
+                  }
+                }
+              }
+            }
+            """;
+
+        var webhookResponse = await E2EHelpers.PostStripeWebhookAsync(payload);
+        Assert.True(webhookResponse.IsSuccessStatusCode, await webhookResponse.Content.ReadAsStringAsync());
+
+        var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await page.GotoRelativeAsync("/account-billing");
+        await page.WaitForTestIdAsync("account-billing-ready", 15000);
+
+        var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Professional", tierText, StringComparison.OrdinalIgnoreCase);
+
+        await page.ClickByTestIdAsync("account-billing-refresh-button");
+        await page.Locator(".toast-body").Filter(new() { HasText = "refreshed" }).First.WaitForAsync(new() { Timeout = 15000 });
+
+        tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Professional", tierText, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Reports_Page_Shows_Technician_Utilization()
     {
         var page = await _browser.LoginAsync();

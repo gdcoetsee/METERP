@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Scheduling quick-add labor from assigned crew (2026-06-12 latest).**
+**Billing webhook refreshes Account Billing tier (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 20)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 21)
+- **Phase 5 — Webhook → Account Billing tier refresh**:
+  - `ITenantBillingViewService` / `TenantBillingViewService`: fresh billing read model (tier, status, AI feature, past-due).
+  - `AccountBilling.razor`: uses view service + **Refresh plan** button (`account-billing-refresh-button`).
+  - `TenantBillingViewServiceTests` (2); E2E `AccountBilling_Reflects_Webhook_Tier_Update` (21st Playwright test — POST `/webhooks/stripe` then beta tier).
+  - `E2EHelpers.PostStripeWebhookAsync` for unsigned dev webhook calls.
+- **Testing**: **214/214 green** (186 unit + 7 web + 21 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 20)
 - **Phase 4 — Scheduling → JobLabor quick-add**:
   - `ISchedulingService.AddCrewLaborAsync` — one-click JobLabor for lead + crew (EmployeeId, rates, work date).
   - `Scheduling.razor`: quick-add panel (`scheduling-quick-labor-panel`) with hours, date, crew checkboxes.

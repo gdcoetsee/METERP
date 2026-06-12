@@ -7,7 +7,7 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inject ICurrentUserService CurrentUserService
-@inject ITenantService TenantService
+@inject ITenantBillingViewService TenantBillingViewService
 @inject IBillingPortalService BillingPortalService
 @inject IJSRuntime JS
 @inject ToastService ToastService
@@ -42,10 +42,13 @@ else
         <div class="card mb-4" style="max-width: 720px;" data-testid="account-billing-plan-card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span><strong>@currentTenant.Name</strong> <span class="badge bg-dark" data-testid="account-billing-tier">@currentTenant.Tier</span></span>
-                @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
-                {
-                    <button type="button" class="btn btn-sm btn-outline-info" data-testid="account-billing-manage-button" @onclick="OpenBillingPortal">Manage billing</button>
-                }
+                <div class="d-flex flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="account-billing-refresh-button" @onclick="ReloadBillingAsync" disabled="@_refreshing">@(_refreshing ? "Refreshing..." : "Refresh plan")</button>
+                    @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-info" data-testid="account-billing-manage-button" @onclick="OpenBillingPortal">Manage billing</button>
+                    }
+                </div>
             </div>
             <div class="card-body">
                 <dl class="row mb-0 small">
@@ -69,7 +72,7 @@ else
                 @RenderQuotaBadge("Invoices", currentTenant.PeriodInvoicesIssued, QuotaType.Invoice)
                 @RenderQuotaBadge("AI calls", currentTenant.PeriodAiCalls, QuotaType.AiCall)
             </div>
-            @if (!currentTenant.HasFeature("ai"))
+            @if (!hasAiFeature)
             {
                 <div class="card-footer small text-warning">AI Copilot is not included on your current plan.</div>
             }
@@ -90,25 +93,56 @@ else
 
 @code {
     private bool _loading = true;
+    private bool _refreshing;
     private Tenant? currentTenant;
+    private bool hasAiFeature;
     private string? billingPortalUrl;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await LoadBillingAsync(showLoading: true);
+
+    private async Task LoadBillingAsync(bool showLoading)
     {
-        _loading = true;
+        if (showLoading)
+            _loading = true;
+
         try
         {
             var tenantId = CurrentUserService.TenantId;
-            if (tenantId != Guid.Empty)
+            if (tenantId == Guid.Empty)
             {
-                currentTenant = await TenantService.GetByIdAsync(tenantId);
-                if (currentTenant != null)
-                    billingPortalUrl = await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+                currentTenant = null;
+                return;
             }
+
+            var view = await TenantBillingViewService.GetAsync(tenantId);
+            if (view == null)
+            {
+                currentTenant = null;
+                return;
+            }
+
+            currentTenant = view.Tenant;
+            hasAiFeature = view.HasAiFeature;
+            billingPortalUrl = await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
         }
         finally
         {
-            _loading = false;
+            if (showLoading)
+                _loading = false;
+        }
+    }
+
+    private async Task ReloadBillingAsync()
+    {
+        _refreshing = true;
+        try
+        {
+            await LoadBillingAsync(showLoading: false);
+            ToastService.ShowSuccess("Plan and usage refreshed from billing records.");
+        }
+        finally
+        {
+            _refreshing = false;
         }
     }
 
