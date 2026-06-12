@@ -301,6 +301,29 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Payroll_Page_Shows_JobLabor_Summaries()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/payroll");
+        await page.WaitForTestIdAsync("payroll-ready", 15000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Payroll", content);
+        Assert.Contains("JobLabor", content);
+
+        var rows = page.Locator("[data-testid='payroll-row']");
+        Assert.True(await rows.CountAsync() >= 1);
+
+        var rowText = (await rows.First.TextContentAsync()) ?? string.Empty;
+        Assert.True(
+            rowText.Contains("Thabo", StringComparison.OrdinalIgnoreCase)
+            || rowText.Contains("Johan", StringComparison.OrdinalIgnoreCase),
+            $"Expected demo employee on payroll table, got: {rowText}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Scheduling_Page_Loads_Jobs_And_Assignment_Panel()
     {
         var page = await _browser.LoginAsync();

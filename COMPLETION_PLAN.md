@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**JobLabor employee linkage + login DbContext scope fix (2026-06-12 latest).**
+**Payroll page wired to real JobLabor summaries (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 15)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 16)
+- **Phase 4 — Payroll from JobLabor**:
+  - `IPayrollService` / `PayrollService`: monthly summaries per employee (hours, gross, entry count from linked `JobLabor`).
+  - `Payroll.razor` refactored off hardcoded stubs — real data, `data-testid` markers, payslip card from summaries.
+  - `PayrollServiceTests` (2): aggregation + zero-labor employees.
+  - E2E: `Payroll_Page_Shows_JobLabor_Summaries` (16th Playwright test).
+- **Testing**: **198/198 green** (175 unit + 7 web + 16 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 15)
 - **Phase 4 — Crew → payroll labor linkage**:
   - `JobLabor.EmployeeId` + `Employee` navigation; EF migration `AddJobLaborEmployeeId`.
   - `JobService.AddLaborAsync` fills `Technician` + `HourlyRate` from employee when linked.

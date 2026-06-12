@@ -1,6 +1,9 @@
 @page "/payroll"
+@rendermode InteractiveServer
+@using METERP.Application.Services
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@inject IPayrollService PayrollService
 @inject ToastService ToastService
 
 <PageTitle>Payroll & HR</PageTitle>
@@ -8,81 +11,108 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1>Payroll & HR <span class="badge bg-secondary">Employee Management</span></h1>
-        <p class="text-muted mb-0">Employee records, labor-linked payslips, leave. Full integration with JobLabor for accurate costing.</p>
+        <p class="text-muted mb-0">Monthly pay summaries from linked <strong>JobLabor</strong> entries (crew scheduling → job costing → payroll).</p>
     </div>
-    <button class="btn btn-primary" @onclick="GeneratePayslips">Generate Monthly Payslips (Stub)</button>
+    <button class="btn btn-primary" data-testid="payroll-generate-button" @onclick="GeneratePayslips" disabled="@_loading">Generate Monthly Payslips (Stub)</button>
 </div>
 
-<div class="table-responsive">
-    <table class="table table-hover">
-        <thead>
-            <tr>
-                <th>Employee</th>
-                <th>Role / Rate</th>
-                <th>Hours This Month</th>
-                <th>Gross Pay</th>
-                <th>Status</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var e in employees)
-            {
+@if (_loading)
+{
+    <p data-testid="payroll-loading"><em>Loading payroll summaries...</em></p>
+}
+else if (!employees.Any())
+{
+    <div class="alert alert-info" data-testid="payroll-empty">No employees found. Add employees under HR, then log labor on jobs.</div>
+}
+else
+{
+    <div class="table-responsive" data-testid="payroll-ready">
+        <table class="table table-hover" data-testid="payroll-table">
+            <thead>
                 <tr>
-                    <td><strong>@e.Name</strong></td>
-                    <td>@e.Role<br /><small>R @e.HourlyRate/hr</small></td>
-                    <td>@e.Hours</td>
-                    <td>R @e.Gross.ToString("N0")</td>
-                    <td><span class="badge bg-success">Active</span></td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewPayslip(e)">View Payslip</button>
-                    </td>
+                    <th>Employee</th>
+                    <th>Role / Rate</th>
+                    <th>Hours This Month</th>
+                    <th>Gross Pay</th>
+                    <th>Labor Entries</th>
+                    <th>Status</th>
+                    <th></th>
                 </tr>
-            }
-        </tbody>
-    </table>
-</div>
+            </thead>
+            <tbody>
+                @foreach (var e in employees)
+                {
+                    <tr data-testid="payroll-row">
+                        <td><strong>@e.Name</strong></td>
+                        <td>@(e.JobTitle ?? "Technician")<br /><small>R @e.DefaultHourlyRate.ToString("N0")/hr default</small></td>
+                        <td>@e.Hours.ToString("N1")</td>
+                        <td>R @e.GrossPay.ToString("N0")</td>
+                        <td>@e.LaborEntryCount</td>
+                        <td>
+                            @if (e.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" data-testid="payroll-view-payslip" @onclick="() => ViewPayslip(e)">View Payslip</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <p class="small text-muted">Period: @_periodLabel (UTC). Only labor with a linked employee is included.</p>
+    </div>
+}
 
 @if (selectedEmp != null)
 {
-    <div class="card mt-4 border-primary">
-        <div class="card-header bg-primary text-white">Payslip for @selectedEmp.Name - @DateTime.Now.ToString("MMMM yyyy")</div>
+    <div class="card mt-4 border-primary" data-testid="payroll-payslip-card">
+        <div class="card-header bg-primary text-white">Payslip for @selectedEmp.Name - @_periodLabel</div>
         <div class="card-body">
-            <p>Hours: @selectedEmp.Hours * R @selectedEmp.HourlyRate = R @(selectedEmp.Hours * selectedEmp.HourlyRate).ToString("N0")</p>
+            <p>Hours from JobLabor: @selectedEmp.Hours.ToString("N1") — Gross R @selectedEmp.GrossPay.ToString("N0")</p>
             <p>Deductions (stub): R 1,200 (UIF, etc.)</p>
-            <p class="fs-5"><strong>Net Pay: R @(selectedEmp.Gross - 1200).ToString("N0")</strong></p>
-            <button class="btn btn-success btn-sm" @onclick="DownloadPayslip">Download PDF Payslip (Stub - uses AI PDF generator pattern)</button>
-            <small class="text-muted d-block mt-2">Linked to actual JobLabor for accurate costing. Full SARS-compliant in production.</small>
+            <p class="fs-5"><strong>Net Pay: R @((selectedEmp.GrossPay - 1200m) < 0 ? 0 : selectedEmp.GrossPay - 1200m).ToString("N0")</strong></p>
+            <button class="btn btn-success btn-sm" data-testid="payroll-download-payslip" @onclick="DownloadPayslip">Download PDF Payslip (Stub)</button>
+            <small class="text-muted d-block mt-2">@selectedEmp.LaborEntryCount JobLabor record(s) this month. Full SARS-compliant payroll in production.</small>
         </div>
     </div>
 }
 
 @code {
-    private List<EmployeePay> employees = new()
-    {
-        new EmployeePay { Name = "Thabo Molefe", Role = "Artisan Electrician", HourlyRate = 185, Hours = 168, Gross = 31080 },
-        new EmployeePay { Name = "Johan van der Berg", Role = "Site Supervisor", HourlyRate = 250, Hours = 160, Gross = 40000 }
-    };
-    private EmployeePay? selectedEmp;
+    private List<PayrollEmployeeSummary> employees = new();
+    private PayrollEmployeeSummary? selectedEmp;
+    private bool _loading = true;
+    private string _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
 
-    private void ViewPayslip(EmployeePay e) => selectedEmp = e;
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            employees = (await PayrollService.GetMonthlySummariesAsync()).ToList();
+            _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ViewPayslip(PayrollEmployeeSummary e) => selectedEmp = e;
 
     private void GeneratePayslips()
     {
-        ToastService.ShowSuccess("Payslips generated for all active employees. Linked to JobLabor records.");
+        var withLabor = employees.Count(e => e.LaborEntryCount > 0);
+        ToastService.ShowSuccess($"Payslips ready for {withLabor} employee(s) with JobLabor this month.");
     }
 
     private void DownloadPayslip()
     {
-        ToastService.ShowInfo("Payslip PDF generated using professional template (similar to Job closeout PDF). Full integration in production.");
-    }
-
-    private class EmployeePay
-    {
-        public string Name { get; set; } = "";
-        public string Role { get; set; } = "";
-        public decimal HourlyRate { get; set; }
-        public int Hours { get; set; }
-        public decimal Gross { get; set; }
+        ToastService.ShowInfo("Payslip PDF stub — production uses the same template pattern as job closeout PDFs.");
     }
 }
