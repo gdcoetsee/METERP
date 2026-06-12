@@ -37,6 +37,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<QuoteLine> QuoteLines { get; set; } = null!;
     public DbSet<Job> Jobs { get; set; } = null!;
     public DbSet<JobCost> JobCosts { get; set; } = null!;
+    public DbSet<JobCrewAssignment> JobCrewAssignments { get; set; } = null!;
 
     // Invoicing (completes sales flow)
     public DbSet<Invoice> Invoices { get; set; } = null!;

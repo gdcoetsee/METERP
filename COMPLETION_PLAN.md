@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Tenant-facing billing on Home + AI rate limit integration tests (2026-06-12 latest).**
+**Multi-employee job crews for scheduling (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 12)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 13)
+- **Phase 4 — Multi-employee job crews**:
+  - `JobCrewAssignment` entity + EF migration `AddJobCrewAssignments`.
+  - `Job.GetCrewEmployees()`; `IJobService.SetCrewAssignmentsAsync` (soft-delete sync).
+  - `SchedulingService.AssignJobResourcesAsync` — lead + additional crew list; lead always in crew.
+  - `Scheduling.razor`: crew checkboxes (`scheduling-crew-panel`), lead + crew badges in table.
+  - `ListCacheGraphHelper` strips crew back-references for job list cache.
+  - `SchedulingServiceTests` (+1 crew); E2E scheduling test covers crew panel + save.
+- **Testing**: **193/193 green** (172 unit + 7 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 12)
 - **Phase 5 — Tenant-facing billing portal**:
   - `Home.razor`: `home-manage-billing-button` on quota card; `home-billing-past-due-manage-button` on past-due banner.
   - Resolves portal via `IBillingPortalService.ResolveCustomerPortalUrlAsync` for current tenant (no Tenants admin page required).

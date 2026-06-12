@@ -12,6 +12,7 @@ public interface IJobService
 
     Task<Guid> CreateAsync(Job job, CancellationToken ct = default);
     Task UpdateAsync(Job job, CancellationToken ct = default);
+    Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
 
     Task UpdateStatusAsync(Guid jobId, JobStatus newStatus, CancellationToken ct = default);

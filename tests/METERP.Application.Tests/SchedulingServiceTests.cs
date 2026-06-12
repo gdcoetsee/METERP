@@ -98,6 +98,33 @@ public class SchedulingServiceTests
             var updated = await jobService.GetByIdAsync(jobId);
             Assert.NotNull(updated);
             Assert.Null(updated!.AssignedEmployeeId);
+            Assert.Empty(updated.GetCrewEmployees());
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_AssignsLeadAndAdditionalCrew()
+    {
+        var (db, service, jobService, assetService, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "Crew job", QuotedTotal = 3000m });
+            var leadId = await employeeService.CreateAsync(new Employee { FirstName = "Thabo", LastName = "Lead", IsActive = true });
+            var crewId = await employeeService.CreateAsync(new Employee { FirstName = "Johan", LastName = "Crew", IsActive = true });
+
+            await service.AssignJobResourcesAsync(jobId, null, leadId, new[] { crewId });
+
+            var updated = await jobService.GetByIdAsync(jobId);
+            Assert.NotNull(updated);
+            Assert.Equal(leadId, updated!.AssignedEmployeeId);
+            var crew = updated.GetCrewEmployees().Select(e => e.Id).ToList();
+            Assert.Contains(leadId, crew);
+            Assert.Contains(crewId, crew);
+            Assert.Equal(2, crew.Count);
         }
     }
 }

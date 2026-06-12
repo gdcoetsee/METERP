@@ -26,6 +26,13 @@ internal static class ListCacheGraphHelper
 
             foreach (var cost in job.ActualCosts)
                 cost.Job = null!;
+
+            foreach (var crew in job.CrewAssignments)
+            {
+                crew.Job = null!;
+                if (crew.Employee != null)
+                    crew.Employee = null!;
+            }
         }
     }
 }

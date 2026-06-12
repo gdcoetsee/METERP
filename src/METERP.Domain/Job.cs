@@ -52,6 +52,14 @@ public class Job : BaseEntity
 
     public ICollection<JobLabor> Labors { get; set; } = new List<JobLabor>();
 
+    public ICollection<JobCrewAssignment> CrewAssignments { get; set; } = new List<JobCrewAssignment>();
+
+    /// <summary>Active crew members (excludes soft-deleted assignments).</summary>
+    public IEnumerable<Employee> GetCrewEmployees() =>
+        CrewAssignments
+            .Where(c => !c.IsDeleted && c.Employee != null)
+            .Select(c => c.Employee!);
+
     /// <summary>
     /// Computes the full actual cost for variance analysis.
     /// Uses tracked ActualCosts (Travel, Material, Other etc. - explicit travel is key) + active labor.

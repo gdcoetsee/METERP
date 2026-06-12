@@ -29,24 +29,37 @@ public class SchedulingService : ISchedulingService
         return new SchedulingBoard(jobs, assets, employees);
     }
 
-    public async Task AssignJobResourcesAsync(Guid jobId, Guid? assetId, Guid? employeeId, CancellationToken ct = default)
+    public async Task AssignJobResourcesAsync(
+        Guid jobId,
+        Guid? assetId,
+        Guid? leadEmployeeId,
+        IReadOnlyList<Guid>? additionalCrewEmployeeIds = null,
+        CancellationToken ct = default)
     {
         var job = await _jobService.GetByIdAsync(jobId, ct)
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
 
         job.AssetId = assetId;
 
-        if (employeeId.HasValue && employeeId.Value != Guid.Empty)
-        {
-            var employees = await _employeeService.GetAllAsync(null, 1, 1000, ct);
-            var employee = employees.FirstOrDefault(e => e.Id == employeeId.Value);
-            job.AssignedEmployeeId = employee?.Id;
-        }
+        var employees = await _employeeService.GetAllAsync(null, 1, 1000, ct);
+        var validEmployeeIds = employees.Select(e => e.Id).ToHashSet();
+
+        if (leadEmployeeId.HasValue && leadEmployeeId.Value != Guid.Empty && validEmployeeIds.Contains(leadEmployeeId.Value))
+            job.AssignedEmployeeId = leadEmployeeId.Value;
         else
-        {
             job.AssignedEmployeeId = null;
+
+        var crewIds = new HashSet<Guid>();
+        if (job.AssignedEmployeeId.HasValue)
+            crewIds.Add(job.AssignedEmployeeId.Value);
+
+        if (additionalCrewEmployeeIds != null)
+        {
+            foreach (var id in additionalCrewEmployeeIds.Where(id => id != Guid.Empty && validEmployeeIds.Contains(id)))
+                crewIds.Add(id);
         }
 
         await _jobService.UpdateAsync(job, ct);
+        await _jobService.SetCrewAssignmentsAsync(jobId, crewIds.ToList(), ct);
     }
 }

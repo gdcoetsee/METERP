@@ -9,7 +9,12 @@ public interface ISchedulingService
 {
     Task<SchedulingBoard> GetBoardAsync(int jobPage = 1, int jobPageSize = 50, CancellationToken ct = default);
 
-    Task AssignJobResourcesAsync(Guid jobId, Guid? assetId, Guid? employeeId, CancellationToken ct = default);
+    Task AssignJobResourcesAsync(
+        Guid jobId,
+        Guid? assetId,
+        Guid? leadEmployeeId,
+        IReadOnlyList<Guid>? additionalCrewEmployeeIds = null,
+        CancellationToken ct = default);
 }
 
 public sealed record SchedulingBoard(

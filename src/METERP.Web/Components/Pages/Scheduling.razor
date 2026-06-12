@@ -52,7 +52,11 @@ else
                             @if (job.Asset != null) { <span class="badge bg-info" data-testid="scheduling-assigned-asset">@job.Asset.Name</span><br /> }
                             @if (job.AssignedEmployee != null)
                             {
-                                <span class="badge bg-success" data-testid="scheduling-assigned-employee">@job.AssignedEmployee.FirstName @job.AssignedEmployee.LastName</span>
+                                <span class="badge bg-success" data-testid="scheduling-assigned-employee">@job.AssignedEmployee.FirstName @job.AssignedEmployee.LastName (lead)</span>
+                            }
+                            @foreach (var crew in job.GetCrewEmployees().Where(e => e.Id != job.AssignedEmployeeId))
+                            {
+                                <br /><span class="badge bg-secondary" data-testid="scheduling-crew-badge">@crew.FirstName @crew.LastName</span>
                             }
                         </td>
                         <td>
@@ -82,7 +86,7 @@ else
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label>Assign Employee (for labor)</label>
+                    <label>Lead Employee</label>
                     <select class="form-select" data-testid="scheduling-employee-select" @bind="assignEmployeeId">
                         <option value="">-- None --</option>
                         @foreach (var e in availableEmployees)
@@ -90,6 +94,23 @@ else
                             <option value="@e.Id">@e.FirstName @e.LastName</option>
                         }
                     </select>
+                </div>
+            </div>
+            <div class="mt-3" data-testid="scheduling-crew-panel">
+                <label class="form-label">Additional crew</label>
+                <div class="d-flex flex-wrap gap-3">
+                    @foreach (var e in availableEmployees)
+                    {
+                        var crewChecked = assignCrewEmployeeIds.Contains(e.Id);
+                        <label class="form-check form-check-inline mb-0">
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   data-testid="scheduling-crew-checkbox"
+                                   checked="@crewChecked"
+                                   @onchange="(ChangeEventArgs args) => ToggleCrewMember(e.Id, args.Value is bool b && b)" />
+                            @e.FirstName @e.LastName
+                        </label>
+                    }
                 </div>
             </div>
             <button class="btn btn-success mt-2" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save Assignments</button>
@@ -105,6 +126,7 @@ else
     private Job? selectedJob;
     private Guid? assignAssetId;
     private Guid? assignEmployeeId;
+    private HashSet<Guid> assignCrewEmployeeIds = new();
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
@@ -128,13 +150,29 @@ else
         selectedJob = job;
         assignAssetId = job.AssetId;
         assignEmployeeId = job.AssignedEmployeeId;
+        assignCrewEmployeeIds = job.GetCrewEmployees()
+            .Where(e => e.Id != job.AssignedEmployeeId)
+            .Select(e => e.Id)
+            .ToHashSet();
+    }
+
+    private void ToggleCrewMember(Guid employeeId, bool isChecked)
+    {
+        if (isChecked)
+            assignCrewEmployeeIds.Add(employeeId);
+        else
+            assignCrewEmployeeIds.Remove(employeeId);
     }
 
     private async Task AssignResources()
     {
         if (selectedJob == null) return;
 
-        await SchedulingService.AssignJobResourcesAsync(selectedJob.Id, assignAssetId, assignEmployeeId);
+        await SchedulingService.AssignJobResourcesAsync(
+            selectedJob.Id,
+            assignAssetId,
+            assignEmployeeId,
+            assignCrewEmployeeIds.ToList());
         ToastService.ShowSuccess("Assignment saved for job.");
         jobs = (await SchedulingService.GetBoardAsync()).Jobs.ToList();
         selectedJob = null;

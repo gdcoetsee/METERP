@@ -37,6 +37,8 @@ public class JobService : IJobService
             .Include(j => j.Customer)
             .Include(j => j.Asset)
             .Include(j => j.AssignedEmployee)
+            .Include(j => j.CrewAssignments)
+                .ThenInclude(c => c.Employee)
             .Include(j => j.Quote)
                 .ThenInclude(q => q != null ? q.Lines : null)
             .Include(j => j.SalesOrder)
@@ -64,6 +66,8 @@ public class JobService : IJobService
             .Include(j => j.Customer)
             .Include(j => j.Asset)
             .Include(j => j.AssignedEmployee)
+            .Include(j => j.CrewAssignments)
+                .ThenInclude(c => c.Employee)
             .Include(j => j.Quote)
             .Include(j => j.ActualCosts)
             .AsQueryable();
@@ -112,6 +116,41 @@ public class JobService : IJobService
     public async Task UpdateAsync(Job job, CancellationToken ct = default)
     {
         _dbContext.Set<Job>().Update(job);
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+    }
+
+    public async Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)
+    {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct)
+            ?? throw new InvalidOperationException($"Job {jobId} was not found.");
+
+        var distinctIds = employeeIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        var existing = await _dbContext.Set<JobCrewAssignment>()
+            .IgnoreQueryFilters()
+            .Where(a => a.JobId == jobId && a.TenantId == job.TenantId)
+            .ToListAsync(ct);
+
+        foreach (var row in existing)
+            row.IsDeleted = !distinctIds.Contains(row.EmployeeId);
+
+        foreach (var employeeId in distinctIds)
+        {
+            var row = existing.FirstOrDefault(a => a.EmployeeId == employeeId);
+            if (row != null)
+            {
+                row.IsDeleted = false;
+                continue;
+            }
+
+            _dbContext.Set<JobCrewAssignment>().Add(new JobCrewAssignment
+            {
+                JobId = jobId,
+                EmployeeId = employeeId,
+                TenantId = job.TenantId
+            });
+        }
+
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
     }
