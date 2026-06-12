@@ -356,6 +356,34 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reports_Page_Shows_Cashflow_Forecast_From_Receivables()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 20000);
+        await page.WaitForTestIdAsync("reports-cashflow-card", 10000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Cashflow Forecast", content);
+        Assert.DoesNotContain("+R 245k", content);
+
+        var detail = page.Locator("[data-testid='reports-cashflow-detail']");
+        await Assertions.Expect(detail).ToBeVisibleAsync();
+        var detailText = (await detail.TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Receivables:", detailText);
+        Assert.Contains("pipeline:", detailText);
+
+        var bar = page.Locator("[data-testid='reports-cashflow-bar']");
+        if (await bar.CountAsync() > 0)
+        {
+            var barText = (await bar.TextContentAsync()) ?? string.Empty;
+            Assert.Matches(@"[+-]R ", barText.Trim());
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Payroll_Page_Shows_JobLabor_Summaries()
     {
         var page = await _browser.LoginAsync();

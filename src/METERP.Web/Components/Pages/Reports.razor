@@ -13,6 +13,7 @@
 @inject IEmployeeService EmployeeService
 @inject IWorkforceReportService WorkforceReportService
 @inject IJobReportService JobReportService
+@inject ICashflowReportService CashflowReportService
 @inject IFinanceService FinanceService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
@@ -215,13 +216,24 @@ else
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card">
+            <div class="card" data-testid="reports-cashflow-card">
                 <div class="card-body">
                     <h6>Cashflow Forecast</h6>
-                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">
-                        <div class="progress-bar bg-warning" style="width: 65%">+R 245k</div>
+                    @{
+                        var cashflowBar = Math.Min(100, Math.Max(0, (int)Math.Round(_cashflowForecast.InflowSharePercent)));
+                        var cashflowBarClass = _cashflowForecast.NetForecastInflow >= 0 ? "bg-warning" : "bg-danger";
+                        var netLabel = _cashflowForecast.NetForecastInflow >= 0
+                            ? $"+R {FormatCompactCurrency(_cashflowForecast.NetForecastInflow)}"
+                            : $"-R {FormatCompactCurrency(Math.Abs(_cashflowForecast.NetForecastInflow))}";
+                    }
+                    <div class="progress mb-1" style="height: 20px;" role="progressbar" aria-valuenow="@cashflowBar" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar @cashflowBarClass" style="width: @(cashflowBar)%" data-testid="reports-cashflow-bar">@netLabel</div>
                     </div>
-                    <small>Includes approved invoices + expected quotes.</small>
+                    <small data-testid="reports-cashflow-detail">
+                        Receivables: R @_cashflowForecast.ReceivableInflow.ToString("N0") (@_cashflowForecast.ReceivableInvoiceCount)
+                        + pipeline: R @_cashflowForecast.PipelineInflow.ToString("N0") (@_cashflowForecast.PipelineQuoteCount accepted)
+                        − open POs: R @_cashflowForecast.CommittedOutflow.ToString("N0").
+                    </small>
                 </div>
             </div>
         </div>
@@ -256,6 +268,7 @@ else
     private decimal _sampleGLBalance; // demo from finance service
     private List<TechnicianUtilizationSummary> _technicianUtilization = new();
     private JobProfitabilitySummary _jobProfitability = new(0m, 0, null);
+    private CashflowForecastSummary _cashflowForecast = new(0m, 0, 0m, 0, 0m, 0, 0m, 0m);
 
     // AI
     private bool _aiThinking;
@@ -308,6 +321,7 @@ else
 
             _technicianUtilization = (await WorkforceReportService.GetTechnicianUtilizationAsync()).ToList();
             _jobProfitability = await JobReportService.GetJobProfitabilitySummaryAsync();
+            _cashflowForecast = await CashflowReportService.GetCashflowForecastAsync();
 
             var accounts = await FinanceService.GetAccountsAsync();
             if (accounts.Any())
@@ -368,6 +382,15 @@ else
             _predictiveThinking = false;
             StateHasChanged();
         }
+    }
+
+    private static string FormatCompactCurrency(decimal amount)
+    {
+        if (amount >= 1_000_000m)
+            return $"{amount / 1_000_000m:0.#}m";
+        if (amount >= 1_000m)
+            return $"{amount / 1_000m:0.#}k";
+        return amount.ToString("N0");
     }
 
     private async Task ExportAccounting()

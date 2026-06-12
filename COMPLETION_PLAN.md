@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Reports job profitability from real variance (2026-06-12 latest).**
+**Reports cashflow forecast from receivables + pipeline (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 18)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 19)
+- **Phase 4 — Cashflow forecast reporting**:
+  - `ICashflowReportService` / `CashflowReportService`: receivables (sent/partial/overdue invoices) + accepted quote pipeline − open PO commitments.
+  - `Reports.razor`: real cashflow card (`reports-cashflow-card`) replaces hardcoded +R 245k stub; compact currency formatting.
+  - `CashflowReportServiceTests` (2); E2E `Reports_Page_Shows_Cashflow_Forecast_From_Receivables` (19th Playwright test).
+- **Testing**: **208/208 green** (182 unit + 7 web + 19 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 18)
 - **Phase 4 — Job profitability reporting**:
   - `Job.GetMarginPercent()` — pure margin from quoted vs actual (travel + labor + costs).
   - `IJobReportService` / `JobReportService`: average margin + top performer from jobs with recorded costs.
