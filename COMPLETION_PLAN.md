@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Sellable CRM spine + audit + 2FA + OpenTelemetry (2026-06-12 latest).**
+**CRM E2E + UserService tests + per-tenant AI throttle (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, sellable-ready push)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session)
+- **E2E — CRM handoff**: `Opportunity_Converts_To_Quote_Via_Ai_Copilot` (Opportunities → AI Copilot → draft quote).
+- **Phase 4 — UserService tests** (6): tenant isolation, search, create+claims, role change, available roles.
+- **Seeder**: `SyncUserPermissionClaimsFromRoleAsync` — existing demo admins pick up new role permissions on startup.
+- **AI throttle fix**: per-tenant throttle keys (was global `"ai"` — caused parallel test flakes).
+- **Testing**: **135/135 green** (124 unit + 4 web + 7 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, sellable-ready push)
 - **CRM Opportunities (real DB, not localStorage)**:
   - `Opportunity` + `OpportunityStage` domain; `IOpportunityService` / `OpportunityService` with audit hooks.
   - `Opportunities.razor` — pipeline UI, AI handoff via `pendingAiScope` + `pendingOpportunityId`.

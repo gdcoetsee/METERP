@@ -33,8 +33,12 @@ public class AiAssistantService : IAiAssistantService
     private static readonly ConcurrentDictionary<string, DateTime> _lastAiCall = new();
     private static readonly TimeSpan _minAiInterval = TimeSpan.FromSeconds(4); // ~15 calls/min per tenant key
 
-    private bool IsAiCallAllowed(string tenantKey)
+    private bool IsAiCallAllowed()
     {
+        var tenantKey = _tenantProvider?.GetCurrentTenantId() is Guid tid && tid != Guid.Empty
+            ? tid.ToString()
+            : "global";
+
         var now = DateTime.UtcNow;
         if (_lastAiCall.TryGetValue(tenantKey, out var last) && (now - last) < _minAiInterval)
             return false;
@@ -93,7 +97,7 @@ public class AiAssistantService : IAiAssistantService
         if (!IsConfigured || string.IsNullOrWhiteSpace(scopeNotes))
             return null;
 
-        if (!IsAiCallAllowed("ai"))
+        if (!IsAiCallAllowed())
         {
             _logger.LogWarning("AI call throttled (rate limit)");
             return null;
@@ -201,7 +205,7 @@ public class AiAssistantService : IAiAssistantService
         if (!IsConfigured || job == null)
             return null;
 
-        if (!IsAiCallAllowed("ai"))
+        if (!IsAiCallAllowed())
         {
             _logger.LogWarning("AI call throttled (rate limit)");
             return null;
@@ -339,7 +343,7 @@ public class AiAssistantService : IAiAssistantService
         if (!IsConfigured || string.IsNullOrWhiteSpace(question))
             return null;
 
-        if (!IsAiCallAllowed("ai"))
+        if (!IsAiCallAllowed())
         {
             _logger.LogWarning("AI call throttled (rate limit)");
             return "Rate limit reached for AI assistant. Please wait a moment before asking again.";

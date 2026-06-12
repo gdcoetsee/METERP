@@ -257,6 +257,7 @@ else if (_aiQuotaExhausted)
     private List<(string Question, string Response)> chatHistory = new();
     private string bidScope = "";
     private Guid? _pendingOpportunityId;
+    private bool _autoOptimizeAfterRender;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage) || CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
 
@@ -312,8 +313,7 @@ else if (_aiQuotaExhausted)
             if (!string.IsNullOrWhiteSpace(pendingScope))
             {
                 bidScope = pendingScope;
-                // Auto-optimize bid with the opportunity scope for great demo flow
-                _ = Task.Run(async () => await OptimizeBid());
+                _autoOptimizeAfterRender = true;
                 await JS.InvokeVoidAsync("localStorage.removeItem", "pendingAiScope");
             }
 
@@ -322,6 +322,16 @@ else if (_aiQuotaExhausted)
                 _pendingOpportunityId = oppId;
         }
         catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_autoOptimizeAfterRender || _thinking || AiCopilotBlocked || string.IsNullOrWhiteSpace(bidScope))
+            return;
+
+        _autoOptimizeAfterRender = false;
+        await OptimizeBid();
+        StateHasChanged();
     }
 
     private async Task SaveChatHistory()

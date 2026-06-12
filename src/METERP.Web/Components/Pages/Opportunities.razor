@@ -14,6 +14,11 @@
 
 <PageTitle>Opportunities (CRM)</PageTitle>
 
+@if (_ready)
+{
+    <span data-testid="opportunities-ready" class="visually-hidden">ready</span>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1>Opportunities <span class="badge bg-info">CRM Pipeline</span></h1>
@@ -148,6 +153,7 @@
     private Opportunity newOpp = new();
     private Guid selectedCustomerId = Guid.Empty;
 
+    private bool _ready;
     private bool CanManage => CurrentUserService.Permissions.Contains(Permissions.OpportunitiesManage);
 
     private static readonly OpportunityStage[] stages =
@@ -165,6 +171,7 @@
         opportunities = (await OpportunityService.GetAllAsync()).ToList();
         customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
         filtered = opportunities;
+        _ready = true;
     }
 
     private static string StageLabel(OpportunityStage stage) => stage switch

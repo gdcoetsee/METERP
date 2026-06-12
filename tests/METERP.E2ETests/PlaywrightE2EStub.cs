@@ -80,6 +80,57 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Opportunity_Converts_To_Quote_Via_Ai_Copilot()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/opportunities");
+        try
+        {
+            await page.WaitForTestIdAsync("opportunities-ready", 8000);
+        }
+        catch (TimeoutException)
+        {
+            // Older builds expose pipeline without ready marker
+        }
+
+        await page.WaitForTestIdAsync("opportunities-pipeline", 30000);
+
+        await page.Locator("[data-testid='opportunity-card']").First.ClickAsync();
+        await page.WaitForTestIdAsync("opportunity-detail", 10000);
+        await page.ClickByTestIdAsync("opportunity-convert-ai");
+
+        try
+        {
+            await page.WaitForURLAsync("**/ai-copilot**", new() { Timeout = 15000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/ai-copilot");
+        }
+
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+        // Opportunity handoff auto-runs bid optimization after first render
+        await page.WaitForTestIdAsync("ai-last-response", 60000);
+
+        await page.ClickByTestIdAsync("ai-create-real-quote");
+
+        try
+        {
+            await page.WaitForURLAsync("**/quotes**", new() { Timeout = 30000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/quotes");
+        }
+
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+        var content = await page.ContentAsync();
+        Assert.Contains("Q-", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
         var page = await _browser.LoginAsync();

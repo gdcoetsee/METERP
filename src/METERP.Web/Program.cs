@@ -568,6 +568,10 @@ public class DatabaseSeeder : IHostedService
                 await userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("TenantId", defaultTenantId.ToString()));
             }
         }
+        else
+        {
+            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, existingAdmin, "Admin", cancellationToken);
+        }
 
         // 4. Seed some demo customers for the tenant (if none exist)
         var existingCustomers = await customerService.GetAllAsync(ct: cancellationToken);
@@ -1142,6 +1146,8 @@ public class DatabaseSeeder : IHostedService
 
             if (!await IsInGlobalRoleAsync(userManager, tenantProvider, betaAdminUser, "Admin"))
                 await AddUserToGlobalRoleAsync(userManager, tenantProvider, betaAdminUser, "Admin");
+
+            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, betaAdminUser, "Admin", cancellationToken);
             tenantProvider.SetTenantId(betaTenantId);
         }
 
@@ -1245,6 +1251,29 @@ public class DatabaseSeeder : IHostedService
         finally
         {
             tenantProvider.SetTenantId(previousTenant);
+        }
+    }
+
+    /// <summary>
+    /// Copies missing Permission claims from a global role onto an existing user (safe on every startup).
+    /// Keeps demo/E2E users current when new permissions are added to roles.
+    /// </summary>
+    private static async Task SyncUserPermissionClaimsFromRoleAsync(
+        UserManager<ApplicationUser> userManager,
+        RoleManager<ApplicationRole> roleManager,
+        ApplicationUser user,
+        string roleName,
+        CancellationToken ct)
+    {
+        var role = await roleManager.FindByNameAsync(roleName);
+        if (role == null) return;
+
+        var roleClaims = await roleManager.GetClaimsAsync(role);
+        var userClaims = await userManager.GetClaimsAsync(user);
+        foreach (var claim in roleClaims.Where(c => c.Type == "Permission"))
+        {
+            if (!userClaims.Any(c => c.Type == claim.Type && c.Value == claim.Value))
+                await userManager.AddClaimAsync(user, claim);
         }
     }
 
