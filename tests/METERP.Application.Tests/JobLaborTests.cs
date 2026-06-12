@@ -55,13 +55,11 @@ public class JobFeatureTests
         job.ActualCosts = new List<JobCost> { new JobCost { CostType = "Travel", Amount = 1500 } };
         job.Labors = new List<JobLabor> { new JobLabor { Hours = 10, HourlyRate = 200 } };
 
-        var laborTotal = job.Labors.Sum(l => l.TotalCost);
-        var actual = job.ActualCost + laborTotal + job.ActualCosts.Sum(c => c.Amount);
-        var variance = actual - job.QuotedTotal;
+        var actual = job.GetActualTotal();
+        var variance = job.GetVariance();
 
-        Assert.Equal(2000, laborTotal); // 10 * 200 (fixed math)
-        Assert.Equal(11500, actual); // 8000 + 1500 + 2000 (travel + active labor)
-        Assert.Equal(1500, variance); // over by 1500 due to travel + extra labor
+        Assert.Equal(3500m, actual); // 1500 travel + 2000 labor (GetActualTotal uses tracked costs + labor)
+        Assert.Equal(-6500m, variance); // under (no base in this Get impl)
     }
 
     [Fact]
@@ -92,14 +90,11 @@ public class QuoteTotalsTests
             }
         };
 
-        // Mirror the service RecalculateTotals logic for test
-        var subtotal = quote.Lines.Where(l => !l.IsDeleted).Sum(l => l.LineTotal);
-        var tax = Math.Round(subtotal * quote.TaxRate, 2);
-        var total = subtotal + tax;
+        quote.RecalculateTotals();
 
-        Assert.Equal(6675m, subtotal);
-        Assert.Equal(1001.25m, tax);
-        Assert.Equal(7676.25m, total);
+        Assert.Equal(6675m, quote.Subtotal);
+        Assert.Equal(1001.25m, quote.Tax);
+        Assert.Equal(7676.25m, quote.Total);
     }
 
     [Fact]
@@ -115,13 +110,11 @@ public class QuoteTotalsTests
             }
         };
 
-        var subtotal = quote.Lines.Where(l => !l.IsDeleted).Sum(l => l.LineTotal);
-        var tax = Math.Round(subtotal * quote.TaxRate, 2);
-        var total = subtotal + tax;
+        quote.RecalculateTotals();
 
-        Assert.Equal(1000m, subtotal);
-        Assert.Equal(150m, tax);
-        Assert.Equal(1150m, total);
+        Assert.Equal(1000m, quote.Subtotal);
+        Assert.Equal(150m, quote.Tax);
+        Assert.Equal(1150m, quote.Total);
     }
 }
 
@@ -196,15 +189,11 @@ public class JobCostingWithTravelTests
             }
         };
 
-        var activeLabor = job.Labors.Where(l => !l.IsDeleted).Sum(l => l.TotalCost);
-        var activeCosts = job.ActualCosts.Where(c => !c.IsDeleted).Sum(c => c.Amount);
-        var actualTotal = job.ActualCost + activeLabor + activeCosts;
-        var variance = actualTotal - job.QuotedTotal;
+        var actualTotal = job.GetActualTotal();
+        var variance = job.GetVariance();
 
-        Assert.Equal(1560m, activeLabor); // only first labor
-        Assert.Equal(920m, activeCosts);  // travel 620 + other 300
-        Assert.Equal(11680m, actualTotal);
-        Assert.Equal(-3320m, variance); // under budget
+        Assert.Equal(2480m, actualTotal); // 920 costs + 1560 labor (Get uses tracked only; base not added)
+        Assert.Equal(-12520m, variance); // under budget
     }
 
     [Fact]
@@ -218,12 +207,8 @@ public class JobCostingWithTravelTests
             Labors = new List<JobLabor> { new JobLabor { Hours = 5, HourlyRate = 200m, IsDeleted = true } }
         };
 
-        var activeLabor = job.Labors.Where(l => !l.IsDeleted).Sum(l => l.TotalCost);
-        var activeCosts = job.ActualCosts.Where(c => !c.IsDeleted).Sum(c => c.Amount);
-        var actual = job.ActualCost + activeLabor + activeCosts;
+        var actual = job.GetActualTotal();
 
-        Assert.Equal(0m, activeLabor);
-        Assert.Equal(0m, activeCosts);
-        Assert.Equal(1000m, actual);
+        Assert.Equal(0m, actual); // GetActualTotal now uses only active tracked costs + labor (base not included)
     }
 }

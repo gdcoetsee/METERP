@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
+using Serilog;
+using Serilog.Events;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
@@ -13,6 +15,24 @@ using METERP.Web.Components;
 using METERP.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// === Production-ready structured logging (Serilog) ===
+// Replaces ad-hoc Console.WriteLine / comments. Console for dev, rolling file for basic prod persistence.
+// For live deployment: Add Serilog.Sinks.Seq (or Datadog/Elastic) via env config, enrich with tenant ID.
+// See COMPLETION_PLAN.md handoff for full production hardening checklist.
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "METERP")
+    .WriteTo.Console()
+    .WriteTo.File("logs/meterp-.log", 
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
+builder.Host.UseSerilog();  // Important: must be before other builder config in some cases
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -40,6 +60,10 @@ builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<NotificationService>();
 
+// === Health checks (production readiness) ===
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("database");  // Checks EF can connect and basic query
+
 // === AI Assistant (optional - powers smart quoting & post-job learning) ===
 // The implementation creates its own short-lived HttpClient (acceptable for infrequent LLM calls).
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
@@ -58,10 +82,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
            .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning)));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
 
 // === ASP.NET Core Identity + Multi-tenancy ===
-
-// Production hardening note: Rate limiting for AI (to prevent abuse/cost) and full logging (Serilog) can be added by referencing Microsoft.AspNetCore.RateLimiting and Serilog packages.
-// Example: builder.Services.AddRateLimiter(...); and builder.Host.UseSerilog(...);
-// OpenTelemetry for monitoring in prod. Current has basic rate limit comment and error UI.
+// (Serilog already configured above for structured + file logging. Rate limiter comment remains for AI cost control.)
 builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false; // Foundation: simplify for now
@@ -196,6 +217,15 @@ app.UseAntiforgery();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// === Health checks endpoints (for live deployment / container orchestration / load balancers) ===
+// /health = liveness, /health/ready = readiness (includes DB check).
+// See Microsoft.AspNetCore.Diagnostics.HealthChecks and the package we added.
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => true
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

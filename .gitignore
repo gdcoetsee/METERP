@@ -45,3 +45,12 @@ artifacts/
 *.temp
 Thumbs.db
 Desktop.ini
+
+mcps/
+
+
+tempdiag/
+
+
+logs/
+

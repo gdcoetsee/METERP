@@ -29,6 +29,16 @@
     <!-- Rate limiting is provided by the ASP.NET Core framework (no extra package needed for .NET 9 web apps). See AddRateLimiter + UseRateLimiter in Program.cs. -->
     <!-- Direct Npgsql for the dev DB reset helper in seeder (transitive from EF provider but explicit for compile of Npgsql* types in Program.cs) -->
     <PackageReference Include="Npgsql" Version="9.0.0" />
+
+    <!-- Serilog for structured logging (production hardening per AGENTS.md + COMPLETION_PLAN handoff).
+         Console for dev, File for basic prod. Add Seq/Splunk sink + env config later for live deployment. -->
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.2" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+
+    <!-- Health checks for live deployment (DB, basic liveness). Expose /health and /health/ready.
+         Per COMPLETION_PLAN handoff for production readiness. -->
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="8.0.1" />
   </ItemGroup>
 
 </Project>

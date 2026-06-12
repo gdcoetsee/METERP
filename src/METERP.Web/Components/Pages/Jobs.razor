@@ -40,6 +40,7 @@
     OnNext="NextPage"
     OnExportCsv="ExportJobsCsv"
     OnAiAnalyze="AnalyzeWithAi"
+    OnCreateInvoice="CreateInvoiceFromJob"
     OnCloseView="CloseJobView" />
 
 <div class="card mt-3">
@@ -133,4 +134,12 @@
     }
 
     private void ShowTravelNote() => ToastService.ShowInfo("Travel is recorded as JobCost records with CostType 'Travel' (daily allowance or km rate). It is included in every variance calculation and in the AI prompts so recommendations are realistic for Gauteng/mining site work.");
+
+    private async Task CreateInvoiceFromJob(Job j)
+    {
+        // Demo: navigate to Invoices page which has "Create from Job" button
+        // In a fuller implementation this would call the service directly here
+        Nav.NavigateTo("/invoices");
+        ToastService.ShowInfo("Navigate to Invoices → use 'Create from Job (demo)' for the flow.");
+    }
 }

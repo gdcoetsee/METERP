@@ -44,22 +44,22 @@
                 <strong>Quick Actions & Bid Optimizer</strong>
             </div>
             <div class="card-body">
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Analyze my 3 jobs with the highest variance. Focus on travel and labor costs.")' disabled="@_thinking">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Analyze my 3 jobs with the highest variance. Focus on travel and labor costs.")' disabled="@_thinking" data-testid="ai-quick-prompt-variance">
                     Analyze worst variance jobs (travel & labor focus)
                 </button>
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("What are realistic ways to reduce travel costs on site jobs in mining areas? Give 4 practical tips with cost impact examples in R.")' disabled="@_thinking">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("What are realistic ways to reduce travel costs on site jobs in mining areas? Give 4 practical tips with cost impact examples in R.")' disabled="@_thinking" data-testid="ai-quick-prompt-travel">
                     Travel cost reduction ideas for mining sites
                 </button>
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Suggest a complete quote line item structure (incl. travel) for installing a new 11kV/400V transformer at a remote site. Use realistic SA rates and quantities.")' disabled="@_thinking">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Suggest a complete quote line item structure (incl. travel) for installing a new 11kV/400V transformer at a remote site. Use realistic SA rates and quantities.")' disabled="@_thinking" data-testid="ai-quick-prompt-transformer">
                     Generate transformer install quote template
                 </button>
-                <button class="btn btn-outline-primary w-100" @onclick='() => RunQuickPrompt("Based on current data, which employee types or skills are over/under utilized? Any recommendations?")' disabled="@_thinking">
+                <button class="btn btn-outline-primary w-100" @onclick='() => RunQuickPrompt("Based on current data, which employee types or skills are over/under utilized? Any recommendations?")' disabled="@_thinking" data-testid="ai-quick-prompt-utilization">
                     Workforce utilization insights
                 </button>
                 <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("What-if: if we reduce travel costs by 20% on upcoming jobs, what is the estimated margin impact? Use realistic numbers from data.")' disabled="@_thinking">
                     What-if travel cost reduction impact
                 </button>
-                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.")' disabled="@_thinking">
+                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.")' disabled="@_thinking" data-testid="ai-quick-prompt-lowstock">
                     🔮 Low-stock risk for scheduled jobs (travel impact)
                 </button>
 
@@ -67,7 +67,7 @@
 
                 <div class="input-group mb-2">
                     <input type="text" class="form-control" placeholder="Enter scope for bid optimization (e.g. '11kV transformer install at mine site')" @bind="bidScope" />
-                    <button class="btn btn-outline-primary" @onclick="OptimizeBid" disabled="@_thinking || string.IsNullOrWhiteSpace(bidScope)">Optimize Bid</button>
+                    <button class="btn btn-outline-primary" @onclick="OptimizeBid" disabled="@_thinking || string.IsNullOrWhiteSpace(bidScope)" data-testid="ai-optimize-bid">Optimize Bid</button>
                 </div>
                 <small class="text-muted">Uses live data for realistic pricing, labor, travel suggestions.</small>
             </div>
@@ -98,8 +98,8 @@
             <div class="card-body">
                 <div class="input-group mb-3">
                     <input type="text" class="form-control" placeholder="Ask anything... e.g. 'How can I improve my quoting accuracy on electrical maintenance contracts?' or 'Why are my travel costs 40% over on the last 5 jobs?'"
-                           @bind="userQuestion" @onkeyup="OnQuestionKeyUp" />
-                    <button class="btn btn-primary" @onclick="AskCopilot" disabled="@(string.IsNullOrWhiteSpace(userQuestion) || _thinking)">
+                           @bind="userQuestion" @onkeyup="OnQuestionKeyUp" data-testid="ai-prompt-input" />
+                    <button class="btn btn-primary" @onclick="AskCopilot" disabled="@(string.IsNullOrWhiteSpace(userQuestion) || _thinking)" data-testid="ai-ask-button">
                         Ask AI
                     </button>
                 </div>
@@ -109,7 +109,7 @@
                       <div class="mb-3">
                           <div class="d-flex justify-content-between align-items-center mb-1">
                               <h6 class="mb-0">Conversation History</h6>
-                              <button class="btn btn-sm btn-outline-primary" @onclick="ExportFullSessionAsPdf" disabled="@(!chatHistory.Any())">Export full session as PDF</button>
+                              <button class="btn btn-sm btn-outline-primary" @onclick="ExportFullSessionAsPdf" disabled="@(!chatHistory.Any())" data-testid="ai-export-full-pdf">Export full session as PDF</button>
                           </div>
                           <div style="max-height: 200px; overflow-y: auto; font-size: 0.85rem;">
                              @foreach (var entry in chatHistory)
@@ -120,8 +120,8 @@
                                       @if (UserCanManage)
                                       {
                                           <div class="mt-1 d-flex gap-1 flex-wrap">
-                                              <button class="btn btn-sm btn-success py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateQuoteFromAiText(entry.Response)">🚀 Quote</button>
-                                              <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateJobFromAiText(entry.Response)">🚀 Job</button>
+                                              <button class="btn btn-sm btn-success py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateQuoteFromAiText(entry.Response)" data-testid="ai-apply-quote">🚀 Quote</button>
+                                              <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateJobFromAiText(entry.Response)" data-testid="ai-apply-job">🚀 Job</button>
                                               <button class="btn btn-sm btn-primary py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateProjectPlanFromAiText(entry.Response)">Plan</button>
                                               <button class="btn btn-sm btn-info py-0 px-1" style="font-size:0.7rem" @onclick="() => ExportSpecificResponseAsPdf(entry.Question, entry.Response)">Text PDF</button>
                                               <button class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size:0.7rem" @onclick="() => ExportResponseAsQuotePdf(entry.Response)">Quote PDF</button>
@@ -129,8 +129,8 @@
                                           </div>
                                       }
                                       <div class="mt-1">
-                                          <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.6rem" @onclick="() => GiveFeedback(entry, true)">👍</button>
-                                          <button class="btn btn-sm btn-outline-danger py-0 px-1" style="font-size:0.6rem" @onclick="() => GiveFeedback(entry, false)">👎</button>
+                                          <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.6rem" @onclick="() => GiveFeedback(entry, true)" data-testid="ai-feedback-thumbs-up">👍</button>
+                                          <button class="btn btn-sm btn-outline-danger py-0 px-1" style="font-size:0.6rem" @onclick="() => GiveFeedback(entry, false)" data-testid="ai-feedback-thumbs-down">👎</button>
                                       </div>
                                   </div>
                               }
@@ -143,27 +143,31 @@
                     <div class="border rounded p-3 bg-light">
                         <div class="d-flex justify-content-between mb-2">
                             <strong>Latest AI Response</strong>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse">Copy</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse" data-testid="ai-copy-response">Copy</button>
                         </div>
                         <div style="white-space: pre-wrap; font-size: 0.95rem;">@lastResponse</div>
 
                         @if (UserCanManage)
                         {
                             <div class="mt-2 d-flex gap-2 flex-wrap">
-                                <button class="btn btn-sm btn-success" @onclick="() => CreateQuoteFromAiText(lastResponse)">🚀 Create Real Draft Quote</button>
-                                <button class="btn btn-sm btn-outline-success" @onclick="() => CreateJobFromAiText(lastResponse)">🚀 Create Real Draft Job</button>
+                                <button class="btn btn-sm btn-success" @onclick="() => CreateQuoteFromAiText(lastResponse)" data-testid="ai-create-real-quote">🚀 Create Real Draft Quote</button>
+                                <button class="btn btn-sm btn-outline-success" @onclick="() => CreateJobFromAiText(lastResponse)" data-testid="ai-create-real-job">🚀 Create Real Draft Job</button>
                                 <button class="btn btn-sm btn-primary" @onclick="() => CreateProjectPlanFromAiText(lastResponse)">🚀 Generate Full Project Plan</button>
-                                <button class="btn btn-sm btn-info" @onclick="ExportAiResponseAsReport">📄 Export as PDF</button>
+                                <button class="btn btn-sm btn-info" @onclick="ExportAiResponseAsReport" data-testid="ai-export-response-pdf">📄 Export as PDF</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="GenerateDemoQuotePdfFromLastResponse" data-testid="ai-demo-quote-pdf">📄 Demo Quote PDF</button>
+                                <button class="btn btn-sm btn-outline-success" @onclick="GenerateDemoJobPdfFromLastResponse" data-testid="ai-demo-job-pdf">📄 Demo Job PDF</button>
+                                <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedQuote">📄 Download real PDF for the Quote you just created</button>
+                                <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedJob">📄 Download real PDF for the Job you just created</button>
                                 <button class="btn btn-sm btn-outline-primary" @onclick="GenerateDemoQuotePdfFromLastResponse">📄 Demo Quote PDF (AI scope as notes)</button>
                                 <button class="btn btn-sm btn-outline-success" @onclick="GenerateDemoJobPdfFromLastResponse">📄 Demo Job Closeout PDF (AI notes + variance)</button>
 
                                 @if (lastCreatedQuote != null)
                                 {
-                                    <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedQuote">📄 Download real PDF for the Quote you just created</button>
+                                    <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedQuote" data-testid="ai-download-real-quote-pdf">📄 Download real PDF for the Quote you just created</button>
                                 }
                                 @if (lastCreatedJob != null)
                                 {
-                                    <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedJob">📄 Download real PDF for the Job you just created</button>
+                                    <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedJob" data-testid="ai-download-real-job-pdf">📄 Download real PDF for the Job you just created</button>
                                 }
 
 @if (lastCreatedQuote != null || lastCreatedJob != null)
@@ -172,11 +176,11 @@
         <strong class="small">Real professional PDF for the entity created from this AI response (using actual data + AI notes):</strong>
         @if (lastCreatedQuote != null)
         {
-            <button class="btn btn-sm btn-success ms-1" @onclick="DownloadRealPdfForLastCreatedQuote">Quote PDF</button>
+            <button class="btn btn-sm btn-success ms-1" @onclick="DownloadRealPdfForLastCreatedQuote" data-testid="ai-download-real-quote-pdf-detail">Quote PDF</button>
         }
         @if (lastCreatedJob != null)
         {
-            <button class="btn btn-sm btn-success ms-1" @onclick="DownloadRealPdfForLastCreatedJob">Job Closeout PDF</button>
+            <button class="btn btn-sm btn-success ms-1" @onclick="DownloadRealPdfForLastCreatedJob" data-testid="ai-download-real-job-pdf-detail">Job Closeout PDF</button>
         }
     </div>
 }

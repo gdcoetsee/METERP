@@ -55,7 +55,7 @@ public class QuoteService : IQuoteService
             quote.QuoteNumber = $"Q-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
         }
 
-        RecalculateTotals(quote);
+        quote.RecalculateTotals();
 
         _dbContext.Set<Quote>().Add(quote);
         await _dbContext.SaveChangesAsync(ct);
@@ -77,7 +77,7 @@ public class QuoteService : IQuoteService
 
     public async Task UpdateAsync(Quote quote, CancellationToken ct = default)
     {
-        RecalculateTotals(quote);
+        quote.RecalculateTotals();
         _dbContext.Set<Quote>().Update(quote);
         await _dbContext.SaveChangesAsync(ct);
     }
@@ -110,7 +110,7 @@ public class QuoteService : IQuoteService
             .FirstOrDefaultAsync(q => q.Id == line.QuoteId, ct);
         if (quote != null)
         {
-            RecalculateTotals(quote);
+            quote.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
 
@@ -127,7 +127,7 @@ public class QuoteService : IQuoteService
             .FirstOrDefaultAsync(q => q.Id == line.QuoteId, ct);
         if (quote != null)
         {
-            RecalculateTotals(quote);
+            quote.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
     }
@@ -147,7 +147,7 @@ public class QuoteService : IQuoteService
             .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
         if (quote != null)
         {
-            RecalculateTotals(quote);
+            quote.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
     }
@@ -213,15 +213,5 @@ public class QuoteService : IQuoteService
             .Include(j => j.Quote)
                 .ThenInclude(q => q!.Lines)
             .FirstOrDefaultAsync(j => j.Id == id, ct);
-    }
-
-    private static void RecalculateTotals(Quote quote)
-    {
-        quote.Subtotal = quote.Lines
-            .Where(l => !l.IsDeleted)
-            .Sum(l => l.LineTotal);
-
-        quote.Tax = Math.Round(quote.Subtotal * quote.TaxRate, 2);
-        quote.Total = quote.Subtotal + quote.Tax;
     }
 }

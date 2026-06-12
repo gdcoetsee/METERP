@@ -1,5 +1,5 @@
 ---
-description: METERP coding standards for C# and Blazor
+description: METERP coding standards for C# and Blazor (updated for full testing mandate)
 globs: "**/*.{cs,razor,csproj}"
 alwaysApply: false
 ---
@@ -10,30 +10,55 @@ alwaysApply: false
 - Tenant-scoped entities use `BaseEntity`; respect `AppDbContext` global filters.
 - Set `TenantId` from `ITenantProvider` in services — never hardcode tenant IDs.
 - Soft-delete via `IsDeleted`; do not physically delete tenant business data unless explicitly required.
+- Tenant increments (quotes, jobs, invoices, AI) must be tenant-isolated and best-effort safe.
 
-## New features checklist
-1. Domain entity/enum
-2. `Application/Services/I*Service.cs`
-3. `Infrastructure/Services/*Service.cs`
-4. `Program.cs` DI + authorization policy
-5. `Common/Permissions.cs` constants
-6. Blazor page in `Web/Components/Pages/`
-7. Nav entry in `NavMenu.razor` if user-facing
-8. EF migration for schema changes (`dotnet ef migrations add` from Infrastructure project)
+## New features / changes checklist (strict order)
+1. Domain entity/enum (or update existing)
+2. `Application/Services/I*Service.cs` (add method to interface if extending)
+3. `Infrastructure/Services/*Service.cs` (real implementation)
+4. Register in `Program.cs` (DI + authorization policy if new permissions)
+5. `Common/Permissions.cs` constants (if user-facing)
+6. Blazor page / component in `Web/Components/Pages/` (or update existing gateway)
+7. Nav entry in `NavMenu.razor` if new top-level user-facing
+8. **Tests** (see meterp-testing.mdc):
+   - Add/update unit tests in `tests/METERP.Application.Tests`
+   - For spine flows, add or expand E2E in `tests/METERP.E2ETests`
+9. EF migration for schema changes (`dotnet ef migrations add` from Infrastructure project, if needed)
+10. Run `dotnet test` and confirm all green before finishing
 
-## Patterns to match
-- `LineTotal` on document lines is computed in the entity, not assigned in UI.
-- Usage counters on `Tenant` increment in service create methods.
-- Check `tenant.HasFeature("ai")` before AI operations.
+## Patterns to match (enforced)
+- `LineTotal` on `QuoteLine`, `SalesOrderLine`, `PurchaseOrderLine`, `InvoiceLine` is **computed** in the entity (`Quantity * UnitPrice`), never manually assigned.
+- `RecalculateTotals` (or extracted `QuoteCalculations` / `InvoiceCalculations`) must be called after any line change and must correctly exclude soft-deleted items.
+- Usage counters on `Tenant` are incremented via `ITenantService.Increment*` inside service Create methods (or Convert/CreateFrom* flows). Fire-and-forget is current reality — make side effects verifiable in tests.
+- Check `tenant.HasFeature("ai")` (and other flags) before enabling AI or premium features.
+- Travel costs must be explicit: `JobCost` with `CostType = "Travel"`, `JobLabor`, and reflected in variance/actual totals.
 - Seeding: safe by default; only reset with `METERP_SEED_RESET=true`.
-- UI: `professional.css`, `ToastService`, `@rendermode InteractiveServer`, reuse `QuoteList`/`JobList` gateway patterns.
+- UI: `professional.css`, `ToastService`, `@rendermode InteractiveServer`, reuse `QuoteList`/`JobList` gateway patterns. Keep Razor files thin — delegate logic to services.
 
-## Testing
-- Run `dotnet test` after non-trivial changes.
-- Add unit tests for calculation logic in `tests/METERP.Application.Tests/`.
+## Architecture discipline
+- Domain has zero dependencies.
+- Application defines interfaces only (no implementations).
+- Infrastructure implements services and owns EF / persistence.
+- Web depends on Application + Infrastructure for registration only.
+- Never put significant business logic in .razor `@code` blocks.
+
+## Testing (see dedicated meterp-testing.mdc)
+- Run `dotnet test` after every non-trivial change.
+- Add real unit tests for service behavior, not just entity calculations.
+- Extract pure calculation logic where possible so it can be unit tested in isolation.
+- E2E expansion for core flows is required for completion.
 
 ## Avoid
-- Business logic in Razor `@code` blocks — delegate to services.
-- Bypassing tenant filters or cross-layer references.
-- SQL Server — use PostgreSQL/Npgsql only.
-- Unrelated refactors in the same PR as a feature fix.
+- Business logic in Razor files.
+- Bypassing tenant filters or cross-tenant data access.
+- SQL Server — PostgreSQL + Npgsql only.
+- Unrelated refactors mixed with feature work.
+- Committing `mcps/`, `tempdiag/`, `bin/`, `obj/`, `.vs/`.
+- Completing a change without passing tests that cover the new or changed behavior.
+- Duplicated recalc logic without extracting for testability.
+
+## Cursor / AI instructions
+- Always consult the full `AGENTS.md` + all `.cursor/rules/*.mdc` files at the start of a task.
+- For any service method with logic, plan the tests at the same time as the implementation.
+- When converting Quote → Job or Job → Invoice, ensure travel costs and computed totals are preserved and tested.
+- Prefer small, testable increments over large "full module" changes.

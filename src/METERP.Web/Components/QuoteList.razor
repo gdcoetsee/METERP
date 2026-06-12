@@ -13,7 +13,7 @@
 else
 {
     <div class="table-responsive">
-        <table class="table table-hover align-middle">
+        <table class="table table-hover align-middle" data-testid="quotes-table">
             <thead>
                 <tr>
                     <th>Quote #</th>
@@ -76,7 +76,7 @@ else
                 <a href="/ai-copilot" class="btn btn-sm btn-primary">✨ Enhance in AI Copilot</a>
                 @if (CanManage && (SelectedQuote.Status == QuoteStatus.Draft || SelectedQuote.Status == QuoteStatus.Sent))
                 {
-                    <button class="btn btn-sm btn-success ms-1" @onclick="() => OnConvert.InvokeAsync(SelectedQuote)">Convert to Job</button>
+                    <button class="btn btn-sm btn-success ms-1" @onclick="() => OnConvert.InvokeAsync(SelectedQuote)" data-testid="convert-to-job">Convert to Job</button>
                 }
             </div>
         </div>

@@ -97,9 +97,12 @@ dotnet run --project src/METERP.Web
 
 ## Testing expectations
 
-- Run `dotnet test` before finishing non-trivial changes.
-- Add unit tests in `METERP.Application.Tests` for domain calculations (quote tax/totals, job variance + travel + labor).
-- Expand `METERP.E2ETests` Playwright stubs for critical flows (AI create, PDF, login, convert quote → job).
+- **Run `dotnet test` before finishing any non-trivial change.** This is mandatory.
+- The goal is now **full testing** (see COMPLETION_PLAN.md). Unit tests must cover service behavior (not just entity calculations), side effects (recalculation, usage counters, soft deletes), and core flows.
+- Add and maintain unit tests in `tests/METERP.Application.Tests` for all I*Service methods with business logic.
+- Expand `METERP.E2ETests` with real Playwright tests for the critical flows: login, AI create + PDF, quote → job conversion (with travel), job costs/labor → invoice.
+- Follow the detailed standards in `.cursor/rules/meterp-testing.mdc` (and the other rule files). Extract pure calculations for testability where helpful.
+- Definition of Done includes green tests + committed test code.
 
 ## Current state (as of latest commit)
 
@@ -110,13 +113,18 @@ dotnet run --project src/METERP.Web
 
 ## Roadmap — likely next priorities
 
-Pick up where README leaves off; confirm with the user before large scope changes:
+See `COMPLETION_PLAN.md` for the detailed, testable work plan aligned with the current goal of "build to completion with everything tested fully".
 
-1. **E2E coverage** — real Playwright tests for login, quote→job convert, AI apply, PDF download.
-2. **Production hardening** — Serilog structured logging, health checks, proper rate limiting on HTTP, secrets management.
-3. **Billing & tiers** — turn usage counters into quotas/enforcement; subscription tier model.
-4. **Integrations** — real email for notifications, accounting export polish, 2FA.
-5. **Performance** — Redis cache, pagination audit on large lists, migration discipline for prod.
+High-level order (confirm with user before major deviations):
+
+1. **Core Spine Testing & Hardening** (top priority) — Full unit test coverage of Quote/Job/Invoice services, conversions (Quote→Job, Job→Invoice), recalculation, explicit travel/variance, usage counter side effects, and soft-delete safety.
+2. **E2E coverage** — real Playwright tests for login, quote→job convert, AI create + PDF, job with costs → invoice.
+3. **AI & Commercial** — Thorough tests for AiAssistantService (throttling, feature flags, suggestions/apply, usage). Strengthen counters toward quotas.
+4. **Supporting modules to same standard** — Customer, Inventory, Assets, POs, Employees, etc.
+5. **Production hardening** — Serilog, health checks, rate limiting (esp. AI), reliable async side effects, secrets.
+6. **Sellable / billing maturity** + performance + integrations.
+
+Always cross-reference the enhanced `.cursor/rules/` (meterp-testing.mdc is now critical).
 
 ## What to avoid
 
@@ -131,9 +139,11 @@ Pick up where README leaves off; confirm with the user before large scope change
 | File | Why |
 |------|-----|
 | `README.md` | Status, manual flows, deployment |
+| `AGENTS.md` + `.cursor/rules/*.mdc` + `COMPLETION_PLAN.md` | Full context, strict rules (especially testing), and prioritized work plan |
 | `src/METERP.Web/Program.cs` | DI, auth policies, seeding |
 | `src/METERP.Infrastructure/Persistence/AppDbContext.cs` | Filters, DbSets |
 | `src/METERP.Common/Permissions.cs` | Permission naming |
 | `src/METERP.Domain/Tenant.cs` | Commercial/feature model |
+| Core services (`QuoteService`, `JobService`, `InvoiceService`, `AiAssistantService`, `TenantService`) | Where most business logic + side effects live |
 
 When unsure of intent, ask the user — but default to **sellable multi-tenant contractor ERP** as the north star.

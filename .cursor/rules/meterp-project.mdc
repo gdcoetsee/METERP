@@ -5,16 +5,54 @@ alwaysApply: true
 
 # METERP project context
 
-**Goal:** Sellable multi-tenant ERP for contractors — demo-ready SaaS with Quote → Sales Order → Job → Invoice as the core spine. Travel costs stay explicit everywhere.
+**Goal:** Sellable multi-tenant ERP for contractors — demo-ready SaaS with Quote → Sales Order → Job → Invoice as the core spine. Travel costs stay explicit everywhere. The product must be correct, tenant-safe, and ready for real commercial use (usage tracking, feature flags, billing hooks).
 
 **Stack:** .NET 9, Blazor Server, PostgreSQL, EF Core, ASP.NET Identity with claim permissions.
 
-**Layers:** Domain → Application (interfaces) → Infrastructure (services, EF) → Web (Blazor). Never reference Infrastructure from Domain.
+**Layers (strict):** 
+Domain → Application (interfaces + ITenantProvider) → Infrastructure (services, EF, Identity) → Web (Blazor). 
+Domain has zero outward dependencies. Never reference Infrastructure from Domain or Application interfaces.
 
-**Before coding:** Read `AGENTS.md` and `README.md` for full context.
+**Before starting any task:** 
+- Read `AGENTS.md` in full.
+- Read all files in `.cursor/rules/` (especially meterp-code.mdc and the new meterp-testing.mdc).
+- Confirm understanding of the core spine and non-negotiables (multi-tenancy, computed LineTotals, soft-delete, usage counters, explicit travel).
 
 **Default demo:** `admin@acme.demo` / `Demo123!` via `docker-compose up --build`.
 
-**Roadmap focus:** E2E tests (Playwright), production hardening (logging, health, secrets), billing/quota enforcement, real email/2FA integrations.
+**Current reality (as of latest audit):**
+- Broad module surface exists (Quotes, Jobs, Invoices, Customers, AI Copilot, Opportunities, etc.).
+- Core services (QuoteService, JobService, InvoiceService, etc.) implement the main flows and recalculation.
+- Commercial usage tracking and feature flags are wired in (best-effort increments, HasFeature checks).
+- Only minimal unit tests exist (entity calculations only). No service-level tests. E2E is a single stub.
+- Many production items remain documented stubs (real email, 2FA, structured logging, Redis, billing enforcement, full E2E).
 
-**Ask the user** before large architectural changes or new modules not on the roadmap.
+**Your new mandate:** Carry the system to completion **with everything tested fully**. This is stricter than the original "unit tests green" state.
+
+## Testing is a first-class deliverable
+See `.cursor/rules/meterp-testing.mdc` for the detailed rules. Summary:
+- Service methods with logic require real unit tests (happy path, edges, side effects, soft deletes, counters).
+- Core spine flows (especially ConvertToJob, CreateFromJob, recalc after line changes, AI + feature enforcement) must be tested.
+- Expand real Playwright E2E tests for the critical user journeys.
+- Run `dotnet test` and get green results before finishing any work.
+- Extract pure functions for calculations to improve testability.
+
+## Roadmap priorities (updated for full testing goal)
+1. **Core Spine Testing & Hardening** (highest) — Full unit test coverage of Quote/Job/Invoice services, conversions, recalc, usage counters, travel/variance. Make existing flows robust and verified.
+2. **E2E Coverage** — Turn the Playwright stub into real automated tests for login, AI create quote+PDF, quote→job, job with travel→invoice.
+3. **AI & Commercial completeness** — Thorough tests for AiAssistantService (throttling, feature flags, suggestions + apply, usage tracking). Turn usage counters into something closer to enforceable quotas (future billing).
+4. **Supporting modules** — Bring the same testing rigor to Inventory, Assets, Purchase Orders, Finance, Employees/Payroll, Opportunities, Notifications, Audit.
+5. **Production hardening** — Serilog, health checks, rate limiting, secrets, error handling, proper async/await on side effects (counters).
+6. **Sellable polish** — Better billing model, white-label, multi-tenant admin experience, performance on large lists.
+
+**Ask the user** before large architectural changes, new major modules, or changing the testing bar.
+
+**Key files (always consult):**
+- `AGENTS.md`
+- `.cursor/rules/meterp-*.mdc`
+- `src/METERP.Web/Program.cs` (DI, seeding, auth)
+- `src/METERP.Infrastructure/Persistence/AppDbContext.cs` (filters)
+- Core services: QuoteService, JobService, InvoiceService, AiAssistantService, TenantService
+- Domain entities for the spine (Quote/QuoteLine, Job/JobCost/JobLabor, Invoice/InvoiceLine, Tenant)
+
+Default to **sellable, correct, fully tested multi-tenant contractor ERP**.

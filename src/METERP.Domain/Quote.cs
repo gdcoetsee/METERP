@@ -37,4 +37,15 @@ public class Quote : BaseEntity
     public decimal Total { get; set; }
 
     public ICollection<QuoteLine> Lines { get; set; } = new List<QuoteLine>();
+
+    /// <summary>
+    /// Recalculates Subtotal, Tax and Total from non-deleted lines.
+    /// This is the source of truth for quote pricing (moved to Domain for testability and correctness).
+    /// </summary>
+    public void RecalculateTotals()
+    {
+        Subtotal = Lines.Where(l => !l.IsDeleted).Sum(l => l.LineTotal);
+        Tax = Math.Round(Subtotal * TaxRate, 2);
+        Total = Subtotal + Tax;
+    }
 }

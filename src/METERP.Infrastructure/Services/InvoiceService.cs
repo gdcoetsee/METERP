@@ -57,7 +57,7 @@ public class InvoiceService : IInvoiceService
             invoice.InvoiceNumber = $"INV-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
         }
 
-        RecalculateTotals(invoice);
+        invoice.RecalculateTotals();
 
         _dbContext.Set<Invoice>().Add(invoice);
         await _dbContext.SaveChangesAsync(ct);
@@ -66,7 +66,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task UpdateAsync(Invoice invoice, CancellationToken ct = default)
     {
-        RecalculateTotals(invoice);
+        invoice.RecalculateTotals();
         _dbContext.Set<Invoice>().Update(invoice);
         await _dbContext.SaveChangesAsync(ct);
     }
@@ -100,7 +100,7 @@ public class InvoiceService : IInvoiceService
             .FirstOrDefaultAsync(i => i.Id == line.InvoiceId, ct);
         if (invoice != null)
         {
-            RecalculateTotals(invoice);
+            invoice.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
 
@@ -119,7 +119,7 @@ public class InvoiceService : IInvoiceService
             .FirstOrDefaultAsync(i => i.Id == line.InvoiceId, ct);
         if (invoice != null)
         {
-            RecalculateTotals(invoice);
+            invoice.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
     }
@@ -139,7 +139,7 @@ public class InvoiceService : IInvoiceService
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
         if (invoice != null)
         {
-            RecalculateTotals(invoice);
+            invoice.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
         }
     }
@@ -209,24 +209,25 @@ public class InvoiceService : IInvoiceService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        // Commercial usage + revenue tracking
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var tid = invoice.TenantId;
-                if (tid != Guid.Empty && _tenantService != null)
-                    await _tenantService.IncrementInvoiceCountAsync(tid, invoice.Total);
-            }
-            catch { /* ignore */ }
-        });
-
-        // Recalculate after lines are persisted
+        // Recalculate after lines are persisted (to have final total for revenue)
         var saved = await GetByIdAsync(invoice.Id, ct);
         if (saved != null)
         {
-            RecalculateTotals(saved);
+            saved.RecalculateTotals();
             await _dbContext.SaveChangesAsync(ct);
+
+            // Commercial usage + revenue tracking (after final total known)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var tid = saved.TenantId;
+                    if (tid != Guid.Empty && _tenantService != null)
+                        await _tenantService.IncrementInvoiceCountAsync(tid, saved.Total);
+                }
+                catch { /* ignore */ }
+            });
+
             return saved;
         }
 
@@ -240,15 +241,5 @@ public class InvoiceService : IInvoiceService
 
         invoice.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
-    }
-
-    private static void RecalculateTotals(Invoice invoice)
-    {
-        invoice.Subtotal = invoice.Lines
-            .Where(l => !l.IsDeleted)
-            .Sum(l => l.LineTotal);
-
-        invoice.Tax = Math.Round(invoice.Subtotal * invoice.TaxRate, 2);
-        invoice.Total = invoice.Subtotal + invoice.Tax;
     }
 }

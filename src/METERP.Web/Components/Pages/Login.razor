@@ -26,11 +26,11 @@
 
 <div class="mb-3">
     <label class="form-label">Email</label>
-    <input class="form-control" @bind="loginModel.Email" />
+    <input class="form-control" @bind="loginModel.Email" data-testid="login-email" />
 </div>
 <div class="mb-3">
     <label class="form-label">Password</label>
-    <input type="password" class="form-control" @bind="loginModel.Password" />
+    <input type="password" class="form-control" @bind="loginModel.Password" data-testid="login-password" />
 </div>
 
 <!-- 2FA stub for sellable security (production: integrate with authenticator or SMS) -->
@@ -40,7 +40,7 @@
     <div id="2faHelp" class="form-text">For sellable: supports TOTP or email 2FA.</div>
 </div>
 
-<button class="btn btn-primary" @onclick="HandleLogin" style="font-size:1.2rem; padding:10px 20px;">LOG IN</button>
+<button class="btn btn-primary" @onclick="HandleLogin" style="font-size:1.2rem; padding:10px 20px;" data-testid="login-submit">LOG IN</button>
 
 @code {
     private LoginModel loginModel { get; set; } = new();

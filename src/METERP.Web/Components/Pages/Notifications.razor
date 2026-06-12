@@ -11,13 +11,13 @@
         <h1>Notifications <span class="badge bg-warning">Alerts & Approvals</span></h1>
         <p class="text-muted mb-0">In-app alerts for due dates, low stock, approvals, overdue jobs. Email/SMS in production.</p>
     </div>
-    <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllRead">Mark All Read</button>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllRead" data-testid="notifications-mark-all">Mark All Read</button>
 </div>
 
-<div class="list-group">
+<div class="list-group" data-testid="notifications-list">
     @foreach (var n in notifications)
     {
-        <div class="list-group-item d-flex justify-content-between @(n.IsRead ? "text-muted" : "")" style="cursor:pointer;" @onclick="() => MarkRead(n)">
+        <div class="list-group-item d-flex justify-content-between @(n.IsRead ? "text-muted" : "")" style="cursor:pointer;" @onclick="() => MarkRead(n)" data-testid="notification-item">
             <div>
                 <strong>@n.Title</strong><br />
                 <small>@n.Message</small>

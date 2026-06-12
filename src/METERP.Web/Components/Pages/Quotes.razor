@@ -20,7 +20,7 @@
         <h1>Quotes <span class="badge bg-primary ai-badge">AI-Powered</span></h1>
         <p class="text-muted mb-0">Professional quotes with labor, materials, explicit travel. 15% SA VAT.</p>
     </div>
-    <a href="/ai-copilot" class="btn btn-success">✨ Create with AI Copilot</a>
+    <a href="/ai-copilot" class="btn btn-success" data-testid="create-with-ai-copilot">✨ Create with AI Copilot</a>
 </div>
 
 <div class="mb-3" style="max-width: 480px;">
@@ -38,9 +38,9 @@
 <ul class="list-group mb-3">
     @foreach (var q in demoQuotes)
     {
-        <li class="list-group-item d-flex justify-content-between">
+        <li class="list-group-item d-flex justify-content-between" data-testid="quote-list-item">
             <span>@q.QuoteNumber — @(q.Customer?.Name ?? "—") (R @q.Total.ToString("N0"), @q.Status, @(q.Lines?.Count(l => !l.IsDeleted) ?? 0) lines)</span>
-            <a href="/ai-copilot" class="btn btn-sm btn-outline-primary">Enhance with AI</a>
+            <a href="/ai-copilot" class="btn btn-sm btn-outline-primary" data-testid="enhance-with-ai">Enhance with AI</a>
         </li>
     }
 </ul>

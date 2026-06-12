@@ -1,0 +1,83 @@
+---
+description: Strict testing standards for METERP — full test coverage is non-negotiable for sellable quality
+globs: "**/*.{cs,razor}"
+alwaysApply: true
+---
+
+# METERP Testing Rules (Full Coverage Mandate)
+
+## Core Principle
+**No work item, feature, service method, or flow is complete until relevant automated tests pass and are committed.**
+
+"Demo works" or "I manually tested" is never sufficient. Follow the testing expectations in AGENTS.md and expand far beyond them.
+
+## Mandatory Test Requirements
+
+### 1. Unit Tests (METERP.Application.Tests)
+- Every public method on an `I*Service` that contains business logic **must** have corresponding unit test(s).
+  - Happy path
+  - Edge cases (zero values, soft-deleted items, empty collections)
+  - Side effects (RecalculateTotals behavior, usage counter increments)
+  - Error cases and validation
+- Core flows require explicit tests:
+  - `IQuoteService.ConvertToJobAsync` (including quote status update, totals snapshot, tenant isolation)
+  - `IInvoiceService.CreateFromJobAsync` (line copying from quote, revenue tracking)
+  - Line management: AddLine / UpdateLine / DeleteLine with recalculation on parent
+  - Job variance + travel + labor calculations (expand existing Job*Tests)
+  - All `RecalculateTotals` logic (or extract to a shared pure function and test it)
+- Commercial / sellable behavior:
+  - All `ITenantService.Increment*` methods and their effects on Tenant counters
+  - `Tenant.HasFeature` enforcement (especially before AI operations)
+  - Usage counters are incremented exactly once per successful Create (test via mock or verification)
+- AI service:
+  - Feature flag blocking (`HasFeature("ai")`)
+  - Throttling behavior (`IsAiCallAllowed`)
+  - Usage counter increment on successful calls
+- Multi-tenancy safety (even in unit tests):
+  - Tests must consider `TenantId` stamping and filtering. Use mocks for `ITenantProvider`/`ITenantService` where appropriate.
+
+### 2. Test Style & Isolation
+- Prefer testing through the Application layer interfaces (`IQuoteService`, etc.).
+- The test project currently only references Domain + Application. 
+  - For service tests, add Moq (or NSubstitute) as needed for `ITenantService`, `ITenantProvider`, DbContext abstractions, or ILogger.
+  - For recalc-heavy logic, extract pure static/helper methods (e.g. `QuoteCalculations.Recalculate(Quote)`) into Domain or a new `METERP.Common/Calculations` so they can be tested without full service/DB setup.
+- Never duplicate production recalc logic in tests without a comment linking to the real implementation. Better: test the real implementation.
+- Use descriptive test names: `ConvertToJob_WhenQuoteAccepted_CreatesJobWithCorrectQuotedTotal_AndIncrementsTenantCounter`
+- Always assert on soft-delete behavior: deleted lines/costs/labor must be excluded from subtotals, tax, totals, variance.
+
+### 3. E2E Tests (METERP.E2ETests)
+- Expand the Playwright stubs into real automated tests for **critical sellable flows**:
+  - Login (demo credentials)
+  - AI Copilot creates Quote (with travel lines if possible) → verify in list → download PDF
+  - Convert Quote → Job (explicit travel costs preserved)
+  - Job with labor + travel costs → variance visible → Create Invoice from Job
+  - Multi-tenant isolation (create second tenant context if feasible, or at least verify TenantId on created entities)
+- E2E tests must be runnable in CI (headless Chromium) and locally after `playwright install`.
+- Mark long-running or external-dependent tests with `[Trait("Category", "E2E")]` or skip when no browser.
+
+### 4. Running Tests (Non-negotiable)
+- Run `dotnet test` (or targeted project) **before** considering any change finished.
+- In commit messages and Cursor sessions, note test results: "12/12 green, added 4 new service tests for ConvertToJob + recalc side effects".
+- If adding a new service or public business method, at minimum one new passing test must be included in the same change.
+
+### 5. What to Extract for Testability
+- Move duplicated `RecalculateTotals` logic (currently private in QuoteService/InvoiceService) into a testable pure function.
+- Consider a `JobVarianceCalculator` or similar for ActualTotal / variance including explicit Travel + Labor (currently manual in tests and partially in services).
+- Any complex AI prompt/response mapping or suggestion application logic should have unit tests.
+
+## Avoid in Tests
+- Relying solely on manual demo runs or Blazor UI for verification.
+- Fire-and-forget `Task.Run` usage counter calls making tests flaky — consider making increments more testable (e.g. return a result or use a queue in future).
+- Testing only happy paths.
+- Adding features without corresponding test updates.
+
+## Cursor Behavior
+When implementing anything:
+1. Identify all affected I*Service methods and flows.
+2. Write or update unit tests first (or alongside) for the logic.
+3. Implement the change.
+4. Run `dotnet test` and confirm green.
+5. Expand E2E where the flow is part of the core spine (Quote → Job → Invoice, AI create + PDF).
+6. Only then mark the task complete.
+
+This is stricter than the original AGENTS.md because the goal is now **"everything tested fully"** for a sellable product.

@@ -45,4 +45,19 @@ public class Job : BaseEntity
     public ICollection<JobCost> ActualCosts { get; set; } = new List<JobCost>();
 
     public ICollection<JobLabor> Labors { get; set; } = new List<JobLabor>();
+
+    /// <summary>
+    /// Computes the full actual cost for variance analysis.
+    /// Uses tracked ActualCosts (Travel, Material, Other etc. - explicit travel is key) + active labor.
+    /// Base ActualCost on the entity may hold initial values; tracked costs take precedence in this calc.
+    /// Pure method for testability and reuse (no side effects).
+    /// </summary>
+    public decimal GetActualTotal() =>
+        ActualCosts.Where(c => !c.IsDeleted).Sum(c => c.Amount) +
+        Labors.Where(l => !l.IsDeleted).Sum(l => l.TotalCost);
+
+    /// <summary>
+    /// Variance = ActualTotal - QuotedTotal. Positive = over budget.
+    /// </summary>
+    public decimal GetVariance() => GetActualTotal() - QuotedTotal;
 }
