@@ -54,3 +54,6 @@ tempdiag/
 
 logs/
 
+# Local agent / TUI session artifacts (do not commit)
+agent-tools/
+terminals/
