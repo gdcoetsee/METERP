@@ -152,4 +152,64 @@ public class PurchaseOrderServiceTests
             Assert.Equal(25, item!.QuantityOnHand);
         }
     }
+
+    [Fact]
+    public async Task UpdateLineAsync_RecalculatesParentTotals()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+
+            var line = new PurchaseOrderLine { Description = "Fuse", Quantity = 2, UnitPrice = 100m };
+            var po = new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0.15m,
+                Lines = { line }
+            };
+            var poId = await service.CreateAsync(po);
+
+            line.Quantity = 5;
+            await service.UpdateLineAsync(line);
+
+            var loaded = await service.GetByIdAsync(poId);
+            Assert.Equal(500m, loaded!.Subtotal);
+            Assert.Equal(575m, loaded.Total);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteLineAsync_SoftDeletesAndRecalculates()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+
+            var keepLine = new PurchaseOrderLine { Description = "Keep", Quantity = 1, UnitPrice = 200m };
+            var removeLine = new PurchaseOrderLine { Description = "Remove", Quantity = 3, UnitPrice = 50m };
+            var po = new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines = { keepLine, removeLine }
+            };
+            var poId = await service.CreateAsync(po);
+
+            await service.DeleteLineAsync(removeLine.Id);
+
+            var loaded = await service.GetByIdAsync(poId);
+            Assert.Equal(200m, loaded!.Subtotal);
+
+            var deletedLine = await db.Set<PurchaseOrderLine>()
+                .IgnoreQueryFilters()
+                .FirstAsync(l => l.Id == removeLine.Id);
+            Assert.True(deletedLine.IsDeleted);
+        }
+    }
 }

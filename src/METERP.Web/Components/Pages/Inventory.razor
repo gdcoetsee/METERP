@@ -38,7 +38,7 @@
         }
     </div>
     <div class="form-check form-switch align-self-center">
-        <input class="form-check-input" type="checkbox" @bind="lowStockOnly" @bind:after="LoadItems" id="lowStockCheck">
+        <input class="form-check-input" type="checkbox" data-testid="inventory-low-stock-filter" @bind="lowStockOnly" @bind:after="LoadItems" id="lowStockCheck">
         <label class="form-check-label" for="lowStockCheck">Low stock only</label>
     </div>
 

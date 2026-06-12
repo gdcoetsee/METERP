@@ -963,6 +963,18 @@ public class DatabaseSeeder : IHostedService
                     };
                     await inventoryService.CreateItemAsync(ledLight, cancellationToken);
 
+                    var transformerOil = new InventoryItem
+                    {
+                        Sku = "OIL-TR-5L",
+                        Name = "Transformer Oil 5L",
+                        Unit = "ea",
+                        QuantityOnHand = 2,
+                        ReorderLevel = 5,
+                        UnitCost = 185m,
+                        Category = "Consumables"
+                    };
+                    await inventoryService.CreateItemAsync(transformerOil, cancellationToken);
+
                     // Record some stock usage against the created job
                     await inventoryService.RecordStockTransactionAsync(dbBoard.Id, -1, StockTransactionType.Issue, createdJob.JobNumber, createdJob.Id, "Used on demo job", cancellationToken);
                     await inventoryService.RecordStockTransactionAsync(cable.Id, -1, StockTransactionType.Issue, createdJob.JobNumber, createdJob.Id, "Used on demo job", cancellationToken);
@@ -1136,6 +1148,22 @@ public class DatabaseSeeder : IHostedService
                     }
                 }
             }
+        }
+
+        // Idempotent low-stock demo item (inventory filter E2E + low-stock alerts).
+        tenantProvider.SetTenantId(defaultTenantId);
+        if (!(await inventoryService.GetAllItemsAsync(ct: cancellationToken)).Any(i => i.Sku == "OIL-TR-5L"))
+        {
+            await inventoryService.CreateItemAsync(new InventoryItem
+            {
+                Sku = "OIL-TR-5L",
+                Name = "Transformer Oil 5L",
+                Unit = "ea",
+                QuantityOnHand = 2,
+                ReorderLevel = 5,
+                UnitCost = 185m,
+                Category = "Consumables"
+            }, cancellationToken);
         }
 
         // Backfill demo GL journal when CoA exists from older seeds but no exportable lines (Finance export E2E).

@@ -763,6 +763,26 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Inventory_LowStock_Filter_ShowsLowItemsOnly()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/inventory");
+        await page.WaitForTestIdAsync("inventory-table", 30000);
+
+        var contentBefore = await page.ContentAsync();
+        Assert.Contains("DB-12W-001", contentBefore);
+
+        await page.ClickByTestIdAsync("inventory-low-stock-filter");
+        await page.WaitForTestIdAsync("inventory-ready", 15000);
+
+        var contentAfter = await page.ContentAsync();
+        Assert.Contains("OIL-TR-5L", contentAfter);
+        Assert.DoesNotContain("DB-12W-001", contentAfter);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
         var page = await _browser.LoginAsync();
@@ -921,6 +941,9 @@ public class E2EFlowTests : IAsyncLifetime
     {
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/notifications");
+        await page.EvaluateAsync("() => localStorage.removeItem('notifications')");
+        await page.ReloadAsync();
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await page.WaitForTestIdAsync("notifications-list", 10000);
 
         var content = await page.ContentAsync();

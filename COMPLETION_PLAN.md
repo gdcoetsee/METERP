@@ -2,9 +2,20 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Stock guard + notification test + audit invoice + inventory E2E (2026-06-12 latest).**
+**PO line ops + low-stock demo + inventory filter E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 33)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 34)
+- **Phase 4 — Inventory + PO line operations**:
+  - `InventoryServiceTests` (+1): `GetRecentTransactionsAsync` newest-first across items.
+  - `PurchaseOrderServiceTests` (+2): `UpdateLineAsync` recalc, `DeleteLineAsync` soft-delete + recalc.
+  - Seeder: idempotent `OIL-TR-5L` low-stock demo item (qty 2, reorder 5).
+  - `Inventory.razor`: `inventory-low-stock-filter` test id.
+- **Phase 2 E2E**:
+  - `Inventory_LowStock_Filter_ShowsLowItemsOnly` (27th) — filter shows `OIL-TR-5L`, hides `DB-12W-001`.
+  - `Notifications_Triggered_From_LowStock_Or_JobEvent` hardened (clear localStorage before seed).
+- **Testing**: **259/259 green** (221 unit + 11 web + 27 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 33)
 - **Phase 4 — Inventory + notifications**:
   - `InventoryServiceTests` (+1): `RecordStockTransactionAsync` no-op when item missing.
   - `NotificationServiceTests` (+1): `MarkReadAsync` marks single item read.

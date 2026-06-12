@@ -150,4 +150,36 @@ public class InventoryServiceTests
         var txns = await service.GetRecentTransactionsAsync();
         Assert.Empty(txns);
     }
+
+    [Fact]
+    public async Task GetRecentTransactionsAsync_ReturnsNewestFirstAcrossItems()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id1 = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "TXN-A",
+            Name = "Item A",
+            QuantityOnHand = 10,
+            ReorderLevel = 2,
+            UnitCost = 10m
+        });
+        var id2 = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "TXN-B",
+            Name = "Item B",
+            QuantityOnHand = 5,
+            ReorderLevel = 1,
+            UnitCost = 20m
+        });
+
+        await service.RecordStockTransactionAsync(id1, 1, StockTransactionType.Receipt, notes: "First");
+        await service.RecordStockTransactionAsync(id2, 2, StockTransactionType.Receipt, notes: "Second");
+
+        var recent = await service.GetRecentTransactionsAsync(take: 5);
+
+        Assert.Equal(2, recent.Count);
+        Assert.Equal("Second", recent[0].Notes);
+        Assert.Equal("First", recent[1].Notes);
+    }
 }
