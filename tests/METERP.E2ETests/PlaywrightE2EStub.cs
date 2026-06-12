@@ -330,6 +330,37 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SalesOrders_Page_Loads_And_Shows_Detail()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/sales-orders");
+
+        try
+        {
+            await page.WaitForTestIdAsync("sales-orders-ready", 15000);
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForSelectorAsync("[data-testid='sales-orders-table'] tbody tr", new() { Timeout = 30000 });
+        }
+
+        var content = await page.ContentAsync();
+        Assert.Contains("SO-", content);
+
+        var viewButton = page.Locator("[data-testid='sales-order-view']").First;
+        if (await viewButton.CountAsync() == 0)
+            viewButton = page.GetByRole(AriaRole.Button, new() { Name = "View" }).First;
+
+        await viewButton.ClickAsync();
+        await page.WaitForTestIdAsync("sales-order-detail", 10000);
+
+        var detail = await page.ContentAsync();
+        Assert.Contains("Total:", detail);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Notifications_Triggered_From_LowStock_Or_JobEvent()
     {
         var page = await _browser.LoginAsync();

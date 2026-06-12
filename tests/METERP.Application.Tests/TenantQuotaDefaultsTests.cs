@@ -33,6 +33,24 @@ public class TenantQuotaDefaultsTests
     }
 
     [Fact]
+    public void ApplyBillingTier_ForceResetsLimitsAndFeatures()
+    {
+        var tenant = new Tenant
+        {
+            Tier = SubscriptionTier.Starter,
+            MaxQuotesPerMonth = 999,
+            EnabledFeatures = "custom-only"
+        };
+
+        TenantQuotaDefaults.ApplyBillingTier(tenant, SubscriptionTier.Professional);
+
+        Assert.Equal(SubscriptionTier.Professional, tenant.Tier);
+        Assert.Equal(500, tenant.MaxQuotesPerMonth);
+        Assert.Contains("ai", tenant.EnabledFeatures);
+        Assert.DoesNotContain("custom-only", tenant.EnabledFeatures);
+    }
+
+    [Fact]
     public void ApplyTierDefaults_SetsLimitsAndFeatures_WhenUnset()
     {
         var tenant = new Tenant { Tier = SubscriptionTier.Professional };

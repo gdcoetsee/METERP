@@ -73,7 +73,13 @@ else
                     <tr>
                         <td><strong>@tenant.Name</strong></td>
                         <td><code>@tenant.Subdomain</code></td>
-                        <td><span class="badge bg-dark">@tenant.Tier</span></td>
+                        <td>
+                            <span class="badge bg-dark">@tenant.Tier</span>
+                            @if (!string.IsNullOrWhiteSpace(tenant.SubscriptionStatus))
+                            {
+                                <br /><small class="text-muted" data-testid="tenant-subscription-status">@tenant.SubscriptionStatus</small>
+                            }
+                        </td>
                         <td>
                             @if (tenant.IsActive)
                             {

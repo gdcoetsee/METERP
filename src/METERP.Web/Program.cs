@@ -110,9 +110,11 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ITwoFactorAuthService, TwoFactorAuthService>();
 builder.Services.AddSingleton<IPendingTwoFactorChallengeStore, PendingTwoFactorChallengeStore>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
 builder.Services.AddHttpClient("integrations", client => client.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IInvoiceIntegrationService, InvoiceIntegrationService>();
+builder.Services.AddScoped<IBillingWebhookService, BillingWebhookService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<NotificationService>();
 
@@ -139,7 +141,8 @@ builder.Services.AddRateLimiter(options =>
 
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
-        if (httpContext.Request.Path.StartsWithSegments("/health"))
+        if (httpContext.Request.Path.StartsWithSegments("/health")
+            || httpContext.Request.Path.StartsWithSegments("/webhooks"))
             return RateLimitPartition.GetNoLimiter("health");
 
         // Tighter limit on AI Copilot page loads (complements in-service AI throttle).
@@ -354,6 +357,28 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 {
     Predicate = check => check.Tags.Contains("ready"),
     ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
+}).DisableRateLimiting();
+
+app.MapPost("/webhooks/stripe", async (
+    HttpContext httpContext,
+    IBillingWebhookService billing,
+    IHostEnvironment environment,
+    IConfiguration configuration) =>
+{
+    using var reader = new StreamReader(httpContext.Request.Body);
+    var body = await reader.ReadToEndAsync();
+    var signature = httpContext.Request.Headers["Stripe-Signature"].FirstOrDefault();
+    var secretConfigured = !string.IsNullOrWhiteSpace(configuration[$"{BillingOptions.SectionName}:WebhookSecret"]);
+    var allowUnsigned = !secretConfigured && (environment.IsDevelopment() || environment.IsEnvironment("Testing"));
+
+    var result = await billing.ProcessStripeEventAsync(body, signature, allowUnsigned);
+
+    return result.Outcome switch
+    {
+        BillingWebhookOutcome.InvalidSignature => Results.Unauthorized(),
+        BillingWebhookOutcome.InvalidPayload => Results.BadRequest(new { error = result.Message }),
+        _ => Results.Ok(new { received = true, outcome = result.Outcome.ToString(), detail = result.Message })
+    };
 }).DisableRateLimiting();
 
 app.MapRazorComponents<App>()

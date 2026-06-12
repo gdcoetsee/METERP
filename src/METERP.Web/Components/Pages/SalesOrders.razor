@@ -32,16 +32,16 @@
 
 @if (_loading)
 {
-    <p><em>Loading sales orders...</em></p>
+    <p data-testid="sales-orders-loading"><em>Loading sales orders...</em></p>
 }
 else if (sos == null || !sos.Any())
 {
-    <div class="alert alert-info">No sales orders yet. Convert quotes to create them as the fulfillment step before jobs.</div>
+    <div class="alert alert-info" data-testid="sales-orders-empty">No sales orders yet. Convert quotes to create them as the fulfillment step before jobs.</div>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-hover">
+    <div class="table-responsive" data-testid="sales-orders-ready">
+        <table class="table table-hover" data-testid="sales-orders-table">
             <thead>
                 <tr>
                     <th>SO #</th>
@@ -55,14 +55,14 @@ else
             <tbody>
                 @foreach (var so in sos)
                 {
-                    <tr>
+                    <tr data-testid="sales-order-row">
                         <td><strong>@so.SoNumber</strong></td>
                         <td>@(so.Customer?.Name ?? "—")<br /><small>@(so.Quote?.QuoteNumber ?? "")</small></td>
                         <td>@so.SoDate.ToString("yyyy-MM-dd")</td>
                         <td>@GetStatusBadge(so.Status)</td>
                         <td class="text-end">R @so.Total.ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewSO(so)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="sales-order-view" @onclick="() => ViewSO(so)">View</button>
                             @if (UserCanManage && so.Status == SalesOrderStatus.Draft)
                             {
                                 <button class="btn btn-sm btn-success" @onclick="() => ConvertToJob(so)">Convert to Job</button>
@@ -83,7 +83,7 @@ else
 
 @if (selectedSO != null)
 {
-    <div class="card mt-4 border-primary">
+    <div class="card mt-4 border-primary" data-testid="sales-order-detail">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">@selectedSO.SoNumber — @(selectedSO.Customer?.Name)</h5>
             <button class="btn btn-sm btn-light" @onclick="CloseSOView">Close</button>

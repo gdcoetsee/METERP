@@ -43,6 +43,13 @@ public class Tenant : BaseEntity
     public int? MaxInvoicesPerMonth { get; set; }
     public int? MaxAiCallsPerMonth { get; set; }
 
+    // === SaaS billing (Stripe / payment provider webhooks) ===
+    /// <summary>Stripe customer id (cus_*) linked to this tenant for subscription webhooks.</summary>
+    public string? StripeCustomerId { get; set; }
+
+    /// <summary>Provider subscription status: active, trialing, past_due, canceled, unpaid.</summary>
+    public string? SubscriptionStatus { get; set; }
+
     // === Integrations (per-tenant hooks for sellable SaaS) ===
     /// <summary>Optional HTTPS endpoint for invoice.created webhook payloads (Zapier, custom ERP, etc.).</summary>
     public string? InvoiceWebhookUrl { get; set; }

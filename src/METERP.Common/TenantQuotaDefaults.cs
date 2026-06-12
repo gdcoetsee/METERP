@@ -41,6 +41,20 @@ public static class TenantQuotaDefaults
             tenant.EnabledFeatures = GetDefaultFeatures(tenant.Tier);
     }
 
+    /// <summary>
+    /// Force-reset quotas and features when billing webhooks change subscription tier.
+    /// </summary>
+    public static void ApplyBillingTier(Tenant tenant, SubscriptionTier tier)
+    {
+        tenant.Tier = tier;
+        var (quotes, jobs, invoices, ai) = GetMonthlyLimits(tier);
+        tenant.MaxQuotesPerMonth = quotes;
+        tenant.MaxJobsPerMonth = jobs;
+        tenant.MaxInvoicesPerMonth = invoices;
+        tenant.MaxAiCallsPerMonth = ai;
+        tenant.EnabledFeatures = GetDefaultFeatures(tier);
+    }
+
     public static int? GetEffectiveLimit(Tenant tenant, QuotaType type)
     {
         var (quotes, jobs, invoices, ai) = GetMonthlyLimits(tenant.Tier);

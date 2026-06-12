@@ -105,6 +105,12 @@ public class TenantService : ITenantService
         existing.NotificationEmail = string.IsNullOrWhiteSpace(tenant.NotificationEmail)
             ? null
             : tenant.NotificationEmail.Trim();
+        existing.StripeCustomerId = string.IsNullOrWhiteSpace(tenant.StripeCustomerId)
+            ? null
+            : tenant.StripeCustomerId.Trim();
+        existing.SubscriptionStatus = string.IsNullOrWhiteSpace(tenant.SubscriptionStatus)
+            ? null
+            : tenant.SubscriptionStatus.Trim();
 
         await _dbContext.SaveChangesAsync(ct);
     }

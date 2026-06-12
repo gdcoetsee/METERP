@@ -2,9 +2,22 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Cache cycle fix + Audit E2E + Job cache tests (2026-06-12 latest).**
+**Stripe billing webhooks + Sales Orders E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 5)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 6)
+- **Phase 5 — SaaS billing webhooks (Stripe-compatible)**:
+  - `BillingOptions`, `IBillingWebhookService` / `BillingWebhookService`.
+  - `POST /webhooks/stripe` with signature validation (`StripeWebhookSignatureValidator`).
+  - Events: `customer.subscription.updated/deleted`, `checkout.session.completed`.
+  - Tenant fields: `StripeCustomerId`, `SubscriptionStatus`; migration `AddTenantBillingFields`.
+  - `TenantQuotaDefaults.ApplyBillingTier` for quota/feature reset on tier change.
+  - `BillingWebhookServiceTests` (4) + `BillingWebhookEndpointTests` (1 web integration).
+- **Phase 2 E2E — Sales Orders**:
+  - `data-testid` on `SalesOrders.razor`; `SalesOrders_Page_Loads_And_Shows_Detail` (12th Playwright test).
+- **UI**: Tenants table shows `SubscriptionStatus` when set via webhook.
+- **Testing**: **170/170 green** (153 unit + 5 web + 12 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 5)
 - **Phase 5 — cache startup crash fix**:
   - `ListCacheGraphHelper` strips EF back-references before JSON cache (Quote↔QuoteLine, Job↔JobCost).
   - Applied in `QuoteService.LoadQuotesAsync` + `JobService.LoadJobsAsync`.
