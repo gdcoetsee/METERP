@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Job crew assignment unit tests + billing env docs (2026-06-12 latest).**
+**Job service delete/status/margin unit tests (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 26)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 27)
+- **Phase 1 — JobService spine hardening (continued)**:
+  - `JobTests` (+4): `DeleteCostAsync` recalc + soft-delete, `DeleteAsync` cascades costs, `UpdateStatusAsync` sets `CompletedDate`, `GetMarginPercent` zero-quoted edge.
+  - Shared `SeedJobAsync` helper for service tests with proper Customer + `CreateAsync` path.
+- **Phase 5 — Dev config**: `.env.example` Seq comment aligned with docker-compose `seq` service.
+- **Testing**: **229/229 green** (198 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 26)
 - **Phase 1/4 — `JobService.SetCrewAssignmentsAsync` direct unit tests**:
   - `JobTests` (+4): distinct crew add (dedupe + skip `Guid.Empty`), soft-delete sync on removal, re-activate previously deleted crew, job-not-found guard.
   - Complements indirect coverage via `SchedulingServiceTests`; validates `IgnoreQueryFilters` re-activation path.

@@ -78,6 +78,19 @@ public class JobTests
     }
 
     [Fact]
+    public void Job_GetMarginPercent_ReturnsZero_WhenQuotedTotalZero()
+    {
+        var job = new Job
+        {
+            QuotedTotal = 0m,
+            ActualCosts = new List<JobCost> { new JobCost { Amount = 500m, CostType = "Travel", IsDeleted = false } },
+            Labors = new List<JobLabor> { new JobLabor { Hours = 4, HourlyRate = 100m, IsDeleted = false } }
+        };
+
+        Assert.Equal(0m, job.GetMarginPercent());
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_IncrementsTenantJobCounter()
     {
         var tenantId = Guid.NewGuid();
@@ -261,6 +274,100 @@ public class JobTests
         // tracked costs (travel) + labor (base overwritten by service to costs sum, Get uses tracked)
         Assert.Equal(2400m, actual); // 1200 travel + 1200 labor
         Assert.Equal(-7600m, variance); // under
+    }
+
+    [Fact]
+    public async Task JobService_DeleteCostAsync_SoftDeletesAndRecalculatesActualCost()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        var travelId = await service.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Amount = 800m,
+            CostType = "Travel"
+        });
+        await service.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Amount = 200m,
+            CostType = "Material"
+        });
+
+        var before = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(1000m, before.ActualCost);
+
+        await service.DeleteCostAsync(travelId);
+
+        var after = await db.Set<Job>()
+            .Include(j => j.ActualCosts)
+            .FirstAsync(j => j.Id == jobId);
+        Assert.Equal(200m, after.ActualCost);
+        Assert.Equal(200m, after.GetActualTotal());
+
+        var deletedCost = await db.Set<JobCost>()
+            .IgnoreQueryFilters()
+            .FirstAsync(c => c.Id == travelId);
+        Assert.True(deletedCost.IsDeleted);
+    }
+
+    [Fact]
+    public async Task JobService_DeleteAsync_SoftDeletesJobAndAllCosts()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        await service.AddCostAsync(new JobCost { JobId = jobId, Amount = 600m, CostType = "Travel" });
+        await service.AddCostAsync(new JobCost { JobId = jobId, Amount = 400m, CostType = "Material" });
+
+        await service.DeleteAsync(jobId);
+
+        Assert.Null(await service.GetByIdAsync(jobId));
+
+        var jobRow = await db.Set<Job>().IgnoreQueryFilters().FirstAsync(j => j.Id == jobId);
+        Assert.True(jobRow.IsDeleted);
+
+        var costs = await db.Set<JobCost>()
+            .IgnoreQueryFilters()
+            .Where(c => c.JobId == jobId)
+            .ToListAsync();
+        Assert.Equal(2, costs.Count);
+        Assert.All(costs, c => Assert.True(c.IsDeleted));
+    }
+
+    [Fact]
+    public async Task JobService_UpdateStatusAsync_SetsCompletedDate_WhenCompleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        await service.UpdateStatusAsync(jobId, JobStatus.Completed);
+
+        var job = await service.GetByIdAsync(jobId);
+        Assert.NotNull(job);
+        Assert.Equal(JobStatus.Completed, job!.Status);
+        Assert.NotNull(job.CompletedDate);
+    }
+
+    private static async Task<Guid> SeedJobAsync(AppDbContext db, JobService service, Guid tenantId)
+    {
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Job Co" });
+        await db.SaveChangesAsync();
+
+        return await service.CreateAsync(new Job
+        {
+            CustomerId = customerId,
+            Title = "Service test job",
+            QuotedTotal = 5000m
+        });
     }
 
     private static async Task<(Guid JobId, Guid Emp1, Guid Emp2)> SeedJobWithTwoEmployeesAsync(
