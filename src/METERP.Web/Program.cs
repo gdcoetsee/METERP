@@ -1352,6 +1352,24 @@ public class DatabaseSeeder : IHostedService
         }
 
         tenantProvider.SetTenantId(defaultTenantId);
+
+        await PurgeStaleBillingWebhookEventsAsync(scope.ServiceProvider, config, _logger, cancellationToken);
+    }
+
+    private static async Task PurgeStaleBillingWebhookEventsAsync(
+        IServiceProvider scopedProvider,
+        IConfiguration config,
+        Microsoft.Extensions.Logging.ILogger logger,
+        CancellationToken ct)
+    {
+        var retentionDays = config.GetSection(BillingOptions.SectionName).GetValue<int?>("WebhookEventRetentionDays") ?? 90;
+        if (retentionDays <= 0)
+            return;
+
+        var maintenance = scopedProvider.GetRequiredService<IBillingWebhookMaintenanceService>();
+        var removed = await maintenance.PurgeProcessedEventsOlderThanAsync(TimeSpan.FromDays(retentionDays), ct);
+        if (removed > 0)
+            logger.LogInformation("Purged {Count} processed Stripe webhook events older than {Days} days", removed, retentionDays);
     }
 
     /// <summary>

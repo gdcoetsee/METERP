@@ -19,6 +19,7 @@ services:
       - Cache__RedisConnection=redis:6379
       - Billing__CustomerPortalBaseUrl=https://billing.stripe.com/p/login/demo_meterp
       - Billing__CustomerPortalReturnUrl=http://localhost:8080/tenants
+      - Billing__WebhookEventRetentionDays=90
       # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
       # - METERP_SEED_RESET=true
       # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.

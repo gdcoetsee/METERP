@@ -32,4 +32,7 @@ public class BillingOptions
 
     public bool IsPortalConfigured =>
         CanCreateApiSessions || !string.IsNullOrWhiteSpace(CustomerPortalBaseUrl);
+
+    /// <summary>Days to retain processed Stripe webhook event IDs (0 = disable startup purge).</summary>
+    public int WebhookEventRetentionDays { get; set; } = 90;
 }

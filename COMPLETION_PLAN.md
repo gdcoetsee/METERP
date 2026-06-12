@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Billing webhook tier response + idempotency retention (2026-06-12 latest).**
+**Startup billing webhook retention purge (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 24)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 25)
+- **Phase 5 — Webhook idempotency retention on startup**:
+  - `BillingOptions.WebhookEventRetentionDays` (default 90; 0 = disabled).
+  - `DatabaseSeeder` calls `IBillingWebhookMaintenanceService` after migrate/seed (idempotent purge).
+  - `appsettings.json` + `docker-compose.yml` documented; `BillingOptionsTests` (1).
+- **Testing**: **221/221 green** (190 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 24)
 - **Phase 5 — Billing webhook hardening (continued)**:
   - `BillingWebhookResult.UpdatedTier` returned on tier-changing events; `/webhooks/stripe` JSON includes `tier`.
   - `IBillingWebhookMaintenanceService` / `BillingWebhookMaintenanceService`: purge processed Stripe events older than retention window.
