@@ -187,6 +187,46 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddLaborAsync_LinksEmployee_DefaultsTechnicianAndRate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var employeeId = Guid.NewGuid();
+        db.Set<Employee>().Add(new Employee
+        {
+            Id = employeeId,
+            TenantId = tenantId,
+            FirstName = "Thabo",
+            LastName = "Mokoena",
+            DefaultHourlyRate = 195m
+        });
+
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            QuotedTotal = 5000m
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new JobService(db, null);
+        await service.AddLaborAsync(new JobLabor
+        {
+            JobId = job.Id,
+            EmployeeId = employeeId,
+            Hours = 6
+        });
+
+        var labor = await db.Set<JobLabor>().FirstAsync(l => l.JobId == job.Id);
+        Assert.Equal(employeeId, labor.EmployeeId);
+        Assert.Equal("Thabo Mokoena", labor.Technician);
+        Assert.Equal(195m, labor.HourlyRate);
+        Assert.Equal(1170m, labor.TotalCost);
+    }
+
+    [Fact]
     public async Task JobService_AddCost_And_Labor_TravelExplicit_InVariance()
     {
         var tenantId = Guid.NewGuid();

@@ -34,6 +34,7 @@ public class JobService : IJobService
         return await _dbContext.Set<Job>()
             .Include(j => j.ActualCosts)
             .Include(j => j.Labors)
+                .ThenInclude(l => l.Employee)
             .Include(j => j.Customer)
             .Include(j => j.Asset)
             .Include(j => j.AssignedEmployee)
@@ -238,6 +239,8 @@ public class JobService : IJobService
 
     public async Task<Guid> AddLaborAsync(JobLabor labor, CancellationToken ct = default)
     {
+        await ApplyEmployeeDefaultsAsync(labor, ct);
+
         _dbContext.Set<JobLabor>().Add(labor);
         await _dbContext.SaveChangesAsync(ct);
 
@@ -279,6 +282,24 @@ public class JobService : IJobService
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory("jobs");
+
+    private async Task ApplyEmployeeDefaultsAsync(JobLabor labor, CancellationToken ct)
+    {
+        if (!labor.EmployeeId.HasValue || labor.EmployeeId.Value == Guid.Empty)
+            return;
+
+        var employee = await _dbContext.Set<Employee>()
+            .FirstOrDefaultAsync(e => e.Id == labor.EmployeeId.Value, ct);
+
+        if (employee == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(labor.Technician))
+            labor.Technician = $"{employee.FirstName} {employee.LastName}".Trim();
+
+        if (labor.HourlyRate <= 0)
+            labor.HourlyRate = employee.DefaultHourlyRate;
+    }
 
     private async Task TryIncrementJobCountAsync(Guid tenantId, CancellationToken ct)
     {

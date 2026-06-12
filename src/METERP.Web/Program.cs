@@ -1168,6 +1168,32 @@ public class DatabaseSeeder : IHostedService
             }
         }
 
+        // Backfill JobLabor.EmployeeId from Technician + seeded employees (crew/payroll linkage).
+        tenantProvider.SetTenantId(defaultTenantId);
+        var seededEmployees = await employeeService.GetAllAsync(ct: cancellationToken);
+        if (seededEmployees.Any())
+        {
+            var unlinkedLabor = await db.Set<JobLabor>()
+                .IgnoreQueryFilters()
+                .Where(l => l.TenantId == defaultTenantId && !l.IsDeleted && l.EmployeeId == null && l.Technician != null)
+                .ToListAsync(cancellationToken);
+
+            var laborLinked = false;
+            foreach (var labor in unlinkedLabor)
+            {
+                var match = seededEmployees.FirstOrDefault(e =>
+                    labor.Technician!.Contains(e.FirstName, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    labor.EmployeeId = match.Id;
+                    laborLinked = true;
+                }
+            }
+
+            if (laborLinked)
+                await db.SaveChangesAsync(cancellationToken);
+        }
+
         // Optional large dataset for performance demos (Seed:LargeDataset or METERP_SEED_LARGE=true)
         await LargeDatasetSeeder.SeedAsync(_serviceProvider, defaultTenantId, cancellationToken);
 

@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Account Billing & Plan page for tenant users (2026-06-12 latest).**
+**JobLabor employee linkage + login DbContext scope fix (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 14)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 15)
+- **Phase 4 — Crew → payroll labor linkage**:
+  - `JobLabor.EmployeeId` + `Employee` navigation; EF migration `AddJobLaborEmployeeId`.
+  - `JobService.AddLaborAsync` fills `Technician` + `HourlyRate` from employee when linked.
+  - Seeder backfill: match existing demo labor `Technician` names to employees.
+  - `JobTests.JobService_AddLaborAsync_LinksEmployee_DefaultsTechnicianAndRate` (+1 unit).
+- **Phase 5 — Blazor DbContext disposal hardening**:
+  - `Login.razor` / `LoginComplete.razor` use `IServiceScopeFactory` for pre-login user lookup (not circuit-scoped `AppDbContext`).
+- **Testing**: **195/195 green** (173 unit + 7 web + 15 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 14)
 - **Phase 5 — Tenant Account Billing page**:
   - `AccountBilling.razor` at `/account-billing` — plan tier, subscription status, monthly quotas, lifetime totals, Stripe portal button.
   - Nav menu: **Billing & Plan** link for all authenticated users.

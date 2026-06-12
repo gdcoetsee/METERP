@@ -17,7 +17,12 @@ public class JobLabor : BaseEntity
 
     public string? Description { get; set; }
 
-    public string? Technician { get; set; } // Could link to ApplicationUser later
+    /// <summary>Linked employee for payroll / utilization (scheduling crew).</summary>
+    public Guid? EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+
+    /// <summary>Display name; auto-filled from <see cref="Employee"/> when linked.</summary>
+    public string? Technician { get; set; }
 
     public decimal TotalCost => Hours * HourlyRate;
 }

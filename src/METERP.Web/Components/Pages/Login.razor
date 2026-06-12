@@ -11,7 +11,7 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
 @inject IPendingTwoFactorChallengeStore ChallengeStore
-@inject AppDbContext Db
+@inject IServiceScopeFactory ScopeFactory
 @inject METERP.Application.Interfaces.ITenantProvider TenantProvider
 @inject NavigationManager Navigation
 
@@ -54,9 +54,11 @@
             return;
         }
 
-        // Pre-login lookup must reliably bypass all tenant filters (critical for multi-tenant).
+        // Pre-login lookup uses an isolated scope (avoids disposed circuit-scoped DbContext).
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var normalized = UserManager.NormalizeEmail(loginModel.Email);
-        var user = await Db.Users
+        var user = await db.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
 
