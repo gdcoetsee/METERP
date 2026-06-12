@@ -103,7 +103,11 @@ else
     private static string GetQuoteRowTestId(Quote q)
     {
         var hasTravel = q.Lines?.Any(l => !l.IsDeleted && l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)) == true;
-        return hasTravel ? "quote-row-with-travel" : "quote-row";
+        var convertible = q.Status is QuoteStatus.Draft or QuoteStatus.Sent;
+        if (hasTravel && convertible) return "quote-row-with-travel-convertible";
+        if (hasTravel) return "quote-row-with-travel";
+        if (convertible) return "quote-row-convertible";
+        return "quote-row";
     }
 
     private static string GetStatusBadge(QuoteStatus s)

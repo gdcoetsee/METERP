@@ -2,9 +2,24 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Phase 4 SalesOrder/Finance tests + Phase 3 full AI HTTP + Phase 5 loopback SMTP (2026-06-12 latest).**
+**Sellable CRM spine + audit + 2FA + OpenTelemetry (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, after 05ed879)
+### Exact Work Completed — Latest (2026-06-12, sellable-ready push)
+- **CRM Opportunities (real DB, not localStorage)**:
+  - `Opportunity` + `OpportunityStage` domain; `IOpportunityService` / `OpportunityService` with audit hooks.
+  - `Opportunities.razor` — pipeline UI, AI handoff via `pendingAiScope` + `pendingOpportunityId`.
+  - `AICopilot.razor` — reads `pendingOpportunityId`, uses linked customer, calls `MarkConvertedToQuoteAsync` after quote apply.
+  - EF migration `AddOpportunitiesAndAuditLog`; seeder seeds demo opportunities; Admin/Manager get `Opportunities.*` + `Audit.View`.
+- **Audit trail (compliance story)**:
+  - `AuditLogEntry` + `IAuditService` / `AuditService`; `Audit.razor` with CSV export; `QuoteService` logs CREATE + CONVERT.
+- **Two-factor authentication (production path)**:
+  - `ITwoFactorAuthService` / `TwoFactorAuthService` (Identity TOTP); login → challenge → `/login-2fa` → `LoginComplete`.
+  - `AccountSecurity.razor` — enable/confirm/disable authenticator 2FA for current user.
+- **Observability**: OpenTelemetry console trace/metrics in `Program.cs`.
+- **MailKit** bumped to 4.17.0 (CVE fix).
+- **Testing**: **128/128 green** (118 unit + 4 web + 6 E2E). `OpportunityServiceTests` (+6 incl. `MarkConvertedToQuote`).
+
+### Exact Work Completed — Prior (2026-06-12, after 05ed879)
 - **Phase 4 — supporting module tests (continued)**:
   - `SalesOrderServiceTests` (4): SO number + totals, line recalc, soft delete, convert-to-job.
   - `FinanceServiceTests` expanded (+3): unbalanced journal guard, entry number, account balance.

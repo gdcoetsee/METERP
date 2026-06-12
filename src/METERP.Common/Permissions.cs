@@ -58,5 +58,12 @@ public static class Permissions
     public const string SalesOrdersView = "SalesOrders.View";
     public const string SalesOrdersManage = "SalesOrders.Manage";
 
+    // CRM Opportunities
+    public const string OpportunitiesView = "Opportunities.View";
+    public const string OpportunitiesManage = "Opportunities.Manage";
+
+    // Audit / compliance
+    public const string AuditView = "Audit.View";
+
     // Add more as modules are implemented
 }

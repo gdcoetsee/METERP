@@ -13,19 +13,22 @@ public class QuoteService : IQuoteService
     private readonly ITenantProvider? _tenantProvider;
     private readonly IQuotaService? _quotaService;
     private readonly ITenantCacheService? _cache;
+    private readonly IAuditService? _auditService;
 
     public QuoteService(
         AppDbContext dbContext,
         ITenantService? tenantService = null,
         ITenantProvider? tenantProvider = null,
         IQuotaService? quotaService = null,
-        ITenantCacheService? cache = null)
+        ITenantCacheService? cache = null,
+        IAuditService? auditService = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
         _tenantProvider = tenantProvider;
         _quotaService = quotaService;
         _cache = cache;
+        _auditService = auditService;
     }
 
     public async Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -93,6 +96,16 @@ public class QuoteService : IQuoteService
 
         await TryIncrementQuoteCountAsync(quote.TenantId, ct);
         InvalidateListCaches();
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "CREATE",
+                "Quote",
+                quote.QuoteNumber,
+                $"Customer {quote.CustomerId}, total R {quote.Total:N2}",
+                ct);
+        }
 
         return quote.Id;
     }
@@ -242,6 +255,16 @@ public class QuoteService : IQuoteService
 
         InvalidateListCaches();
         _cache?.InvalidateCategory("jobs");
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "CONVERT",
+                "Quote",
+                quote.QuoteNumber,
+                $"Converted to job {job.JobNumber} with explicit travel costs",
+                ct);
+        }
 
         return (await GetByIdForJobAsync(job.Id, ct))!;
     }

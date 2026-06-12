@@ -18,6 +18,7 @@
 @inject ICurrentUserService CurrentUserService
 @inject ITenantService TenantService
 @inject ICustomerService CustomerService
+@inject IOpportunityService OpportunityService
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -255,6 +256,7 @@ else if (_aiQuotaExhausted)
     private List<Customer> availableCustomers = new();
     private List<(string Question, string Response)> chatHistory = new();
     private string bidScope = "";
+    private Guid? _pendingOpportunityId;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage) || CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
 
@@ -314,6 +316,10 @@ else if (_aiQuotaExhausted)
                 _ = Task.Run(async () => await OptimizeBid());
                 await JS.InvokeVoidAsync("localStorage.removeItem", "pendingAiScope");
             }
+
+            var pendingOppId = await JS.InvokeAsync<string>("localStorage.getItem", "pendingOpportunityId");
+            if (!string.IsNullOrWhiteSpace(pendingOppId) && Guid.TryParse(pendingOppId, out var oppId))
+                _pendingOpportunityId = oppId;
         }
         catch { }
     }
@@ -572,6 +578,21 @@ else if (_aiQuotaExhausted)
 
     // --- Per-specific-response Apply helpers (history entries + Latest card are directly actionable) ---
 
+    private async Task<Guid> ResolveCustomerIdForQuoteAsync()
+    {
+        if (_pendingOpportunityId.HasValue)
+        {
+            var opp = await OpportunityService.GetByIdAsync(_pendingOpportunityId.Value);
+            if (opp?.CustomerId is Guid linkedCustomerId && linkedCustomerId != Guid.Empty)
+                return linkedCustomerId;
+        }
+
+        if (!availableCustomers.Any())
+            availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
+
+        return availableCustomers.FirstOrDefault()?.Id ?? Guid.Empty;
+    }
+
     private async Task CreateQuoteFromAiText(string? aiText)
     {
         var text = string.IsNullOrWhiteSpace(aiText) ? lastResponse : aiText;
@@ -579,10 +600,7 @@ else if (_aiQuotaExhausted)
 
         try
         {
-            if (!availableCustomers.Any())
-                availableCustomers = (await CustomerService.GetAllAsync(null, 1, 1000)).ToList();
-
-            var customerId = availableCustomers.FirstOrDefault()?.Id ?? Guid.Empty;
+            var customerId = await ResolveCustomerIdForQuoteAsync();
             if (customerId == Guid.Empty)
             {
                 ToastService.ShowError("No customers available — create a customer first.");
@@ -591,7 +609,19 @@ else if (_aiQuotaExhausted)
 
             lastCreatedQuote = await AiQuoteApplyService.CreateQuoteFromAiTextAsync(text, customerId);
             lastAiTextForPdf = text;
-            ToastService.ShowSuccess("Draft Quote created with AI-suggested lines! See /quotes.");
+
+            if (_pendingOpportunityId.HasValue && lastCreatedQuote != null)
+            {
+                await OpportunityService.MarkConvertedToQuoteAsync(_pendingOpportunityId.Value, lastCreatedQuote.Id);
+                _pendingOpportunityId = null;
+                try { await JS.InvokeVoidAsync("localStorage.removeItem", "pendingOpportunityId"); } catch { }
+                ToastService.ShowSuccess("Draft quote created and opportunity linked. See /quotes.");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Draft Quote created with AI-suggested lines! See /quotes.");
+            }
+
             Navigation.NavigateTo("/quotes", forceLoad: true);
         }
         catch (AiFeatureDisabledException ex)

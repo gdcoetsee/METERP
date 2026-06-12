@@ -8,6 +8,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AppDbContext Db
 @inject METERP.Application.Interfaces.ITenantProvider TenantProvider
+@inject METERP.Application.Services.IPendingTwoFactorChallengeStore ChallengeStore
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment Environment
 
@@ -25,6 +26,9 @@
     [SupplyParameterFromQuery]
     public string? Email { get; set; }
 
+    [SupplyParameterFromQuery]
+    public string? Twofa { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         // Passwordless dev/E2E shortcut — never expose in production.
@@ -35,22 +39,31 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(Email))
+        ApplicationUser? user = null;
+
+        if (!string.IsNullOrWhiteSpace(Twofa))
         {
-            Navigation.NavigateTo("/login", forceLoad: true);
-            return;
+            var userId = ChallengeStore.ConsumeChallenge(Twofa);
+            if (userId == null)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+                return;
+            }
+
+            user = await Db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
         }
-
-        // Same pre-login lookup logic as Login.razor (bypass tenant filters for multi-tenancy).
-        var normalized = UserManager.NormalizeEmail(Email);
-        var user = await Db.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
-
-        if (user == null)
+        else if (!string.IsNullOrWhiteSpace(Email))
         {
-            TenantProvider.SetTenantId(Guid.Empty);
-            user = await UserManager.FindByEmailAsync(Email);
+            var normalized = UserManager.NormalizeEmail(Email);
+            user = await Db.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
+
+            if (user == null)
+            {
+                TenantProvider.SetTenantId(Guid.Empty);
+                user = await UserManager.FindByEmailAsync(Email);
+            }
         }
 
         if (user == null)

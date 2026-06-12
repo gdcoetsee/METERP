@@ -1,0 +1,166 @@
+@page "/account-security"
+@rendermode InteractiveServer
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentUserService CurrentUserService
+@inject ITwoFactorAuthService TwoFactorAuthService
+@inject ToastService ToastService
+
+<PageTitle>Account Security</PageTitle>
+
+<h1>Account Security</h1>
+<p class="text-muted">Protect your account with TOTP two-factor authentication (Google Authenticator, Microsoft Authenticator, etc.).</p>
+
+@if (_loading)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="card mb-4" style="max-width: 560px;" data-testid="account-security-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Two-Factor Authentication (2FA)</strong>
+            @if (_twoFactorEnabled)
+            {
+                <span class="badge bg-success" data-testid="2fa-status-enabled">Enabled</span>
+            }
+            else
+            {
+                <span class="badge bg-secondary" data-testid="2fa-status-disabled">Disabled</span>
+            }
+        </div>
+        <div class="card-body">
+            @if (_twoFactorEnabled)
+            {
+                <p class="mb-3">Your account requires an authenticator code at login.</p>
+                <button class="btn btn-outline-danger" @onclick="DisableTwoFactor" disabled="@_busy" data-testid="2fa-disable-button">
+                    Disable 2FA
+                </button>
+            }
+            else if (_setupInfo != null)
+            {
+                <p class="mb-2">Scan this key in your authenticator app, or enter it manually:</p>
+                <div class="p-2 bg-light border rounded font-monospace mb-2 user-select-all" data-testid="2fa-shared-key">@_setupInfo.SharedKey</div>
+                <p class="small text-muted mb-2">Setup URI (advanced):</p>
+                <div class="p-2 bg-light border rounded small text-break mb-3">@_setupInfo.AuthenticatorUri</div>
+
+                <div class="mb-3" style="max-width: 220px;">
+                    <label class="form-label">Verification code</label>
+                    <input class="form-control" maxlength="6" @bind="_confirmCode" placeholder="6-digit code" data-testid="2fa-confirm-code" />
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success" @onclick="ConfirmSetup" disabled="@_busy" data-testid="2fa-confirm-button">Confirm &amp; Enable</button>
+                    <button class="btn btn-secondary" @onclick="CancelSetup" disabled="@_busy">Cancel</button>
+                </div>
+            }
+            else
+            {
+                <p class="mb-3">Add a second layer of security beyond your password.</p>
+                <button class="btn btn-primary" @onclick="BeginSetup" disabled="@_busy" data-testid="2fa-enable-button">
+                    Enable Authenticator 2FA
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private bool _twoFactorEnabled;
+    private TwoFactorSetupInfo? _setupInfo;
+    private string _confirmCode = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshStatusAsync();
+        _loading = false;
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        var userId = CurrentUserService.UserId;
+        if (userId == null) return;
+        _twoFactorEnabled = await TwoFactorAuthService.IsEnabledAsync(userId.Value);
+    }
+
+    private async Task BeginSetup()
+    {
+        var userId = CurrentUserService.UserId;
+        if (userId == null) return;
+
+        _busy = true;
+        try
+        {
+            _setupInfo = await TwoFactorAuthService.BeginSetupAsync(userId.Value);
+            if (_setupInfo == null)
+                ToastService.ShowError("Could not start 2FA setup.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void CancelSetup()
+    {
+        _setupInfo = null;
+        _confirmCode = string.Empty;
+    }
+
+    private async Task ConfirmSetup()
+    {
+        var userId = CurrentUserService.UserId;
+        if (userId == null || string.IsNullOrWhiteSpace(_confirmCode)) return;
+
+        _busy = true;
+        try
+        {
+            var (ok, errors) = await TwoFactorAuthService.ConfirmSetupAsync(userId.Value, _confirmCode.Trim());
+            if (ok)
+            {
+                _setupInfo = null;
+                _confirmCode = string.Empty;
+                await RefreshStatusAsync();
+                ToastService.ShowSuccess("Two-factor authentication enabled. You will need your authenticator app at next login.");
+            }
+            else
+            {
+                ToastService.ShowError(string.Join("; ", errors));
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DisableTwoFactor()
+    {
+        var userId = CurrentUserService.UserId;
+        if (userId == null) return;
+
+        _busy = true;
+        try
+        {
+            var (ok, errors) = await TwoFactorAuthService.DisableAsync(userId.Value);
+            if (ok)
+            {
+                _setupInfo = null;
+                _confirmCode = string.Empty;
+                await RefreshStatusAsync();
+                ToastService.ShowSuccess("Two-factor authentication disabled.");
+            }
+            else
+            {
+                ToastService.ShowError(string.Join("; ", errors));
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

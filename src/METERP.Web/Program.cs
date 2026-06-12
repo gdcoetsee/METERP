@@ -21,8 +21,23 @@ using METERP.Web.Components;
 using METERP.Web.HealthChecks;
 using METERP.Web.Middleware;
 using METERP.Web.Services;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("METERP"))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddEntityFrameworkCoreInstrumentation()
+        .AddConsoleExporter())
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddConsoleExporter());
 
 // === Structured logging (Serilog) — tenant id enriched via TenantLoggingMiddleware ===
 const string logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [Tenant:{TenantId}] {Message:lj}{NewLine}{Exception}";
@@ -72,6 +87,10 @@ builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<IFinanceService, FinanceService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
+builder.Services.AddScoped<IOpportunityService, OpportunityService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<ITwoFactorAuthService, TwoFactorAuthService>();
+builder.Services.AddSingleton<IPendingTwoFactorChallengeStore, PendingTwoFactorChallengeStore>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.AddHttpClient("integrations", client => client.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
@@ -262,7 +281,14 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("SalesOrders.Manage", policy =>
         policy.RequireClaim("Permission", Permissions.SalesOrdersManage));
 
-    // Add more policies as modules are built
+    options.AddPolicy("Opportunities.View", policy =>
+        policy.RequireClaim("Permission", Permissions.OpportunitiesView, Permissions.OpportunitiesManage));
+
+    options.AddPolicy("Opportunities.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.OpportunitiesManage));
+
+    options.AddPolicy("Audit.View", policy =>
+        policy.RequireClaim("Permission", Permissions.AuditView, Permissions.TenantsManage));
 });
 
 // For development/demo only: ensure DB + seed data (idempotent by default).
@@ -352,6 +378,7 @@ public class DatabaseSeeder : IHostedService
         var financeService = scope.ServiceProvider.GetRequiredService<IFinanceService>();
         var employeeService = scope.ServiceProvider.GetRequiredService<IEmployeeService>();
         var salesOrderService = scope.ServiceProvider.GetRequiredService<ISalesOrderService>();
+        var opportunityService = scope.ServiceProvider.GetRequiredService<IOpportunityService>();
         var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
 
         var env = scope.ServiceProvider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>();
@@ -473,7 +500,10 @@ public class DatabaseSeeder : IHostedService
             Permissions.EmployeesView,
             Permissions.EmployeesManage,
             Permissions.SalesOrdersView,
-            Permissions.SalesOrdersManage
+            Permissions.SalesOrdersManage,
+            Permissions.OpportunitiesView,
+            Permissions.OpportunitiesManage,
+            Permissions.AuditView
         }, defaultTenantId, cancellationToken);
 
         await EnsureRoleWithPermissions(roleManager, tenantProvider, "Manager", new[]
@@ -502,7 +532,10 @@ public class DatabaseSeeder : IHostedService
             Permissions.EmployeesView,
             Permissions.EmployeesManage,
             Permissions.SalesOrdersView,
-            Permissions.SalesOrdersManage
+            Permissions.SalesOrdersManage,
+            Permissions.OpportunitiesView,
+            Permissions.OpportunitiesManage,
+            Permissions.AuditView
         }, defaultTenantId, cancellationToken);
 
         await EnsureRoleWithPermissions(roleManager, tenantProvider, "Technician", new[]
@@ -571,6 +604,55 @@ public class DatabaseSeeder : IHostedService
                 Province = "Western Cape"
             };
             await customerService.CreateAsync(cust2, cancellationToken);
+        }
+
+        // 4.5 Seed CRM opportunities (tenant-isolated pipeline)
+        var existingOpportunities = await opportunityService.GetAllAsync(ct: cancellationToken);
+        if (!existingOpportunities.Any())
+        {
+            var customers = await customerService.GetAllAsync(ct: cancellationToken);
+            var hospital = customers.FirstOrDefault(c => c.Name.Contains("Hospital", StringComparison.OrdinalIgnoreCase))
+                ?? customers.FirstOrDefault();
+            var mining = customers.FirstOrDefault(c => c.Name.Contains("Mining", StringComparison.OrdinalIgnoreCase))
+                ?? customers.Skip(1).FirstOrDefault();
+
+            if (hospital != null)
+            {
+                await opportunityService.CreateAsync(new Opportunity
+                {
+                    Title = "Hospital DB Upgrade Phase 2",
+                    CustomerId = hospital.Id,
+                    CustomerName = hospital.Name,
+                    Value = 185000m,
+                    Stage = OpportunityStage.Proposal,
+                    ExpectedClose = DateTime.UtcNow.AddDays(21),
+                    Notes = "Follow-on from successful ward retrofit. Include travel to Sandton campus."
+                }, cancellationToken);
+            }
+
+            if (mining != null)
+            {
+                await opportunityService.CreateAsync(new Opportunity
+                {
+                    Title = "Mine Substation Maintenance Contract",
+                    CustomerId = mining.Id,
+                    CustomerName = mining.Name,
+                    Value = 92000m,
+                    Stage = OpportunityStage.Qualified,
+                    ExpectedClose = DateTime.UtcNow.AddDays(45),
+                    Notes = "Annual maintenance + emergency call-out SLA."
+                }, cancellationToken);
+            }
+
+            await opportunityService.CreateAsync(new Opportunity
+            {
+                Title = "Gauteng Power 11kV Install",
+                CustomerName = "Gauteng Power",
+                Value = 210000m,
+                Stage = OpportunityStage.Lead,
+                ExpectedClose = DateTime.UtcNow.AddDays(60),
+                Notes = "Greenfield install — AI quote recommended for travel + materials."
+            }, cancellationToken);
         }
 
         // 5. Seed demo quotes + one converted job to demonstrate the full Quote -> Job workflow (Module 2)

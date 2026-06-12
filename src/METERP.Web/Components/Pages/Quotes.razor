@@ -138,7 +138,7 @@
         {
             var job = await QuoteService.ConvertToJobAsync(q.Id);
             ToastService.ShowSuccess($"Quote converted to Job {job.JobNumber}.");
-            Nav.NavigateTo("/jobs");
+            Nav.NavigateTo("/jobs", forceLoad: true);
         }
         catch (QuotaExceededException ex)
         {

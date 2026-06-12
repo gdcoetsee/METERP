@@ -1,0 +1,69 @@
+@page "/login-2fa"
+@rendermode InteractiveServer
+@using METERP.Application.Services
+@inject ITwoFactorAuthService TwoFactorAuthService
+@inject IPendingTwoFactorChallengeStore ChallengeStore
+@inject NavigationManager Navigation
+
+<PageTitle>Two-Factor Authentication - METERP</PageTitle>
+
+<h3>Two-Factor Authentication</h3>
+<p class="text-muted">Enter the 6-digit code from your authenticator app.</p>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<div class="mb-3" style="max-width: 280px;">
+    <label class="form-label">Authenticator code</label>
+    <input class="form-control" @bind="code" data-testid="login-2fa-code" autocomplete="one-time-code" />
+</div>
+
+<button class="btn btn-primary" @onclick="VerifyCode" data-testid="login-2fa-submit">Verify</button>
+<button class="btn btn-link ms-2" @onclick="BackToLogin">Back to login</button>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Token { get; set; }
+
+    private string code = "";
+    private string? errorMessage;
+    private Guid? _userId;
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrWhiteSpace(Token))
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        _userId = ChallengeStore.GetChallenge(Token);
+        if (_userId == null)
+            Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    private async Task VerifyCode()
+    {
+        errorMessage = null;
+        if (_userId == null || string.IsNullOrWhiteSpace(Token) || string.IsNullOrWhiteSpace(code))
+        {
+            errorMessage = "Enter your authenticator code.";
+            return;
+        }
+
+        var ok = await TwoFactorAuthService.VerifyCodeAsync(_userId.Value, code.Trim());
+        if (!ok)
+        {
+            errorMessage = "Invalid code. Try again.";
+            return;
+        }
+
+        ChallengeStore.ConsumeChallenge(Token);
+        var signInToken = ChallengeStore.CreateChallenge(_userId.Value, TimeSpan.FromMinutes(2));
+        Navigation.NavigateTo($"/login-complete?twofa={Uri.EscapeDataString(signInToken)}", forceLoad: true);
+    }
+
+    private void BackToLogin() => Navigation.NavigateTo("/login", forceLoad: true);
+}

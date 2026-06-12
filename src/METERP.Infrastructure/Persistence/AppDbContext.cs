@@ -69,6 +69,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<SalesOrder> SalesOrders { get; set; } = null!;
     public DbSet<SalesOrderLine> SalesOrderLines { get; set; } = null!;
 
+    // CRM Opportunities + compliance audit trail
+    public DbSet<Opportunity> Opportunities { get; set; } = null!;
+    public DbSet<AuditLogEntry> AuditLogEntries { get; set; } = null!;
+
     public Guid CurrentTenantId => _tenantProvider.GetCurrentTenantId();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
