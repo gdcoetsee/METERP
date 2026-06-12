@@ -134,4 +134,82 @@ public class FinanceServiceTests
         Assert.Equal(2000m, revenueRow.Balance);
         Assert.Equal(500m, expenseRow.Balance);
     }
+
+    [Fact]
+    public async Task PostJournalAsync_Throws_When_Unbalanced()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        db.Set<Account>().Add(cash);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var entry = new JournalEntry
+        {
+            TenantId = tenantId,
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 100m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Credit = 50m }
+            }
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.PostJournalAsync(entry));
+    }
+
+    [Fact]
+    public async Task PostJournalAsync_AssignsEntryNumber_WhenMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var entry = new JournalEntry
+        {
+            TenantId = tenantId,
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 250m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 250m }
+            }
+        };
+
+        var id = await service.PostJournalAsync(entry);
+
+        Assert.NotEqual(Guid.Empty, id);
+        Assert.StartsWith("JE-", entry.EntryNumber);
+    }
+
+    [Fact]
+    public async Task GetAccountBalanceAsync_ReturnsNetDebitMinusCredit_ForAssetAccount()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        db.Set<Account>().Add(cash);
+        await db.SaveChangesAsync();
+
+        var entry = new JournalEntry
+        {
+            TenantId = tenantId,
+            EntryNumber = "JE-BAL",
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 300m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Credit = 100m }
+            }
+        };
+        db.Set<JournalEntry>().Add(entry);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var balance = await service.GetAccountBalanceAsync(cash.Id);
+
+        Assert.Equal(200m, balance);
+    }
 }
