@@ -7,6 +7,7 @@
 @attribute [Authorize(Policy = "Jobs.View")]
 @* Broad access for now; tighten per permissions in real use *@
 @inject IAiAssistantService AiAssistantService
+@inject IAiQuoteApplyService AiQuoteApplyService
 @inject IJobService JobService
 @inject IQuoteService QuoteService
 @inject IInventoryService InventoryService
@@ -566,53 +567,7 @@
                 return;
             }
 
-            var newQuote = new Quote
-            {
-                QuoteDate = DateTime.UtcNow,
-                ValidUntil = DateTime.UtcNow.AddDays(30),
-                TaxRate = 0.15m,
-                Notes = "AI Generated: " + text,
-                CustomerId = customerId
-            };
-            var createdId = await QuoteService.CreateAsync(newQuote);
-
-            // Smart apply: try to get structured line suggestions and add real lines (travel + materials)
-            try
-            {
-                var suggestion = await AiAssistantService.SuggestQuoteLinesAsync(text, 0.15m, null);
-                if (suggestion?.SuggestedLines?.Any() == true)
-                {
-                    foreach (var s in suggestion.SuggestedLines.Take(6))
-                    {
-                        await QuoteService.AddLineAsync(new QuoteLine
-                        {
-                            QuoteId = createdId,
-                            Description = s.Description,
-                            Quantity = s.Quantity,
-                            UnitPrice = s.UnitPrice,
-                            Unit = s.Unit,
-                            LineType = s.LineType
-                            // LineTotal now computed automatically
-                        });
-                    }
-                }
-                else
-                {
-                    // Fallback: ensure at least one explicit travel line for contracting realism
-                    await QuoteService.AddLineAsync(new QuoteLine
-                    {
-                        QuoteId = createdId,
-                        Description = "Travel & site transport (AI estimate)",
-                        Quantity = 1,
-                        UnitPrice = 650,
-                        LineType = "Other",
-                        Unit = "lot"
-                    });
-                }
-            }
-            catch { /* non-fatal - quote still created */ }
-
-            lastCreatedQuote = await QuoteService.GetByIdAsync(createdId);
+            lastCreatedQuote = await AiQuoteApplyService.CreateQuoteFromAiTextAsync(text, customerId);
             lastAiTextForPdf = text;
             ToastService.ShowSuccess("Draft Quote created with AI-suggested lines! See /quotes.");
             Navigation.NavigateTo("/quotes", forceLoad: true);
