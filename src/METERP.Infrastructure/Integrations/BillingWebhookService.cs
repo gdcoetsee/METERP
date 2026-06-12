@@ -136,7 +136,7 @@ public class BillingWebhookService : IBillingWebhookService
         _logger.LogInformation("Billing webhook updated tenant {Subdomain} tier {Tier} status {Status}",
             tenant.Subdomain, tenant.Tier, tenant.SubscriptionStatus);
 
-        return new BillingWebhookResult(BillingWebhookOutcome.TierUpdated, tenant.Subdomain);
+        return new BillingWebhookResult(BillingWebhookOutcome.TierUpdated, tenant.Subdomain, tenant.Tier);
     }
 
     private async Task<BillingWebhookResult> HandleSubscriptionDeletedAsync(JsonElement subscription, CancellationToken ct)
@@ -152,7 +152,7 @@ public class BillingWebhookService : IBillingWebhookService
         await _dbContext.SaveChangesAsync(ct);
         _logger.LogInformation("Billing webhook canceled subscription for tenant {Subdomain}", tenant.Subdomain);
 
-        return new BillingWebhookResult(BillingWebhookOutcome.SubscriptionCanceled, tenant.Subdomain);
+        return new BillingWebhookResult(BillingWebhookOutcome.SubscriptionCanceled, tenant.Subdomain, tenant.Tier);
     }
 
     private async Task<BillingWebhookResult> HandleCheckoutCompletedAsync(JsonElement session, CancellationToken ct)

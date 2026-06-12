@@ -126,6 +126,7 @@ builder.Services.AddHttpClient("stripe", client =>
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IInvoiceIntegrationService, InvoiceIntegrationService>();
 builder.Services.AddScoped<IBillingWebhookService, BillingWebhookService>();
+builder.Services.AddScoped<IBillingWebhookMaintenanceService, BillingWebhookMaintenanceService>();
 builder.Services.AddScoped<IStripeCustomerPortalClient, StripeCustomerPortalClient>();
 builder.Services.AddScoped<IBillingPortalService, BillingPortalService>();
 builder.Services.AddScoped<ISchedulingService, SchedulingService>();
@@ -391,7 +392,13 @@ app.MapPost("/webhooks/stripe", async (
     {
         BillingWebhookOutcome.InvalidSignature => Results.Unauthorized(),
         BillingWebhookOutcome.InvalidPayload => Results.BadRequest(new { error = result.Message }),
-        _ => Results.Ok(new { received = true, outcome = result.Outcome.ToString(), detail = result.Message })
+        _ => Results.Ok(new
+        {
+            received = true,
+            outcome = result.Outcome.ToString(),
+            detail = result.Message,
+            tier = result.UpdatedTier?.ToString()
+        })
     };
 }).DisableRateLimiting();
 

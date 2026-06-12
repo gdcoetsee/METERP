@@ -2,9 +2,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Stripe webhook idempotency for billing tier updates (2026-06-12 latest).**
+**Billing webhook tier response + idempotency retention (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 23)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 24)
+- **Phase 5 — Billing webhook hardening (continued)**:
+  - `BillingWebhookResult.UpdatedTier` returned on tier-changing events; `/webhooks/stripe` JSON includes `tier`.
+  - `IBillingWebhookMaintenanceService` / `BillingWebhookMaintenanceService`: purge processed Stripe events older than retention window.
+  - `BillingWebhookMaintenanceServiceTests` (2); webhook endpoint asserts `Enterprise` in response body.
+- **Testing**: **220/220 green** (189 unit + 9 web + 22 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 23)
 - **Phase 5 — Billing webhook idempotency**:
   - `ProcessedStripeWebhookEvent` ledger + EF migration `AddProcessedStripeWebhookEvents`.
   - `BillingWebhookService`: dedupe by Stripe `event.id`; `BillingWebhookOutcome.Duplicate`.

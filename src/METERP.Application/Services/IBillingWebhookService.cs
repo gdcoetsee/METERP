@@ -1,3 +1,5 @@
+using METERP.Domain;
+
 namespace METERP.Application.Services;
 
 /// <summary>
@@ -23,11 +25,22 @@ public enum BillingWebhookOutcome
     InvalidPayload
 }
 
-public sealed record BillingWebhookResult(BillingWebhookOutcome Outcome, string? Message = null)
+public sealed record BillingWebhookResult(
+    BillingWebhookOutcome Outcome,
+    string? Message = null,
+    SubscriptionTier? UpdatedTier = null)
 {
     public static BillingWebhookResult InvalidSignature() =>
         new(BillingWebhookOutcome.InvalidSignature);
 
     public static BillingWebhookResult InvalidPayload(string? detail = null) =>
         new(BillingWebhookOutcome.InvalidPayload, detail);
+}
+
+/// <summary>
+/// Retention maintenance for processed Stripe webhook idempotency records.
+/// </summary>
+public interface IBillingWebhookMaintenanceService
+{
+    Task<int> PurgeProcessedEventsOlderThanAsync(TimeSpan retention, CancellationToken ct = default);
 }

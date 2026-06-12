@@ -78,6 +78,7 @@ public class BillingWebhookServiceTests
             var result = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
 
             Assert.Equal(BillingWebhookOutcome.TierUpdated, result.Outcome);
+            Assert.Equal(SubscriptionTier.Professional, result.UpdatedTier);
 
             var tenant = await db.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
             Assert.Equal(SubscriptionTier.Professional, tenant.Tier);

@@ -55,6 +55,9 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Enterprise", body, StringComparison.OrdinalIgnoreCase);
+
         await using var verifyScope = _factory.Services.CreateAsyncScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
         var tenant = await verifyDb.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
