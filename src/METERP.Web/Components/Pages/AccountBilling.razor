@@ -1,0 +1,149 @@
+@page "/account-billing"
+@rendermode InteractiveServer
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Domain
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentUserService CurrentUserService
+@inject ITenantService TenantService
+@inject IBillingPortalService BillingPortalService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Billing &amp; Plan</PageTitle>
+
+<h1>Billing &amp; Plan</h1>
+<p class="text-muted">View your subscription, monthly usage, and manage payment details via the Stripe Customer Portal.</p>
+
+@if (_loading)
+{
+    <p data-testid="account-billing-loading"><em>Loading...</em></p>
+}
+else if (currentTenant == null)
+{
+    <div class="alert alert-warning" data-testid="account-billing-no-tenant">No tenant context found for your account.</div>
+}
+else
+{
+    <div data-testid="account-billing-ready">
+        @if (currentTenant.SubscriptionStatus is "past_due" or "unpaid")
+        {
+            <div class="alert alert-warning mb-4" data-testid="account-billing-past-due-banner" role="alert">
+                <strong>Payment required.</strong> Subscription status: <code>@currentTenant.SubscriptionStatus</code>.
+                @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
+                {
+                    <button type="button" class="btn btn-sm btn-warning ms-2" data-testid="account-billing-update-button" @onclick="OpenBillingPortal">Update payment method</button>
+                }
+            </div>
+        }
+
+        <div class="card mb-4" style="max-width: 720px;" data-testid="account-billing-plan-card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span><strong>@currentTenant.Name</strong> <span class="badge bg-dark" data-testid="account-billing-tier">@currentTenant.Tier</span></span>
+                @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
+                {
+                    <button type="button" class="btn btn-sm btn-outline-info" data-testid="account-billing-manage-button" @onclick="OpenBillingPortal">Manage billing</button>
+                }
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-4">Subdomain</dt>
+                    <dd class="col-sm-8"><code>@currentTenant.Subdomain</code></dd>
+                    <dt class="col-sm-4">Subscription</dt>
+                    <dd class="col-sm-8" data-testid="account-billing-status">
+                        @(string.IsNullOrWhiteSpace(currentTenant.SubscriptionStatus) ? "Not linked" : currentTenant.SubscriptionStatus)
+                    </dd>
+                    <dt class="col-sm-4">Billing period</dt>
+                    <dd class="col-sm-8">@(currentTenant.UsagePeriodStartUtc?.ToString("yyyy-MM-dd") ?? "n/a") — current month (UTC)</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-4" style="max-width: 720px;" data-testid="account-billing-usage-card">
+            <div class="card-header">Monthly usage</div>
+            <div class="card-body d-flex flex-wrap gap-2">
+                @RenderQuotaBadge("Quotes", currentTenant.PeriodQuotesCreated, QuotaType.Quote)
+                @RenderQuotaBadge("Jobs", currentTenant.PeriodJobsCreated, QuotaType.Job)
+                @RenderQuotaBadge("Invoices", currentTenant.PeriodInvoicesIssued, QuotaType.Invoice)
+                @RenderQuotaBadge("AI calls", currentTenant.PeriodAiCalls, QuotaType.AiCall)
+            </div>
+            @if (!currentTenant.HasFeature("ai"))
+            {
+                <div class="card-footer small text-warning">AI Copilot is not included on your current plan.</div>
+            }
+        </div>
+
+        <div class="card" style="max-width: 720px;" data-testid="account-billing-lifetime-card">
+            <div class="card-header">Lifetime totals</div>
+            <div class="card-body d-flex flex-wrap gap-2 small">
+                <span class="badge bg-secondary">Quotes: @currentTenant.TotalQuotesCreated</span>
+                <span class="badge bg-secondary">Jobs: @currentTenant.TotalJobsCreated</span>
+                <span class="badge bg-secondary">Invoices: @currentTenant.TotalInvoicesIssued</span>
+                <span class="badge bg-secondary">AI: @currentTenant.TotalAiCalls</span>
+                <span class="badge bg-success">Revenue: R @currentTenant.TotalRevenueBilled.ToString("N0")</span>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private Tenant? currentTenant;
+    private string? billingPortalUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var tenantId = CurrentUserService.TenantId;
+            if (tenantId != Guid.Empty)
+            {
+                currentTenant = await TenantService.GetByIdAsync(tenantId);
+                if (currentTenant != null)
+                    billingPortalUrl = await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenBillingPortal()
+    {
+        if (currentTenant == null)
+            return;
+
+        var url = billingPortalUrl ?? await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            ToastService.ShowInfo("Billing portal is not available. Contact your administrator.");
+            return;
+        }
+
+        billingPortalUrl = url;
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private RenderFragment RenderQuotaBadge(string label, int used, QuotaType type) => builder =>
+    {
+        if (currentTenant == null) return;
+        var limit = TenantQuotaDefaults.GetEffectiveLimit(currentTenant, type);
+        var limitText = limit?.ToString() ?? "∞";
+        var css = "bg-secondary";
+        if (limit.HasValue)
+        {
+            if (used >= limit.Value) css = "bg-danger";
+            else if (used >= limit.Value * 0.8m) css = "bg-warning text-dark";
+            else css = "bg-success";
+        }
+
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", $"badge {css}");
+        builder.AddContent(2, $"{label}: {used} / {limitText}");
+        builder.CloseElement();
+    };
+}

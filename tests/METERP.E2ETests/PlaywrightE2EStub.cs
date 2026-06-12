@@ -270,6 +270,37 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountBilling_Page_Shows_Plan_And_Manage_Billing()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/account-billing");
+        await page.WaitForTestIdAsync("account-billing-ready", 15000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Billing", content);
+        Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Monthly usage", content);
+
+        await page.WaitForTestIdAsync("account-billing-tier", 5000);
+        await page.WaitForTestIdAsync("account-billing-usage-card", 5000);
+
+        var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Professional", tierText, StringComparison.OrdinalIgnoreCase);
+
+        var statusText = (await page.Locator("[data-testid='account-billing-status']").TextContentAsync()) ?? string.Empty;
+        Assert.False(string.IsNullOrWhiteSpace(statusText));
+
+        var manageButton = page.Locator("[data-testid='account-billing-manage-button']");
+        if (await manageButton.CountAsync() > 0)
+        {
+            var label = (await manageButton.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Manage billing", label, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Scheduling_Page_Loads_Jobs_And_Assignment_Panel()
     {
         var page = await _browser.LoginAsync();

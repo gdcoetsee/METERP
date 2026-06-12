@@ -511,15 +511,22 @@ public class DatabaseSeeder : IHostedService
         {
             defaultTenantId = existingTenants.First().Id;
             var acme = await tenantService.GetBySubdomainAsync("acme", cancellationToken);
-            if (acme != null && acme.Tier != SubscriptionTier.Professional)
+            if (acme != null)
             {
-                acme.Tier = SubscriptionTier.Professional;
-                acme.MaxQuotesPerMonth = null;
-                acme.MaxJobsPerMonth = null;
-                acme.MaxInvoicesPerMonth = null;
-                acme.MaxAiCallsPerMonth = null;
+                if (acme.Tier != SubscriptionTier.Professional)
+                {
+                    acme.Tier = SubscriptionTier.Professional;
+                    acme.MaxQuotesPerMonth = null;
+                    acme.MaxJobsPerMonth = null;
+                    acme.MaxInvoicesPerMonth = null;
+                    acme.MaxAiCallsPerMonth = null;
+                }
+
                 if (string.IsNullOrWhiteSpace(acme.EnabledFeatures) || !acme.HasFeature("ai"))
                     acme.EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Professional) + ",compliance";
+
+                acme.StripeCustomerId ??= "cus_demo_acme";
+                acme.SubscriptionStatus ??= "active";
                 await tenantService.UpdateAsync(acme, cancellationToken);
             }
         }

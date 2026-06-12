@@ -2,9 +2,17 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Multi-employee job crews for scheduling (2026-06-12 latest).**
+**Account Billing & Plan page for tenant users (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 13)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 14)
+- **Phase 5 — Tenant Account Billing page**:
+  - `AccountBilling.razor` at `/account-billing` — plan tier, subscription status, monthly quotas, lifetime totals, Stripe portal button.
+  - Nav menu: **Billing & Plan** link for all authenticated users.
+  - Seeder: idempotent Acme `StripeCustomerId` + `SubscriptionStatus` backfill on existing DBs.
+  - E2E: `AccountBilling_Page_Shows_Plan_And_Manage_Billing` (15th Playwright test).
+- **Testing**: **194/194 green** (172 unit + 7 web + 15 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 13)
 - **Phase 4 — Multi-employee job crews**:
   - `JobCrewAssignment` entity + EF migration `AddJobCrewAssignments`.
   - `Job.GetCrewEmployees()`; `IJobService.SetCrewAssignmentsAsync` (soft-delete sync).
