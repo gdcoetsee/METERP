@@ -132,6 +132,53 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Opportunity_Advances_Stage_On_Advance_Button()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/opportunities");
+        try
+        {
+            await page.WaitForTestIdAsync("opportunities-ready", 8000);
+        }
+        catch (TimeoutException)
+        {
+            // Older builds expose pipeline without ready marker
+        }
+
+        await page.WaitForTestIdAsync("opportunities-pipeline", 30000);
+
+        var uniqueTitle = $"E2E Advance {DateTime.UtcNow.Ticks}";
+        await page.ClickByTestIdAsync("opportunity-create-button");
+        await page.WaitForTestIdAsync("opportunity-create-form", 10000);
+        await page.FillByTestIdAsync("opportunity-title", uniqueTitle);
+        await page.ClickByTestIdAsync("opportunity-save");
+        await page.Locator(".toast-body")
+            .Filter(new() { HasText = "Opportunity created" })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        await page.Locator("[data-testid='opportunity-card']")
+            .Filter(new() { HasText = uniqueTitle })
+            .First
+            .ClickAsync();
+        await page.WaitForTestIdAsync("opportunity-detail", 10000);
+
+        var stageBefore = await page.Locator("[data-testid='opportunity-stage']").TextContentAsync();
+        Assert.Contains("Lead", stageBefore ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        await page.ClickByTestIdAsync("opportunity-advance-stage");
+        await page.Locator(".toast-body")
+            .Filter(new() { HasText = "Stage advanced" })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        var stageAfter = await page.Locator("[data-testid='opportunity-stage']").TextContentAsync();
+        Assert.Contains("Qualified", stageAfter ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
         var page = await _browser.LoginAsync();

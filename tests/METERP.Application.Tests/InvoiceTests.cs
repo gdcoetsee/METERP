@@ -35,6 +35,41 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateFromJobAsync_LogsAuditEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Audit Invoice Co" };
+        db.Set<Customer>().Add(customer);
+
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-AUDIT-001",
+            QuotedTotal = 4500m,
+            Title = "Audit job"
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new InvoiceService(db, auditService: auditService);
+
+        var invoice = await service.CreateFromJobAsync(job.Id);
+
+        var entries = await auditService.GetRecentAsync();
+        var entry = Assert.Single(entries);
+        Assert.Equal("CREATE", entry.Action);
+        Assert.Equal("Invoice", entry.EntityType);
+        Assert.Equal(invoice.InvoiceNumber, entry.EntityReference);
+        Assert.Contains("J-AUDIT-001", entry.Details);
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateFromJobAsync_CopiesLinesFromQuote_PreferringQuoteLines()
     {
         var tenantId = Guid.NewGuid();

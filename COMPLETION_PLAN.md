@@ -2,9 +2,19 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**SO spine chain + conversion guards + quote audit (2026-06-12 latest).**
+**Invoice audit + opportunity stage E2E (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 30)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 31)
+- **Phase 1/5 — Invoice audit on job conversion**:
+  - `InvoiceService.CreateFromJobAsync` logs `CREATE` audit entry (job number + total) via optional `IAuditService`.
+  - `InvoiceTests` (+1): audit entry on `CreateFromJobAsync`.
+- **Phase 4 — CRM pipeline E2E**:
+  - `Opportunities.razor`: `opportunity-stage` test id on detail panel.
+  - E2E `Opportunity_Advances_Stage_On_Advance_Button` (23rd Playwright test) — creates fresh Lead opp, advances to Qualified.
+  - `OpportunityServiceTests` (+1): `AdvanceStageAsync` audit `UPDATE` entry.
+- **Testing**: **247/247 green** (215 unit + 9 web + 23 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 30)
 - **Phase 1 — Extended spine + compliance hooks**:
   - `SpineChainTests` (+1): Sales Order → Job → Invoice chain; SO status `InProgress`; invoice copies quote travel lines.
   - `InvoiceTests` (+1): `CreateFromJobAsync` job-not-found guard.

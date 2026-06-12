@@ -14,6 +14,7 @@ public class InvoiceService : IInvoiceService
     private readonly IQuotaService? _quotaService;
     private readonly IInvoiceIntegrationService? _invoiceIntegration;
     private readonly ITenantCacheService? _cache;
+    private readonly IAuditService? _auditService;
 
     public InvoiceService(
         AppDbContext dbContext,
@@ -21,7 +22,8 @@ public class InvoiceService : IInvoiceService
         ITenantProvider? tenantProvider = null,
         IQuotaService? quotaService = null,
         IInvoiceIntegrationService? invoiceIntegration = null,
-        ITenantCacheService? cache = null)
+        ITenantCacheService? cache = null,
+        IAuditService? auditService = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -29,6 +31,7 @@ public class InvoiceService : IInvoiceService
         _quotaService = quotaService;
         _invoiceIntegration = invoiceIntegration;
         _cache = cache;
+        _auditService = auditService;
     }
 
     public async Task<Invoice?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -269,6 +272,16 @@ public class InvoiceService : IInvoiceService
             await TryIncrementInvoiceCountAsync(saved.TenantId, saved.Total, ct);
             await TryNotifyInvoiceCreatedAsync(saved.Id, ct);
             InvalidateListCaches();
+
+            if (_auditService != null)
+            {
+                await _auditService.LogAsync(
+                    "CREATE",
+                    "Invoice",
+                    saved.InvoiceNumber,
+                    $"Created from job {job.JobNumber}, total R {saved.Total:N0}",
+                    ct);
+            }
 
             return saved;
         }

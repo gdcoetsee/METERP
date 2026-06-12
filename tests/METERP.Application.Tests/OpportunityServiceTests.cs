@@ -84,6 +84,32 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task AdvanceStageAsync_LogsAuditEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new OpportunityService(db, auditService);
+
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Audit pipeline opp",
+            CustomerName = "Test",
+            Value = 3000m,
+            Stage = OpportunityStage.Lead
+        });
+
+        await service.AdvanceStageAsync(id);
+
+        var entries = await auditService.GetRecentAsync();
+        var advanceEntry = entries.First(e => e.Action == "UPDATE" && e.Details.Contains("Advanced"));
+        Assert.Equal("Opportunity", advanceEntry.EntityType);
+        Assert.Equal("Audit pipeline opp", advanceEntry.EntityReference);
+    }
+
+    [Fact]
     public async Task AdvanceStageAsync_DoesNotAdvanceFromClosedLost()
     {
         var tenantId = Guid.NewGuid();
