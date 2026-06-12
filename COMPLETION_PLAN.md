@@ -2,9 +2,18 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Stripe Customer Portal API sessions + static fallback (2026-06-12 latest).**
+**Tenant-facing billing on Home + AI rate limit integration tests (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 11)
+### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 12)
+- **Phase 5 — Tenant-facing billing portal**:
+  - `Home.razor`: `home-manage-billing-button` on quota card; `home-billing-past-due-manage-button` on past-due banner.
+  - Resolves portal via `IBillingPortalService.ResolveCustomerPortalUrlAsync` for current tenant (no Tenants admin page required).
+- **Phase 5 — AI HTTP rate limit tests**:
+  - `AiCopilotRateLimitTests` (2): `/ai-copilot` returns 429 after 30/min; `/health/ready` exempt.
+- **E2E**: `Home_Quota_Usage_Card_Shows_Monthly_Usage` asserts Manage billing button when portal configured.
+- **Testing**: **192/192 green** (171 unit + 7 web + 14 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 11)
 - **Phase 5 — Stripe Customer Portal API**:
   - `IStripeCustomerPortalClient` / `StripeCustomerPortalClient` — POST `billing_portal/sessions` via named `stripe` HttpClient.
   - `BillingOptions`: `StripeSecretKey`, `CustomerPortalReturnUrl`; `CanCreateApiSessions` when key + return URL set.

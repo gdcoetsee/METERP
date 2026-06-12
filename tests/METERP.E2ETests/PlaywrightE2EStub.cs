@@ -259,6 +259,13 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.Contains("Quotes", content);
         Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
 
+        var billingButton = page.Locator("[data-testid='home-manage-billing-button']");
+        if (await billingButton.CountAsync() > 0)
+        {
+            var label = (await billingButton.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Manage billing", label, StringComparison.OrdinalIgnoreCase);
+        }
+
         await page.CloseAsync();
     }
 
