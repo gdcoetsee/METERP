@@ -2,9 +2,20 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**Phase 3 AI apply complete + Phase 4 Customer/Supplier tests + Phase 5 quota toasts & SMTP tests (2026-06-12 latest).**
+**Phase 4 Asset/PO/Employee tests + Phase 3 mocked HTTP AI tests (2026-06-12 latest).**
 
-### Exact Work Completed — Latest (2026-06-12, after cc7cd84)
+### Exact Work Completed — Latest (2026-06-12, after d75a396)
+- **Phase 4 — supporting module tests (continued)**:
+  - `AssetServiceTests` (5): asset number, search, status, maintenance notes, soft delete.
+  - `PurchaseOrderServiceTests` (4): PO number + totals, line recalc, soft delete lines, receive → inventory.
+  - `EmployeeServiceTests` (4): create, inactive filter, search, soft delete.
+- **Phase 3 — deeper AI tests**:
+  - `AiAssistantService` accepts optional `HttpClient` for test injection.
+  - `AiAssistantServiceHttpTests` (2): full `SuggestQuoteLinesAsync` path with mocked LLM + quota block.
+  - `ClearThrottleStateForTesting()` + `InternalsVisibleTo` for stable parallel unit tests.
+- **Testing**: **110/110 green** (100 unit + 4 web + 6 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, after cc7cd84)
 - **Phase 3 — AI apply fully extracted**:
   - `IAiProjectPlanApplyService` / `AiProjectPlanApplyService` — quote + job skeleton from AI text; feature-gated.
   - `AiQuoteSuggestionParser` — pure JSON parsing extracted from `AiAssistantService` (unit-tested).
@@ -93,16 +104,16 @@
   - Verified: `dotnet build` E2E clean, units 35 green after every step.
 
 ### Current Exact State (pick up here)
-- **Testing**: **95/95 green** — 85 unit + 4 web integration + 6 E2E.
+- **Testing**: **110/110 green** — 100 unit + 4 web integration + 6 E2E.
 - **Phase 2**: **Complete**.
-- **Phase 3**: **Complete** — quote/job/project-plan apply extracted + `AiQuoteSuggestionParser` tested.
-- **Phase 5**: **Largely complete** — Seq, quota UI (Home + AICopilot + Quotes/Jobs toasts), Serilog, health, AI rate limit, SMTP no-op tests. Remaining: real SMTP E2E, 2FA, OpenTelemetry.
-- **Phase 4**: **In progress** — Inventory, Notification, Customer, Supplier tested. Remaining: Assets, POs, Employees, Opportunities (when entity exists).
+- **Phase 3**: **Complete** — apply services + parser + mocked HTTP `SuggestQuoteLinesAsync` path.
+- **Phase 5**: **Largely complete** — Seq, quota UI, Serilog, health, AI rate limit, SMTP no-op tests. Remaining: real SMTP server test, 2FA, OpenTelemetry.
+- **Phase 4**: **Largely complete** — Inventory, Notification, Customer, Supplier, Asset, PO, Employee tested. Remaining: Opportunities (when entity exists), Finance/GL services.
 - **Git**: pending commit for this chunk.
 
 ### Immediate Next Steps for Cursor (Start Here to Continue Exactly)
-1. **Phase 4**: AssetService, PurchaseOrderService, EmployeeService unit tests (same InMemory + tenant pattern).
-2. **Phase 3/5**: Deeper `AiAssistantService` integration tests with mocked HTTP for full `SuggestQuoteLinesAsync` path.
+1. **Phase 4**: Finance/GL or SalesOrder service tests; CRM Opportunities when entity exists.
+2. **Phase 3**: Mocked HTTP tests for `AnalyzeJobVarianceAsync` and `AskCopilotAsync`.
 3. **Phase 5**: Real SMTP integration (test container or mock server); 2FA stub hardening.
 4. Run `dotnet test` before any commit.
 

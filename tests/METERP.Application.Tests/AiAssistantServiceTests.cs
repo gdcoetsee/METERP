@@ -16,6 +16,8 @@ namespace METERP.Application.Tests;
 /// </summary>
 public class AiAssistantServiceTests
 {
+    public AiAssistantServiceTests() => AiAssistantService.ClearThrottleStateForTesting();
+
     private static IConfiguration CreateConfig(string? apiKey = "fake-key", bool enabled = true)
     {
         var inMemorySettings = new Dictionary<string, string?>

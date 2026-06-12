@@ -43,12 +43,16 @@ public class AiAssistantService : IAiAssistantService
         return true;
     }
 
+    /// <summary>Test-only: clears static throttle state between unit tests.</summary>
+    internal static void ClearThrottleStateForTesting() => _lastAiCall.Clear();
+
     public AiAssistantService(
         IConfiguration config,
         ILogger<AiAssistantService> logger,
         ITenantService? tenantService = null,
         ITenantProvider? tenantProvider = null,
-        IQuotaService? quotaService = null)
+        IQuotaService? quotaService = null,
+        HttpClient? httpClient = null)
     {
         _logger = logger;
         _tenantService = tenantService;
@@ -64,14 +68,16 @@ public class AiAssistantService : IAiAssistantService
         bool enabled = bool.TryParse(aiSection["Enabled"], out var e) ? e : true;
         IsConfigured = enabled && !string.IsNullOrWhiteSpace(_apiKey);
 
-        // Simple HttpClient for the LLM calls (infrequent, scoped lifetime is acceptable here)
-        _httpClient = new HttpClient
+        _httpClient = httpClient ?? new HttpClient
         {
             BaseAddress = new Uri(_baseUrl + "/"),
             Timeout = TimeSpan.FromSeconds(_timeoutSeconds)
         };
 
-        if (IsConfigured)
+        if (_httpClient.BaseAddress == null)
+            _httpClient.BaseAddress = new Uri(_baseUrl + "/");
+
+        if (IsConfigured && _httpClient.DefaultRequestHeaders.Authorization == null)
         {
             _httpClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", _apiKey);
