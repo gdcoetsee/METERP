@@ -2,9 +2,21 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
-**This session completed Phase 2 E2E execution (6/6 green) and meaningful Phase 5 production hardening.**
+**Phase 2 complete. Phase 3 AI apply + Phase 5 health/AI rate-limit advanced (2026-06-12 continued).**
 
-### Exact Work Completed in This Session (2026-06-12)
+### Exact Work Completed — Continued Session (2026-06-12, commits after aa0a146)
+- **Phase 3 — AI apply logic**:
+  - New `IAiQuoteApplyService` + `AiQuoteApplyService` (structured suggestion lines + explicit travel fallback).
+  - `AICopilot.razor` delegates `CreateQuoteFromAiText` to service (logic out of Razor).
+  - `AiQuoteApplyServiceTests.cs` — 5 tests (suggestions, fallback travel, error paths).
+- **Phase 5 — continued**:
+  - `METERP.Web.Tests` with `WebApplicationFactory` — `/health` + `/health/ready` integration tests (2 green).
+  - `Program.cs`: Testing env uses EF InMemory + skips seeder; AI Copilot path rate limit 30/min.
+  - `docker-compose.yml`: documented optional Seq service block.
+  - E2E convert test hardened (job detail view asserts J-/Q-/travel).
+- **Testing**: **65/65 green** (57 unit + 2 web integration + 6 E2E).
+
+### Exact Work Completed in This Session (2026-06-12, commits d689951 + aa0a146)
 - **E2E (Phase 2) — EXECUTED & VERIFIED**:
   - Ran full E2E suite against live app at `http://localhost:8080` (docker unavailable in agent env; app was already running locally).
   - **6/6 Playwright tests passed** (~24s): Login, AI quote+travel+PDF, quote→job, job→invoice, multi-tenant isolation, notifications.
@@ -52,20 +64,17 @@
   - Verified: `dotnet build` E2E clean, units 35 green after every step.
 
 ### Current Exact State (pick up here)
-- **Testing**: **58/58 green** — 52 unit tests (spine, AI guards, TenantService increments, quota, finance, etc.) + **6 E2E tests executed and passing**.
-- **Phase 2**: **Complete** — E2E code + execution verified locally.
-- **Phase 5**: **Partially complete** — Serilog (console/file/Seq + request logging + tenant middleware), health checks (`/health`, `/health/ready` with JSON), rate limiting, `.env.example`, counter reliability (scoped increments + tests), login-complete gated. Remaining: Seq in docker-compose, WebApplicationFactory health tests, quota enforcement, real email/2FA.
-- **Codebase**: Core spine solid. AI has guards + E2E coverage. Demo paths preserved.
+- **Testing**: **65/65 green** — 57 unit + 2 web integration + 6 E2E.
+- **Phase 2**: **Complete**.
+- **Phase 3**: **AI apply started** — `AiQuoteApplyService` + 5 unit tests; remaining: feature-gating integration test, `CreateJobFromAiText` extraction.
+- **Phase 5**: **Mostly complete** — Serilog, health JSON + Web.Tests, AI page rate limit (30/min), counters, login-complete gate, Seq documented in compose. Remaining: enable Seq in compose, quota UI enforcement, real email/2FA.
+- **Git**: `d689951` E2E, `aa0a146` production hardening; next commits for Phase 3 + Phase 5 continuation.
 
 ### Immediate Next Steps for Cursor (Start Here to Continue Exactly)
-1. **Phase 3 — AI apply logic tests**: Test `CreateQuoteFromAiText` path (QuoteService integration, travel line fallback, feature gating, counter side effects).
-2. **Phase 5 — remaining production items**:
-   - Optional Seq service in docker-compose for structured log aggregation.
-   - WebApplicationFactory test for `/health` + `/health/ready`.
-   - AI-specific rate limiter partition (global 300/min exists; consider tighter AI path).
-   - Quota enforcement beyond `QuotaServiceTests` (UI visibility).
-3. **Phase 4**: Supporting module test coverage (Inventory, Opportunities, Notifications service layer).
-4. Run `dotnet test` before any commit. Update this plan after each chunk.
+1. **Phase 3**: Extract `CreateJobFromAiText`; add feature-gating test for apply when `HasFeature("ai")` false.
+2. **Phase 5**: Uncomment Seq in docker-compose when log aggregation needed; quota enforcement in UI.
+3. **Phase 4**: Supporting module tests (Inventory, Opportunities, Notifications service).
+4. Run `dotnet test` before any commit.
 
 **Key files for continuity**: This COMPLETION_PLAN.md (always read top first), AGENTS.md, .cursor/rules/meterp-*.mdc, the E2E files (helpers + stub), AiAssistantServiceTests.cs, and recently touched Razor files (for data-testid).
 
@@ -186,6 +195,10 @@ Goal: Every important method on Quote/Job/Invoice services + the conversion flow
 - **Exit:** ✅ At least the 4-5 key flows have working, non-flaky E2E tests that can run locally and in CI. **Phase 2 exit criteria met.**
 
 ## Phase 3: AI Copilot & Commercial Features — Full Test Coverage
+**Progress (2026-06-12 continued):**
+- `IAiQuoteApplyService` / `AiQuoteApplyService` — apply logic extracted from AICopilot; travel fallback + structured lines.
+- `AiQuoteApplyServiceTests` — 5 tests. Units now 57 + 2 web + 6 E2E = 65 total.
+
 **Progress (started after E2E stabilization):**
 - Created `AiAssistantServiceTests.cs` with coverage for:
   - `IsConfigured` (key + enabled flag).

@@ -95,8 +95,17 @@ public class E2EFlowTests : IAsyncLifetime
         await page.ClickByTestIdAsync("convert-to-job");
 
         await page.WaitForURLAsync("**/jobs**", new() { Timeout = 15000 });
+        await page.WaitForTestIdAsync("jobs-table", 15000);
+
+        var jobTravelRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await jobTravelRow.CountAsync() == 0)
+            jobTravelRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+
+        await jobTravelRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
 
         var content = await page.ContentAsync();
+        Assert.Contains("J-", content);
         Assert.Contains("Q-", content);
         Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
 

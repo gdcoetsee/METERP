@@ -15,6 +15,8 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       # Connection string uses docker service name "postgres" as host. This overrides appsettings.
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=METERP;Username=postgres;Password=postgres;Port=5432
+      # Optional structured log aggregation (uncomment when using seq service below).
+      # - Seq__ServerUrl=http://seq:5341
       # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
       # - METERP_SEED_RESET=true
       # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.
@@ -45,5 +47,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Optional: Seq structured log viewer (enable Seq__ServerUrl on web service above).
+  # seq:
+  #   image: datalust/seq:2024.3
+  #   ports:
+  #     - "5341:80"
+  #   environment:
+  #     - ACCEPT_EULA=Y
+  #   volumes:
+  #     - seq_data:/data
+
 volumes:
   postgres_data:
+  # seq_data:

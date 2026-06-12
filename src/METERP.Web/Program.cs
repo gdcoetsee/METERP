@@ -86,6 +86,7 @@ builder.Services.AddHealthChecks()
 
 // === AI Assistant (optional - powers smart quoting & post-job learning) ===
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
+builder.Services.AddScoped<IAiQuoteApplyService, AiQuoteApplyService>();
 
 // === HTTP rate limiting (complements in-service AI throttle) ===
 builder.Services.AddRateLimiter(options =>
@@ -101,6 +102,21 @@ builder.Services.AddRateLimiter(options =>
     {
         if (httpContext.Request.Path.StartsWithSegments("/health"))
             return RateLimitPartition.GetNoLimiter("health");
+
+        // Tighter limit on AI Copilot page loads (complements in-service AI throttle).
+        if (httpContext.Request.Path.StartsWithSegments("/ai-copilot"))
+        {
+            var aiKey = httpContext.User.Identity?.IsAuthenticated == true
+                ? $"ai-user:{httpContext.User.Identity.Name}"
+                : $"ai-ip:{httpContext.Connection.RemoteIpAddress}";
+
+            return RateLimitPartition.GetFixedWindowLimiter(aiKey, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+        }
 
         var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
             ? httpContext.User.Identity.Name ?? "authenticated"
@@ -119,9 +135,17 @@ builder.Services.AddRateLimiter(options =>
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
                        ?? "Host=localhost;Database=METERP;Username=postgres;Password=CHANGE_ME;Port=5432";
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString)
-           .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning)));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseInMemoryDatabase("meterp-integration-tests"));
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseNpgsql(connectionString)
+               .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning)));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
+}
 
 // === ASP.NET Core Identity + Multi-tenancy ===
 // (Serilog already configured above for structured + file logging. Rate limiter comment remains for AI cost control.)
@@ -242,7 +266,8 @@ builder.Services.AddAuthorization(options =>
 // For development/demo only: ensure DB + seed data (idempotent by default).
 // Safe by default (no destructive drops). Use METERP_SEED_RESET=true or config "Seed:ForceResetOnStart" for full reset after schema work.
 // In production, disable the seeder (comment out or gate behind environment).
-builder.Services.AddHostedService<DatabaseSeeder>();
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddHostedService<DatabaseSeeder>();
 
 var app = builder.Build();
 
