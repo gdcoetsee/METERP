@@ -18,6 +18,7 @@ public static class E2EHelpers
     {
         var url = baseUrl ?? BaseUrl;
         var page = await browser.NewPageAsync();
+        page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
 
         // Use login-complete endpoint (same as production forceLoad path) — reliable vs Blazor @bind in Playwright.
         var loginEmail = email ?? AcmeEmail;
@@ -106,6 +107,20 @@ public static class E2EHelpers
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Resets a Sent convertible quote with travel (Development endpoint).
+    /// </summary>
+    public static async Task<string?> EnsureConvertibleQuoteAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-convertible-quote", null);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("quoteNumber", out var prop) ? prop.GetString() : null;
+    }
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
@@ -117,7 +132,11 @@ public static class E2EHelpers
                 var response = await client.GetAsync($"{url}/health/ready");
                 if (response.IsSuccessStatusCode)
                 {
-                    try { await EnsureReceiveDemoPoAsync(url); }
+                    try
+                    {
+                        await EnsureReceiveDemoPoAsync(url);
+                        await EnsureConvertibleQuoteAsync(url);
+                    }
                     catch { /* optional in non-Development hosts */ }
                     return;
                 }

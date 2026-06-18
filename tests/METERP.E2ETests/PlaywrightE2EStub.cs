@@ -144,8 +144,12 @@ public class E2EFlowTests : IAsyncLifetime
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
-        var firstRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
-        await firstRow.GetByRole(AriaRole.Button, new() { Name = "Edit" }).ClickAsync();
+        var draftRow = page.Locator("[data-testid='quotes-table'] tbody tr")
+            .Filter(new() { HasText = "Draft" })
+            .First;
+        if (await draftRow.CountAsync() == 0)
+            draftRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
+        await draftRow.GetByRole(AriaRole.Button, new() { Name = "Edit" }).ClickAsync();
         await page.WaitForTestIdAsync("quote-editor", 15000);
 
         var content = await page.ContentAsync();
@@ -341,20 +345,30 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
+        var quoteNumber = await E2EHelpers.EnsureConvertibleQuoteAsync();
+        Assert.False(string.IsNullOrWhiteSpace(quoteNumber));
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
 
-        var travelRow = page.Locator("[data-testid='quote-row-with-travel-convertible']").First;
-        if (await travelRow.CountAsync() == 0)
-            travelRow = page.Locator("[data-testid='quote-row-convertible']").First;
-        if (await travelRow.CountAsync() == 0)
-            travelRow = page.Locator("[data-testid='quote-row-with-travel']").First;
-        if (await travelRow.CountAsync() == 0)
-            travelRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
+        var travelRow = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
+        await Assertions.Expect(travelRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
 
-        await travelRow.Locator("[data-testid='quote-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("convert-to-job", 15000);
+        for (var openAttempt = 0; openAttempt < 3; openAttempt++)
+        {
+            await travelRow.Locator("[data-testid='quote-view-button']").ClickAsync();
+            try
+            {
+                await page.WaitForTestIdAsync("quote-editor", 10000);
+                break;
+            }
+            catch (TimeoutException) when (openAttempt < 2)
+            {
+                await page.GotoRelativeAsync("/quotes");
+                await page.WaitForTestIdAsync("quotes-table", 30000);
+            }
+        }
+        await page.WaitForTestIdAsync("convert-to-job", 20000);
         await page.ClickByTestIdAsync("convert-to-job");
 
         // Blazor Server may not always trigger Playwright navigation events; allow either full or client-side nav.
@@ -401,21 +415,55 @@ public class E2EFlowTests : IAsyncLifetime
         await page.GotoRelativeAsync("/jobs");
         await page.WaitForTestIdAsync("jobs-table");
 
-        var travelRow = page.Locator("[data-testid='job-row-with-travel']").First;
-        if (await travelRow.CountAsync() == 0)
-            travelRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+        ILocator? travelRow = null;
+        for (var attempt = 0; attempt < 15 && travelRow == null; attempt++)
+        {
+            var demoCandidate = page.Locator("[data-testid='job-row-e2e-invoice-demo']").First;
+            if (await demoCandidate.CountAsync() > 0)
+            {
+                travelRow = demoCandidate;
+                break;
+            }
 
-        await travelRow.Locator("[data-testid='job-view-button']").ClickAsync();
+            var next = page.GetByRole(AriaRole.Button, new() { Name = "Next" });
+            if (await next.CountAsync() == 0 || await next.IsDisabledAsync())
+                break;
+
+            await next.ClickAsync();
+            await page.WaitForTestIdAsync("jobs-table", 10000);
+        }
+
+        Assert.NotNull(travelRow);
+        await travelRow!.Locator("[data-testid='job-view-button']").ClickAsync();
         await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
         await page.ClickByTestIdAsync("create-invoice-from-job-detail");
 
         await page.WaitForURLAsync("**/invoices**", new() { Timeout = 30000 });
-        await page.WaitForAppReadyAsync(30000);
         await page.WaitForTestIdAsync("invoices-table", 30000);
-        await page.Locator("[data-testid='invoices-table'] tbody tr").First
-            .Locator("[data-testid='view-invoice']").ClickAsync();
-        await page.WaitForTestIdAsync("invoice-line-items-header", 10000);
 
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Invoice" }).First;
+        if (await toast.CountAsync() > 0)
+        {
+            var toastText = await toast.TextContentAsync() ?? string.Empty;
+            var invMatch = Regex.Match(toastText, @"INV-\d{4}-[A-Z0-9]+");
+            if (invMatch.Success)
+            {
+                await page.Locator("[data-testid='invoices-table'] tbody tr")
+                    .Filter(new() { HasText = invMatch.Value })
+                    .First
+                    .Locator("[data-testid='view-invoice']").ClickAsync();
+            }
+        }
+
+        if (await page.Locator("[data-testid='invoice-line-items-header']").CountAsync() == 0)
+        {
+            await page.Locator("[data-testid='invoices-table'] tbody tr")
+                .Filter(new() { HasText = "Hospital" })
+                .First
+                .Locator("[data-testid='view-invoice']").ClickAsync();
+        }
+
+        await page.WaitForTestIdAsync("invoice-line-items-header", 15000);
         var content = await page.ContentAsync();
         Assert.Contains("INV-", content);
         Assert.Contains("Travel", content, StringComparison.OrdinalIgnoreCase);
@@ -847,18 +895,29 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Shows_Convert_After_Quote_To_Job()
     {
+        await E2EHelpers.EnsureConvertibleQuoteAsync();
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
-        var convertible = page.Locator("[data-testid='quote-row-with-travel-convertible']").First;
-        if (await convertible.CountAsync() == 0)
-            convertible = page.Locator("[data-testid='quote-row-convertible']").First;
-        if (await convertible.CountAsync() == 0)
-            convertible = page.Locator("[data-testid='quotes-table'] tbody tr").First;
+        var convertible = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
+        await Assertions.Expect(convertible).ToHaveCountAsync(1, new() { Timeout = 20000 });
 
-        await convertible.Locator("[data-testid='quote-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("convert-to-job", 15000);
+        for (var openAttempt = 0; openAttempt < 3; openAttempt++)
+        {
+            await convertible.Locator("[data-testid='quote-view-button']").ClickAsync();
+            try
+            {
+                await page.WaitForTestIdAsync("quote-editor", 10000);
+                break;
+            }
+            catch (TimeoutException) when (openAttempt < 2)
+            {
+                await page.GotoRelativeAsync("/quotes");
+                await page.WaitForTestIdAsync("quotes-table", 30000);
+            }
+        }
+        await page.WaitForTestIdAsync("convert-to-job", 20000);
         await page.ClickByTestIdAsync("convert-to-job");
 
         try
@@ -1046,7 +1105,9 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task PurchaseOrders_Receive_Updates_Inventory()
     {
+        await E2EHelpers.EnsureReceiveDemoPoAsync();
         var page = await _browser.LoginAsync();
+        page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
         await page.GotoRelativeAsync("/inventory");
         try
         {
@@ -1092,16 +1153,23 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.NotNull(sentRow);
         await sentRow!.WaitForAsync(new() { Timeout = 5000 });
 
-        page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
-        await sentRow.First.Locator("[data-testid='purchase-order-receive']").ClickAsync();
-
-        await page.Locator(".toast-body")
-            .Filter(new() { HasText = "PO received" })
-            .First
-            .WaitForAsync(new() { Timeout = 15000 });
+        var receiveButton = sentRow.Locator("[data-testid='purchase-order-receive']");
+        await receiveButton.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
+        await receiveButton.ClickAsync();
 
         var receivedRow = poBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" }).First;
-        await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 10000 });
+        try
+        {
+            await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 20000 });
+        }
+        catch (Exception)
+        {
+            await page.Locator(".toast-body")
+                .Filter(new() { HasText = "PO received" })
+                .First
+                .WaitForAsync(new() { Timeout = 10000 });
+            await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 10000 });
+        }
 
         await page.GotoRelativeAsync("/inventory");
         await page.WaitForTestIdAsync("inventory-table", 30000);
@@ -1169,6 +1237,27 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Assets_Search_FiltersByName()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/assets");
+        await page.WaitForTestIdAsync("assets-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='assets-table'] tbody");
+        await page.FillByTestIdAsync("assets-search", "Transformer");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "11kV/400V Transformer" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+        await page.FillByTestIdAsync("assets-search", "Warehouse");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Warehouse LV Distribution Board" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+        await page.FillByTestIdAsync("assets-search", "Transformer");
+        await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Warehouse LV Distribution Board" })).ToHaveCountAsync(0);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Employees_Page_Loads_Demo_Staff()
     {
         var page = await _browser.LoginAsync();
@@ -1178,6 +1267,27 @@ public class E2EFlowTests : IAsyncLifetime
         var tableBody = page.Locator("[data-testid='employees-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1);
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johan" })).ToHaveCountAsync(1);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Employees_Search_FiltersByName()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/employees");
+        await page.WaitForTestIdAsync("employees-table", 30000);
+
+        var tableBody = page.Locator("[data-testid='employees-table'] tbody");
+        await page.FillByTestIdAsync("employees-search", "Johan");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-002" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+        await page.FillByTestIdAsync("employees-search", "Thabo");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+        await page.FillByTestIdAsync("employees-search", "Johan");
+        await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(0);
 
         await page.CloseAsync();
     }

@@ -1,30 +1,39 @@
 # METERP Completion & Full Testing Plan
 
-## 📋 SESSION 40 PLAN (Approved 2026-06-13 — **NOT STARTED**, awaiting user go-ahead)
+## 📋 SESSION 40 — COMPLETE (2026-06-18)
 
-**Baseline:** Session 39 complete — **276/276 green** (228 unit + 11 web + 37 E2E). Latest commit: `dd69b96`.
+**Baseline delivered:** **294/294 green** (238 unit + 11 web + 45 E2E). Commits: `01ba331` (GP pricing, AI settings) + session 40b (convertible quote seeder, CRM search E2E, quota/E2E stability).
 
-**User intent:** Manual exploration first (run app, review E2E, check recent changes). Agent must **not execute** until explicitly told.
+### Session 40 deliverables
+- **Quote GP pricing:** `UnitCost`, `GrossProfitPercent`, blended margin UI; `QuotePricing` + unit tests.
+- **Tenant AI settings:** `/settings/ai`, `TenantAiSettingsService`, `AiConfigurationResolver`.
+- **Blazor fixes:** async Redis cache invalidation; `UpdateLineAsync` tracked-entity patch; convert-to-job visible in view mode.
+- **E2E hardening:** `E2EReceiveDemoPoSeeder` + endpoint; customer search-based assertions; `E2EConvertibleQuoteSeeder` + `/e2e/ensure-convertible-quote` (fixes convert-to-job data exhaustion).
+- **Phase B (partial):** `Assets_Search_FiltersByName` + `Employees_Search_FiltersByName` E2E.
 
-**Planned order when execution begins:**
+### Next session priorities (credit-efficient)
+1. **Sales Order → Job conversion E2E** + `sales-order-convert-to-job` test ids on [`SalesOrders.razor`](src/METERP.Web/Components/Pages/SalesOrders.razor).
+2. **Stretch:** quota-exceeded toast E2E; scheduling/audit E2E flakes if full suite regresses.
+3. **Phase C — Production hardening:** Concurrent `TenantService` increment test; secrets audit; Serilog tenant logging verification.
 
-1. **Phase A — Stabilize E2E:** Full `dotnet test`; CI-parity run via `docker compose up` + `Category=E2E`; fix flakes only on failure evidence (PO receive, notifications, 2FA, scheduling).
-2. **Phase B — E2E gaps (priority):**
-   - Sales Order → Job conversion E2E + `sales-order-convert-to-job` test ids on [`SalesOrders.razor`](src/METERP.Web/Components/Pages/SalesOrders.razor).
-   - `Assets_Search_FiltersByName` + `Employees_Search_FiltersByName` (mirror Customers pattern).
-   - Stretch: quota-exceeded toast E2E.
-3. **Phase C — Production hardening:** Concurrent `TenantService` increment test; secrets audit (`.env.example`, no committed secrets); verify Serilog tenant logging + health JSON.
-4. **Per chunk:** `dotnet test` → update this handoff → commit with session prefix + test counts.
-
-**Target outcome:** 279–281+ tests green; stable docker-compose E2E; SO→Job spine gap closed.
+**Per chunk:** `dotnet test` → update this handoff → commit with session prefix + test counts.
 
 ---
 
-## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
+## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-18 session)
 
-**CRM module E2E — Customers, Assets, Employees (2026-06-12 latest).**
+**Session 40 complete — Quote GP, AI settings, E2E stability, CRM search tests.**
 
-### Exact Work Completed — Latest (2026-06-12, continue-the-plan session 39)
+### Exact Work Completed — Latest (2026-06-18, session 40)
+- **Quote GP pricing + Blazor:** inline unit cost / GP% / blended margin; `QuoteUiHelper.DetachForUi`; cache deadlock fix.
+- **Tenant AI settings:** `AiSettings.razor`, migrations, resolver profiles.
+- **E2E stability:** `E2EConvertibleQuoteSeeder` + `POST /e2e/ensure-convertible-quote`; called from `EnsureAppReadyAsync` + startup seed.
+- **Phase 2 E2E:**
+  - `Assets_Search_FiltersByName` (38th) — Transformer / Warehouse filter assertions.
+  - `Employees_Search_FiltersByName` (39th) — Johan / Thabo filter assertions.
+- **Testing**: **294/294 green** (238 unit + 11 web + 45 E2E).
+
+### Exact Work Completed — Prior (2026-06-12, continue-the-plan session 39)
 - **Phase 4 — CRM / HR / Assets UI markers**:
   - `Customers.razor`: `customers-ready`, `customers-table`, `customers-search`; `_customersLoadGeneration`.
   - `Assets.razor`: `assets-ready`, `assets-table`, `assets-search`; `_assetsLoadGeneration`.

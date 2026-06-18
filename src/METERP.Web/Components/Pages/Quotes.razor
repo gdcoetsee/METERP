@@ -35,7 +35,7 @@
 
 <div class="mb-3" style="max-width: 480px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search quote #, customer or notes..."
+        <input type="search" class="form-control" data-testid="quotes-search" placeholder="Search quote #, customer or notes..."
                value="@searchTerm" @oninput="OnSearchInput" disabled="@_pageBusy" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {

@@ -3,6 +3,7 @@
    Avoids putting heavy markup in gateway pages to prevent Razor parser issues.
 *@
 @using METERP.Domain
+@using METERP.Infrastructure.Seeding
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
 
@@ -146,6 +147,9 @@ else
 
     private static string GetJobRowTestId(Job j)
     {
+        if (j.Notes != null && j.Notes.Contains(E2EDemoInvoiceJobSeeder.DemoNotesMarker, StringComparison.OrdinalIgnoreCase))
+            return "job-row-e2e-invoice-demo";
+
         var hasTravel = (j.ActualCosts ?? new List<JobCost>())
             .Any(c => !c.IsDeleted && c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase));
         return hasTravel ? "job-row-with-travel" : "job-row";

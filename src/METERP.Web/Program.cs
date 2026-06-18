@@ -423,6 +423,24 @@ if (app.Environment.IsDevelopment())
 
         return Results.Ok(new { ok = true });
     }).DisableRateLimiting();
+
+    app.MapPost("/e2e/ensure-convertible-quote", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        var quoteNumber = await E2EConvertibleQuoteSeeder.EnsureSentConvertibleQuoteAsync(
+            scope.ServiceProvider.GetRequiredService<IQuoteService>(),
+            scope.ServiceProvider.GetRequiredService<ICustomerService>(),
+            scope.ServiceProvider.GetRequiredService<ITenantProvider>(),
+            tenant.Id,
+            ct);
+
+        return Results.Ok(new { ok = true, quoteNumber });
+    }).DisableRateLimiting();
 }
 
 app.MapPost("/webhooks/stripe", async (
@@ -560,7 +578,10 @@ public class DatabaseSeeder : IHostedService
             if (demoTenant != null)
             {
                 demoTenant.Tier = SubscriptionTier.Professional;
-                demoTenant.MaxQuotesPerMonth = null;
+                demoTenant.MaxQuotesPerMonth = 10_000;
+                demoTenant.MaxJobsPerMonth = 10_000;
+                demoTenant.MaxInvoicesPerMonth = 10_000;
+                demoTenant.MaxAiCallsPerMonth = 10_000;
                 demoTenant.MaxJobsPerMonth = null;
                 demoTenant.MaxInvoicesPerMonth = null;
                 demoTenant.MaxAiCallsPerMonth = null;
@@ -576,13 +597,13 @@ public class DatabaseSeeder : IHostedService
             var acme = await tenantService.GetBySubdomainAsync("acme", cancellationToken);
             if (acme != null)
             {
-                if (acme.Tier != SubscriptionTier.Professional)
+                if (acme.Tier != SubscriptionTier.Professional || acme.MaxQuotesPerMonth is null or < 10_000)
                 {
                     acme.Tier = SubscriptionTier.Professional;
-                    acme.MaxQuotesPerMonth = null;
-                    acme.MaxJobsPerMonth = null;
-                    acme.MaxInvoicesPerMonth = null;
-                    acme.MaxAiCallsPerMonth = null;
+                    acme.MaxQuotesPerMonth = 10_000;
+                    acme.MaxJobsPerMonth = 10_000;
+                    acme.MaxInvoicesPerMonth = 10_000;
+                    acme.MaxAiCallsPerMonth = 10_000;
                 }
 
                 if (string.IsNullOrWhiteSpace(acme.EnabledFeatures) || !acme.HasFeature("ai"))
@@ -925,6 +946,8 @@ public class DatabaseSeeder : IHostedService
                 }, cancellationToken);
 
                 // Put the job into progress for demo
+                createdJob.Notes = E2EDemoInvoiceJobSeeder.DemoNotesMarker;
+                await jobService.UpdateAsync(createdJob, cancellationToken);
                 await jobService.UpdateStatusAsync(createdJob.Id, JobStatus.InProgress, cancellationToken);
 
                 // Add sample labor entries
@@ -1224,6 +1247,8 @@ public class DatabaseSeeder : IHostedService
             tenantProvider,
             defaultTenantId,
             cancellationToken);
+
+        await E2EDemoInvoiceJobSeeder.EnsureDemoInvoiceJobTaggedAsync(jobService, cancellationToken);
 
         // Idempotent low-stock demo item (inventory filter E2E + low-stock alerts).
         tenantProvider.SetTenantId(defaultTenantId);

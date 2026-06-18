@@ -2,6 +2,7 @@
    Parent provides the data list + handles loading/search/pagination/detail.
 *@
 @using METERP.Domain
+@using METERP.Infrastructure.Seeding
 @using Microsoft.AspNetCore.Components
 
 @if (Quotes == null || !Quotes.Any())
@@ -77,6 +78,10 @@ else
     {
         var hasTravel = q.Lines?.Any(l => !l.IsDeleted && l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)) == true;
         var convertible = q.Status is QuoteStatus.Draft or QuoteStatus.Sent;
+        if (convertible
+            && q.Notes != null
+            && q.Notes.Contains(E2EConvertibleQuoteSeeder.DemoNotesMarker, StringComparison.OrdinalIgnoreCase))
+            return "quote-row-e2e-convertible";
         if (hasTravel && convertible) return "quote-row-with-travel-convertible";
         if (hasTravel) return "quote-row-with-travel";
         if (convertible) return "quote-row-convertible";
