@@ -32,6 +32,11 @@ public class Quote : BaseEntity
     /// </summary>
     public decimal TaxRate { get; set; } = 0.15m;
 
+    /// <summary>
+    /// Target gross profit margin on revenue (e.g. 0.25 = 25%). Used to derive sell price from unit cost.
+    /// </summary>
+    public decimal GrossProfitPercent { get; set; } = 0.25m;
+
     public decimal Tax { get; set; }
 
     public decimal Total { get; set; }

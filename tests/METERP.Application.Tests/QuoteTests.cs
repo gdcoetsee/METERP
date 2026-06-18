@@ -242,6 +242,44 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_UpdateLineAsync_WorksWhenLineAlreadyTracked()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var service = new QuoteService(db, null);
+        var quoteId = await service.CreateAsync(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0.15m,
+            Lines =
+            [
+                new QuoteLine { Description = "Tracked edit", Quantity = 1, UnitPrice = 100 }
+            ]
+        });
+
+        var line = await db.Set<QuoteLine>().FirstAsync(l => l.QuoteId == quoteId);
+        _ = await db.Set<Quote>().Include(q => q.Lines).FirstAsync(q => q.Id == quoteId);
+
+        await service.UpdateLineAsync(new QuoteLine
+        {
+            Id = line.Id,
+            QuoteId = quoteId,
+            Description = line.Description,
+            Quantity = 1,
+            UnitPrice = 200
+        });
+
+        var reloaded = await db.Set<Quote>()
+            .Include(q => q.Lines)
+            .FirstAsync(q => q.Id == quoteId);
+
+        Assert.Equal(200m, reloaded.Lines.First(l => !l.IsDeleted).UnitPrice);
+        Assert.Equal(230m, reloaded.Total);
+    }
+
+    [Fact]
     public async Task QuoteService_DeleteAsync_SoftDeletesQuoteAndLines()
     {
         var tenantId = Guid.NewGuid();
@@ -387,5 +425,40 @@ public class QuoteTests
         Assert.Equal("Quote", convertEntry.EntityType);
         Assert.Equal("Q-AUDIT-001", convertEntry.EntityReference);
         Assert.Contains("travel", convertEntry.Details, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task QuoteService_AddLineAsync_PersistsPerLineGrossProfitPercent()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0m,
+            Lines = new List<QuoteLine>()
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+        var line = new QuoteLine
+        {
+            QuoteId = quote.Id,
+            Description = "GP line",
+            Quantity = 1,
+            UnitCost = 100m,
+            GrossProfitPercent = 0.40m,
+            UnitPrice = QuotePricing.SellPriceFromCost(100m, 0.40m),
+            IsDeleted = false
+        };
+
+        await service.AddLineAsync(line);
+
+        var reloaded = await db.Set<QuoteLine>().FirstAsync(l => l.Id == line.Id);
+        Assert.Equal(0.40m, reloaded.GrossProfitPercent);
+        Assert.Equal(166.67m, reloaded.UnitPrice);
     }
 }

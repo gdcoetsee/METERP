@@ -57,6 +57,13 @@ public class Tenant : BaseEntity
     /// <summary>Optional email for operational alerts (invoice created, low stock). Falls back to Email:DefaultNotificationTo.</summary>
     public string? NotificationEmail { get; set; }
 
+    // === Per-tenant AI BYOK (optional override of deployment Ai:* settings) ===
+    public string? AiProvider { get; set; }
+    public string? AiApiKeyEncrypted { get; set; }
+    public string? AiBaseUrl { get; set; }
+    public string? AiModel { get; set; }
+    public bool AiUseTenantKey { get; set; }
+
     // === Simple feature flag stub for sellable / tiered features (per README) ===
     // Comma-separated for demo (e.g. "ai,usage-tracking,advanced-reports"). In prod: proper flags service.
     public string EnabledFeatures { get; set; } = "ai,usage-tracking";

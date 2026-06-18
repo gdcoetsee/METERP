@@ -1,0 +1,187 @@
+@page "/settings/ai"
+@using METERP.Application.Services
+@using METERP.Common
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "Tenants.Manage")]
+@inject ITenantAiSettingsService AiSettingsService
+@inject IAiConfigurationResolver ConfigResolver
+@inject ToastService ToastService
+
+<PageTitle>AI Settings</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>AI Settings</h1>
+        <p class="text-muted mb-0">Configure your tenant's AI provider. Deployment defaults apply when tenant override is off.</p>
+    </div>
+    @if (effectiveConfigured)
+    {
+        <span class="badge bg-success">AI Configured</span>
+    }
+    else
+    {
+        <span class="badge bg-warning text-dark">Not Configured</span>
+    }
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading settings...</em></p>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="useTenantKey" @bind="useTenantKey" data-testid="ai-use-tenant-key" />
+                    <label class="form-check-label" for="useTenantKey">Use tenant API key (override deployment default)</label>
+                </div>
+                <small class="text-muted">When off, METERP uses the platform <code>Ai__*</code> environment variables (e.g. docker-compose <code>.env</code>).</small>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Provider</label>
+                    <select class="form-select" @bind="provider" @bind:after="OnProviderChanged" data-testid="ai-provider-select">
+                        @foreach (var p in AiProviderProfiles.All)
+                        {
+                            <option value="@p">@p</option>
+                        }
+                    </select>
+                    <small class="text-muted">@providerHint</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Base URL</label>
+                    <input class="form-control" @bind="baseUrl" placeholder="https://api.x.ai/v1" data-testid="ai-base-url" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Model</label>
+                    <input class="form-control" @bind="model" placeholder="grok-3-mini" data-testid="ai-model" />
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <label class="form-label">API Key</label>
+                <input type="password" class="form-control" @bind="apiKeyInput" placeholder="Enter new key to update" autocomplete="off" data-testid="ai-api-key" />
+                @if (hasStoredKey)
+                {
+                    <small class="text-muted">Stored key: @maskedKey — leave blank to keep existing.</small>
+                }
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving" data-testid="ai-settings-save">Save Settings</button>
+                <button class="btn btn-outline-secondary" @onclick="TestConnection" disabled="@_testing" data-testid="ai-test-connection">Test Connection</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(testMessage))
+            {
+                <div class="alert @(testSuccess ? "alert-success" : "alert-danger") mt-3 mb-0" role="alert">@testMessage</div>
+            }
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header"><strong>Provider quick reference</strong></div>
+        <div class="card-body small">
+            <p class="mb-2">METERP uses the <strong>OpenAI-compatible</strong> <code>/chat/completions</code> API. Your Google AI Studio curl uses a different native URL (<code>generateContent</code>) — use the preset below instead; the same <code>AIza...</code> key works.</p>
+            <ul class="mb-0">
+                <li><strong>Google Gemini (Free):</strong> <code>https://generativelanguage.googleapis.com/v1beta/openai</code> + <code>gemini-flash-latest</code></li>
+                <li><strong>Groq (Free tier):</strong> <code>https://api.groq.com/openai/v1</code> + <code>llama-3.3-70b-versatile</code></li>
+                <li><strong>Ollama (Local, Free):</strong> <code>http://localhost:11434/v1</code> + <code>llama3</code></li>
+                <li><strong>OpenRouter:</strong> free models e.g. <code>google/gemini-2.0-flash-exp:free</code></li>
+                <li><strong>Grok (xAI):</strong> requires paid API credits at console.x.ai (X Premium does not include API)</li>
+                <li><strong>OpenAI:</strong> <code>https://api.openai.com/v1</code> + <code>gpt-4o-mini</code></li>
+            </ul>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private bool _testing;
+    private bool effectiveConfigured;
+
+    private string provider = AiProviderProfiles.GoogleGemini;
+    private string baseUrl = "";
+    private string model = "";
+    private bool useTenantKey;
+    private string apiKeyInput = "";
+    private string maskedKey = "";
+    private bool hasStoredKey;
+    private string providerHint = "";
+    private string? testMessage;
+    private bool testSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await AiSettingsService.GetCurrentTenantSettingsAsync();
+        provider = settings.Provider;
+        baseUrl = settings.BaseUrl;
+        model = settings.Model;
+        useTenantKey = settings.UseTenantKey;
+        maskedKey = settings.MaskedApiKey ?? "(not set)";
+        hasStoredKey = settings.HasStoredKey;
+        OnProviderChanged();
+
+        var effective = await ConfigResolver.GetEffectiveAsync();
+        effectiveConfigured = effective.IsConfigured;
+        _loading = false;
+    }
+
+    private void OnProviderChanged()
+    {
+        var preset = AiProviderProfiles.GetPreset(provider);
+        providerHint = preset.Hint;
+        if (provider != AiProviderProfiles.Custom)
+        {
+            baseUrl = preset.BaseUrl;
+            model = preset.Model;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        _saving = true;
+        try
+        {
+            await AiSettingsService.SaveCurrentTenantSettingsAsync(
+                provider, baseUrl, model, useTenantKey,
+                string.IsNullOrWhiteSpace(apiKeyInput) ? null : apiKeyInput);
+            apiKeyInput = "";
+            var settings = await AiSettingsService.GetCurrentTenantSettingsAsync();
+            maskedKey = settings.MaskedApiKey ?? "(not set)";
+            hasStoredKey = settings.HasStoredKey;
+            effectiveConfigured = (await ConfigResolver.GetEffectiveAsync()).IsConfigured;
+            ToastService.ShowSuccess("AI settings saved.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Save failed: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task TestConnection()
+    {
+        _testing = true;
+        testMessage = null;
+        try
+        {
+            var result = await AiSettingsService.TestConnectionAsync(
+                provider, baseUrl, model,
+                string.IsNullOrWhiteSpace(apiKeyInput) ? null : apiKeyInput);
+            testSuccess = result.Success;
+            testMessage = result.Message;
+        }
+        finally
+        {
+            _testing = false;
+        }
+    }
+}

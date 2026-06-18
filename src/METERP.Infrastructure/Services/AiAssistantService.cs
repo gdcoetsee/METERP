@@ -1,11 +1,10 @@
 using System.Collections.Concurrent;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
+using METERP.Common;
 using METERP.Domain;
 
 namespace METERP.Infrastructure.Services;
@@ -16,76 +15,34 @@ namespace METERP.Infrastructure.Services;
 /// </summary>
 public class AiAssistantService : IAiAssistantService
 {
+    private readonly IAiConfigurationResolver _configResolver;
     private readonly HttpClient _httpClient;
     private readonly ILogger<AiAssistantService> _logger;
-    private readonly ITenantService? _tenantService;     // for commercial usage tracking
-    private readonly ITenantProvider? _tenantProvider;   // to know which tenant to attribute usage to
+    private readonly ITenantService? _tenantService;
+    private readonly ITenantProvider? _tenantProvider;
     private readonly IQuotaService? _quotaService;
-    private readonly string? _apiKey;
-    private readonly string _baseUrl;
-    private readonly string _model;
-    private readonly int _timeoutSeconds;
 
-    public bool IsConfigured { get; }
+    public bool IsConfigured => _configResolver.IsDeploymentConfigured;
 
-    // Lightweight tenant-aware throttle for AI calls (protects against cost spikes in sellable/multi-tenant scenarios).
-    // More advanced version can use the ASP.NET RateLimiter with a named "AiPolicy".
     private static readonly ConcurrentDictionary<string, DateTime> _lastAiCall = new();
-    private static readonly TimeSpan _minAiInterval = TimeSpan.FromSeconds(4); // ~15 calls/min per tenant key
+    private static readonly TimeSpan _minAiInterval = TimeSpan.FromSeconds(4);
 
-    private bool IsAiCallAllowed()
-    {
-        var tenantKey = _tenantProvider?.GetCurrentTenantId() is Guid tid && tid != Guid.Empty
-            ? tid.ToString()
-            : "global";
-
-        var now = DateTime.UtcNow;
-        if (_lastAiCall.TryGetValue(tenantKey, out var last) && (now - last) < _minAiInterval)
-            return false;
-
-        _lastAiCall[tenantKey] = now;
-        return true;
-    }
-
-    /// <summary>Test-only: clears static throttle state between unit tests.</summary>
     internal static void ClearThrottleStateForTesting() => _lastAiCall.Clear();
 
     public AiAssistantService(
-        IConfiguration config,
+        IAiConfigurationResolver configResolver,
         ILogger<AiAssistantService> logger,
         ITenantService? tenantService = null,
         ITenantProvider? tenantProvider = null,
         IQuotaService? quotaService = null,
         HttpClient? httpClient = null)
     {
+        _configResolver = configResolver;
         _logger = logger;
         _tenantService = tenantService;
         _tenantProvider = tenantProvider;
         _quotaService = quotaService;
-
-        var aiSection = config.GetSection("Ai");
-        _apiKey = aiSection["ApiKey"];
-        _baseUrl = aiSection["BaseUrl"]?.TrimEnd('/') ?? "https://api.openai.com/v1";
-        _model = aiSection["Model"] ?? "gpt-4o-mini";
-        _timeoutSeconds = int.TryParse(aiSection["TimeoutSeconds"], out var t) ? t : 60;
-
-        bool enabled = bool.TryParse(aiSection["Enabled"], out var e) ? e : true;
-        IsConfigured = enabled && !string.IsNullOrWhiteSpace(_apiKey);
-
-        _httpClient = httpClient ?? new HttpClient
-        {
-            BaseAddress = new Uri(_baseUrl + "/"),
-            Timeout = TimeSpan.FromSeconds(_timeoutSeconds)
-        };
-
-        if (_httpClient.BaseAddress == null)
-            _httpClient.BaseAddress = new Uri(_baseUrl + "/");
-
-        if (IsConfigured && _httpClient.DefaultRequestHeaders.Authorization == null)
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", _apiKey);
-        }
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
     }
 
     public async Task<AiQuoteSuggestion?> SuggestQuoteLinesAsync(
@@ -94,7 +51,8 @@ public class AiAssistantService : IAiAssistantService
         string? customerName = null,
         CancellationToken ct = default)
     {
-        if (!IsConfigured || string.IsNullOrWhiteSpace(scopeNotes))
+        var config = await _configResolver.GetEffectiveAsync(ct);
+        if (!config.IsConfigured || string.IsNullOrWhiteSpace(scopeNotes))
             return null;
 
         if (!IsAiCallAllowed())
@@ -103,21 +61,8 @@ public class AiAssistantService : IAiAssistantService
             return null;
         }
 
-        // Enforce feature flag from tenant (commercial / tiered sellable)
-        try
-        {
-            var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
-            if (tid != Guid.Empty && _tenantService != null)
-            {
-                var tenant = await _tenantService.GetByIdAsync(tid);
-                if (tenant != null && !tenant.HasFeature("ai"))
-                {
-                    _logger.LogInformation("AI feature disabled for tenant {TenantId}", tid);
-                    return null;
-                }
-            }
-        }
-        catch { /* non-fatal */ }
+        if (!await IsAiFeatureEnabledAsync(ct))
+            return null;
 
         var quotaMessage = await CheckAiQuotaAsync(ct);
         if (quotaMessage != null)
@@ -159,25 +104,13 @@ public class AiAssistantService : IAiAssistantService
                 Suggest a realistic, complete set of line items for the quote. Include labour, materials, and at least one Travel line if site work is implied.
                 """;
 
-            var payload = new
+            var payload = BuildChatPayload(config, new object[]
             {
-                model = _model,
-                messages = new[]
-                {
-                    new { role = "system", content = system },
-                    new { role = "user", content = user }
-                },
-                temperature = 0.3,
-                response_format = new { type = "json_object" }
-            };
+                new { role = "system", content = system },
+                new { role = "user", content = user }
+            }, temperature: 0.3, jsonObject: true);
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var resp = await _httpClient.PostAsync("chat/completions", content, ct);
-            resp.EnsureSuccessStatusCode();
-
-            var respJson = await resp.Content.ReadAsStringAsync(ct);
+            var respJson = await PostChatCompletionsAsync(config, payload, ct);
             using var doc = JsonDocument.Parse(respJson);
 
             var messageContent = doc.RootElement
@@ -190,19 +123,19 @@ public class AiAssistantService : IAiAssistantService
                 return null;
 
             await TryIncrementAiCallCountAsync(ct);
-
             return AiQuoteSuggestionParser.TryParse(messageContent);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "AI quote suggestion failed");
-            return null; // graceful
+            return null;
         }
     }
 
     public async Task<AiJobAnalysis?> AnalyzeJobVarianceAsync(Job job, CancellationToken ct = default)
     {
-        if (!IsConfigured || job == null)
+        var config = await _configResolver.GetEffectiveAsync(ct);
+        if (!config.IsConfigured || job == null)
             return null;
 
         if (!IsAiCallAllowed())
@@ -211,21 +144,8 @@ public class AiAssistantService : IAiAssistantService
             return null;
         }
 
-        // Enforce feature flag from tenant (commercial / tiered sellable)
-        try
-        {
-            var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
-            if (tid != Guid.Empty && _tenantService != null)
-            {
-                var tenant = await _tenantService.GetByIdAsync(tid);
-                if (tenant != null && !tenant.HasFeature("ai"))
-                {
-                    _logger.LogInformation("AI feature disabled for tenant {TenantId}", tid);
-                    return null;
-                }
-            }
-        }
-        catch { /* non-fatal */ }
+        if (!await IsAiFeatureEnabledAsync(ct))
+            return null;
 
         var quotaMessage = await CheckAiQuotaAsync(ct);
         if (quotaMessage != null)
@@ -236,7 +156,6 @@ public class AiAssistantService : IAiAssistantService
 
         try
         {
-            // Build a compact but rich context
             var laborTotal = job.Labors?.Where(l => !l.IsDeleted).Sum(l => l.TotalCost) ?? 0;
             var actualTotal = job.ActualCost + laborTotal;
 
@@ -283,25 +202,13 @@ public class AiAssistantService : IAiAssistantService
                 Analyze the variance. Highlight travel specifically. Give 2-4 concrete, actionable recommendations the team can use on the next similar job.
                 """;
 
-            var payload = new
+            var payload = BuildChatPayload(config, new object[]
             {
-                model = _model,
-                messages = new[]
-                {
-                    new { role = "system", content = system },
-                    new { role = "user", content = user }
-                },
-                temperature = 0.25,
-                response_format = new { type = "json_object" }
-            };
+                new { role = "system", content = system },
+                new { role = "user", content = user }
+            }, temperature: 0.25, jsonObject: true);
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var resp = await _httpClient.PostAsync("chat/completions", content, ct);
-            resp.EnsureSuccessStatusCode();
-
-            var respJson = await resp.Content.ReadAsStringAsync(ct);
+            var respJson = await PostChatCompletionsAsync(config, payload, ct);
             using var doc = JsonDocument.Parse(respJson);
 
             var messageContent = doc.RootElement
@@ -328,8 +235,7 @@ public class AiAssistantService : IAiAssistantService
                 analysisDoc.RootElement.TryGetProperty("summary", out var s) ? s.GetString() ?? "" : "",
                 analysisDoc.RootElement.TryGetProperty("varianceDrivers", out var v) ? v.GetString() ?? "" : "",
                 recommendations,
-                analysisDoc.RootElement.TryGetProperty("suggestedMarginNote", out var m) ? m.GetString() : null
-            );
+                analysisDoc.RootElement.TryGetProperty("suggestedMarginNote", out var m) ? m.GetString() : null);
         }
         catch (Exception ex)
         {
@@ -340,7 +246,8 @@ public class AiAssistantService : IAiAssistantService
 
     public async Task<string?> AskCopilotAsync(string question, string? additionalContext = null, CancellationToken ct = default)
     {
-        if (!IsConfigured || string.IsNullOrWhiteSpace(question))
+        var config = await _configResolver.GetEffectiveAsync(ct);
+        if (!config.IsConfigured || string.IsNullOrWhiteSpace(question))
             return null;
 
         if (!IsAiCallAllowed())
@@ -349,21 +256,8 @@ public class AiAssistantService : IAiAssistantService
             return "Rate limit reached for AI assistant. Please wait a moment before asking again.";
         }
 
-        // Enforce feature flag from tenant (commercial / tiered sellable)
-        try
-        {
-            var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
-            if (tid != Guid.Empty && _tenantService != null)
-            {
-                var tenant = await _tenantService.GetByIdAsync(tid);
-                if (tenant != null && !tenant.HasFeature("ai"))
-                {
-                    _logger.LogInformation("AI feature disabled for tenant {TenantId}", tid);
-                    return "AI Copilot feature is not enabled for your tenant (tier or configuration). Contact admin to enable.";
-                }
-            }
-        }
-        catch { /* non-fatal */ }
+        if (!await IsAiFeatureEnabledAsync(ct))
+            return "AI Copilot feature is not enabled for your tenant (tier or configuration). Contact admin to enable.";
 
         var quotaMessage = await CheckAiQuotaAsync(ct);
         if (quotaMessage != null)
@@ -381,25 +275,13 @@ public class AiAssistantService : IAiAssistantService
 
             var user = $"Question: {question}\n\nAdditional current context from the system:\n{additionalContext ?? "(none)"}";
 
-            var payload = new
+            var payload = BuildChatPayload(config, new object[]
             {
-                model = _model,
-                messages = new[]
-                {
-                    new { role = "system", content = system },
-                    new { role = "user", content = user }
-                },
-                temperature = 0.4,
-                max_tokens = 800
-            };
+                new { role = "system", content = system },
+                new { role = "user", content = user }
+            }, temperature: 0.4, maxTokens: 800);
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var resp = await _httpClient.PostAsync("chat/completions", content, ct);
-            resp.EnsureSuccessStatusCode();
-
-            var respJson = await resp.Content.ReadAsStringAsync(ct);
+            var respJson = await PostChatCompletionsAsync(config, payload, ct);
             using var doc = JsonDocument.Parse(respJson);
 
             var responseText = doc.RootElement
@@ -409,14 +291,120 @@ public class AiAssistantService : IAiAssistantService
                 .GetString();
 
             await TryIncrementAiCallCountAsync(ct);
-
             return responseText;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "AI Copilot general query failed");
-            return "Sorry, the AI co-pilot is temporarily unavailable. Please try again or check your AI configuration.";
+            _logger.LogError(ex, "AI Copilot failed");
+            return ex.Message.StartsWith("AI API", StringComparison.Ordinal)
+                ? $"AI Error: {ex.Message}"
+                : $"AI Error: {ex.Message}";
         }
+    }
+
+    private async Task<string> PostChatCompletionsAsync(AiRuntimeConfiguration config, object payload, CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(payload);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{config.BaseUrl.TrimEnd('/')}/chat/completions")
+        {
+            Content = content
+        };
+        AiHttpAuth.ApplyApiKey(request, config.ProviderName, config.ApiKey!);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(config.TimeoutSeconds));
+
+        using var resp = await _httpClient.SendAsync(request, cts.Token);
+        var body = await resp.Content.ReadAsStringAsync(cts.Token);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "AI API error from {Provider} ({Status}): {Body}",
+                config.ProviderName,
+                resp.StatusCode,
+                body);
+            throw new HttpRequestException(
+                TenantAiSettingsService.FormatApiError(resp.StatusCode, body, config.ProviderName));
+        }
+
+        return body;
+    }
+
+    private static object BuildChatPayload(
+        AiRuntimeConfiguration config,
+        object[] messages,
+        double temperature,
+        bool jsonObject = false,
+        int? maxTokens = null)
+    {
+        if (jsonObject && SupportsJsonObjectResponseFormat(config.ProviderName))
+        {
+            if (maxTokens.HasValue)
+            {
+                return new
+                {
+                    model = config.Model,
+                    messages,
+                    temperature,
+                    max_tokens = maxTokens.Value,
+                    response_format = new { type = "json_object" }
+                };
+            }
+
+            return new
+            {
+                model = config.Model,
+                messages,
+                temperature,
+                response_format = new { type = "json_object" }
+            };
+        }
+
+        if (maxTokens.HasValue)
+            return new { model = config.Model, messages, temperature, max_tokens = maxTokens.Value };
+
+        return new { model = config.Model, messages, temperature };
+    }
+
+    private static bool SupportsJsonObjectResponseFormat(string provider) =>
+        !string.Equals(provider, AiProviderProfiles.GoogleGemini, StringComparison.Ordinal)
+        && !string.Equals(provider, AiProviderProfiles.Ollama, StringComparison.Ordinal);
+
+    private bool IsAiCallAllowed()
+    {
+        var tenantKey = _tenantProvider?.GetCurrentTenantId() is Guid tid && tid != Guid.Empty
+            ? tid.ToString()
+            : "global";
+
+        var now = DateTime.UtcNow;
+        if (_lastAiCall.TryGetValue(tenantKey, out var last) && (now - last) < _minAiInterval)
+            return false;
+
+        _lastAiCall[tenantKey] = now;
+        return true;
+    }
+
+    private async Task<bool> IsAiFeatureEnabledAsync(CancellationToken ct)
+    {
+        try
+        {
+            var tid = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+            if (tid == Guid.Empty || _tenantService == null)
+                return true;
+
+            var tenant = await _tenantService.GetByIdAsync(tid, ct);
+            if (tenant != null && !tenant.HasFeature("ai"))
+            {
+                _logger.LogInformation("AI feature disabled for tenant {TenantId}", tid);
+                return false;
+            }
+        }
+        catch { /* non-fatal */ }
+
+        return true;
     }
 
     private async Task<string?> CheckAiQuotaAsync(CancellationToken ct)

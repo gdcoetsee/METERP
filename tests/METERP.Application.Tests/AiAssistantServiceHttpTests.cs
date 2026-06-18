@@ -68,7 +68,7 @@ public class AiAssistantServiceHttpTests
         HttpClient http,
         IQuotaService? quotaService = null) =>
         new(
-            CreateConfig(),
+            new AiConfigurationResolver(CreateConfig(), tenantProvider, tenantService),
             CreateLogger(),
             tenantService,
             tenantProvider,

@@ -37,11 +37,25 @@ public class AiAssistantServiceTests
     private static ILogger<AiAssistantService> CreateLogger() =>
         Mock.Of<ILogger<AiAssistantService>>();
 
+    private static AiAssistantService CreateService(
+        IConfiguration config,
+        ITenantService? tenantService = null,
+        ITenantProvider? tenantProvider = null,
+        IQuotaService? quotaService = null,
+        HttpClient? httpClient = null) =>
+        new(
+            new AiConfigurationResolver(config, tenantProvider, tenantService),
+            CreateLogger(),
+            tenantService,
+            tenantProvider,
+            quotaService,
+            httpClient);
+
     [Fact]
     public void IsConfigured_False_When_NoApiKey()
     {
         var config = CreateConfig(apiKey: null);
-        var service = new AiAssistantService(config, CreateLogger());
+        var service = CreateService(config);
 
         Assert.False(service.IsConfigured);
     }
@@ -50,7 +64,7 @@ public class AiAssistantServiceTests
     public void IsConfigured_False_When_Disabled()
     {
         var config = CreateConfig(enabled: false);
-        var service = new AiAssistantService(config, CreateLogger());
+        var service = CreateService(config);
 
         Assert.False(service.IsConfigured);
     }
@@ -59,7 +73,7 @@ public class AiAssistantServiceTests
     public async Task SuggestQuoteLinesAsync_ReturnsNull_When_NotConfigured()
     {
         var config = CreateConfig(apiKey: null);
-        var service = new AiAssistantService(config, CreateLogger());
+        var service = CreateService(config);
 
         var result = await service.SuggestQuoteLinesAsync("some scope", 0.15m);
 
@@ -73,7 +87,7 @@ public class AiAssistantServiceTests
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(Guid.NewGuid());
 
-        var service = new AiAssistantService(config, CreateLogger(), tenantProvider: tenantProvider.Object);
+        var service = CreateService(config, tenantProvider: tenantProvider.Object);
 
         // First call should be allowed (but will fail on HTTP since no real key, returns null gracefully)
         var first = await service.SuggestQuoteLinesAsync("test", 0.15m);
@@ -104,7 +118,7 @@ public class AiAssistantServiceTests
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
 
-        var service = new AiAssistantService(config, CreateLogger(), tenantService.Object, tenantProvider.Object);
+        var service = CreateService(config, tenantService.Object, tenantProvider.Object);
 
         var result = await service.SuggestQuoteLinesAsync("scope with travel costs", 0.15m);
 
@@ -131,7 +145,7 @@ public class AiAssistantServiceTests
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
 
-        var service = new AiAssistantService(config, CreateLogger(), tenantService.Object, tenantProvider.Object);
+        var service = CreateService(config, tenantService.Object, tenantProvider.Object);
 
         var job = new Job { QuotedTotal = 10000, ActualCost = 8000 };
         var result = await service.AnalyzeJobVarianceAsync(job);
@@ -152,7 +166,7 @@ public class AiAssistantServiceTests
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
 
-        var service = new AiAssistantService(config, CreateLogger(), tenantService.Object, tenantProvider.Object);
+        var service = CreateService(config, tenantService.Object, tenantProvider.Object);
 
         // Will likely return null because no real LLM, but the counter attempt happens in the success branch
         // We mainly verify the wiring
@@ -167,7 +181,7 @@ public class AiAssistantServiceTests
     public void IsConfigured_True_With_ValidKeyAndEnabled()
     {
         var config = CreateConfig(apiKey: "valid-key", enabled: true);
-        var service = new AiAssistantService(config, CreateLogger());
+        var service = CreateService(config);
 
         Assert.True(service.IsConfigured);
     }

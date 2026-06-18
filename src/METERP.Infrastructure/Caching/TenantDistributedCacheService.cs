@@ -67,23 +67,28 @@ public class TenantDistributedCacheService : ITenantCacheService
         return value;
     }
 
-    public void InvalidateCategory(string category)
+    public Task InvalidateCategoryAsync(string category, CancellationToken ct = default)
     {
         var tenantId = _tenantProvider.GetCurrentTenantId();
-        // Write path already async in services; sync invalidate keeps ITenantCacheService unchanged.
-        InvalidateCategoryAsync(tenantId, category, CancellationToken.None).GetAwaiter().GetResult();
+        return InvalidateCategoryCoreAsync(tenantId, category, ct);
     }
 
-    private async Task InvalidateCategoryAsync(Guid tenantId, string category, CancellationToken ct)
+    public void InvalidateCategory(string category)
+    {
+        // ConfigureAwait(false) avoids deadlocks when called from Blazor Server sync contexts.
+        InvalidateCategoryAsync(category, CancellationToken.None).ConfigureAwait(false).GetAwaiter().GetResult();
+    }
+
+    private async Task InvalidateCategoryCoreAsync(Guid tenantId, string category, CancellationToken ct)
     {
         var genKey = BuildGenerationKey(tenantId, category);
-        var current = await _distributed.GetStringAsync(genKey, ct);
+        var current = await _distributed.GetStringAsync(genKey, ct).ConfigureAwait(false);
         var next = (long.TryParse(current, out var g) ? g : 0) + 1;
         await _distributed.SetStringAsync(
             genKey,
             next.ToString(),
             new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(30) },
-            ct);
+            ct).ConfigureAwait(false);
     }
 
     private async Task<long> GetGenerationAsync(Guid tenantId, string category, CancellationToken ct)

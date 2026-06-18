@@ -1,14 +1,12 @@
 @* Safe, lightweight Quote list renderer component.
-   Parent provides the data list + handles loading/search/pagination.
-   Keeps Razor surface small to avoid codegen/parser issues.
-   View detail is minimal; heavy creation stays in AI Copilot.
+   Parent provides the data list + handles loading/search/pagination/detail.
 *@
 @using METERP.Domain
 @using Microsoft.AspNetCore.Components
 
 @if (Quotes == null || !Quotes.Any())
 {
-    <div class="alert alert-info">No quotes to display.</div>
+    <div class="alert alert-info">No quotes to display. Create one manually or use AI Copilot for assistance.</div>
 }
 else
 {
@@ -22,7 +20,7 @@ else
                     <th>Status</th>
                     <th class="text-end">Total</th>
                     <th class="text-center">Lines</th>
-                    <th style="width: 160px;"></th>
+                    <th style="width: 200px;"></th>
                 </tr>
             </thead>
             <tbody>
@@ -39,6 +37,7 @@ else
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(q)" data-testid="quote-view-button">View</button>
                             @if (CanManage)
                             {
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OnEdit.InvokeAsync(q)">Edit</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(q)">Delete</button>
                             }
                         </td>
@@ -59,33 +58,8 @@ else
     }
 }
 
-@if (SelectedQuote != null)
-{
-    <div class="card mt-3 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <h6 class="mb-0">@SelectedQuote.QuoteNumber — @(SelectedQuote.Customer?.Name ?? "")</h6>
-            <button class="btn btn-sm btn-light" @onclick="() => OnCloseView.InvokeAsync()">Close</button>
-        </div>
-        <div class="card-body small">
-            <div>Total: <strong>R @SelectedQuote.Total.ToString("N2")</strong> (incl. 15% VAT)</div>
-            @if (!string.IsNullOrWhiteSpace(SelectedQuote.Notes))
-            {
-                <div class="mt-1">Notes: @SelectedQuote.Notes</div>
-            }
-            <div class="mt-2">
-                <a href="/ai-copilot" class="btn btn-sm btn-primary">✨ Enhance in AI Copilot</a>
-                @if (CanManage && (SelectedQuote.Status == QuoteStatus.Draft || SelectedQuote.Status == QuoteStatus.Sent))
-                {
-                    <button class="btn btn-sm btn-success ms-1" @onclick="() => OnConvert.InvokeAsync(SelectedQuote)" data-testid="convert-to-job">Convert to Job</button>
-                }
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     [Parameter] public List<Quote> Quotes { get; set; } = new();
-    [Parameter] public Quote? SelectedQuote { get; set; }
     [Parameter] public bool CanManage { get; set; }
     [Parameter] public int CurrentPage { get; set; } = 1;
     [Parameter] public bool ShowPagination { get; set; } = true;
@@ -93,12 +67,11 @@ else
     [Parameter] public bool DisableNext { get; set; }
 
     [Parameter] public EventCallback<Quote> OnView { get; set; }
+    [Parameter] public EventCallback<Quote> OnEdit { get; set; }
     [Parameter] public EventCallback<Quote> OnDelete { get; set; }
     [Parameter] public EventCallback OnPrevious { get; set; }
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnExportCsv { get; set; }
-    [Parameter] public EventCallback<Quote> OnConvert { get; set; }
-    [Parameter] public EventCallback OnCloseView { get; set; }
 
     private static string GetQuoteRowTestId(Quote q)
     {

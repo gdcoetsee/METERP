@@ -95,6 +95,17 @@ public static class E2EHelpers
         return await client.PostAsync($"{url}/webhooks/stripe", content);
     }
 
+    /// <summary>
+    /// Resets the Sent receive-demo PO (Development endpoint). Makes repeated E2E runs stable.
+    /// </summary>
+    public static async Task EnsureReceiveDemoPoAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-receive-demo-po", null);
+        response.EnsureSuccessStatusCode();
+    }
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
@@ -105,7 +116,11 @@ public static class E2EHelpers
             {
                 var response = await client.GetAsync($"{url}/health/ready");
                 if (response.IsSuccessStatusCode)
+                {
+                    try { await EnsureReceiveDemoPoAsync(url); }
+                    catch { /* optional in non-Development hosts */ }
                     return;
+                }
             }
             catch
             {

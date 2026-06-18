@@ -1,5 +1,25 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 40 PLAN (Approved 2026-06-13 — **NOT STARTED**, awaiting user go-ahead)
+
+**Baseline:** Session 39 complete — **276/276 green** (228 unit + 11 web + 37 E2E). Latest commit: `dd69b96`.
+
+**User intent:** Manual exploration first (run app, review E2E, check recent changes). Agent must **not execute** until explicitly told.
+
+**Planned order when execution begins:**
+
+1. **Phase A — Stabilize E2E:** Full `dotnet test`; CI-parity run via `docker compose up` + `Category=E2E`; fix flakes only on failure evidence (PO receive, notifications, 2FA, scheduling).
+2. **Phase B — E2E gaps (priority):**
+   - Sales Order → Job conversion E2E + `sales-order-convert-to-job` test ids on [`SalesOrders.razor`](src/METERP.Web/Components/Pages/SalesOrders.razor).
+   - `Assets_Search_FiltersByName` + `Employees_Search_FiltersByName` (mirror Customers pattern).
+   - Stretch: quota-exceeded toast E2E.
+3. **Phase C — Production hardening:** Concurrent `TenantService` increment test; secrets audit (`.env.example`, no committed secrets); verify Serilog tenant logging + health JSON.
+4. **Per chunk:** `dotnet test` → update this handoff → commit with session prefix + test counts.
+
+**Target outcome:** 279–281+ tests green; stable docker-compose E2E; SO→Job spine gap closed.
+
+---
+
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-12 session)
 
 **CRM module E2E — Customers, Assets, Employees (2026-06-12 latest).**

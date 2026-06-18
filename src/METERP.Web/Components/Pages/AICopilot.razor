@@ -9,6 +9,7 @@
 @attribute [Authorize(Policy = "Jobs.View")]
 @* Broad access for now; tighten per permissions in real use *@
 @inject IAiAssistantService AiAssistantService
+@inject IAiConfigurationResolver AiConfigResolver
 @inject IAiQuoteApplyService AiQuoteApplyService
 @inject IAiProjectPlanApplyService AiProjectPlanApplyService
 @inject IJobService JobService
@@ -49,13 +50,13 @@ else if (_aiQuotaExhausted)
         <p class="text-muted mb-0">Your intelligent assistant for better bids, lower variance, and smarter operations.</p>
     </div>
     <div>
-        @if (AiAssistantService.IsConfigured)
+        @if (_aiConfigured)
         {
-            <span class="badge bg-success">AI Connected</span>
+            <span class="badge bg-success">AI Connected (@_aiProvider)</span>
         }
         else
         {
-            <span class="badge bg-warning text-dark">AI Not Configured — set Ai:ApiKey</span>
+            <span class="badge bg-warning text-dark">AI Not Configured — <a href="/settings/ai" class="alert-link">configure in Settings</a> or set Ai__* in .env</span>
         }
     </div>
 </div>
@@ -238,6 +239,8 @@ else if (_aiQuotaExhausted)
     private bool _thinking;
     private bool _copilotReady;
     private bool _aiFeatureEnabled = true;
+    private bool _aiConfigured;
+    private string _aiProvider = "";
     private bool _aiQuotaExhausted;
     private int _periodAiCalls;
     private string _aiCallLimit = "∞";
@@ -263,6 +266,10 @@ else if (_aiQuotaExhausted)
 
     protected override async Task OnInitializedAsync()
     {
+        var aiConfig = await AiConfigResolver.GetEffectiveAsync();
+        _aiConfigured = aiConfig.IsConfigured;
+        _aiProvider = aiConfig.ProviderName;
+
         // Load lightweight context for the copilot
         try
         {

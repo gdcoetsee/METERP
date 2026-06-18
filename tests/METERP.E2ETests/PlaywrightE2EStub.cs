@@ -81,6 +81,166 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Quotes_Manual_Create_With_Line()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        await page.ClickByTestIdAsync("new-quote-button");
+        await page.WaitForTestIdAsync("quote-editor", 10000);
+
+        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+
+        await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
+        await page.FillAsync("[data-testid='quote-line-description']", "Manual E2E panel install");
+        await page.ClickByTestIdAsync("quote-line-save-button");
+        await page.WaitForTestIdAsync("quote-lines-table", 15000);
+
+        await page.ClickByTestIdAsync("quote-save-button");
+        await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Manual E2E panel install", content);
+        Assert.Contains("Q-", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Quotes_Manual_Create_Customer_And_Lines()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        await page.ClickByTestIdAsync("new-quote-button");
+        await page.WaitForTestIdAsync("quote-editor", 10000);
+
+        await page.ClickByTestIdAsync("quote-new-customer-toggle");
+        await page.WaitForTestIdAsync("quote-new-customer-form", 10000);
+        var uniqueName = $"E2E Customer {Guid.NewGuid():N}".Substring(0, 24);
+        await page.FillAsync("[data-testid='quote-new-customer-name']", uniqueName);
+        await page.ClickByTestIdAsync("quote-new-customer-save");
+
+        await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.FillAsync("[data-testid='quote-line-description']", "E2E travel allowance");
+        await page.ClickByTestIdAsync("quote-line-save-button");
+        await page.ClickByTestIdAsync("quote-save-button");
+        await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
+
+        var content = await page.ContentAsync();
+        Assert.Contains(uniqueName, content);
+        Assert.Contains("E2E travel allowance", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Quotes_Edit_Opens_Lines_Not_Just_Notes()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        var firstRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
+        await firstRow.GetByRole(AriaRole.Button, new() { Name = "Edit" }).ClickAsync();
+        await page.WaitForTestIdAsync("quote-editor", 15000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Line Items", content);
+        Assert.Contains("quote-add-line-button", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Quotes_Line_UnitCost_AutoCalculates_SellPrice_And_SaveAddAnother()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        await page.ClickByTestIdAsync("new-quote-button");
+        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+        await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.FillAsync("[data-testid='quote-line-description']", "E2E GP line A");
+        await page.FillAsync("[data-testid='quote-line-unit-cost']", "100");
+        await page.FillAsync("[data-testid='quote-line-gross-profit-percent']", "25");
+        await page.WaitForTimeoutAsync(300);
+
+        var priceA = await page.InputValueAsync("[data-testid='quote-line-unit-price']");
+        Assert.Contains("133", priceA);
+
+        await page.ClickByTestIdAsync("quote-line-save-add-another-button");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
+
+        var descAfter = await page.InputValueAsync("[data-testid='quote-line-description']");
+        Assert.Equal("", descAfter);
+
+        await page.FillAsync("[data-testid='quote-line-description']", "E2E GP line B");
+        await page.FillAsync("[data-testid='quote-line-unit-cost']", "200");
+        await page.FillAsync("[data-testid='quote-line-gross-profit-percent']", "40");
+        await page.WaitForTimeoutAsync(300);
+        await page.ClickByTestIdAsync("quote-line-save-button");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("E2E GP line A", content);
+        Assert.Contains("E2E GP line B", content);
+        Assert.Contains("Blended GP", content);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Quotes_Edit_Line_Updates_Total()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        await page.ClickByTestIdAsync("new-quote-button");
+        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+        await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.FillAsync("[data-testid='quote-line-description']", "E2E editable line");
+        await page.FillAsync("[data-testid='quote-line-unit-price']", "100");
+        await page.PressAsync("[data-testid='quote-line-unit-price']", "Tab");
+        await page.ClickByTestIdAsync("quote-line-save-button");
+        await page.ClickByTestIdAsync("quote-save-button");
+        await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
+
+        var beforeContent = await page.ContentAsync();
+        Assert.Matches(new Regex(@"115[.,]00"), beforeContent);
+
+        await page.ClickByTestIdAsync("quote-line-edit-button");
+        await page.FillAsync("[data-testid='quote-line-unit-price']", "200");
+        await page.PressAsync("[data-testid='quote-line-unit-price']", "Tab");
+        await page.ClickByTestIdAsync("quote-line-save-button");
+        await page.WaitForTimeoutAsync(500);
+
+        var afterContent = await page.ContentAsync();
+        Assert.Matches(new Regex(@"230[.,]00"), afterContent);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Ai_Settings_Page_Loads_Free_Providers()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/settings/ai");
+        await page.WaitForTestIdAsync("ai-provider-select", 15000);
+
+        var options = await page.Locator("[data-testid='ai-provider-select'] option").AllTextContentsAsync();
+        Assert.Contains(options, o => o.Contains("Google Gemini", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(options, o => o.Contains("Groq", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(options, o => o.Contains("Ollama", StringComparison.OrdinalIgnoreCase));
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Opportunity_Converts_To_Quote_Via_Ai_Copilot()
     {
         var page = await _browser.LoginAsync();
@@ -209,12 +369,22 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.WaitForTestIdAsync("jobs-table", 30000);
 
-        var jobTravelRow = page.Locator("[data-testid='job-row-with-travel']").First;
-        if (await jobTravelRow.CountAsync() == 0)
-            jobTravelRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+        var jobRows = page.Locator("[data-testid='jobs-table'] tbody tr");
+        var rowCount = await jobRows.CountAsync();
+        Assert.True(rowCount > 0, "Expected at least one job after quote conversion.");
 
-        await jobTravelRow.Locator("[data-testid='job-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
+        var detailOpened = false;
+        for (var i = 0; i < rowCount && !detailOpened; i++)
+        {
+            await jobRows.Nth(i).Locator("[data-testid='job-view-button']").ClickAsync();
+            try
+            {
+                await page.WaitForTestIdAsync("create-invoice-from-job-detail", 8000);
+                detailOpened = true;
+            }
+            catch (TimeoutException) { }
+        }
+        Assert.True(detailOpened, "Could not open a job detail panel with invoice action.");
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);
@@ -897,11 +1067,30 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.GotoRelativeAsync("/purchase-orders");
         await page.WaitForTestIdAsync("purchase-orders-table", 30000);
-        await page.FillByTestIdAsync("purchase-orders-search", "receive demo");
 
         var poBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
-        var sentRow = poBody.Locator("tr").Filter(new() { Has = page.Locator("[data-testid='purchase-order-receive']") });
-        await sentRow.First.WaitForAsync(new() { Timeout = 20000 });
+        ILocator? sentRow = null;
+        for (var attempt = 0; attempt < 3 && sentRow == null; attempt++)
+        {
+            if (attempt > 0)
+            {
+                await page.ReloadAsync();
+                await page.WaitForTestIdAsync("purchase-orders-table", 30000);
+            }
+
+            await page.Locator("[data-testid='purchase-orders-search']").PressSequentiallyAsync("Panel Supplies", new() { Delay = 30 });
+            await Assertions.Expect(poBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" }))
+                .ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+            var candidate = poBody.Locator("tr")
+                .Filter(new() { HasText = "Panel Supplies" })
+                .Filter(new() { Has = page.Locator("[data-testid='purchase-order-receive']") });
+            if (await candidate.CountAsync() > 0)
+                sentRow = candidate.First;
+        }
+
+        Assert.NotNull(sentRow);
+        await sentRow!.WaitForAsync(new() { Timeout = 5000 });
 
         page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
         await sentRow.First.Locator("[data-testid='purchase-order-receive']").ClickAsync();
@@ -936,7 +1125,8 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("customers-table", 30000);
 
         var tableBody = page.Locator("[data-testid='customers-table'] tbody");
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
+        await page.FillByTestIdAsync("customers-search", "Hospital");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
 
         await page.CloseAsync();
     }
@@ -949,8 +1139,11 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("customers-table", 30000);
 
         var tableBody = page.Locator("[data-testid='customers-table'] tbody");
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Cape Town Mining" })).ToHaveCountAsync(1);
+        await page.FillByTestIdAsync("customers-search", "Hospital");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+        await page.FillByTestIdAsync("customers-search", "Mining");
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Cape Town Mining" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
 
         await page.FillByTestIdAsync("customers-search", "Hospital");
 

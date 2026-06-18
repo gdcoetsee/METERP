@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,28 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Load repo-root .env in Development so `dotnet run` matches docker-compose Ai__* keys.
+if (builder.Environment.IsDevelopment())
+{
+    var envPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".env"));
+    if (File.Exists(envPath))
+    {
+        foreach (var line in File.ReadAllLines(envPath))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                continue;
+            var eq = trimmed.IndexOf('=');
+            if (eq <= 0)
+                continue;
+            var key = trimmed[..eq].Trim();
+            var value = trimmed[(eq + 1)..].Trim().Trim('"');
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(key)))
+                Environment.SetEnvironmentVariable(key, value);
+        }
+    }
+}
 
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("METERP"))
@@ -139,6 +162,12 @@ builder.Services.AddHealthChecks()
     .AddCheck<AiConfigurationHealthCheck>("ai", tags: ["ready"]);
 
 // === AI Assistant (optional - powers smart quoting & post-job learning) ===
+var dataProtectionKeysPath = Path.Combine(builder.Environment.ContentRootPath, "dataprotection-keys");
+Directory.CreateDirectory(dataProtectionKeysPath);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+builder.Services.AddScoped<IAiConfigurationResolver, AiConfigurationResolver>();
+builder.Services.AddScoped<ITenantAiSettingsService, TenantAiSettingsService>();
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 builder.Services.AddScoped<IAiQuoteApplyService, AiQuoteApplyService>();
 builder.Services.AddScoped<IAiJobApplyService, AiJobApplyService>();
@@ -373,6 +402,28 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
     Predicate = check => check.Tags.Contains("ready"),
     ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
 }).DisableRateLimiting();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapPost("/e2e/ensure-receive-demo-po", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        await E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
+            scope.ServiceProvider.GetRequiredService<IPurchaseOrderService>(),
+            scope.ServiceProvider.GetRequiredService<ISupplierService>(),
+            scope.ServiceProvider.GetRequiredService<IInventoryService>(),
+            scope.ServiceProvider.GetRequiredService<ITenantProvider>(),
+            tenant.Id,
+            ct);
+
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
+}
 
 app.MapPost("/webhooks/stripe", async (
     HttpContext httpContext,
@@ -1165,51 +1216,14 @@ public class DatabaseSeeder : IHostedService
             }, cancellationToken);
         }
 
-        // Idempotent Sent PO for receive E2E (Panel Supplies -> LED stock receipt).
-        // Recreates when prior demo PO was already received so repeated E2E runs stay stable.
         tenantProvider.SetTenantId(defaultTenantId);
-        var demoPos = await purchaseOrderService.GetAllAsync(ct: cancellationToken);
-        foreach (var stale in demoPos.Where(p =>
-                     p.Notes != null
-                     && p.Notes.Contains("E2E receive demo", StringComparison.OrdinalIgnoreCase)
-                     && p.Status == PurchaseOrderStatus.Received))
-        {
-            await purchaseOrderService.DeleteAsync(stale.Id, cancellationToken);
-        }
-
-        demoPos = await purchaseOrderService.GetAllAsync(ct: cancellationToken);
-        var pendingReceiveDemo = demoPos.FirstOrDefault(p =>
-            p.Notes != null
-            && p.Notes.Contains("E2E receive demo", StringComparison.OrdinalIgnoreCase)
-            && p.Status == PurchaseOrderStatus.Sent);
-        if (pendingReceiveDemo == null)
-        {
-            var panelSupplier = (await supplierService.GetAllAsync(ct: cancellationToken))
-                .FirstOrDefault(s => s.Name.Contains("Panel Supplies", StringComparison.OrdinalIgnoreCase));
-            var ledItem = (await inventoryService.GetAllItemsAsync(ct: cancellationToken))
-                .FirstOrDefault(i => i.Sku == "LED-HB-150");
-            if (panelSupplier != null && ledItem != null)
-            {
-                var sentPoId = await purchaseOrderService.CreateAsync(new PurchaseOrder
-                {
-                    SupplierId = panelSupplier.Id,
-                    PoDate = DateTime.UtcNow.AddDays(-2),
-                    ExpectedDate = DateTime.UtcNow.AddDays(2),
-                    Status = PurchaseOrderStatus.Sent,
-                    TaxRate = 0.15m,
-                    Notes = "E2E receive demo PO"
-                }, cancellationToken);
-                await purchaseOrderService.AddLineAsync(new PurchaseOrderLine
-                {
-                    PurchaseOrderId = sentPoId,
-                    InventoryItemId = ledItem.Id,
-                    Description = ledItem.Name,
-                    Quantity = 3,
-                    UnitPrice = ledItem.UnitCost,
-                    Unit = ledItem.Unit
-                }, cancellationToken);
-            }
-        }
+        await E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
+            purchaseOrderService,
+            supplierService,
+            inventoryService,
+            tenantProvider,
+            defaultTenantId,
+            cancellationToken);
 
         // Idempotent low-stock demo item (inventory filter E2E + low-stock alerts).
         tenantProvider.SetTenantId(defaultTenantId);

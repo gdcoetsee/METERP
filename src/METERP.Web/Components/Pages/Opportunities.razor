@@ -131,8 +131,10 @@
             <p data-testid="opportunity-stage"><strong>Stage:</strong> @StageLabel(selectedOpp.Stage)</p>
             <p><strong>Expected Close:</strong> @selectedOpp.ExpectedClose.ToString("yyyy-MM-dd")</p>
             <div class="mt-3">
-                <button class="btn btn-primary btn-sm me-2" data-testid="opportunity-convert-ai"
-                        @onclick="ConvertToQuote">Convert to Quote (AI Copilot)</button>
+                <button class="btn btn-primary btn-sm me-2" data-testid="opportunity-convert-manual"
+                        @onclick="ConvertToManualQuote">Create Manual Quote</button>
+                <button class="btn btn-outline-success btn-sm me-2" data-testid="opportunity-convert-ai"
+                        @onclick="ConvertToQuote">Create with AI Copilot</button>
                 @if (CanManage)
                 {
                     <button class="btn btn-outline-secondary btn-sm" data-testid="opportunity-advance-stage"
@@ -249,6 +251,15 @@
     }
 
     private void CloseView() => selectedOpp = null;
+
+    private void ConvertToManualQuote()
+    {
+        if (selectedOpp == null) return;
+        var scope = OpportunityService.BuildAiScopeText(selectedOpp);
+        var notes = Uri.EscapeDataString(scope);
+        ToastService.ShowSuccess($"Opening quote form for {selectedOpp.Title}.");
+        Nav.NavigateTo($"/quotes?create=1&customerId={selectedOpp.CustomerId}&notes={notes}");
+    }
 
     private async Task ConvertToQuote()
     {

@@ -15,6 +15,16 @@ public class QuoteLine : BaseEntity
     public decimal UnitPrice { get; set; }
 
     /// <summary>
+    /// Optional unit cost (before gross profit markup). When set with line GP%, sell price can be derived.
+    /// </summary>
+    public decimal UnitCost { get; set; }
+
+    /// <summary>
+    /// Target gross profit margin on revenue for this line (e.g. 0.25 = 25%).
+    /// </summary>
+    public decimal GrossProfitPercent { get; set; } = 0.25m;
+
+    /// <summary>
     /// Optional unit of measure: ea, hr, m, kg, etc.
     /// </summary>
     public string? Unit { get; set; }

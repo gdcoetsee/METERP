@@ -99,7 +99,7 @@ public class QuoteService : IQuoteService
         await _dbContext.SaveChangesAsync(ct);
 
         await TryIncrementQuoteCountAsync(quote.TenantId, ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
 
         if (_auditService != null)
         {
@@ -119,7 +119,7 @@ public class QuoteService : IQuoteService
         quote.RecalculateTotals();
         _dbContext.Set<Quote>().Update(quote);
         await _dbContext.SaveChangesAsync(ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -137,7 +137,7 @@ public class QuoteService : IQuoteService
         quote.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default)
@@ -155,13 +155,23 @@ public class QuoteService : IQuoteService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
         return line.Id;
     }
 
     public async Task UpdateLineAsync(QuoteLine line, CancellationToken ct = default)
     {
-        _dbContext.Set<QuoteLine>().Update(line);
+        var existing = await _dbContext.Set<QuoteLine>().FirstOrDefaultAsync(l => l.Id == line.Id, ct);
+        if (existing == null) return;
+
+        existing.Description = line.Description;
+        existing.LineType = line.LineType;
+        existing.Quantity = line.Quantity;
+        existing.Unit = line.Unit;
+        existing.UnitCost = line.UnitCost;
+        existing.GrossProfitPercent = line.GrossProfitPercent;
+        existing.UnitPrice = line.UnitPrice;
+
         await _dbContext.SaveChangesAsync(ct);
 
         var quote = await _dbContext.Set<Quote>()
@@ -173,7 +183,7 @@ public class QuoteService : IQuoteService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
@@ -195,7 +205,7 @@ public class QuoteService : IQuoteService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)
@@ -257,8 +267,9 @@ public class QuoteService : IQuoteService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        InvalidateListCaches();
-        _cache?.InvalidateCategory("jobs");
+        await InvalidateListCachesAsync(ct);
+        if (_cache != null)
+            await _cache.InvalidateCategoryAsync("jobs", ct);
 
         if (_auditService != null)
         {
@@ -273,7 +284,11 @@ public class QuoteService : IQuoteService
         return (await GetByIdForJobAsync(job.Id, ct))!;
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("quotes");
+    private async Task InvalidateListCachesAsync(CancellationToken ct)
+    {
+        if (_cache != null)
+            await _cache.InvalidateCategoryAsync("quotes", ct);
+    }
 
     private async Task TryIncrementQuoteCountAsync(Guid tenantId, CancellationToken ct)
     {

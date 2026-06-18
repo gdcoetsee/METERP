@@ -6,6 +6,8 @@
   --bg-color: #f8f9fa;
   --text-color: #212529;
   --card-bg: #fff;
+  --sidebar-bg: #1b2838;
+  --sidebar-text: rgba(255, 255, 255, 0.85);
 }
 
 body {
@@ -31,8 +33,37 @@ body {
 
 h1 {
   font-weight: 600;
-  color: #212529;
+  color: var(--text-color);
   margin-bottom: 0.5rem;
+}
+
+.dark h1, .dark h5, .dark h6 {
+  color: var(--text-color);
+}
+
+.nav-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 0.25rem;
+}
+
+.nav-beta-badge {
+  font-size: 0.55rem;
+  vertical-align: middle;
+}
+
+.ai-fab {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1040;
+  bottom: 5.5rem;
+  right: 1rem;
 }
 
 .card {

@@ -39,6 +39,12 @@ artifacts/
 *.exe
 *.pdb
 
+# Local secrets (never commit API keys)
+.env
+
+# ASP.NET Data Protection keys (Docker volume / local dev)
+dataprotection-keys/
+
 # Others
 *.bak
 *.tmp

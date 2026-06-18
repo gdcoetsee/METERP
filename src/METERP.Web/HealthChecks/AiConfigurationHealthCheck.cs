@@ -1,3 +1,4 @@
+using METERP.Application.Services;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace METERP.Web.HealthChecks;
@@ -7,32 +8,26 @@ namespace METERP.Web.HealthChecks;
 /// </summary>
 public class AiConfigurationHealthCheck : IHealthCheck
 {
-    private readonly IConfiguration _configuration;
+    private readonly IAiConfigurationResolver _configResolver;
 
-    public AiConfigurationHealthCheck(IConfiguration configuration)
+    public AiConfigurationHealthCheck(IAiConfigurationResolver configResolver)
     {
-        _configuration = configuration;
+        _configResolver = configResolver;
     }
 
-    public Task<HealthCheckResult> CheckHealthAsync(
+    public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        var aiSection = _configuration.GetSection("Ai");
-        var enabled = aiSection.GetValue("Enabled", true);
-        var apiKey = aiSection["ApiKey"];
+        var config = await _configResolver.GetEffectiveAsync(cancellationToken);
 
-        if (!enabled)
-        {
-            return Task.FromResult(HealthCheckResult.Healthy("AI disabled via configuration (Ai:Enabled=false)."));
-        }
+        if (!config.Enabled)
+            return HealthCheckResult.Healthy("AI disabled via configuration (Ai:Enabled=false).");
 
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return Task.FromResult(HealthCheckResult.Healthy("AI not configured (optional). Set Ai:ApiKey to enable Copilot."));
-        }
+        if (!config.IsConfigured)
+            return HealthCheckResult.Healthy("AI not configured (optional). Set Ai:ApiKey or tenant AI settings.");
 
-        var model = aiSection["Model"] ?? "gpt-4o-mini";
-        return Task.FromResult(HealthCheckResult.Healthy($"AI configured (model: {model})."));
+        var source = config.FromTenantOverride ? "tenant override" : "deployment";
+        return HealthCheckResult.Healthy($"AI configured via {source} ({config.ProviderName}, model: {config.Model}).");
     }
 }

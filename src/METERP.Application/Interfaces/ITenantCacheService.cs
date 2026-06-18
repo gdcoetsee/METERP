@@ -13,5 +13,7 @@ public interface ITenantCacheService
         TimeSpan? absoluteExpiration = null,
         CancellationToken ct = default) where T : class;
 
+    Task InvalidateCategoryAsync(string category, CancellationToken ct = default);
+
     void InvalidateCategory(string category);
 }

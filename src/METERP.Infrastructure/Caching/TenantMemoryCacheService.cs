@@ -37,6 +37,12 @@ public class TenantMemoryCacheService : ITenantCacheService
         return value;
     }
 
+    public Task InvalidateCategoryAsync(string category, CancellationToken ct = default)
+    {
+        InvalidateCategory(category);
+        return Task.CompletedTask;
+    }
+
     public void InvalidateCategory(string category)
     {
         var tenantId = _tenantProvider.GetCurrentTenantId();

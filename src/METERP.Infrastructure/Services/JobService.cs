@@ -109,7 +109,7 @@ public class JobService : IJobService
         await _dbContext.SaveChangesAsync(ct);
 
         await TryIncrementJobCountAsync(job.TenantId, ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
 
         return job.Id;
     }
@@ -118,7 +118,7 @@ public class JobService : IJobService
     {
         _dbContext.Set<Job>().Update(job);
         await _dbContext.SaveChangesAsync(ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)
@@ -153,7 +153,7 @@ public class JobService : IJobService
         }
 
         await _dbContext.SaveChangesAsync(ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -171,7 +171,7 @@ public class JobService : IJobService
         job.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task UpdateStatusAsync(Guid jobId, JobStatus newStatus, CancellationToken ct = default)
@@ -187,7 +187,7 @@ public class JobService : IJobService
         }
 
         await _dbContext.SaveChangesAsync(ct);
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task<Guid> AddCostAsync(JobCost cost, CancellationToken ct = default)
@@ -208,7 +208,7 @@ public class JobService : IJobService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
         return cost.Id;
     }
 
@@ -234,7 +234,7 @@ public class JobService : IJobService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
     public async Task<Guid> AddLaborAsync(JobLabor labor, CancellationToken ct = default)
@@ -255,7 +255,7 @@ public class JobService : IJobService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
         return labor.Id;
     }
 
@@ -278,10 +278,14 @@ public class JobService : IJobService
             await _dbContext.SaveChangesAsync(ct);
         }
 
-        InvalidateListCaches();
+        await InvalidateListCachesAsync(ct);
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("jobs");
+    private async Task InvalidateListCachesAsync(CancellationToken ct)
+    {
+        if (_cache != null)
+            await _cache.InvalidateCategoryAsync("jobs", ct);
+    }
 
     private async Task ApplyEmployeeDefaultsAsync(JobLabor labor, CancellationToken ct)
     {
