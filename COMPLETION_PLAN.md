@@ -1,5 +1,20 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 54 — COMPLETE (2026-06-19)
+
+**Delivered:** **359/359 green** (275 unit + 29 web + 55 E2E).
+
+### Session 54 deliverables
+- **Invoice list cache tests:** full mirror of Quote/Job coverage — stale reads, search bypass, whitespace cache, CRUD + line mutations (+9 unit).
+- **E2E:** `Tenants_Edit_Quota_Exceeded_Shows_Banner` (55th).
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. SalesOrder / PurchaseOrder list cache tests (remaining document services).
+3. Invoice pagination cache key test (mirror Quote page-size test).
+
+---
+
 ## 📋 SESSION 53 — COMPLETE (2026-06-19)
 
 **Delivered:** **349/349 green** (266 unit + 29 web + 54 E2E).
@@ -231,9 +246,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 53 complete — 349/349 green. Serilog test hardening, Tenants quota badges.**
+**Session 54 complete — 359/359 green. Invoice cache tests, Tenants quota E2E.**
 
-### Exact Work Completed — Latest (2026-06-19, session 53)
+### Exact Work Completed — Latest (2026-06-19, session 54)
+- **Invoice cache tests:** 9 tests covering list cache + invalidation on mutations.
+- **E2E:** Tenants edit quota-exceeded banner (+1).
+- **Testing target**: **359/359 green** (275 unit + 29 web + 55 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 53)
 - **Tests:** Serilog logger isolation for middleware tests (no flake).
 - **Tenants UX:** `QuotaUsageBadge` on edit form + exceeded banner (+1 E2E).
 - **Testing target**: **349/349 green** (266 unit + 29 web + 54 E2E).

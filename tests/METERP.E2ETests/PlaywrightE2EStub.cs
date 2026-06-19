@@ -527,6 +527,35 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Tenants_Edit_Quota_Exceeded_Shows_Banner()
+    {
+        try
+        {
+            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
+
+            var page = await _browser.LoginAsync();
+            await page.GotoRelativeAsync("/tenants");
+            await page.WaitForTestIdAsync("tenants-table", 20000);
+
+            await page.Locator("tr", new() { HasText = "Acme" }).Locator("button", new() { HasText = "Edit" }).ClickAsync();
+            await page.WaitForTestIdAsync("tenant-edit-form", 15000);
+            await page.WaitForTestIdAsync("tenant-edit-quota-exceeded-banner", 15000);
+
+            var quotesBadge = page.Locator("[data-testid='tenants-edit-quota-quotes']");
+            Assert.Equal("exceeded", await quotesBadge.GetAttributeAsync("data-quota-status"));
+
+            var summary = (await page.Locator("[data-testid='tenant-edit-quota-exceeded-summary']").TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Quotes", summary, StringComparison.OrdinalIgnoreCase);
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoQuotasAsync();
+        }
+    }
+
+    [Fact]
     public async Task Quotes_Save_Shows_Quota_Exceeded_Toast()
     {
         try
