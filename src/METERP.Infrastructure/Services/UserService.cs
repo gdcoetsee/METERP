@@ -16,20 +16,37 @@ public class UserService : IUserService
     private readonly RoleManager<ApplicationRole> _roleManager;
     private readonly ITenantProvider _tenantProvider;
     private readonly AppDbContext _dbContext;
+    private readonly ITenantCacheService? _cache;
 
     public UserService(
         UserManager<ApplicationUser> userManager,
         RoleManager<ApplicationRole> roleManager,
         ITenantProvider tenantProvider,
-        AppDbContext dbContext)
+        AppDbContext dbContext,
+        ITenantCacheService? cache = null)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _tenantProvider = tenantProvider;
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     public async Task<IReadOnlyList<UserSummary>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "users",
+                $"p{page}:s{pageSize}",
+                () => LoadUsersAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadUsersAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<UserSummary>> LoadUsersAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Users.AsQueryable(); // Respects the global tenant query filter
 
@@ -97,6 +114,7 @@ public class UserService : IUserService
             }
         }
 
+        InvalidateListCaches();
         return (true, Array.Empty<string>());
     }
 
@@ -173,4 +191,6 @@ public class UserService : IUserService
 
         return roles;
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("users");
 }

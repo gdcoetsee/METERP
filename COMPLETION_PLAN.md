@@ -1,5 +1,19 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 59 — COMPLETE (2026-06-19)
+
+**Delivered:** **407/407 green** (323 unit + 29 web + 55 E2E).
+
+### Session 59 deliverables
+- **User list caching:** `users` category; invalidation on `CreateUserAsync` (+4 unit).
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. `GetAvailableRolesAsync` cache (optional, `roles` category).
+3. Cross-module invalidation (customer rename → opportunity list).
+
+---
+
 ## 📋 SESSION 58 — COMPLETE (2026-06-19)
 
 **Delivered:** **403/403 green** (319 unit + 29 web + 55 E2E).
@@ -305,9 +319,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 58 complete — 403/403 green. Inventory/Opportunity list caching + whitespace cache tests.**
+**Session 59 complete — 407/407 green. User list caching.**
 
-### Exact Work Completed — Latest (2026-06-19, session 58)
+### Exact Work Completed — Latest (2026-06-19, session 59)
+- **Services:** User list cache (`users` category).
+- **Tests:** 4 user cache tests (stale read, create invalidation, search bypass, whitespace).
+- **Testing target**: **407/407 green** (323 unit + 29 web + 55 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 58)
 - **Services:** Inventory + Opportunity list cache (`inventory`, `opportunities` categories).
 - **Tests:** 12 inventory/opportunity cache tests + 4 whitespace tests for supporting modules.
 - **Testing target**: **403/403 green** (319 unit + 29 web + 55 E2E).
