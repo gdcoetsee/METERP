@@ -1,5 +1,22 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 44 — COMPLETE (2026-06-19)
+
+**Delivered:** **315/315 green** (241 unit + 25 web + 49 E2E).
+
+### Session 44 deliverables
+- **OpenTelemetry CVE fix (NU1902):** All OTel packages aligned to 1.15.x (`Exporter.*` 1.15.3, `Instrumentation.AspNetCore` 1.15.2, `Instrumentation.Http` 1.15.1, `Instrumentation.EntityFrameworkCore` 1.15.1-beta.1).
+- **Transitive CVE cleanup:** `System.Security.Cryptography.Xml` 9.0.15, `System.Text.Encodings.Web` 9.0.0, `Microsoft.AspNetCore.Http.Abstractions` 2.3.0 — `dotnet list package --vulnerable` now reports **zero** vulnerable packages on Web.
+- **MailKit:** Already at 4.17.0 (latest on NuGet; no newer patch available).
+- **OpenTelemetry integration tests:** `OpenTelemetryExtensionsTests` — DI registration, OTLP config, host startup with OTLP endpoint (3 new web tests).
+
+### Next session priorities
+1. OpenTelemetry integration test with real test OTLP collector (stretch — verify export payloads).
+2. ASP.NET / EF 9.0.x runtime patch bumps when available (framework-level CVEs).
+3. Production maturity: 2FA email delivery, OTel collector docker-compose profile.
+
+---
+
 ## 📋 SESSION 43 — COMPLETE (2026-06-19)
 
 **Delivered:** **312/312 green** (241 unit + 22 web + 49 E2E).
@@ -66,11 +83,17 @@
 
 ---
 
-## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-18 session)
+## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 43 complete — 312/312 green. Job/invoice quota E2E, OTel config, 2FA hardening.**
+**Session 44 complete — 315/315 green. OTel 1.15.3 CVE fix, transitive CVE cleanup, OTel integration tests.**
 
-### Exact Work Completed — Latest (2026-06-19, session 43)
+### Exact Work Completed — Latest (2026-06-19, session 44)
+- **OpenTelemetry CVE:** All OTel packages bumped to 1.15.x; NU1902 cleared.
+- **Transitive CVEs:** `System.Security.Cryptography.Xml` 9.0.15, `System.Text.Encodings.Web` 9.0.0 — zero vulnerable packages on Web.
+- **OpenTelemetry tests:** `OpenTelemetryExtensionsTests` (DI + OTLP host startup).
+- **Testing target**: **315/315 green** (241 unit + 25 web + 49 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 43)
 - **Job/invoice quota E2E:** dev endpoints + `Quote_Convert_To_Job_Shows_Quota_Exceeded_Toast` + `Job_Create_Invoice_Shows_Quota_Exceeded_Toast`.
 - **OpenTelemetry:** `OpenTelemetryOptions` + `AddMeterpOpenTelemetry` (OTLP + console); `OpenTelemetryOptionsTests`.
 - **2FA:** `PendingTwoFactorChallengeStoreTests` + `LoginTwoFactorEndpointTests`.
