@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Infrastructure.Identity;
 
@@ -9,12 +11,20 @@ namespace METERP.Infrastructure.Services;
 public class TwoFactorAuthService : ITwoFactorAuthService
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IEmailSender _emailSender;
     private readonly UrlEncoder _urlEncoder;
+    private readonly ILogger<TwoFactorAuthService> _logger;
 
-    public TwoFactorAuthService(UserManager<ApplicationUser> userManager, UrlEncoder urlEncoder)
+    public TwoFactorAuthService(
+        UserManager<ApplicationUser> userManager,
+        IEmailSender emailSender,
+        UrlEncoder urlEncoder,
+        ILogger<TwoFactorAuthService> logger)
     {
         _userManager = userManager;
+        _emailSender = emailSender;
         _urlEncoder = urlEncoder;
+        _logger = logger;
     }
 
     public async Task<bool> IsEnabledAsync(Guid userId, CancellationToken ct = default)
@@ -56,6 +66,9 @@ public class TwoFactorAuthService : ITwoFactorAuthService
         if (!valid) return (false, new[] { "Invalid authenticator code." });
 
         await _userManager.SetTwoFactorEnabledAsync(user, true);
+        await TrySendSecurityEmailAsync(user, "Two-factor authentication enabled",
+            "<p>Authenticator two-factor authentication was <strong>enabled</strong> on your METERP account.</p>" +
+            "<p>If you did not make this change, contact your administrator immediately.</p>");
         return (true, Array.Empty<string>());
     }
 
@@ -66,6 +79,9 @@ public class TwoFactorAuthService : ITwoFactorAuthService
 
         await _userManager.SetTwoFactorEnabledAsync(user, false);
         await _userManager.ResetAuthenticatorKeyAsync(user);
+        await TrySendSecurityEmailAsync(user, "Two-factor authentication disabled",
+            "<p>Authenticator two-factor authentication was <strong>disabled</strong> on your METERP account.</p>" +
+            "<p>If you did not make this change, contact your administrator immediately.</p>");
         return (true, Array.Empty<string>());
     }
 
@@ -84,6 +100,22 @@ public class TwoFactorAuthService : ITwoFactorAuthService
     {
         const string issuer = "METERP";
         return $"otpauth://totp/{_urlEncoder.Encode(issuer)}:{_urlEncoder.Encode(email)}?secret={unformattedKey}&issuer={_urlEncoder.Encode(issuer)}&digits=6";
+    }
+
+    private async Task TrySendSecurityEmailAsync(ApplicationUser user, string subject, string htmlBody)
+    {
+        var recipient = user.Email ?? user.UserName;
+        if (string.IsNullOrWhiteSpace(recipient))
+            return;
+
+        try
+        {
+            await _emailSender.SendEmailAsync(recipient, subject, htmlBody);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send 2FA security email to {Recipient}", recipient);
+        }
     }
 
     private static string FormatKey(string unformattedKey)

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using METERP.Application.Interfaces;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
@@ -23,6 +24,7 @@ public class TwoFactorAuthServiceTests
         public UserManager<ApplicationUser> UserManager { get; }
         public TwoFactorAuthService Service { get; }
         public ApplicationUser User { get; }
+        public Mock<IEmailSender> EmailSender { get; }
 
         public Harness()
         {
@@ -37,7 +39,12 @@ public class TwoFactorAuthServiceTests
 
             Db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
             UserManager = CreateUserManager(Db);
-            Service = new TwoFactorAuthService(UserManager, UrlEncoder.Default);
+            EmailSender = new Mock<IEmailSender>();
+            Service = new TwoFactorAuthService(
+                UserManager,
+                EmailSender.Object,
+                UrlEncoder.Default,
+                NullLogger<TwoFactorAuthService>.Instance);
 
             User = new ApplicationUser
             {
@@ -137,5 +144,41 @@ public class TwoFactorAuthServiceTests
 
         Assert.True(ok);
         Assert.False(await h.Service.IsEnabledAsync(h.User.Id));
+    }
+
+    [Fact]
+    public async Task ConfirmSetup_SendsSecurityEmail_WhenEnabled()
+    {
+        using var h = new Harness();
+        await h.Service.BeginSetupAsync(h.User.Id);
+        var rawKey = (await h.UserManager.GetAuthenticatorKeyAsync(h.User))!;
+
+        var (ok, _) = await h.Service.ConfirmSetupAsync(h.User.Id, ComputeTotp(rawKey));
+
+        Assert.True(ok);
+        h.EmailSender.Verify(e => e.SendEmailAsync(
+            h.User.Email!,
+            "Two-factor authentication enabled",
+            It.Is<string>(body => body.Contains("enabled", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DisableAsync_SendsSecurityEmail_WhenDisabled()
+    {
+        using var h = new Harness();
+        await h.Service.BeginSetupAsync(h.User.Id);
+        var rawKey = (await h.UserManager.GetAuthenticatorKeyAsync(h.User))!;
+        await h.Service.ConfirmSetupAsync(h.User.Id, ComputeTotp(rawKey));
+        h.EmailSender.Invocations.Clear();
+
+        var (ok, _) = await h.Service.DisableAsync(h.User.Id);
+
+        Assert.True(ok);
+        h.EmailSender.Verify(e => e.SendEmailAsync(
+            h.User.Email!,
+            "Two-factor authentication disabled",
+            It.Is<string>(body => body.Contains("disabled", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

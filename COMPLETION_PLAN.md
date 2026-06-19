@@ -1,5 +1,22 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 45 — COMPLETE (2026-06-19)
+
+**Delivered:** **320/320 green** (244 unit + 27 web + 49 E2E).
+
+### Session 45 deliverables
+- **OTel collector docker-compose profile:** `otel-collector` service (`--profile observability`); `docker/otel-collector-config.yaml`; web env passthrough for `OpenTelemetry__OtlpEndpoint`.
+- **OTLP export integration tests:** `LoopbackOtlpCollector` + `OpenTelemetryOtlpExportTests` — verifies trace/metric payloads reach loopback OTLP/HTTP receiver (service name in protobuf).
+- **OTLP HTTP path fix:** `OpenTelemetryOptions.OtlpProtocol` (Grpc/HttpProtobuf); signal-specific `/v1/traces` + `/v1/metrics` endpoints for HTTP.
+- **2FA security email delivery:** `TwoFactorAuthService` sends best-effort SMTP notifications on enable/disable; `TwoFactorAuthServiceTests` (+2).
+
+### Next session priorities
+1. ASP.NET / EF 9.0.x runtime patch bumps when available (framework-level CVEs).
+2. E2E for 2FA email path when SMTP configured (stretch).
+3. Production: wire Seq + OTel collector together in observability profile docs/README.
+
+---
+
 ## 📋 SESSION 44 — COMPLETE (2026-06-19)
 
 **Delivered:** **315/315 green** (241 unit + 25 web + 49 E2E).
@@ -85,9 +102,16 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 44 complete — 315/315 green. OTel 1.15.3 CVE fix, transitive CVE cleanup, OTel integration tests.**
+**Session 45 complete — 320/320 green. OTel collector profile, OTLP export payload tests, 2FA security emails.**
 
-### Exact Work Completed — Latest (2026-06-19, session 44)
+### Exact Work Completed — Latest (2026-06-19, session 45)
+- **OTel collector profile:** `docker compose --profile observability up`; collector on 4317/4318.
+- **OTLP export tests:** `OpenTelemetryOtlpExportTests` + `LoopbackOtlpCollector` (trace + metric payload verification).
+- **OTLP HTTP:** `OtlpProtocol` option; `/v1/traces` + `/v1/metrics` path construction.
+- **2FA email:** security notifications on enable/disable via `IEmailSender` (best-effort).
+- **Testing target**: **320/320 green** (244 unit + 27 web + 49 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 44)
 - **OpenTelemetry CVE:** All OTel packages bumped to 1.15.x; NU1902 cleared.
 - **Transitive CVEs:** `System.Security.Cryptography.Xml` 9.0.15, `System.Text.Encodings.Web` 9.0.0 — zero vulnerable packages on Web.
 - **OpenTelemetry tests:** `OpenTelemetryExtensionsTests` (DI + OTLP host startup).

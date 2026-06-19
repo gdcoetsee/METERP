@@ -32,6 +32,15 @@ public class OpenTelemetryOptionsTests
         var options = new OpenTelemetryOptions();
         Assert.Equal("METERP", options.ServiceName);
         Assert.Null(options.OtlpEndpoint);
+        Assert.Equal("Grpc", options.OtlpProtocol);
+        Assert.False(options.UseHttpProtobuf);
         Assert.False(options.EnableConsoleExporter);
+    }
+
+    [Fact]
+    public void UseHttpProtobuf_IsTrue_WhenProtocolSet()
+    {
+        var options = new OpenTelemetryOptions { OtlpProtocol = "HttpProtobuf" };
+        Assert.True(options.UseHttpProtobuf);
     }
 }

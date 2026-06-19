@@ -20,6 +20,9 @@ services:
       - Billing__CustomerPortalBaseUrl=https://billing.stripe.com/p/login/demo_meterp
       - Billing__CustomerPortalReturnUrl=http://localhost:8080/tenants
       - Billing__WebhookEventRetentionDays=90
+      # Optional OTLP export — set when starting with --profile observability (see .env.example).
+      - OpenTelemetry__OtlpEndpoint=${OpenTelemetry__OtlpEndpoint:-}
+      - OpenTelemetry__EnableConsoleExporter=${OpenTelemetry__EnableConsoleExporter:-true}
       # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
       # - METERP_SEED_RESET=true
       # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.
@@ -74,6 +77,17 @@ services:
       - ACCEPT_EULA=Y
     volumes:
       - seq_data:/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    profiles:
+      - observability
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
 
 volumes:
   postgres_data:
