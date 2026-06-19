@@ -1470,6 +1470,71 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountSecurity_EnableTwoFactor_Captures_Security_Email()
+    {
+        try
+        {
+            await E2EHelpers.BeginEmailCaptureAsync();
+
+            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+            await setupPage.GotoRelativeAsync("/account-security");
+            await setupPage.WaitForTestIdAsync("account-security-ready", 15000);
+
+            if (await setupPage.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
+            {
+                await setupPage.ClickByTestIdAsync("2fa-disable-button");
+                await setupPage.WaitForTestIdAsync("2fa-status-disabled", 15000);
+                await E2EHelpers.BeginEmailCaptureAsync();
+            }
+
+            await setupPage.ClickByTestIdAsync("2fa-enable-button");
+            await setupPage.WaitForTestIdAsync("2fa-shared-key", 10000);
+            var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
+            var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
+            var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
+
+            var setupCode = TotpHelper.ComputeCurrentCode(secretMaterial);
+            await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
+            await setupPage.ClickByTestIdAsync("2fa-confirm-button");
+            await setupPage.WaitForTestIdAsync("2fa-status-enabled", 20000);
+
+            IReadOnlyList<E2EHelpers.CapturedEmailDto> captured = [];
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                captured = await E2EHelpers.GetCapturedEmailsAsync();
+                if (captured.Any(m => m.Subject.Contains("enabled", StringComparison.OrdinalIgnoreCase)))
+                    break;
+                await Task.Delay(500);
+            }
+
+            Assert.Contains(captured, m =>
+                m.To.Contains("beta.demo", StringComparison.OrdinalIgnoreCase)
+                && m.Subject.Contains("Two-factor authentication enabled", StringComparison.OrdinalIgnoreCase)
+                && m.HtmlBody.Contains("enabled", StringComparison.OrdinalIgnoreCase));
+
+            await setupPage.ClickByTestIdAsync("2fa-disable-button");
+            await setupPage.WaitForTestIdAsync("2fa-status-disabled", 15000);
+            await setupPage.CloseAsync();
+
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                captured = await E2EHelpers.GetCapturedEmailsAsync();
+                if (captured.Any(m => m.Subject.Contains("disabled", StringComparison.OrdinalIgnoreCase)))
+                    break;
+                await Task.Delay(500);
+            }
+
+            Assert.Contains(captured, m =>
+                m.Subject.Contains("Two-factor authentication disabled", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            await E2EHelpers.ClearEmailCaptureAsync();
+            await DisableTwoFactorForBetaAsync();
+        }
+    }
+
+    [Fact]
     public async Task AccountSecurity_Enables_TwoFactor_And_Login_Challenge()
     {
         var secretMaterial = await EnableTwoFactorForBetaAsync();

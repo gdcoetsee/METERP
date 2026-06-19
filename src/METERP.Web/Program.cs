@@ -134,7 +134,12 @@ builder.Services.AddHttpClient("stripe", client =>
     client.BaseAddress = new Uri("https://api.stripe.com/");
     client.Timeout = TimeSpan.FromSeconds(15);
 });
-builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<IE2EEmailCaptureStore, E2EEmailCaptureStore>();
+builder.Services.AddScoped<SmtpEmailSender>();
+if (builder.Environment.IsDevelopment())
+    builder.Services.AddScoped<IEmailSender, CapturingEmailSender>();
+else
+    builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IInvoiceIntegrationService, InvoiceIntegrationService>();
 builder.Services.AddScoped<IBillingWebhookService, BillingWebhookService>();
 builder.Services.AddScoped<IBillingWebhookMaintenanceService, BillingWebhookMaintenanceService>();
@@ -514,6 +519,22 @@ if (app.Environment.IsDevelopment())
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
         await E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, tenant.Id, ct);
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/begin-email-capture", (IE2EEmailCaptureStore capture) =>
+    {
+        capture.BeginCapture();
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
+
+    app.MapGet("/e2e/captured-emails", (IE2EEmailCaptureStore capture) =>
+        Results.Ok(capture.GetAll().Select(m => new { m.To, m.Subject, m.HtmlBody, m.CapturedAtUtc })))
+        .DisableRateLimiting();
+
+    app.MapPost("/e2e/clear-email-capture", (IE2EEmailCaptureStore capture) =>
+    {
+        capture.Clear();
         return Results.Ok(new { ok = true });
     }).DisableRateLimiting();
 }

@@ -187,6 +187,35 @@ public static class E2EHelpers
         response.EnsureSuccessStatusCode();
     }
 
+    public static async Task BeginEmailCaptureAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/begin-email-capture", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task ClearEmailCaptureAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/clear-email-capture", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task<IReadOnlyList<CapturedEmailDto>> GetCapturedEmailsAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.GetAsync($"{url}/e2e/captured-emails");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<List<CapturedEmailDto>>(json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+    }
+
+    public sealed record CapturedEmailDto(string To, string Subject, string HtmlBody, DateTimeOffset CapturedAtUtc);
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

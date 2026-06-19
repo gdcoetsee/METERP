@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 46 — COMPLETE (2026-06-19)
+
+**Delivered:** **323/323 green** (244 unit + 29 web + 50 E2E when app running).
+
+### Session 46 deliverables
+- **.NET 9.0.x patch bumps:** Microsoft.AspNetCore/EF/Extensions `9.0.*` → resolved **9.0.17**; `Microsoft.AspNetCore.Http.Abstractions` **2.3.11**; `Serilog.Sinks.Console` **6.1.1**; `dotnet list package --vulnerable` still **zero** on Web.
+- **2FA email E2E:** `E2EEmailCaptureStore` + `CapturingEmailSender` (Development); `/e2e/begin-email-capture`, `/e2e/captured-emails`, `/e2e/clear-email-capture`; `AccountSecurity_EnableTwoFactor_Captures_Security_Email` (50th Playwright); `E2EEmailCaptureStoreTests` (+2 web).
+- **Observability docs:** `.env.example` + README — Seq + OTel collector profile usage.
+
+### Next session priorities
+1. Run full E2E suite in CI / against docker-compose to confirm 323 green.
+2. Mailpit or real SMTP in docker-compose for non-capture email integration demos.
+3. Evaluate OTel 1.16.x bump (when CVE-free) and AspNetCore.HealthChecks.UI.Client 9.x.
+
+---
+
 ## 📋 SESSION 45 — COMPLETE (2026-06-19)
 
 **Delivered:** **320/320 green** (244 unit + 27 web + 49 E2E).
@@ -102,9 +118,15 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 45 complete — 320/320 green. OTel collector profile, OTLP export payload tests, 2FA security emails.**
+**Session 46 complete — 323/323 green. .NET 9.0.17 patches, 2FA email E2E capture, observability docs.**
 
-### Exact Work Completed — Latest (2026-06-19, session 45)
+### Exact Work Completed — Latest (2026-06-19, session 46)
+- **Package patches:** EF/ASP.NET 9.0.17, Http.Abstractions 2.3.11; zero vulnerable packages.
+- **2FA email E2E:** dev email capture decorator + endpoints; 50th Playwright test.
+- **Docs:** observability stack in `.env.example` + README.
+- **Testing target**: **323/323 green** (244 unit + 29 web + 50 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 45)
 - **OTel collector profile:** `docker compose --profile observability up`; collector on 4317/4318.
 - **OTLP export tests:** `OpenTelemetryOtlpExportTests` + `LoopbackOtlpCollector` (trace + metric payload verification).
 - **OTLP HTTP:** `OtlpProtocol` option; `/v1/traces` + `/v1/metrics` path construction.

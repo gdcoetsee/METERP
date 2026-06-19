@@ -30,7 +30,7 @@
 - Cloud: Azure/AWS ECS/App Service; set DB/AI keys as secrets.
 - Scale: add Redis for cache, load balancer.
 - Backups: pg_dump.
-- Monitoring: add Seq/OpenTelemetry.
+- **Observability (optional):** `docker compose --profile observability up --build` adds OpenTelemetry Collector (4317/4318). Seq is included by default on http://localhost:5341. Set `OpenTelemetry__OtlpEndpoint=http://otel-collector:4317` and `Seq__ServerUrl=http://seq:5341` in `.env` (see `.env.example`).
 - Sell: per-tenant, brand via CSS, bill on usage (jobs/AI calls).
 
 **How to Test:**
