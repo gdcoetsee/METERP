@@ -23,6 +23,12 @@ services:
       # Optional OTLP export — set when starting with --profile observability (see .env.example).
       - OpenTelemetry__OtlpEndpoint=${OpenTelemetry__OtlpEndpoint:-}
       - OpenTelemetry__EnableConsoleExporter=${OpenTelemetry__EnableConsoleExporter:-true}
+      # Mailpit SMTP (docker service below) — real email in demo without external SMTP.
+      - Email__SmtpHost=${Email__SmtpHost:-mailpit}
+      - Email__SmtpPort=${Email__SmtpPort:-1025}
+      - Email__UseSsl=${Email__UseSsl:-false}
+      - Email__FromAddress=${Email__FromAddress:-noreply@acme.demo}
+      - Email__FromName=${Email__FromName:-METERP}
       # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
       # - METERP_SEED_RESET=true
       # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.
@@ -40,6 +46,8 @@ services:
       redis:
         condition: service_started
       seq:
+        condition: service_started
+      mailpit:
         condition: service_started
 
   postgres:
@@ -77,6 +85,12 @@ services:
       - ACCEPT_EULA=Y
     volumes:
       - seq_data:/data
+
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.96.0

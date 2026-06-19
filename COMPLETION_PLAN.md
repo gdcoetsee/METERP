@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 47 — COMPLETE (2026-06-19)
+
+**Delivered:** **323/323 green** (244 unit + 29 web + 50 E2E) — full suite verified locally.
+
+### Session 47 deliverables
+- **Full E2E verification:** 50/50 Playwright green against Release build on `localhost:8080` (~5m13s).
+- **Mailpit in docker-compose:** `mailpit` service (SMTP :1025, UI :8025); web defaults `Email__SmtpHost=mailpit` for real SMTP demos.
+- **Package bumps:** OTel Exporter/Console/Hosting **1.16.0**; `AspNetCore.HealthChecks.UI.Client` **9.0.0**; `dotnet list package --vulnerable` still **zero**.
+
+### Next session priorities
+1. CI workflow: ensure E2E job uses fresh build (avoid stale 404 on `/e2e/*` endpoints).
+2. Mailpit E2E stretch — assert message in Mailpit API after 2FA enable (optional; capture test already covers flow).
+3. Remaining sellable hardening: quota enforcement UX polish, performance profiling on list caches.
+
+---
+
 ## 📋 SESSION 46 — COMPLETE (2026-06-19)
 
 **Delivered:** **323/323 green** (244 unit + 29 web + 50 E2E when app running).
@@ -118,9 +134,15 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 46 complete — 323/323 green. .NET 9.0.17 patches, 2FA email E2E capture, observability docs.**
+**Session 47 complete — 323/323 green. Full E2E verified, Mailpit SMTP, OTel 1.16 + HealthChecks 9.**
 
-### Exact Work Completed — Latest (2026-06-19, session 46)
+### Exact Work Completed — Latest (2026-06-19, session 47)
+- **E2E:** 50/50 Playwright green (Release app on :8080).
+- **Mailpit:** docker-compose service + default Email__* env on web.
+- **Packages:** OTel 1.16.0, HealthChecks.UI.Client 9.0.0; zero vulnerable packages.
+- **Testing target**: **323/323 green** (244 unit + 29 web + 50 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 46)
 - **Package patches:** EF/ASP.NET 9.0.17, Http.Abstractions 2.3.11; zero vulnerable packages.
 - **2FA email E2E:** dev email capture decorator + endpoints; 50th Playwright test.
 - **Docs:** observability stack in `.env.example` + README.
