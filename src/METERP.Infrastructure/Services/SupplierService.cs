@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -8,10 +9,12 @@ namespace METERP.Infrastructure.Services;
 public class SupplierService : ISupplierService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ITenantCacheService? _cache;
 
-    public SupplierService(AppDbContext dbContext)
+    public SupplierService(AppDbContext dbContext, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     public async Task<Supplier?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -21,6 +24,20 @@ public class SupplierService : ISupplierService
     }
 
     public async Task<IReadOnlyList<Supplier>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "suppliers",
+                $"p{page}:s{pageSize}",
+                () => LoadSuppliersAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadSuppliersAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Supplier>> LoadSuppliersAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<Supplier>()
             .AsNoTracking()
@@ -47,6 +64,7 @@ public class SupplierService : ISupplierService
     {
         _dbContext.Set<Supplier>().Add(supplier);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return supplier.Id;
     }
 
@@ -54,6 +72,7 @@ public class SupplierService : ISupplierService
     {
         _dbContext.Set<Supplier>().Update(supplier);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -63,5 +82,8 @@ public class SupplierService : ISupplierService
 
         supplier.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("suppliers");
 }

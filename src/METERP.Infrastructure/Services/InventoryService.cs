@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -8,10 +9,12 @@ namespace METERP.Infrastructure.Services;
 public class InventoryService : IInventoryService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ITenantCacheService? _cache;
 
-    public InventoryService(AppDbContext dbContext)
+    public InventoryService(AppDbContext dbContext, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     public async Task<InventoryItem?> GetItemByIdAsync(Guid id, CancellationToken ct = default)
@@ -21,6 +24,20 @@ public class InventoryService : IInventoryService
     }
 
     public async Task<IReadOnlyList<InventoryItem>> GetAllItemsAsync(string? search = null, bool lowStockOnly = false, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "inventory",
+                $"p{page}:s{pageSize}:low{(lowStockOnly ? 1 : 0)}",
+                () => LoadItemsAsync(search, lowStockOnly, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadItemsAsync(search, lowStockOnly, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<InventoryItem>> LoadItemsAsync(string? search, bool lowStockOnly, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<InventoryItem>()
             .AsNoTracking()
@@ -57,6 +74,7 @@ public class InventoryService : IInventoryService
 
         _dbContext.Set<InventoryItem>().Add(item);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return item.Id;
     }
 
@@ -64,6 +82,7 @@ public class InventoryService : IInventoryService
     {
         _dbContext.Set<InventoryItem>().Update(item);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task RecordStockTransactionAsync(Guid itemId, decimal quantityChange, StockTransactionType type, string? reference = null, Guid? jobId = null, string? notes = null, CancellationToken ct = default)
@@ -88,6 +107,7 @@ public class InventoryService : IInventoryService
         _dbContext.Set<StockTransaction>().Add(transaction);
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<IReadOnlyList<StockTransaction>> GetTransactionsForItemAsync(Guid itemId, CancellationToken ct = default)
@@ -108,4 +128,6 @@ public class InventoryService : IInventoryService
             .Take(take)
             .ToListAsync(ct);
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("inventory");
 }

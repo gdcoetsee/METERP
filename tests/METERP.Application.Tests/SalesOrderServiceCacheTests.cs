@@ -224,4 +224,31 @@ public class SalesOrderServiceCacheTests
             Assert.Equal(1150m, (await service.GetAllAsync())[0].Total);
         }
     }
+
+    [Fact]
+    public async Task ConvertToJobAsync_InvalidatesSalesOrderAndJobListCaches()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId, soId) = await SeedSalesOrderAsync(db, tenantId);
+            var so = await db.Set<SalesOrder>().FirstAsync(s => s.Id == soId);
+            so.Status = SalesOrderStatus.Confirmed;
+            so.Total = 5000m;
+            so.Subtotal = 5000m;
+            await db.SaveChangesAsync();
+
+            var jobService = new JobService(db, cache: cache);
+            var service = new SalesOrderService(db, jobService, cache: cache);
+
+            Assert.Equal(SalesOrderStatus.Confirmed, (await service.GetAllAsync())[0].Status);
+            Assert.Empty(await jobService.GetAllAsync());
+
+            await service.ConvertToJobAsync(soId);
+
+            Assert.Equal(SalesOrderStatus.InProgress, (await service.GetAllAsync())[0].Status);
+            Assert.Single(await jobService.GetAllAsync());
+        }
+    }
 }

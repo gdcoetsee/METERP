@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -8,10 +9,12 @@ namespace METERP.Infrastructure.Services;
 public class AssetService : IAssetService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ITenantCacheService? _cache;
 
-    public AssetService(AppDbContext dbContext)
+    public AssetService(AppDbContext dbContext, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     public async Task<Asset?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -22,6 +25,20 @@ public class AssetService : IAssetService
     }
 
     public async Task<IReadOnlyList<Asset>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "assets",
+                $"p{page}:s{pageSize}",
+                () => LoadAssetsAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadAssetsAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Asset>> LoadAssetsAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<Asset>()
             .AsNoTracking()
@@ -55,6 +72,7 @@ public class AssetService : IAssetService
 
         _dbContext.Set<Asset>().Add(asset);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return asset.Id;
     }
 
@@ -62,6 +80,7 @@ public class AssetService : IAssetService
     {
         _dbContext.Set<Asset>().Update(asset);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -71,6 +90,7 @@ public class AssetService : IAssetService
 
         asset.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task UpdateStatusAsync(Guid assetId, AssetStatus newStatus, CancellationToken ct = default)
@@ -80,6 +100,7 @@ public class AssetService : IAssetService
 
         asset.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task AddMaintenanceNoteAsync(Guid assetId, string note, Guid? jobId = null, CancellationToken ct = default)
@@ -87,12 +108,14 @@ public class AssetService : IAssetService
         var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == assetId, ct);
         if (asset == null) return;
 
-        // For MVP we append to Notes. In a fuller version we'd have AssetMaintenance entity.
         var prefix = jobId.HasValue ? $"[Job {jobId}] " : "";
         asset.Notes = string.IsNullOrWhiteSpace(asset.Notes)
             ? $"{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note}"
             : $"{asset.Notes}\n{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note}";
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("assets");
 }

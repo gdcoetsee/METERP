@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -8,10 +9,12 @@ namespace METERP.Infrastructure.Services;
 public class CustomerService : ICustomerService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ITenantCacheService? _cache;
 
-    public CustomerService(AppDbContext dbContext)
+    public CustomerService(AppDbContext dbContext, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     public async Task<Customer?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -22,6 +25,20 @@ public class CustomerService : ICustomerService
     }
 
     public async Task<IReadOnlyList<Customer>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "customers",
+                $"p{page}:s{pageSize}",
+                () => LoadCustomersAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadCustomersAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Customer>> LoadCustomersAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<Customer>().AsNoTracking().AsQueryable();
 
@@ -46,6 +63,7 @@ public class CustomerService : ICustomerService
     {
         _dbContext.Set<Customer>().Add(customer);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return customer.Id;
     }
 
@@ -53,6 +71,7 @@ public class CustomerService : ICustomerService
     {
         _dbContext.Set<Customer>().Update(customer);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -63,7 +82,6 @@ public class CustomerService : ICustomerService
 
         if (customer == null) return;
 
-        // Soft delete contacts too
         foreach (var contact in customer.Contacts)
         {
             contact.IsDeleted = true;
@@ -71,6 +89,7 @@ public class CustomerService : ICustomerService
         customer.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<IReadOnlyList<Contact>> GetContactsAsync(Guid customerId, CancellationToken ct = default)
@@ -84,7 +103,6 @@ public class CustomerService : ICustomerService
 
     public async Task<Guid> AddContactAsync(Contact contact, CancellationToken ct = default)
     {
-        // Ensure only one primary if setting primary
         if (contact.IsPrimary)
         {
             var existingPrimaries = await _dbContext.Set<Contact>()
@@ -99,6 +117,7 @@ public class CustomerService : ICustomerService
 
         _dbContext.Set<Contact>().Add(contact);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return contact.Id;
     }
 
@@ -118,6 +137,7 @@ public class CustomerService : ICustomerService
 
         _dbContext.Set<Contact>().Update(contact);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteContactAsync(Guid contactId, CancellationToken ct = default)
@@ -127,5 +147,8 @@ public class CustomerService : ICustomerService
 
         contact.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("customers");
 }

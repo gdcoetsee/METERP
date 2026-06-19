@@ -1,5 +1,49 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 58 — COMPLETE (2026-06-19)
+
+**Delivered:** **403/403 green** (319 unit + 29 web + 55 E2E).
+
+### Session 58 deliverables
+- **Inventory / Opportunity list caching:** `inventory` / `opportunities` categories; invalidation on CRUD, stock transactions, stage advance, quote conversion (+12 unit).
+- **Whitespace cache tests:** Customer, Supplier, Employee, Asset mirror Quote/Job pattern (+4 unit).
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. Remaining services without list cache (scheduling, notifications, finance lists).
+3. Cross-module invalidation tests (e.g. customer rename → opportunity list).
+
+---
+
+## 📋 SESSION 57 — COMPLETE (2026-06-19)
+
+**Delivered:** **387/387 green** (303 unit + 29 web + 55 E2E).
+
+### Session 57 deliverables
+- **Employee / Asset list caching:** `ITenantCacheService` wired with invalidation on CRUD; assets also on status + maintenance note (+6 unit).
+- **E2E:** re-run full suite — 55/55 green (no UI changes).
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. Inventory / Opportunity list cache + tests (CRM spine).
+3. Whitespace-search cache tests for Customer/Supplier/Employee/Asset.
+
+---
+
+## 📋 SESSION 56 — COMPLETE (2026-06-19)
+
+**Delivered:** **387/387 green** (303 unit + 29 web + 55 E2E).
+
+### Session 56 deliverables
+- **Customer / Supplier list caching:** `customers` / `suppliers` categories; invalidation on CRUD + customer contact mutations (+8 unit).
+- **SO→Job convert cache test:** dual invalidation of `sales-orders` + `jobs` categories (+1 unit).
+
+### Next session priorities
+1. Employee / Asset list cache (same pattern).
+2. Full E2E verification after supporting-module service changes.
+
+---
+
 ## 📋 SESSION 55 — COMPLETE (2026-06-19)
 
 **Delivered:** **372/372 green** (288 unit + 29 web + 55 E2E).
@@ -261,9 +305,24 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 55 complete — 372/372 green. SO/PO list caching + invoice pagination test.**
+**Session 58 complete — 403/403 green. Inventory/Opportunity list caching + whitespace cache tests.**
 
-### Exact Work Completed — Latest (2026-06-19, session 55)
+### Exact Work Completed — Latest (2026-06-19, session 58)
+- **Services:** Inventory + Opportunity list cache (`inventory`, `opportunities` categories).
+- **Tests:** 12 inventory/opportunity cache tests + 4 whitespace tests for supporting modules.
+- **Testing target**: **403/403 green** (319 unit + 29 web + 55 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 57)
+- **Services:** Employee + Asset list cache (`employees`, `assets` categories).
+- **Tests:** 6 employee/asset cache tests; full E2E re-run 55/55.
+- **Testing target**: **387/387 green** (303 unit + 29 web + 55 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 56)
+- **Services:** Customer + Supplier list cache (`customers`, `suppliers` categories).
+- **Tests:** 8 customer/supplier cache tests + SO→Job dual-category invalidation test.
+- **Testing target**: **387/387 green** (303 unit + 29 web + 55 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 55)
 - **Services:** SalesOrder + PurchaseOrder list cache (`sales-orders`, `purchase-orders` categories).
 - **Tests:** 12 SO/PO cache tests + invoice page-size cache test.
 - **Testing target**: **372/372 green** (288 unit + 29 web + 55 E2E).

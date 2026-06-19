@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -19,11 +20,13 @@ public class OpportunityService : IOpportunityService
 
     private readonly AppDbContext _dbContext;
     private readonly IAuditService? _auditService;
+    private readonly ITenantCacheService? _cache;
 
-    public OpportunityService(AppDbContext dbContext, IAuditService? auditService = null)
+    public OpportunityService(AppDbContext dbContext, IAuditService? auditService = null, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _auditService = auditService;
+        _cache = cache;
     }
 
     public async Task<Opportunity?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -39,6 +42,25 @@ public class OpportunityService : IOpportunityService
         int page = 1,
         int pageSize = 100,
         CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "opportunities",
+                $"p{page}:s{pageSize}:st{(stage.HasValue ? (int)stage.Value : -1)}",
+                () => LoadOpportunitiesAsync(search, stage, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadOpportunitiesAsync(search, stage, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Opportunity>> LoadOpportunitiesAsync(
+        string? search,
+        OpportunityStage? stage,
+        int page,
+        int pageSize,
+        CancellationToken ct)
     {
         var query = _dbContext.Set<Opportunity>()
             .AsNoTracking()
@@ -78,6 +100,7 @@ public class OpportunityService : IOpportunityService
 
         _dbContext.Set<Opportunity>().Add(opportunity);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
 
         if (_auditService != null)
         {
@@ -96,6 +119,7 @@ public class OpportunityService : IOpportunityService
     {
         _dbContext.Set<Opportunity>().Update(opportunity);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
 
         if (_auditService != null)
         {
@@ -115,6 +139,7 @@ public class OpportunityService : IOpportunityService
 
         opp.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
 
         if (_auditService != null)
         {
@@ -132,6 +157,7 @@ public class OpportunityService : IOpportunityService
             opp.Stage = StageOrder[idx + 1];
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
 
         if (_auditService != null)
         {
@@ -160,6 +186,7 @@ public class OpportunityService : IOpportunityService
             opp.Stage = OpportunityStage.Proposal;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
 
         if (_auditService != null)
         {
@@ -171,4 +198,6 @@ public class OpportunityService : IOpportunityService
                 ct);
         }
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("opportunities");
 }

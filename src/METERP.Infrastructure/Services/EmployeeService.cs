@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -8,10 +9,12 @@ namespace METERP.Infrastructure.Services;
 public class EmployeeService : IEmployeeService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ITenantCacheService? _cache;
 
-    public EmployeeService(AppDbContext dbContext)
+    public EmployeeService(AppDbContext dbContext, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     public async Task<Employee?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -20,6 +23,20 @@ public class EmployeeService : IEmployeeService
     }
 
     public async Task<IReadOnlyList<Employee>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "employees",
+                $"p{page}:s{pageSize}",
+                () => LoadEmployeesAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadEmployeesAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<Employee>> LoadEmployeesAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<Employee>().AsNoTracking().Where(e => e.IsActive).AsQueryable();
 
@@ -43,6 +60,7 @@ public class EmployeeService : IEmployeeService
     {
         _dbContext.Set<Employee>().Add(emp);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return emp.Id;
     }
 
@@ -50,6 +68,7 @@ public class EmployeeService : IEmployeeService
     {
         _dbContext.Set<Employee>().Update(emp);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -58,5 +77,8 @@ public class EmployeeService : IEmployeeService
         if (e == null) return;
         e.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("employees");
 }
