@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 48 — COMPLETE (2026-06-19)
+
+**Delivered:** **326/326 green** (246 unit + 29 web + 51 E2E).
+
+### Session 48 deliverables
+- **CI E2E hardening:** explicit `docker compose build --pull web`; smoke-check `/e2e/reset-demo-quotas` + `/e2e/begin-email-capture` before Playwright.
+- **Quota UX:** `TenantQuotaDefaults.IsAtOrOverLimit` / `HasAnyQuotaAtOrOverLimit`; home `home-quota-exceeded-banner` + per-quota test ids; `Home_Quota_Exceeded_Shows_Upgrade_Banner` (51st E2E).
+- **E2E stability:** job→invoice test timeout 30s for invoice detail panel.
+
+### Next session priorities
+1. List-cache performance profiling or additional search-bypass tests.
+2. Mailpit API E2E stretch (optional).
+3. Push branch and verify GitHub Actions E2E job green.
+
+---
+
 ## 📋 SESSION 47 — COMPLETE (2026-06-19)
 
 **Delivered:** **323/323 green** (244 unit + 29 web + 50 E2E) — full suite verified locally.
@@ -134,9 +150,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 47 complete — 323/323 green. Full E2E verified, Mailpit SMTP, OTel 1.16 + HealthChecks 9.**
+**Session 48 complete — 326/326 green. CI E2E guards, quota exceeded banner, 51 E2E.**
 
-### Exact Work Completed — Latest (2026-06-19, session 47)
+### Exact Work Completed — Latest (2026-06-19, session 48)
+- **CI:** fresh docker web build + E2E dev endpoint smoke checks.
+- **Quota UX:** exceeded banner on dashboard + upgrade CTA; +2 unit tests, +1 E2E.
+- **Testing target**: **326/326 green** (246 unit + 29 web + 51 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 47)
 - **E2E:** 50/50 Playwright green (Release app on :8080).
 - **Mailpit:** docker-compose service + default Email__* env on web.
 - **Packages:** OTel 1.16.0, HealthChecks.UI.Client 9.0.0; zero vulnerable packages.

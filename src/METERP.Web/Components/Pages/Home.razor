@@ -51,6 +51,20 @@
         {
             <div class="card-footer small text-warning">AI Copilot is disabled for this tenant (feature flag). Upgrade tier or enable <code>ai</code> in tenant settings.</div>
         }
+        @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
+        {
+            <div class="card-footer alert alert-danger mb-0 py-2" data-testid="home-quota-exceeded-banner" role="alert">
+                <strong>Monthly quota reached.</strong> New quotes, jobs, invoices, or AI actions may be blocked until you upgrade or the period resets.
+                @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
+                {
+                    <button type="button" class="btn btn-sm btn-danger ms-2" data-testid="home-quota-upgrade-button" @onclick="OpenBillingPortal">Upgrade plan</button>
+                }
+                else
+                {
+                    <a href="/account-billing" class="btn btn-sm btn-danger ms-2" data-testid="home-quota-upgrade-button">View plan</a>
+                }
+            </div>
+        }
     </div>
 
     @if (currentTenant.SubscriptionStatus is "past_due" or "unpaid")
@@ -339,6 +353,14 @@
     {
         if (currentTenant == null) return;
         var limit = TenantQuotaDefaults.GetEffectiveLimit(currentTenant, type);
+        var testId = type switch
+        {
+            QuotaType.Quote => "home-quota-quotes",
+            QuotaType.Job => "home-quota-jobs",
+            QuotaType.Invoice => "home-quota-invoices",
+            QuotaType.AiCall => "home-quota-ai",
+            _ => "home-quota-other"
+        };
         var limitText = limit?.ToString() ?? "∞";
         var css = "bg-secondary";
         if (limit.HasValue)
@@ -350,7 +372,8 @@
 
         builder.OpenElement(0, "span");
         builder.AddAttribute(1, "class", $"badge {css}");
-        builder.AddContent(2, $"{label}: {used} / {limitText}");
+        builder.AddAttribute(2, "data-testid", testId);
+        builder.AddContent(3, $"{label}: {used} / {limitText}");
         builder.CloseElement();
     };
 }

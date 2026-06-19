@@ -85,4 +85,31 @@ public class TenantQuotaDefaultsTests
 
         Assert.Equal(10, limit);
     }
+
+    [Fact]
+    public void IsAtOrOverLimit_ReturnsTrue_WhenUsageMeetsLimit()
+    {
+        var tenant = new Tenant
+        {
+            Tier = SubscriptionTier.Starter,
+            MaxQuotesPerMonth = 3,
+            PeriodQuotesCreated = 3
+        };
+
+        Assert.True(TenantQuotaDefaults.IsAtOrOverLimit(tenant, QuotaType.Quote));
+        Assert.False(TenantQuotaDefaults.IsAtOrOverLimit(tenant, QuotaType.Job));
+    }
+
+    [Fact]
+    public void HasAnyQuotaAtOrOverLimit_ReturnsTrue_WhenAnyCounterAtCap()
+    {
+        var tenant = new Tenant
+        {
+            Tier = SubscriptionTier.Professional,
+            PeriodJobsCreated = 200,
+            MaxJobsPerMonth = 200
+        };
+
+        Assert.True(TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(tenant));
+    }
 }

@@ -68,4 +68,26 @@ public static class TenantQuotaDefaults
             _ => null
         };
     }
+
+    public static int GetPeriodUsage(Tenant tenant, QuotaType type) =>
+        type switch
+        {
+            QuotaType.Quote => tenant.PeriodQuotesCreated,
+            QuotaType.Job => tenant.PeriodJobsCreated,
+            QuotaType.Invoice => tenant.PeriodInvoicesIssued,
+            QuotaType.AiCall => tenant.PeriodAiCalls,
+            _ => 0
+        };
+
+    public static bool IsAtOrOverLimit(Tenant tenant, QuotaType type)
+    {
+        var limit = GetEffectiveLimit(tenant, type);
+        return limit.HasValue && GetPeriodUsage(tenant, type) >= limit.Value;
+    }
+
+    public static bool HasAnyQuotaAtOrOverLimit(Tenant tenant) =>
+        IsAtOrOverLimit(tenant, QuotaType.Quote)
+        || IsAtOrOverLimit(tenant, QuotaType.Job)
+        || IsAtOrOverLimit(tenant, QuotaType.Invoice)
+        || IsAtOrOverLimit(tenant, QuotaType.AiCall);
 }

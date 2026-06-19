@@ -32,9 +32,10 @@ jobs:
       - name: Install Playwright browsers
         run: pwsh tests/METERP.E2ETests/bin/Release/net9.0/playwright.ps1 install chromium --with-deps
 
-      - name: Start app with docker-compose
+      - name: Build and start app with docker-compose
         run: |
-          docker compose up --build -d
+          docker compose build --pull web
+          docker compose up -d
           echo "Waiting for app readiness..."
           for i in {1..60}; do
             if curl -sf http://localhost:8080/health/ready > /dev/null; then
@@ -46,6 +47,12 @@ jobs:
           echo "App failed to become ready"
           docker compose logs web
           exit 1
+
+      - name: Verify Development E2E endpoints (fresh image)
+        run: |
+          curl -sf -X POST http://localhost:8080/e2e/reset-demo-quotas
+          curl -sf -X POST http://localhost:8080/e2e/begin-email-capture
+          echo "E2E dev endpoints OK"
 
       - name: Run E2E tests
         env:

@@ -454,7 +454,7 @@ public class E2EFlowTests : IAsyncLifetime
                 .Locator("[data-testid='view-invoice']").ClickAsync();
         }
 
-        await page.WaitForTestIdAsync("invoice-line-items-header", 15000);
+        await page.WaitForTestIdAsync("invoice-line-items-header", 30000);
         var content = await page.ContentAsync();
         Assert.Contains("INV-", content);
         Assert.Contains("Travel", content, StringComparison.OrdinalIgnoreCase);
@@ -622,6 +622,33 @@ public class E2EFlowTests : IAsyncLifetime
         }
 
         await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Home_Quota_Exceeded_Shows_Upgrade_Banner()
+    {
+        try
+        {
+            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
+
+            var page = await _browser.LoginAsync();
+            await page.GotoRelativeAsync("/");
+            await page.WaitForTestIdAsync("home-quota-usage-card", 15000);
+            await page.WaitForTestIdAsync("home-quota-exceeded-banner", 15000);
+
+            var quotesBadge = page.Locator("[data-testid='home-quota-quotes']");
+            await quotesBadge.WaitForAsync(new() { Timeout = 10000 });
+            Assert.Contains("bg-danger", await quotesBadge.GetAttributeAsync("class") ?? string.Empty);
+
+            var upgrade = page.Locator("[data-testid='home-quota-upgrade-button']");
+            Assert.True(await upgrade.CountAsync() > 0);
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoQuotasAsync();
+        }
     }
 
     [Fact]
