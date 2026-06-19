@@ -4,12 +4,11 @@ using METERP.Application.Interfaces;
 using METERP.Web.Middleware;
 using Moq;
 using Serilog;
-using Serilog.Core;
-using Serilog.Events;
 using Xunit;
 
 namespace METERP.Web.Tests;
 
+[Collection(nameof(TenantLoggingTestCollection))]
 public class TenantLoggingMiddlewareTests
 {
     [Fact]
@@ -20,29 +19,17 @@ public class TenantLoggingMiddlewareTests
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
 
         var capturedTenantIds = new ConcurrentBag<string>();
-        var sink = new CollectingSink(capturedTenantIds);
-        var originalLogger = Log.Logger;
-        Log.Logger = new LoggerConfiguration()
-            .Enrich.FromLogContext()
-            .WriteTo.Sink(sink)
-            .CreateLogger();
+        using var scope = await SerilogTestLoggerScope.CreateAsync(capturedTenantIds);
 
-        try
+        var middleware = new TenantLoggingMiddleware(_ =>
         {
-            var middleware = new TenantLoggingMiddleware(_ =>
-            {
-                Log.Information("tenant-log-test");
-                return Task.CompletedTask;
-            });
+            Log.Information("tenant-log-test");
+            return Task.CompletedTask;
+        });
 
-            await middleware.InvokeAsync(new DefaultHttpContext(), tenantProvider.Object);
+        await middleware.InvokeAsync(new DefaultHttpContext(), tenantProvider.Object);
 
-            Assert.Contains(capturedTenantIds, id => id == tenantId.ToString());
-        }
-        finally
-        {
-            Log.Logger = originalLogger;
-        }
+        Assert.Contains(capturedTenantIds, id => id == tenantId.ToString());
     }
 
     [Fact]
@@ -52,40 +39,16 @@ public class TenantLoggingMiddlewareTests
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(Guid.Empty);
 
         var capturedTenantIds = new ConcurrentBag<string>();
-        var sink = new CollectingSink(capturedTenantIds);
-        var originalLogger = Log.Logger;
-        Log.Logger = new LoggerConfiguration()
-            .Enrich.FromLogContext()
-            .WriteTo.Sink(sink)
-            .CreateLogger();
+        using var scope = await SerilogTestLoggerScope.CreateAsync(capturedTenantIds);
 
-        try
+        var middleware = new TenantLoggingMiddleware(_ =>
         {
-            var middleware = new TenantLoggingMiddleware(_ =>
-            {
-                Log.Information("tenant-log-test-empty");
-                return Task.CompletedTask;
-            });
-            await middleware.InvokeAsync(new DefaultHttpContext(), tenantProvider.Object);
+            Log.Information("tenant-log-test-empty");
+            return Task.CompletedTask;
+        });
 
-            Assert.Contains(capturedTenantIds, id => id == "none");
-        }
-        finally
-        {
-            Log.Logger = originalLogger;
-        }
-    }
+        await middleware.InvokeAsync(new DefaultHttpContext(), tenantProvider.Object);
 
-    private sealed class CollectingSink : ILogEventSink
-    {
-        private readonly ConcurrentBag<string> _tenantIds;
-
-        public CollectingSink(ConcurrentBag<string> tenantIds) => _tenantIds = tenantIds;
-
-        public void Emit(LogEvent logEvent)
-        {
-            if (logEvent.Properties.TryGetValue("TenantId", out var value))
-                _tenantIds.Add(value.ToString().Trim('"'));
-        }
+        Assert.Contains(capturedTenantIds, id => id == "none");
     }
 }

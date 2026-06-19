@@ -505,6 +505,28 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Tenants_Edit_Form_Shows_Quota_Badges()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/tenants");
+        await page.WaitForTestIdAsync("tenants-table", 20000);
+
+        await page.Locator("tr", new() { HasText = "Acme" }).Locator("button", new() { HasText = "Edit" }).ClickAsync();
+        await page.WaitForTestIdAsync("tenant-edit-form", 15000);
+        await page.WaitForTestIdAsync("tenant-edit-quota-badges", 10000);
+
+        var quotesBadge = page.Locator("[data-testid='tenants-edit-quota-quotes']");
+        await quotesBadge.WaitForAsync(new() { Timeout = 10000 });
+        var status = await quotesBadge.GetAttributeAsync("data-quota-status") ?? string.Empty;
+        Assert.True(status is "ok" or "warning" or "unlimited");
+
+        var tooltip = await quotesBadge.GetAttributeAsync("title") ?? string.Empty;
+        Assert.Contains("Quotes", tooltip, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Quotes_Save_Shows_Quota_Exceeded_Toast()
     {
         try

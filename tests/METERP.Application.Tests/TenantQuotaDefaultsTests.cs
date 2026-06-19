@@ -163,6 +163,7 @@ public class TenantQuotaDefaultsTests
     [Theory]
     [InlineData("home", QuotaType.Quote, "home-quota-quotes")]
     [InlineData("account-billing", QuotaType.AiCall, "account-billing-quota-ai")]
+    [InlineData("tenants-edit", QuotaType.Job, "tenants-edit-quota-jobs")]
     public void GetQuotaTestId_ReturnsStableBadgeIds(string prefix, QuotaType type, string expected)
     {
         Assert.Equal(expected, TenantQuotaDefaults.GetQuotaTestId(prefix, type));

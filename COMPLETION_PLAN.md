@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 53 — COMPLETE (2026-06-19)
+
+**Delivered:** **349/349 green** (266 unit + 29 web + 54 E2E).
+
+### Session 53 deliverables
+- **Serilog test hardening:** `SerilogTestLoggerScope` (process-wide lock) + `TenantLoggingTestCollection` (disable parallelization); eliminates flaky `TenantLoggingMiddlewareTests`.
+- **Tenants admin quota UX:** edit form uses `QuotaUsageBadge` (`tenants-edit-quota-*`); exceeded banner for admin view.
+- **E2E:** `Tenants_Edit_Form_Shows_Quota_Badges` (54th).
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. Invoice list cache tests (mirror Quote/Job coverage).
+3. Quota exceeded banner on Tenants edit E2E (optional stretch).
+
+---
+
 ## 📋 SESSION 52 — COMPLETE (2026-06-19)
 
 **Delivered:** **347/347 green** (265 unit + 29 web + 53 E2E).
@@ -215,9 +231,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 52 complete — 347/347 green. Labor cache tests, shared QuotaUsageBadge.**
+**Session 53 complete — 349/349 green. Serilog test hardening, Tenants quota badges.**
 
-### Exact Work Completed — Latest (2026-06-19, session 52)
+### Exact Work Completed — Latest (2026-06-19, session 53)
+- **Tests:** Serilog logger isolation for middleware tests (no flake).
+- **Tenants UX:** `QuotaUsageBadge` on edit form + exceeded banner (+1 E2E).
+- **Testing target**: **349/349 green** (266 unit + 29 web + 54 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 52)
 - **Cache tests:** job labor add/delete invalidate list cache (+2 unit).
 - **Quota UX:** shared `QuotaUsageBadge` + `GetQuotaTestId` (+2 unit).
 - **Testing target**: **347/347 green** (265 unit + 29 web + 53 E2E).
