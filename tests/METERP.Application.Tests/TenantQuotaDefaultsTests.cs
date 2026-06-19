@@ -112,4 +112,51 @@ public class TenantQuotaDefaultsTests
 
         Assert.True(TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(tenant));
     }
+
+    [Fact]
+    public void GetQuotaStatus_ReturnsWarning_WhenUsageAtEightyPercent()
+    {
+        var tenant = new Tenant
+        {
+            Tier = SubscriptionTier.Starter,
+            MaxQuotesPerMonth = 10,
+            PeriodQuotesCreated = 8
+        };
+
+        Assert.Equal(QuotaUsageStatus.Warning, TenantQuotaDefaults.GetQuotaStatus(tenant, QuotaType.Quote));
+    }
+
+    [Fact]
+    public void GetQuotaTooltip_Exceeded_MentionsUpgrade()
+    {
+        var tenant = new Tenant
+        {
+            Tier = SubscriptionTier.Starter,
+            MaxQuotesPerMonth = 5,
+            PeriodQuotesCreated = 5
+        };
+
+        var tooltip = TenantQuotaDefaults.GetQuotaTooltip(tenant, QuotaType.Quote, "Quotes");
+
+        Assert.Contains("Limit reached", tooltip);
+        Assert.Contains("upgrade", tooltip, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetExceededQuotaLabels_ListsOnlyExceededCounters()
+    {
+        var tenant = new Tenant
+        {
+            Tier = SubscriptionTier.Starter,
+            MaxQuotesPerMonth = 1,
+            PeriodQuotesCreated = 1,
+            MaxJobsPerMonth = 10,
+            PeriodJobsCreated = 3
+        };
+
+        var labels = TenantQuotaDefaults.GetExceededQuotaLabels(tenant);
+
+        Assert.Single(labels);
+        Assert.Equal("Quotes", labels[0]);
+    }
 }

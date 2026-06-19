@@ -639,6 +639,14 @@ public class E2EFlowTests : IAsyncLifetime
             var quotesBadge = page.Locator("[data-testid='home-quota-quotes']");
             await quotesBadge.WaitForAsync(new() { Timeout = 10000 });
             Assert.Contains("bg-danger", await quotesBadge.GetAttributeAsync("class") ?? string.Empty);
+            Assert.Equal("exceeded", await quotesBadge.GetAttributeAsync("data-quota-status"));
+
+            var summary = page.Locator("[data-testid='home-quota-exceeded-summary']");
+            var summaryText = (await summary.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Quotes", summaryText, StringComparison.OrdinalIgnoreCase);
+
+            var tooltip = await quotesBadge.GetAttributeAsync("title") ?? string.Empty;
+            Assert.Contains("Limit reached", tooltip, StringComparison.OrdinalIgnoreCase);
 
             var upgrade = page.Locator("[data-testid='home-quota-upgrade-button']");
             Assert.True(await upgrade.CountAsync() > 0);

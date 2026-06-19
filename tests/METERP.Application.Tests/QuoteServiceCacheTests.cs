@@ -215,4 +215,42 @@ public class QuoteServiceCacheTests
             Assert.Equal("oldest-mutated", page2Fresh[0].Notes);
         }
     }
+
+    [Fact]
+    public async Task UpdateAsync_InvalidatesQuoteListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            await SeedQuoteAsync(db, tenantId, "original");
+            var service = new QuoteService(db, cache: cache);
+
+            await service.GetAllAsync();
+            var quote = await db.Set<Quote>().FirstAsync();
+            quote.Notes = "updated-via-service";
+            await service.UpdateAsync(quote);
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal("updated-via-service", refreshed[0].Notes);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteAsync_InvalidatesQuoteListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var (_, quoteId) = await SeedQuoteAsync(db, tenantId);
+            var service = new QuoteService(db, cache: cache);
+
+            Assert.Single(await service.GetAllAsync());
+            await service.DeleteAsync(quoteId);
+
+            var afterDelete = await service.GetAllAsync();
+            Assert.Empty(afterDelete);
+        }
+    }
 }

@@ -1,5 +1,22 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 50 — COMPLETE (2026-06-19)
+
+**Delivered:** **337/337 green** (256 unit + 29 web + 52 E2E).
+
+### Session 50 deliverables
+- **Quota UX polish:** `QuotaUsageStatus`, `GetQuotaStatus`, `GetQuotaTooltip`, `GetExceededQuotaLabels`; home badges with `title`/`aria-label`/`data-quota-status`; exceeded banner lists which limits are hit (`home-quota-exceeded-summary`).
+- **Cache invalidation tests:** `UpdateAsync` + `DeleteAsync` invalidate quote/job list caches (+4 unit).
+- **Quota helper tests:** warning threshold, tooltip copy, exceeded label filtering (+3 unit).
+- **E2E:** `Home_Quota_Exceeded_Shows_Upgrade_Banner` asserts `data-quota-status`, summary text, and tooltip.
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. List-cache invalidation on line mutations (Quote/Job line add/update/delete).
+3. Account billing panel quota badges aligned with home (tooltips + status).
+
+---
+
 ## 📋 SESSION 49 — COMPLETE (2026-06-19)
 
 **Delivered:** **330/330 green** (249 unit + 29 web + 52 E2E).
@@ -166,9 +183,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 49 complete — 330/330 green. Cache tests, Mailpit E2E, CI Mailpit gate.**
+**Session 50 complete — 337/337 green. Quota UX polish, cache invalidation tests.**
 
-### Exact Work Completed — Latest (2026-06-19, session 49)
+### Exact Work Completed — Latest (2026-06-19, session 50)
+- **Quota UX:** status/tooltip helpers; per-badge `data-quota-status`; exceeded summary banner (+3 unit, E2E extended).
+- **Cache tests:** Update/Delete invalidation for Quote + Job lists (+4 unit).
+- **Testing target**: **337/337 green** (256 unit + 29 web + 52 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 49)
 - **Cache tests:** whitespace search bypass + pagination cache keys (+3 unit).
 - **Mailpit E2E:** 2FA enable delivers to Mailpit SMTP; API helpers with Address parsing (+1 E2E).
 - **CI:** Mailpit readiness wait + `METERP_REQUIRE_MAILPIT` in E2E job.

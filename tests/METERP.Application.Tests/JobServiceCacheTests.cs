@@ -190,4 +190,42 @@ public class JobServiceCacheTests
             Assert.Equal("cached-job", whitespace[0].Notes);
         }
     }
+
+    [Fact]
+    public async Task UpdateAsync_InvalidatesJobListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            await SeedJobAsync(db, tenantId, "original");
+            var service = new JobService(db, cache: cache);
+
+            await service.GetAllAsync();
+            var job = await db.Set<Job>().FirstAsync();
+            job.Notes = "updated-via-service";
+            await service.UpdateAsync(job);
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal("updated-via-service", refreshed[0].Notes);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteAsync_InvalidatesJobListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var jobId = await SeedJobAsync(db, tenantId);
+            var service = new JobService(db, cache: cache);
+
+            Assert.Single(await service.GetAllAsync());
+            await service.DeleteAsync(jobId);
+
+            var afterDelete = await service.GetAllAsync();
+            Assert.Empty(afterDelete);
+        }
+    }
 }

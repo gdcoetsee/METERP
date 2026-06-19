@@ -90,4 +90,60 @@ public static class TenantQuotaDefaults
         || IsAtOrOverLimit(tenant, QuotaType.Job)
         || IsAtOrOverLimit(tenant, QuotaType.Invoice)
         || IsAtOrOverLimit(tenant, QuotaType.AiCall);
+
+    public static QuotaUsageStatus GetQuotaStatus(Tenant tenant, QuotaType type)
+    {
+        var limit = GetEffectiveLimit(tenant, type);
+        if (!limit.HasValue)
+            return QuotaUsageStatus.Unlimited;
+
+        var used = GetPeriodUsage(tenant, type);
+        if (used >= limit.Value)
+            return QuotaUsageStatus.Exceeded;
+
+        if (used >= limit.Value * 0.8m)
+            return QuotaUsageStatus.Warning;
+
+        return QuotaUsageStatus.Ok;
+    }
+
+    public static string GetQuotaTooltip(Tenant tenant, QuotaType type, string label)
+    {
+        var limit = GetEffectiveLimit(tenant, type);
+        var used = GetPeriodUsage(tenant, type);
+
+        if (!limit.HasValue)
+            return $"{label}: {used} used this month (unlimited on your plan).";
+
+        return GetQuotaStatus(tenant, type) switch
+        {
+            QuotaUsageStatus.Exceeded =>
+                $"{label}: {used} of {limit} monthly limit used. Limit reached — upgrade your plan or wait for the period to reset.",
+            QuotaUsageStatus.Warning =>
+                $"{label}: {used} of {limit} monthly limit used. Approaching limit ({Math.Round(used * 100m / limit.Value)}%).",
+            _ => $"{label}: {used} of {limit} monthly limit used this month."
+        };
+    }
+
+    public static IReadOnlyList<string> GetExceededQuotaLabels(Tenant tenant) =>
+        QuotaDisplayNames
+            .Where(pair => IsAtOrOverLimit(tenant, pair.Type))
+            .Select(pair => pair.Label)
+            .ToList();
+
+    private static readonly (string Label, QuotaType Type)[] QuotaDisplayNames =
+    [
+        ("Quotes", QuotaType.Quote),
+        ("Jobs", QuotaType.Job),
+        ("Invoices", QuotaType.Invoice),
+        ("AI calls", QuotaType.AiCall)
+    ];
+}
+
+public enum QuotaUsageStatus
+{
+    Unlimited,
+    Ok,
+    Warning,
+    Exceeded
 }

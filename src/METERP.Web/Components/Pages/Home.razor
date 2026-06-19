@@ -53,8 +53,11 @@
         }
         @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
         {
+            var exceededLabels = TenantQuotaDefaults.GetExceededQuotaLabels(currentTenant);
             <div class="card-footer alert alert-danger mb-0 py-2" data-testid="home-quota-exceeded-banner" role="alert">
-                <strong>Monthly quota reached.</strong> New quotes, jobs, invoices, or AI actions may be blocked until you upgrade or the period resets.
+                <strong>Monthly quota reached.</strong>
+                <span data-testid="home-quota-exceeded-summary">@string.Join(", ", exceededLabels) limit@(exceededLabels.Count == 1 ? "" : "s") exceeded.</span>
+                New actions in those areas may be blocked until you upgrade or the period resets.
                 @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
                 {
                     <button type="button" class="btn btn-sm btn-danger ms-2" data-testid="home-quota-upgrade-button" @onclick="OpenBillingPortal">Upgrade plan</button>
@@ -362,18 +365,24 @@
             _ => "home-quota-other"
         };
         var limitText = limit?.ToString() ?? "∞";
-        var css = "bg-secondary";
-        if (limit.HasValue)
+        var status = TenantQuotaDefaults.GetQuotaStatus(currentTenant, type);
+        var css = status switch
         {
-            if (used >= limit.Value) css = "bg-danger";
-            else if (used >= limit.Value * 0.8m) css = "bg-warning text-dark";
-            else css = "bg-success";
-        }
+            QuotaUsageStatus.Exceeded => "bg-danger",
+            QuotaUsageStatus.Warning => "bg-warning text-dark",
+            QuotaUsageStatus.Ok => "bg-success",
+            _ => "bg-secondary"
+        };
+        var statusKey = status.ToString().ToLowerInvariant();
+        var tooltip = TenantQuotaDefaults.GetQuotaTooltip(currentTenant, type, label);
 
         builder.OpenElement(0, "span");
         builder.AddAttribute(1, "class", $"badge {css}");
         builder.AddAttribute(2, "data-testid", testId);
-        builder.AddContent(3, $"{label}: {used} / {limitText}");
+        builder.AddAttribute(3, "data-quota-status", statusKey);
+        builder.AddAttribute(4, "title", tooltip);
+        builder.AddAttribute(5, "aria-label", tooltip);
+        builder.AddContent(6, $"{label}: {used} / {limitText}");
         builder.CloseElement();
     };
 }
