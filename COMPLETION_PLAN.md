@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 43 — COMPLETE (2026-06-19)
+
+**Delivered:** **312/312 green** (241 unit + 22 web + 49 E2E).
+
+### Session 43 deliverables
+- **Job/invoice quota E2E:** `/e2e/ensure-job-quota-exceeded`, `/e2e/ensure-invoice-quota-exceeded`; `Quote_Convert_To_Job_Shows_Quota_Exceeded_Toast` + `Job_Create_Invoice_Shows_Quota_Exceeded_Toast` (48th–49th Playwright).
+- **OpenTelemetry production wiring:** `OpenTelemetryOptions`, `AddMeterpOpenTelemetry` (OTLP when configured, console in Development); `.env.example` docs; `OpenTelemetryOptionsTests`.
+- **2FA hardening:** `PendingTwoFactorChallengeStoreTests` (create/consume/unknown); `LoginTwoFactorEndpointTests` (invalid/missing token → login redirect).
+- **Invoices UI:** `SaveInvoice` catches `QuotaExceededException` with toast.
+
+### Next session priorities
+1. Bump `OpenTelemetry.Exporter.OpenTelemetryProtocol` (NU1902) + MailKit CVE when patched versions available.
+2. OpenTelemetry integration test with test OTLP collector (stretch).
+
+---
+
 ## 📋 SESSION 42 — COMPLETE (2026-06-19)
 
 **Delivered:** **303/303 green** (239 unit + 17 web + 47 E2E).
@@ -52,9 +68,15 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-18 session)
 
-**Session 42 complete — 303/303 green. Quota toast E2E, concurrent counters, Serilog/secrets audit.**
+**Session 43 complete — 312/312 green. Job/invoice quota E2E, OTel config, 2FA hardening.**
 
-### Exact Work Completed — Latest (2026-06-19, session 42)
+### Exact Work Completed — Latest (2026-06-19, session 43)
+- **Job/invoice quota E2E:** dev endpoints + `Quote_Convert_To_Job_Shows_Quota_Exceeded_Toast` + `Job_Create_Invoice_Shows_Quota_Exceeded_Toast`.
+- **OpenTelemetry:** `OpenTelemetryOptions` + `AddMeterpOpenTelemetry` (OTLP + console); `OpenTelemetryOptionsTests`.
+- **2FA:** `PendingTwoFactorChallengeStoreTests` + `LoginTwoFactorEndpointTests`.
+- **Testing target**: **312/312 green** (241 unit + 22 web + 49 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 42)
 - **Quota-exceeded toast E2E:** `E2EDemoQuotaSeeder` + dev endpoints; `Quotes_Save_Shows_Quota_Exceeded_Toast` (47th).
 - **Phase C:** concurrent `TenantService` increment test + concurrency retry; `TenantLoggingMiddlewareTests`; `SecretsAuditTests`.
 - **Scheduling E2E:** quick-add labor ready-marker fallback.

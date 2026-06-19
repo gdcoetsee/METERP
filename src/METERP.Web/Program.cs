@@ -23,9 +23,7 @@ using METERP.Web.Components;
 using METERP.Web.HealthChecks;
 using METERP.Web.Middleware;
 using METERP.Web.Services;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
+using METERP.Web.OpenTelemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,17 +49,7 @@ if (builder.Environment.IsDevelopment())
     }
 }
 
-builder.Services.AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService("METERP"))
-    .WithTracing(tracing => tracing
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddEntityFrameworkCoreInstrumentation()
-        .AddConsoleExporter())
-    .WithMetrics(metrics => metrics
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddConsoleExporter());
+builder.Services.AddMeterpOpenTelemetry(builder.Configuration, builder.Environment);
 
 // === Structured logging (Serilog) — tenant id enriched via TenantLoggingMiddleware ===
 const string logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [Tenant:{TenantId}] {Message:lj}{NewLine}{Exception}";
@@ -490,6 +478,30 @@ if (app.Environment.IsDevelopment())
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
         await E2EDemoQuotaSeeder.EnsureQuoteQuotaExceededAsync(tenantService, tenant.Id, ct);
+        return Results.Ok(new { ok = true, limit = 1, used = 1 });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/ensure-job-quota-exceeded", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        await E2EDemoQuotaSeeder.EnsureJobQuotaExceededAsync(tenantService, tenant.Id, ct);
+        return Results.Ok(new { ok = true, limit = 1, used = 1 });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/ensure-invoice-quota-exceeded", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        await E2EDemoQuotaSeeder.EnsureInvoiceQuotaExceededAsync(tenantService, tenant.Id, ct);
         return Results.Ok(new { ok = true, limit = 1, used = 1 });
     }).DisableRateLimiting();
 

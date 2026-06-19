@@ -359,19 +359,30 @@ else
 
     private async Task SaveInvoice()
     {
-        if (isEditing)
+        try
         {
-            await InvoiceService.UpdateAsync(currentInvoice);
-        }
-        else
-        {
-            await InvoiceService.CreateAsync(currentInvoice);
-        }
+            if (isEditing)
+            {
+                await InvoiceService.UpdateAsync(currentInvoice);
+            }
+            else
+            {
+                await InvoiceService.CreateAsync(currentInvoice);
+            }
 
-        showForm = false;
-        ToastService.ShowSuccess("Invoice saved successfully.");
-        await LoadInvoices();
-        currentInvoice = new();
+            showForm = false;
+            ToastService.ShowSuccess("Invoice saved successfully.");
+            await LoadInvoices();
+            currentInvoice = new();
+        }
+        catch (QuotaExceededException ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Save failed: {ex.Message}");
+        }
     }
 
     private void CancelForm()

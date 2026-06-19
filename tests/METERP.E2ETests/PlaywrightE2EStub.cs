@@ -537,6 +537,72 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Quote_Convert_To_Job_Shows_Quota_Exceeded_Toast()
+    {
+        try
+        {
+            await E2EHelpers.EnsureJobQuotaExceededAsync();
+            await E2EHelpers.EnsureConvertibleQuoteAsync();
+
+            var page = await _browser.LoginAsync();
+            await page.GotoRelativeAsync("/quotes");
+            await page.WaitForTestIdAsync("quotes-table", 30000);
+
+            var convertible = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
+            await Assertions.Expect(convertible).ToHaveCountAsync(1, new() { Timeout = 20000 });
+
+            await convertible.Locator("[data-testid='quote-view-button']").ClickAsync();
+            await page.WaitForTestIdAsync("quote-editor", 15000);
+            await page.WaitForTestIdAsync("convert-to-job", 10000);
+            await page.ClickByTestIdAsync("convert-to-job");
+
+            var quotaToast = page.Locator(".toast-body").Filter(new() { HasText = "Monthly Job quota exceeded" }).Last;
+            await quotaToast.WaitForAsync(new() { Timeout = 15000 });
+            var toast = (await quotaToast.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Monthly Job quota exceeded", toast, StringComparison.OrdinalIgnoreCase);
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoQuotasAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Job_Create_Invoice_Shows_Quota_Exceeded_Toast()
+    {
+        try
+        {
+            await E2EHelpers.EnsureInvoiceQuotaExceededAsync();
+            await E2EHelpers.EnsureDemoInvoiceJobAsync();
+
+            var page = await _browser.LoginAsync();
+            await page.GotoRelativeAsync("/jobs");
+            await page.WaitForTestIdAsync("jobs-table", 20000);
+            await page.FillByTestIdAsync("jobs-search", DemoInvoiceJobMarker);
+
+            var jobRow = page.Locator("[data-testid='job-row-e2e-invoice-demo']").First;
+            await Assertions.Expect(jobRow).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+            await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
+            await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
+            await page.ClickByTestIdAsync("create-invoice-from-job-detail");
+
+            var quotaToast = page.Locator(".toast-body").Filter(new() { HasText = "Monthly Invoice quota exceeded" }).Last;
+            await quotaToast.WaitForAsync(new() { Timeout = 15000 });
+            var toast = (await quotaToast.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Monthly Invoice quota exceeded", toast, StringComparison.OrdinalIgnoreCase);
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoQuotasAsync();
+        }
+    }
+
+    [Fact]
     public async Task Home_Quota_Usage_Card_Shows_Monthly_Usage()
     {
         var page = await _browser.LoginAsync();

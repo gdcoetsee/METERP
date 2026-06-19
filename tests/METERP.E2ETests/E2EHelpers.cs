@@ -163,6 +163,22 @@ public static class E2EHelpers
     /// <summary>
     /// Restores Acme demo monthly quotas after quota E2E (Development endpoint).
     /// </summary>
+    public static async Task EnsureJobQuotaExceededAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-job-quota-exceeded", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task EnsureInvoiceQuotaExceededAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-invoice-quota-exceeded", null);
+        response.EnsureSuccessStatusCode();
+    }
+
     public static async Task ResetDemoQuotasAsync(string? baseUrl = null)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

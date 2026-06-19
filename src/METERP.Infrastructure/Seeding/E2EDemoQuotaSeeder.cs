@@ -16,13 +16,53 @@ public static class E2EDemoQuotaSeeder
         Guid tenantId,
         CancellationToken ct = default)
     {
+        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Quote, ct);
+    }
+
+    public static async Task EnsureJobQuotaExceededAsync(
+        ITenantService tenantService,
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Job, ct);
+    }
+
+    public static async Task EnsureInvoiceQuotaExceededAsync(
+        ITenantService tenantService,
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Invoice, ct);
+    }
+
+    private static async Task SetQuotaAtLimitAsync(
+        ITenantService tenantService,
+        Guid tenantId,
+        QuotaType type,
+        CancellationToken ct)
+    {
         var tenant = await tenantService.GetByIdAsync(tenantId, ct);
         if (tenant == null)
             return;
 
-        tenant.MaxQuotesPerMonth = 1;
-        tenant.PeriodQuotesCreated = 1;
         tenant.UsagePeriodStartUtc = QuotaService.GetCurrentPeriodStartUtc();
+
+        switch (type)
+        {
+            case QuotaType.Quote:
+                tenant.MaxQuotesPerMonth = 1;
+                tenant.PeriodQuotesCreated = 1;
+                break;
+            case QuotaType.Job:
+                tenant.MaxJobsPerMonth = 1;
+                tenant.PeriodJobsCreated = 1;
+                break;
+            case QuotaType.Invoice:
+                tenant.MaxInvoicesPerMonth = 1;
+                tenant.PeriodInvoicesIssued = 1;
+                break;
+        }
+
         await tenantService.UpdateAsync(tenant, ct);
     }
 
