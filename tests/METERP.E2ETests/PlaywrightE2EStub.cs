@@ -687,7 +687,40 @@ public class E2EFlowTests : IAsyncLifetime
             Assert.Contains("Manage billing", label, StringComparison.OrdinalIgnoreCase);
         }
 
+        var quotesBadge = page.Locator("[data-testid='account-billing-quota-quotes']");
+        await quotesBadge.WaitForAsync(new() { Timeout = 10000 });
+        var quotaStatus = await quotesBadge.GetAttributeAsync("data-quota-status") ?? string.Empty;
+        Assert.True(quotaStatus is "ok" or "warning" or "unlimited");
+        var tooltip = await quotesBadge.GetAttributeAsync("title") ?? string.Empty;
+        Assert.Contains("Quotes", tooltip, StringComparison.OrdinalIgnoreCase);
+
         await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task AccountBilling_Quota_Exceeded_Shows_Banner()
+    {
+        try
+        {
+            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
+
+            var page = await _browser.LoginAsync();
+            await page.GotoRelativeAsync("/account-billing");
+            await page.WaitForTestIdAsync("account-billing-ready", 15000);
+            await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 15000);
+
+            var quotesBadge = page.Locator("[data-testid='account-billing-quota-quotes']");
+            Assert.Equal("exceeded", await quotesBadge.GetAttributeAsync("data-quota-status"));
+
+            var summary = (await page.Locator("[data-testid='account-billing-quota-exceeded-summary']").TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Quotes", summary, StringComparison.OrdinalIgnoreCase);
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoQuotasAsync();
+        }
     }
 
     [Fact]

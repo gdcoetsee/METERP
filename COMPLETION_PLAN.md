@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 51 — COMPLETE (2026-06-19)
+
+**Delivered:** **343/343 green** (261 unit + 29 web + 53 E2E).
+
+### Session 51 deliverables
+- **Line/cost cache invalidation tests:** Quote `AddLineAsync` / `UpdateLineAsync` / `DeleteLineAsync`; Job `AddCostAsync` / `DeleteCostAsync` (+5 unit).
+- **Account billing quota UX:** badges aligned with home (`data-quota-status`, tooltips, test ids); exceeded banner on billing usage card.
+- **E2E:** `AccountBilling_Quota_Exceeded_Shows_Banner` (53rd); billing page asserts quota badge status + tooltip.
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. Job labor cache invalidation tests (`AddLaborAsync` / `DeleteLaborAsync`).
+3. Extract shared quota badge render helper (Home + AccountBilling + Tenants).
+
+---
+
 ## 📋 SESSION 50 — COMPLETE (2026-06-19)
 
 **Delivered:** **337/337 green** (256 unit + 29 web + 52 E2E).
@@ -183,9 +199,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 50 complete — 337/337 green. Quota UX polish, cache invalidation tests.**
+**Session 51 complete — 343/343 green. Line cache tests, billing quota UX.**
 
-### Exact Work Completed — Latest (2026-06-19, session 50)
+### Exact Work Completed — Latest (2026-06-19, session 51)
+- **Cache tests:** quote line + job cost mutations invalidate list cache (+5 unit).
+- **Billing UX:** quota badges/tooltips/exceeded banner on `AccountBillingPanel` (+1 E2E).
+- **Testing target**: **343/343 green** (261 unit + 29 web + 53 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 50)
 - **Quota UX:** status/tooltip helpers; per-badge `data-quota-status`; exceeded summary banner (+3 unit, E2E extended).
 - **Cache tests:** Update/Delete invalidation for Quote + Job lists (+4 unit).
 - **Testing target**: **337/337 green** (256 unit + 29 web + 52 E2E).

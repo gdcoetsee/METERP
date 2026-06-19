@@ -253,4 +253,91 @@ public class QuoteServiceCacheTests
             Assert.Empty(afterDelete);
         }
     }
+
+    [Fact]
+    public async Task AddLineAsync_InvalidatesQuoteListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var (_, quoteId) = await SeedQuoteAsync(db, tenantId);
+            var service = new QuoteService(db, cache: cache);
+
+            var warm = await service.GetAllAsync();
+            Assert.Empty(warm[0].Lines);
+
+            await service.AddLineAsync(new QuoteLine
+            {
+                TenantId = tenantId,
+                QuoteId = quoteId,
+                Description = "New cached line",
+                Quantity = 2m,
+                UnitPrice = 100m
+            });
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Single(refreshed[0].Lines);
+            Assert.Equal("New cached line", refreshed[0].Lines.First().Description);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateLineAsync_InvalidatesQuoteListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var (_, quoteId) = await SeedQuoteAsync(db, tenantId);
+            var line = new QuoteLine
+            {
+                TenantId = tenantId,
+                QuoteId = quoteId,
+                Description = "original-line",
+                Quantity = 1m,
+                UnitPrice = 50m
+            };
+            db.Set<QuoteLine>().Add(line);
+            await db.SaveChangesAsync();
+
+            var service = new QuoteService(db, cache: cache);
+            await service.GetAllAsync();
+
+            line.Description = "updated-line";
+            await service.UpdateLineAsync(line);
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal("updated-line", refreshed[0].Lines.First().Description);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteLineAsync_InvalidatesQuoteListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var (_, quoteId) = await SeedQuoteAsync(db, tenantId);
+            var line = new QuoteLine
+            {
+                TenantId = tenantId,
+                QuoteId = quoteId,
+                Description = "to-delete",
+                Quantity = 1m,
+                UnitPrice = 25m
+            };
+            db.Set<QuoteLine>().Add(line);
+            await db.SaveChangesAsync();
+
+            var service = new QuoteService(db, cache: cache);
+            Assert.Single((await service.GetAllAsync())[0].Lines);
+
+            await service.DeleteLineAsync(line.Id);
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Empty(refreshed[0].Lines);
+        }
+    }
 }

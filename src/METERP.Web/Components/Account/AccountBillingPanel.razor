@@ -67,6 +67,14 @@ else
             {
                 <div class="card-footer small text-warning">AI Copilot is not included on your current plan.</div>
             }
+            @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
+            {
+                var exceededLabels = TenantQuotaDefaults.GetExceededQuotaLabels(currentTenant);
+                <div class="card-footer alert alert-danger mb-0 py-2" data-testid="account-billing-quota-exceeded-banner" role="alert">
+                    <strong>Monthly quota reached.</strong>
+                    <span data-testid="account-billing-quota-exceeded-summary">@string.Join(", ", exceededLabels) limit@(exceededLabels.Count == 1 ? "" : "s") exceeded.</span>
+                </div>
+            }
         </div>
 
         <div class="card" data-testid="account-billing-lifetime-card">
@@ -158,17 +166,32 @@ else
         if (currentTenant == null) return;
         var limit = TenantQuotaDefaults.GetEffectiveLimit(currentTenant, type);
         var limitText = limit?.ToString() ?? "∞";
-        var css = "bg-secondary";
-        if (limit.HasValue)
+        var testId = type switch
         {
-            if (used >= limit.Value) css = "bg-danger";
-            else if (used >= limit.Value * 0.8m) css = "bg-warning text-dark";
-            else css = "bg-success";
-        }
+            QuotaType.Quote => "account-billing-quota-quotes",
+            QuotaType.Job => "account-billing-quota-jobs",
+            QuotaType.Invoice => "account-billing-quota-invoices",
+            QuotaType.AiCall => "account-billing-quota-ai",
+            _ => "account-billing-quota-other"
+        };
+        var status = TenantQuotaDefaults.GetQuotaStatus(currentTenant, type);
+        var css = status switch
+        {
+            QuotaUsageStatus.Exceeded => "bg-danger",
+            QuotaUsageStatus.Warning => "bg-warning text-dark",
+            QuotaUsageStatus.Ok => "bg-success",
+            _ => "bg-secondary"
+        };
+        var statusKey = status.ToString().ToLowerInvariant();
+        var tooltip = TenantQuotaDefaults.GetQuotaTooltip(currentTenant, type, label);
 
         builder.OpenElement(0, "span");
         builder.AddAttribute(1, "class", $"badge {css}");
-        builder.AddContent(2, $"{label}: {used} / {limitText}");
+        builder.AddAttribute(2, "data-testid", testId);
+        builder.AddAttribute(3, "data-quota-status", statusKey);
+        builder.AddAttribute(4, "title", tooltip);
+        builder.AddAttribute(5, "aria-label", tooltip);
+        builder.AddContent(6, $"{label}: {used} / {limitText}");
         builder.CloseElement();
     };
 }

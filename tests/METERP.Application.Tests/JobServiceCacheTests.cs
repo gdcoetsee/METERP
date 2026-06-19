@@ -228,4 +228,58 @@ public class JobServiceCacheTests
             Assert.Empty(afterDelete);
         }
     }
+
+    [Fact]
+    public async Task AddCostAsync_InvalidatesJobListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var jobId = await SeedJobAsync(db, tenantId);
+            var service = new JobService(db, cache: cache);
+
+            var warm = await service.GetAllAsync();
+            Assert.Equal(0m, warm[0].ActualCost);
+
+            await service.AddCostAsync(new JobCost
+            {
+                TenantId = tenantId,
+                JobId = jobId,
+                Description = "Materials",
+                Amount = 750m,
+                CostType = "Material"
+            });
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal(750m, refreshed[0].ActualCost);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteCostAsync_InvalidatesJobListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var jobId = await SeedJobAsync(db, tenantId);
+            var service = new JobService(db, cache: cache);
+
+            var costId = await service.AddCostAsync(new JobCost
+            {
+                TenantId = tenantId,
+                JobId = jobId,
+                Description = "Travel",
+                Amount = 200m,
+                CostType = "Travel"
+            });
+
+            Assert.Equal(200m, (await service.GetAllAsync())[0].ActualCost);
+            await service.DeleteCostAsync(costId);
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal(0m, refreshed[0].ActualCost);
+        }
+    }
 }
