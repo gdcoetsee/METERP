@@ -169,4 +169,25 @@ public class JobServiceCacheTests
             Assert.Equal("beta-mutated", searchResult[0].Notes);
         }
     }
+
+    [Fact]
+    public async Task GetAllAsync_WithWhitespaceSearch_UsesCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            await SeedJobAsync(db, tenantId, "cached-job");
+            var service = new JobService(db, cache: cache);
+
+            await service.GetAllAsync(pageSize: 50);
+
+            var job = await db.Set<Job>().FirstAsync();
+            job.Notes = "db-mutated";
+            await db.SaveChangesAsync();
+
+            var whitespace = await service.GetAllAsync(search: "\t", pageSize: 50);
+            Assert.Equal("cached-job", whitespace[0].Notes);
+        }
+    }
 }

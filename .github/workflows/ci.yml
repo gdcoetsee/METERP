@@ -48,6 +48,19 @@ jobs:
           docker compose logs web
           exit 1
 
+      - name: Wait for Mailpit SMTP
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8025/api/v1/info > /dev/null; then
+              echo "Mailpit is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Mailpit failed to become ready"
+          docker compose logs mailpit
+          exit 1
+
       - name: Verify Development E2E endpoints (fresh image)
         run: |
           curl -sf -X POST http://localhost:8080/e2e/reset-demo-quotas
@@ -57,6 +70,8 @@ jobs:
       - name: Run E2E tests
         env:
           METERP_BASE_URL: http://localhost:8080
+          METERP_REQUIRE_MAILPIT: "true"
+          METERP_MAILPIT_API_URL: http://localhost:8025
         run: dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj --configuration Release --filter "Category=E2E" --verbosity normal
 
       - name: Upload failure screenshots

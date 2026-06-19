@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 49 — COMPLETE (2026-06-19)
+
+**Delivered:** **330/330 green** (249 unit + 29 web + 52 E2E).
+
+### Session 49 deliverables
+- **List-cache unit tests:** `GetAllAsync_WithWhitespaceSearch_UsesCache` (Quote + Job); `GetAllAsync_DifferentPageSizes_UseSeparateCacheEntries` (Quote pagination cache keys).
+- **Mailpit E2E:** `AccountSecurity_EnableTwoFactor_Delivers_To_Mailpit_When_Smtp_Configured` (52nd E2E); helpers for Mailpit API (`IsMailpitAvailableAsync`, `DeleteAllMailpitMessagesAsync`, `GetMailpitMessagesAsync`, `WaitForMailpitSubjectAsync`) with correct `To[].Address` parsing.
+- **CI:** wait for Mailpit at `:8025/api/v1/info`; E2E env `METERP_REQUIRE_MAILPIT=true` + `METERP_MAILPIT_API_URL`.
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green (Mailpit gate).
+2. Quota enforcement UX polish (per-quota tooltips, upgrade flow).
+3. List-cache performance profiling or invalidation-on-mutation tests.
+
+---
+
 ## 📋 SESSION 48 — COMPLETE (2026-06-19)
 
 **Delivered:** **326/326 green** (246 unit + 29 web + 51 E2E).
@@ -150,9 +166,15 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 48 complete — 326/326 green. CI E2E guards, quota exceeded banner, 51 E2E.**
+**Session 49 complete — 330/330 green. Cache tests, Mailpit E2E, CI Mailpit gate.**
 
-### Exact Work Completed — Latest (2026-06-19, session 48)
+### Exact Work Completed — Latest (2026-06-19, session 49)
+- **Cache tests:** whitespace search bypass + pagination cache keys (+3 unit).
+- **Mailpit E2E:** 2FA enable delivers to Mailpit SMTP; API helpers with Address parsing (+1 E2E).
+- **CI:** Mailpit readiness wait + `METERP_REQUIRE_MAILPIT` in E2E job.
+- **Testing target**: **330/330 green** (249 unit + 29 web + 52 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 48)
 - **CI:** fresh docker web build + E2E dev endpoint smoke checks.
 - **Quota UX:** exceeded banner on dashboard + upgrade CTA; +2 unit tests, +1 E2E.
 - **Testing target**: **326/326 green** (246 unit + 29 web + 51 E2E).

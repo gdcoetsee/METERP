@@ -216,6 +216,84 @@ public static class E2EHelpers
 
     public sealed record CapturedEmailDto(string To, string Subject, string HtmlBody, DateTimeOffset CapturedAtUtc);
 
+    public static string MailpitApiUrl =>
+        Environment.GetEnvironmentVariable("METERP_MAILPIT_API_URL") ?? "http://localhost:8025";
+
+    public static bool RequireMailpit =>
+        string.Equals(Environment.GetEnvironmentVariable("METERP_REQUIRE_MAILPIT"), "true", StringComparison.OrdinalIgnoreCase);
+
+    public static async Task<bool> IsMailpitAvailableAsync()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var response = await client.GetAsync($"{MailpitApiUrl.TrimEnd('/')}/api/v1/info");
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static async Task DeleteAllMailpitMessagesAsync()
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var response = await client.DeleteAsync($"{MailpitApiUrl.TrimEnd('/')}/api/v1/messages");
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task<IReadOnlyList<MailpitMessageSummary>> GetMailpitMessagesAsync()
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var response = await client.GetAsync($"{MailpitApiUrl.TrimEnd('/')}/api/v1/messages");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("messages", out var messages))
+            return [];
+
+        var list = new List<MailpitMessageSummary>();
+        foreach (var item in messages.EnumerateArray())
+        {
+            var subject = item.TryGetProperty("Subject", out var subj) ? subj.GetString() ?? "" : "";
+            var to = item.TryGetProperty("To", out var toEl)
+                ? string.Join(", ", toEl.EnumerateArray().Select(FormatMailpitAddress))
+                : "";
+            list.Add(new MailpitMessageSummary(subject, to));
+        }
+
+        return list;
+    }
+
+    public static async Task WaitForMailpitSubjectAsync(string subjectFragment, TimeSpan? timeout = null)
+    {
+        timeout ??= TimeSpan.FromSeconds(20);
+        var deadline = DateTime.UtcNow + timeout.Value;
+        while (DateTime.UtcNow < deadline)
+        {
+            var messages = await GetMailpitMessagesAsync();
+            if (messages.Any(m => m.Subject.Contains(subjectFragment, StringComparison.OrdinalIgnoreCase)))
+                return;
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Mailpit did not receive a message containing '{subjectFragment}' within {timeout.Value.TotalSeconds}s.");
+    }
+
+    public sealed record MailpitMessageSummary(string Subject, string To);
+
+    private static string FormatMailpitAddress(System.Text.Json.JsonElement address)
+    {
+        if (address.ValueKind == System.Text.Json.JsonValueKind.String)
+            return address.GetString() ?? "";
+
+        if (address.TryGetProperty("Address", out var addr))
+            return addr.GetString() ?? "";
+
+        return "";
+    }
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

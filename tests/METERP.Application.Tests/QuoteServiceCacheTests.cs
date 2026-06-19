@@ -154,4 +154,65 @@ public class QuoteServiceCacheTests
             Assert.Equal("beta-mutated", searchResult[0].Notes);
         }
     }
+
+    [Fact]
+    public async Task GetAllAsync_WithWhitespaceSearch_UsesCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            await SeedQuoteAsync(db, tenantId, "cached-notes");
+            var service = new QuoteService(db, cache: cache);
+
+            await service.GetAllAsync(pageSize: 50);
+
+            var quote = await db.Set<Quote>().FirstAsync();
+            quote.Notes = "db-mutated";
+            await db.SaveChangesAsync();
+
+            var whitespace = await service.GetAllAsync(search: "   ", pageSize: 50);
+            Assert.Equal("cached-notes", whitespace[0].Notes);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAsync_DifferentPageSizes_UseSeparateCacheEntries()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Paging Co" };
+            db.Set<Customer>().Add(customer);
+            for (var i = 1; i <= 3; i++)
+            {
+                db.Set<Quote>().Add(new Quote
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    QuoteNumber = $"Q-PAGE-{i:000}",
+                    QuoteDate = DateTime.UtcNow.AddDays(-i),
+                    Notes = $"page-seed-{i}",
+                    TaxRate = 0.15m
+                });
+            }
+            await db.SaveChangesAsync();
+
+            var service = new QuoteService(db, cache: cache);
+            var page1 = await service.GetAllAsync(page: 1, pageSize: 2);
+            Assert.Equal(2, page1.Count);
+
+            var oldest = await db.Set<Quote>().OrderBy(q => q.QuoteDate).FirstAsync();
+            oldest.Notes = "oldest-mutated";
+            await db.SaveChangesAsync();
+
+            var page1Cached = await service.GetAllAsync(page: 1, pageSize: 2);
+            Assert.Equal("page-seed-1", page1Cached[0].Notes);
+
+            var page2Fresh = await service.GetAllAsync(page: 2, pageSize: 2);
+            Assert.Single(page2Fresh);
+            Assert.Equal("oldest-mutated", page2Fresh[0].Notes);
+        }
+    }
 }
