@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -9,11 +10,13 @@ public class SalesOrderService : ISalesOrderService
 {
     private readonly AppDbContext _dbContext;
     private readonly IJobService _jobService;
+    private readonly ITenantCacheService? _cache;
 
-    public SalesOrderService(AppDbContext dbContext, IJobService jobService)
+    public SalesOrderService(AppDbContext dbContext, IJobService jobService, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _jobService = jobService;
+        _cache = cache;
     }
 
     public async Task<SalesOrder?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -26,6 +29,20 @@ public class SalesOrderService : ISalesOrderService
     }
 
     public async Task<IReadOnlyList<SalesOrder>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "sales-orders",
+                $"p{page}:s{pageSize}",
+                () => LoadSalesOrdersAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadSalesOrdersAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<SalesOrder>> LoadSalesOrdersAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<SalesOrder>()
             .AsNoTracking()
@@ -60,6 +77,7 @@ public class SalesOrderService : ISalesOrderService
 
         _dbContext.Set<SalesOrder>().Add(so);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return so.Id;
     }
 
@@ -68,6 +86,7 @@ public class SalesOrderService : ISalesOrderService
         RecalculateTotals(so);
         _dbContext.Set<SalesOrder>().Update(so);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -84,6 +103,7 @@ public class SalesOrderService : ISalesOrderService
         so.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task UpdateStatusAsync(Guid soId, SalesOrderStatus newStatus, CancellationToken ct = default)
@@ -93,6 +113,7 @@ public class SalesOrderService : ISalesOrderService
 
         so.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<Guid> AddLineAsync(SalesOrderLine line, CancellationToken ct = default)
@@ -111,6 +132,7 @@ public class SalesOrderService : ISalesOrderService
             await _dbContext.SaveChangesAsync(ct);
         }
 
+        InvalidateListCaches();
         return line.Id;
     }
 
@@ -129,6 +151,8 @@ public class SalesOrderService : ISalesOrderService
             RecalculateTotals(so);
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
@@ -149,6 +173,8 @@ public class SalesOrderService : ISalesOrderService
             RecalculateTotals(so);
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task<Job> ConvertToJobAsync(Guid soId, CancellationToken ct = default)
@@ -194,9 +220,15 @@ public class SalesOrderService : ISalesOrderService
         so.Status = SalesOrderStatus.InProgress;
         await _dbContext.SaveChangesAsync(ct);
 
+        InvalidateListCaches();
+        if (_cache != null)
+            await _cache.InvalidateCategoryAsync("jobs", ct);
+
         // Return loaded job (reuse from JobService or simple)
         return (await _jobService.GetByIdAsync(job.Id, ct))!;
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("sales-orders");
 
     private static void RecalculateTotals(SalesOrder so)
     {

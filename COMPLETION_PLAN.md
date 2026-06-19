@@ -1,5 +1,20 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 55 — COMPLETE (2026-06-19)
+
+**Delivered:** **372/372 green** (288 unit + 29 web + 55 E2E).
+
+### Session 55 deliverables
+- **SalesOrder / PurchaseOrder list caching:** `ITenantCacheService` wired with invalidation on CRUD, lines, status, receive/convert (+12 unit).
+- **Invoice pagination cache test:** separate cache keys per page size (+1 unit).
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. Customer / Supplier list cache tests (supporting modules).
+3. SO→Job convert cache integration test (jobs + sales-orders categories).
+
+---
+
 ## 📋 SESSION 54 — COMPLETE (2026-06-19)
 
 **Delivered:** **359/359 green** (275 unit + 29 web + 55 E2E).
@@ -246,9 +261,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 54 complete — 359/359 green. Invoice cache tests, Tenants quota E2E.**
+**Session 55 complete — 372/372 green. SO/PO list caching + invoice pagination test.**
 
-### Exact Work Completed — Latest (2026-06-19, session 54)
+### Exact Work Completed — Latest (2026-06-19, session 55)
+- **Services:** SalesOrder + PurchaseOrder list cache (`sales-orders`, `purchase-orders` categories).
+- **Tests:** 12 SO/PO cache tests + invoice page-size cache test.
+- **Testing target**: **372/372 green** (288 unit + 29 web + 55 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 54)
 - **Invoice cache tests:** 9 tests covering list cache + invalidation on mutations.
 - **E2E:** Tenants edit quota-exceeded banner (+1).
 - **Testing target**: **359/359 green** (275 unit + 29 web + 55 E2E).

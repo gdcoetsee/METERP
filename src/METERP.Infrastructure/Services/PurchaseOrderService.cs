@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -9,11 +10,13 @@ public class PurchaseOrderService : IPurchaseOrderService
 {
     private readonly AppDbContext _dbContext;
     private readonly IInventoryService _inventoryService;
+    private readonly ITenantCacheService? _cache;
 
-    public PurchaseOrderService(AppDbContext dbContext, IInventoryService inventoryService)
+    public PurchaseOrderService(AppDbContext dbContext, IInventoryService inventoryService, ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _inventoryService = inventoryService;
+        _cache = cache;
     }
 
     public async Task<PurchaseOrder?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -25,6 +28,20 @@ public class PurchaseOrderService : IPurchaseOrderService
     }
 
     public async Task<IReadOnlyList<PurchaseOrder>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        {
+            return await _cache.GetOrCreateAsync(
+                "purchase-orders",
+                $"p{page}:s{pageSize}",
+                () => LoadPurchaseOrdersAsync(search, page, pageSize, ct),
+                ct: ct);
+        }
+
+        return await LoadPurchaseOrdersAsync(search, page, pageSize, ct);
+    }
+
+    private async Task<IReadOnlyList<PurchaseOrder>> LoadPurchaseOrdersAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<PurchaseOrder>()
             .AsNoTracking()
@@ -58,6 +75,7 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         _dbContext.Set<PurchaseOrder>().Add(po);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
         return po.Id;
     }
 
@@ -66,6 +84,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         RecalculateTotals(po);
         _dbContext.Set<PurchaseOrder>().Update(po);
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -82,6 +101,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         po.IsDeleted = true;
 
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task UpdateStatusAsync(Guid poId, PurchaseOrderStatus newStatus, CancellationToken ct = default)
@@ -91,6 +111,7 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         po.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
 
     public async Task<Guid> AddLineAsync(PurchaseOrderLine line, CancellationToken ct = default)
@@ -109,6 +130,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             await _dbContext.SaveChangesAsync(ct);
         }
 
+        InvalidateListCaches();
         return line.Id;
     }
 
@@ -127,6 +149,8 @@ public class PurchaseOrderService : IPurchaseOrderService
             RecalculateTotals(po);
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
@@ -147,6 +171,8 @@ public class PurchaseOrderService : IPurchaseOrderService
             RecalculateTotals(po);
             await _dbContext.SaveChangesAsync(ct);
         }
+
+        InvalidateListCaches();
     }
 
     public async Task ReceiveAsync(Guid poId, CancellationToken ct = default)
@@ -170,7 +196,10 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         po.Status = PurchaseOrderStatus.Received;
         await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
     }
+
+    private void InvalidateListCaches() => _cache?.InvalidateCategory("purchase-orders");
 
     private static void RecalculateTotals(PurchaseOrder po)
     {

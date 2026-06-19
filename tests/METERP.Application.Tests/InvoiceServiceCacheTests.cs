@@ -272,6 +272,46 @@ public class InvoiceServiceCacheTests
     }
 
     [Fact]
+    public async Task GetAllAsync_DifferentPageSizes_UseSeparateCacheEntries()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Invoice Paging Co" };
+            db.Set<Customer>().Add(customer);
+            for (var i = 1; i <= 3; i++)
+            {
+                db.Set<Invoice>().Add(new Invoice
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    InvoiceNumber = $"INV-PAGE-{i:000}",
+                    InvoiceDate = DateTime.UtcNow.AddDays(-i),
+                    Notes = $"page-seed-{i}",
+                    TaxRate = 0.15m
+                });
+            }
+            await db.SaveChangesAsync();
+
+            var service = new InvoiceService(db, cache: cache);
+            var page1 = await service.GetAllAsync(page: 1, pageSize: 2);
+            Assert.Equal(2, page1.Count);
+
+            var oldest = await db.Set<Invoice>().OrderBy(i => i.InvoiceDate).FirstAsync();
+            oldest.Notes = "oldest-mutated";
+            await db.SaveChangesAsync();
+
+            var page1Cached = await service.GetAllAsync(page: 1, pageSize: 2);
+            Assert.Equal("page-seed-1", page1Cached[0].Notes);
+
+            var page2Fresh = await service.GetAllAsync(page: 2, pageSize: 2);
+            Assert.Single(page2Fresh);
+            Assert.Equal("oldest-mutated", page2Fresh[0].Notes);
+        }
+    }
+
+    [Fact]
     public async Task DeleteLineAsync_InvalidatesInvoiceListCache()
     {
         var tenantId = Guid.NewGuid();
