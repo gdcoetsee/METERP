@@ -42,10 +42,10 @@
             </div>
         </div>
         <div class="card-body d-flex flex-wrap gap-2">
-            @RenderQuotaBadge("Quotes", currentTenant.PeriodQuotesCreated, QuotaType.Quote)
-            @RenderQuotaBadge("Jobs", currentTenant.PeriodJobsCreated, QuotaType.Job)
-            @RenderQuotaBadge("Invoices", currentTenant.PeriodInvoicesIssued, QuotaType.Invoice)
-            @RenderQuotaBadge("AI calls", currentTenant.PeriodAiCalls, QuotaType.AiCall)
+            <QuotaUsageBadge Tenant="currentTenant" Label="Quotes" Used="currentTenant.PeriodQuotesCreated" Type="QuotaType.Quote" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.Quote)" />
+            <QuotaUsageBadge Tenant="currentTenant" Label="Jobs" Used="currentTenant.PeriodJobsCreated" Type="QuotaType.Job" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.Job)" />
+            <QuotaUsageBadge Tenant="currentTenant" Label="Invoices" Used="currentTenant.PeriodInvoicesIssued" Type="QuotaType.Invoice" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.Invoice)" />
+            <QuotaUsageBadge Tenant="currentTenant" Label="AI calls" Used="currentTenant.PeriodAiCalls" Type="QuotaType.AiCall" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.AiCall)" />
         </div>
         @if (!currentTenant.HasFeature("ai"))
         {
@@ -351,38 +351,4 @@
         billingPortalUrl = url;
         await JS.InvokeVoidAsync("open", url, "_blank");
     }
-
-    private RenderFragment RenderQuotaBadge(string label, int used, QuotaType type) => builder =>
-    {
-        if (currentTenant == null) return;
-        var limit = TenantQuotaDefaults.GetEffectiveLimit(currentTenant, type);
-        var testId = type switch
-        {
-            QuotaType.Quote => "home-quota-quotes",
-            QuotaType.Job => "home-quota-jobs",
-            QuotaType.Invoice => "home-quota-invoices",
-            QuotaType.AiCall => "home-quota-ai",
-            _ => "home-quota-other"
-        };
-        var limitText = limit?.ToString() ?? "∞";
-        var status = TenantQuotaDefaults.GetQuotaStatus(currentTenant, type);
-        var css = status switch
-        {
-            QuotaUsageStatus.Exceeded => "bg-danger",
-            QuotaUsageStatus.Warning => "bg-warning text-dark",
-            QuotaUsageStatus.Ok => "bg-success",
-            _ => "bg-secondary"
-        };
-        var statusKey = status.ToString().ToLowerInvariant();
-        var tooltip = TenantQuotaDefaults.GetQuotaTooltip(currentTenant, type, label);
-
-        builder.OpenElement(0, "span");
-        builder.AddAttribute(1, "class", $"badge {css}");
-        builder.AddAttribute(2, "data-testid", testId);
-        builder.AddAttribute(3, "data-quota-status", statusKey);
-        builder.AddAttribute(4, "title", tooltip);
-        builder.AddAttribute(5, "aria-label", tooltip);
-        builder.AddContent(6, $"{label}: {used} / {limitText}");
-        builder.CloseElement();
-    };
 }

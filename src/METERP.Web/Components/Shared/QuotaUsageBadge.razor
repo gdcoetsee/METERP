@@ -1,0 +1,43 @@
+@using METERP.Common
+@using METERP.Domain
+
+<span class="badge @CssClass"
+      data-testid="@TestId"
+      data-quota-status="@StatusKey"
+      title="@Tooltip"
+      aria-label="@Tooltip">
+    @($"{Label}: {Used} / {LimitText}")
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public Tenant Tenant { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = "";
+
+    [Parameter]
+    public int Used { get; set; }
+
+    [Parameter, EditorRequired]
+    public QuotaType Type { get; set; }
+
+    [Parameter, EditorRequired]
+    public string TestId { get; set; } = "";
+
+    private string LimitText => TenantQuotaDefaults.GetEffectiveLimit(Tenant, Type)?.ToString() ?? "∞";
+
+    private QuotaUsageStatus Status => TenantQuotaDefaults.GetQuotaStatus(Tenant, Type);
+
+    private string StatusKey => Status.ToString().ToLowerInvariant();
+
+    private string Tooltip => TenantQuotaDefaults.GetQuotaTooltip(Tenant, Type, Label);
+
+    private string CssClass => Status switch
+    {
+        QuotaUsageStatus.Exceeded => "bg-danger",
+        QuotaUsageStatus.Warning => "bg-warning text-dark",
+        QuotaUsageStatus.Ok => "bg-success",
+        _ => "bg-secondary"
+    };
+}

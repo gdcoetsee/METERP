@@ -131,6 +131,16 @@ public static class TenantQuotaDefaults
             .Select(pair => pair.Label)
             .ToList();
 
+    public static string GetQuotaTestId(string prefix, QuotaType type) =>
+        type switch
+        {
+            QuotaType.Quote => $"{prefix}-quota-quotes",
+            QuotaType.Job => $"{prefix}-quota-jobs",
+            QuotaType.Invoice => $"{prefix}-quota-invoices",
+            QuotaType.AiCall => $"{prefix}-quota-ai",
+            _ => $"{prefix}-quota-other"
+        };
+
     private static readonly (string Label, QuotaType Type)[] QuotaDisplayNames =
     [
         ("Quotes", QuotaType.Quote),

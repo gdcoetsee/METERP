@@ -1,5 +1,21 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 52 — COMPLETE (2026-06-19)
+
+**Delivered:** **347/347 green** (265 unit + 29 web + 53 E2E).
+
+### Session 52 deliverables
+- **Labor cache invalidation tests:** `AddLaborAsync` / `DeleteLaborAsync` bust job list cache (+2 unit).
+- **Shared quota badge:** `QuotaUsageBadge.razor` component; `TenantQuotaDefaults.GetQuotaTestId`; Home + AccountBilling refactored (+2 unit theory).
+- **Imports:** `METERP.Web.Components.Shared` in `_Imports.razor`.
+
+### Next session priorities
+1. Push branch and verify GitHub Actions E2E job green.
+2. Harden flaky `TenantLoggingMiddlewareTests` (Serilog static logger isolation).
+3. Tenants admin usage badges (optional) using `QuotaUsageBadge`.
+
+---
+
 ## 📋 SESSION 51 — COMPLETE (2026-06-19)
 
 **Delivered:** **343/343 green** (261 unit + 29 web + 53 E2E).
@@ -199,9 +215,14 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-19 session)
 
-**Session 51 complete — 343/343 green. Line cache tests, billing quota UX.**
+**Session 52 complete — 347/347 green. Labor cache tests, shared QuotaUsageBadge.**
 
-### Exact Work Completed — Latest (2026-06-19, session 51)
+### Exact Work Completed — Latest (2026-06-19, session 52)
+- **Cache tests:** job labor add/delete invalidate list cache (+2 unit).
+- **Quota UX:** shared `QuotaUsageBadge` + `GetQuotaTestId` (+2 unit).
+- **Testing target**: **347/347 green** (265 unit + 29 web + 53 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 51)
 - **Cache tests:** quote line + job cost mutations invalidate list cache (+5 unit).
 - **Billing UX:** quota badges/tooltips/exceeded banner on `AccountBillingPanel` (+1 E2E).
 - **Testing target**: **343/343 green** (261 unit + 29 web + 53 E2E).

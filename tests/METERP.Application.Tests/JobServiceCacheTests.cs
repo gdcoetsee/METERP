@@ -282,4 +282,64 @@ public class JobServiceCacheTests
             Assert.Equal(0m, refreshed[0].ActualCost);
         }
     }
+
+    [Fact]
+    public async Task AddLaborAsync_InvalidatesJobListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var jobId = await SeedJobAsync(db, tenantId, "cached-before-labor");
+            var service = new JobService(db, cache: cache);
+
+            await service.GetAllAsync();
+            var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+            job.Notes = "db-mutated";
+            await db.SaveChangesAsync();
+
+            await service.AddLaborAsync(new JobLabor
+            {
+                TenantId = tenantId,
+                JobId = jobId,
+                Hours = 4m,
+                HourlyRate = 150m,
+                Description = "Install labor"
+            });
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal("db-mutated", refreshed[0].Notes);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteLaborAsync_InvalidatesJobListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var jobId = await SeedJobAsync(db, tenantId);
+            var service = new JobService(db, cache: cache);
+
+            var laborId = await service.AddLaborAsync(new JobLabor
+            {
+                TenantId = tenantId,
+                JobId = jobId,
+                Hours = 2m,
+                HourlyRate = 100m,
+                Description = "Remove me"
+            });
+
+            await service.GetAllAsync();
+            var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+            job.Notes = "db-mutated-after-labor";
+            await db.SaveChangesAsync();
+
+            await service.DeleteLaborAsync(laborId);
+
+            var refreshed = await service.GetAllAsync();
+            Assert.Equal("db-mutated-after-labor", refreshed[0].Notes);
+        }
+    }
 }

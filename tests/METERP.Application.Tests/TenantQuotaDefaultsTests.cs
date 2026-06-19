@@ -159,4 +159,12 @@ public class TenantQuotaDefaultsTests
         Assert.Single(labels);
         Assert.Equal("Quotes", labels[0]);
     }
+
+    [Theory]
+    [InlineData("home", QuotaType.Quote, "home-quota-quotes")]
+    [InlineData("account-billing", QuotaType.AiCall, "account-billing-quota-ai")]
+    public void GetQuotaTestId_ReturnsStableBadgeIds(string prefix, QuotaType type, string expected)
+    {
+        Assert.Equal(expected, TenantQuotaDefaults.GetQuotaTestId(prefix, type));
+    }
 }
