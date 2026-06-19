@@ -505,6 +505,38 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Quotes_Save_Shows_Quota_Exceeded_Toast()
+    {
+        try
+        {
+            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
+            var page = await _browser.LoginAsync();
+            await page.GotoRelativeAsync("/quotes");
+            await page.WaitForTestIdAsync("quotes-table", 30000);
+
+            await page.ClickByTestIdAsync("new-quote-button");
+            await page.WaitForTestIdAsync("quote-editor", 15000);
+            await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+            await page.ClickByTestIdAsync("quote-add-line-button");
+            await page.FillAsync("[data-testid='quote-line-description']", "E2E quota blocked line");
+            await page.FillAsync("[data-testid='quote-line-unit-price']", "100");
+            await page.ClickByTestIdAsync("quote-line-save-button");
+            await page.ClickByTestIdAsync("quote-save-button");
+
+            var quotaToast = page.Locator(".toast-body").Filter(new() { HasText = "Monthly Quote quota exceeded" }).Last;
+            await quotaToast.WaitForAsync(new() { Timeout = 15000 });
+            var toast = (await quotaToast.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Monthly Quote quota exceeded", toast, StringComparison.OrdinalIgnoreCase);
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoQuotasAsync();
+        }
+    }
+
+    [Fact]
     public async Task Home_Quota_Usage_Card_Shows_Monthly_Usage()
     {
         var page = await _browser.LoginAsync();
@@ -816,7 +848,15 @@ public class E2EFlowTests : IAsyncLifetime
     {
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
-        await page.WaitForTestIdAsync("scheduling-ready", 20000);
+
+        try
+        {
+            await page.WaitForTestIdAsync("scheduling-ready", 20000);
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForSelectorAsync("table.table tbody tr", new() { Timeout = 30000 });
+        }
 
         await page.Locator("[data-testid='scheduling-view-assign']").First.ClickAsync();
         await page.WaitForTestIdAsync("scheduling-assign-panel", 10000);

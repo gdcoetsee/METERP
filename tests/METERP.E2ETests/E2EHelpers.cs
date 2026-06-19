@@ -149,6 +149,28 @@ public static class E2EHelpers
         return doc.RootElement.TryGetProperty("soNumber", out var prop) ? prop.GetString() : null;
     }
 
+    /// <summary>
+    /// Sets Acme quote quota to 1/1 used (Development endpoint) for quota-exceeded E2E.
+    /// </summary>
+    public static async Task EnsureQuoteQuotaExceededAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-quote-quota-exceeded", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Restores Acme demo monthly quotas after quota E2E (Development endpoint).
+    /// </summary>
+    public static async Task ResetDemoQuotasAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/reset-demo-quotas", null);
+        response.EnsureSuccessStatusCode();
+    }
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

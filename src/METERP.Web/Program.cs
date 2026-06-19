@@ -480,6 +480,30 @@ if (app.Environment.IsDevelopment())
 
         return Results.Ok(new { ok = true, soNumber });
     }).DisableRateLimiting();
+
+    app.MapPost("/e2e/ensure-quote-quota-exceeded", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        await E2EDemoQuotaSeeder.EnsureQuoteQuotaExceededAsync(tenantService, tenant.Id, ct);
+        return Results.Ok(new { ok = true, limit = 1, used = 1 });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/reset-demo-quotas", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        await E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, tenant.Id, ct);
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
 }
 
 app.MapPost("/webhooks/stripe", async (

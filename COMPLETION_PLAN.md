@@ -1,5 +1,24 @@
 # METERP Completion & Full Testing Plan
 
+## 📋 SESSION 42 — COMPLETE (2026-06-19)
+
+**Delivered:** **303/303 green** (239 unit + 17 web + 47 E2E).
+
+### Session 42 deliverables
+- **Quota-exceeded E2E:** `E2EDemoQuotaSeeder` + `/e2e/ensure-quote-quota-exceeded` + `/e2e/reset-demo-quotas`; `Quotes_Save_Shows_Quota_Exceeded_Toast` (47th Playwright test).
+- **Phase C — Production hardening:**
+  - `TenantService.IncrementCounterAsync` retries on `DbUpdateConcurrencyException`.
+  - `IncrementQuoteCountAsync_ConcurrentIncrements_AllPersisted` (SQLite, 12 parallel).
+  - `TenantLoggingMiddlewareTests` — Serilog `LogContext` tenant enrichment.
+  - `SecretsAuditTests` — `.env` gitignore, `.env.example`, no hardcoded keys, `UserSecretsId`.
+- **Scheduling E2E:** `Scheduling_Quick_Adds_Labor` fallback when `scheduling-ready` slow.
+
+### Next session priorities
+1. OpenTelemetry / 2FA production stubs.
+2. Additional quota E2E (job/invoice limits) if billing UX needs coverage.
+
+---
+
 ## 📋 SESSION 41 — COMPLETE (2026-06-19)
 
 **Delivered:** **295/295 green** (238 unit + 11 web + 46 E2E).
@@ -33,9 +52,15 @@
 
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-18 session)
 
-**Session 41 complete — 295/295 green. SO→job E2E, job→invoice stability, jobs search.**
+**Session 42 complete — 303/303 green. Quota toast E2E, concurrent counters, Serilog/secrets audit.**
 
-### Exact Work Completed — Latest (2026-06-19, session 41)
+### Exact Work Completed — Latest (2026-06-19, session 42)
+- **Quota-exceeded toast E2E:** `E2EDemoQuotaSeeder` + dev endpoints; `Quotes_Save_Shows_Quota_Exceeded_Toast` (47th).
+- **Phase C:** concurrent `TenantService` increment test + concurrency retry; `TenantLoggingMiddlewareTests`; `SecretsAuditTests`.
+- **Scheduling E2E:** quick-add labor ready-marker fallback.
+- **Testing target**: **303/303 green** (239 unit + 17 web + 47 E2E).
+
+### Exact Work Completed — Prior (2026-06-19, session 41)
 - **Job→invoice E2E reset:** `POST /e2e/ensure-demo-invoice-job`; per-test `EnsureDemoInvoiceJobAsync`; `jobs-search` test id.
 - **Sales Order → Job E2E:** `E2EConvertibleSalesOrderSeeder` + endpoint; `SalesOrder_Convert_To_Job_Creates_Job_With_Travel` (46th).
 - **SalesOrders UI:** `sales-order-row-e2e-convertible`, `sales-order-convert-to-job`, `sales-orders-search`.

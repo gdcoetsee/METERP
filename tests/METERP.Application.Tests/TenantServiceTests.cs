@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using METERP.Application.Interfaces;
@@ -170,5 +171,49 @@ public class TenantServiceTests
         var updated = await service.GetByIdAsync(tenant.Id);
         Assert.NotNull(updated);
         Assert.Equal(0, updated.TotalQuotesCreated);
+    }
+
+    [Fact]
+    public async Task IncrementQuoteCountAsync_ConcurrentIncrements_AllPersisted()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(options => options.UseSqlite(connection));
+        services.AddSingleton(_tenantProviderMock.Object);
+        services.AddSingleton(_currentUserMock.Object);
+
+        var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        Guid tenantId;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            tenantId = Guid.NewGuid();
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                Name = "Concurrent",
+                Subdomain = "concurrent",
+                Tier = SubscriptionTier.Starter
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var readScope = provider.CreateAsyncScope();
+        var readDb = readScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var service = new TenantService(readDb, scopeFactory);
+
+        const int parallelIncrements = 12;
+        await Task.WhenAll(Enumerable.Range(0, parallelIncrements)
+            .Select(_ => service.IncrementQuoteCountAsync(tenantId)));
+
+        var updated = await service.GetByIdAsync(tenantId);
+        Assert.NotNull(updated);
+        Assert.Equal(parallelIncrements, updated.TotalQuotesCreated);
+        Assert.Equal(parallelIncrements, updated.PeriodQuotesCreated);
     }
 }

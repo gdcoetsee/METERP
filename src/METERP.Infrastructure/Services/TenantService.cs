@@ -167,18 +167,30 @@ public class TenantService : ITenantService
     {
         if (tenantId == Guid.Empty) return;
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        const int maxAttempts = 8;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var tenant = await db.Tenants
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+                var tenant = await db.Tenants
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
 
-        if (tenant == null) return;
+                if (tenant == null) return;
 
-        await QuotaService.EnsureCurrentPeriodAsync(tenant, db, ct);
-        applyIncrement(tenant);
-        tenant.LastActivityUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+                await QuotaService.EnsureCurrentPeriodAsync(tenant, db, ct);
+                applyIncrement(tenant);
+                tenant.LastActivityUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)
+            {
+                await Task.Delay(15 * (attempt + 1), ct);
+            }
+        }
     }
 }
