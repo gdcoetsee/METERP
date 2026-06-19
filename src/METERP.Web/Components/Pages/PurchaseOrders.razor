@@ -3,6 +3,7 @@
 @using METERP.Application.Interfaces
 @using METERP.Domain
 @using METERP.Common
+@using METERP.Infrastructure.Seeding
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
@@ -65,7 +66,7 @@ else
             <tbody>
                 @foreach (var po in pos)
                 {
-                    <tr>
+                    <tr data-testid="@GetPurchaseOrderRowTestId(po)">
                         <td><strong>@po.PoNumber</strong></td>
                         <td>@(po.Supplier?.Name ?? "—")</td>
                         <td>@po.PoDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Exp: @(po.ExpectedDate?.ToString("yyyy-MM-dd") ?? "—")</small></td>
@@ -424,6 +425,16 @@ else
     {
         try { return await JS.InvokeAsync<bool>("confirm", msg); }
         catch { return false; }
+    }
+
+    private static string GetPurchaseOrderRowTestId(PurchaseOrder po)
+    {
+        if (po.Notes != null
+            && po.Notes.Contains(E2EReceiveDemoPoSeeder.DemoNotesMarker, StringComparison.OrdinalIgnoreCase)
+            && po.Status == PurchaseOrderStatus.Sent)
+            return "purchase-order-row-e2e-receive";
+
+        return "purchase-order-row";
     }
 
     private static string GetStatusBadge(PurchaseOrderStatus status)

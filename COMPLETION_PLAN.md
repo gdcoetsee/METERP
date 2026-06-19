@@ -1,33 +1,50 @@
 # METERP Completion & Full Testing Plan
 
-## 📋 SESSION 40 — COMPLETE (2026-06-18)
+## 📋 SESSION 41 — COMPLETE (2026-06-19)
 
-**Baseline delivered:** **294/294 green** (238 unit + 11 web + 45 E2E). Commits: `01ba331` (GP pricing, AI settings) + session 40b (convertible quote seeder, CRM search E2E, quota/E2E stability).
+**Delivered:** **295/295 green** (238 unit + 11 web + 46 E2E).
 
-### Session 40 deliverables
-- **Quote GP pricing:** `UnitCost`, `GrossProfitPercent`, blended margin UI; `QuotePricing` + unit tests.
-- **Tenant AI settings:** `/settings/ai`, `TenantAiSettingsService`, `AiConfigurationResolver`.
-- **Blazor fixes:** async Redis cache invalidation; `UpdateLineAsync` tracked-entity patch; convert-to-job visible in view mode.
-- **E2E hardening:** `E2EReceiveDemoPoSeeder` + endpoint; customer search-based assertions; `E2EConvertibleQuoteSeeder` + `/e2e/ensure-convertible-quote` (fixes convert-to-job data exhaustion).
-- **Phase B (partial):** `Assets_Search_FiltersByName` + `Employees_Search_FiltersByName` E2E.
+### Session 41 deliverables
+- **Job→invoice E2E stability:** `E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync` + `POST /e2e/ensure-demo-invoice-job` (resets invoices, ensures travel/labor, bumps `CreatedDate`); `jobs-search` on [`Jobs.razor`](src/METERP.Web/Components/Pages/Jobs.razor).
+- **Sales Order → Job E2E:** `E2EConvertibleSalesOrderSeeder` + `/e2e/ensure-convertible-sales-order`; `sales-order-row-e2e-convertible`, `sales-order-convert-to-job`, `sales-orders-search` test ids; `SalesOrder_Convert_To_Job_Creates_Job_With_Travel` (46th Playwright test).
+- **E2E helpers:** `EnsureDemoInvoiceJobAsync`, `EnsureConvertibleSalesOrderAsync` wired into `EnsureAppReadyAsync`.
+- **E2E stability fixes:** `Quotes_Edit_Opens_Lines` uses new-quote flow (draft rows consumed by prior runs); `PurchaseOrders_Receive` asserts by PO number + toast (row test id changes on receive); AI copilot test longer timeouts + enabled-button guard.
 
 ### Next session priorities (credit-efficient)
-1. **Sales Order → Job conversion E2E** + `sales-order-convert-to-job` test ids on [`SalesOrders.razor`](src/METERP.Web/Components/Pages/SalesOrders.razor).
-2. **Stretch:** quota-exceeded toast E2E; scheduling/audit E2E flakes if full suite regresses.
-3. **Phase C — Production hardening:** Concurrent `TenantService` increment test; secrets audit; Serilog tenant logging verification.
+1. **Stretch:** quota-exceeded toast E2E; scheduling E2E flakes if full suite regresses.
+2. **Phase C — Production hardening:** Concurrent `TenantService` increment test; secrets audit; Serilog tenant logging verification.
 
 **Per chunk:** `dotnet test` → update this handoff → commit with session prefix + test counts.
 
 ---
 
+## 📋 SESSION 40 — COMPLETE (2026-06-18)
+
+**Baseline delivered:** **294/294 green** (238 unit + 11 web + 45 E2E). Commits: `01ba331` (GP pricing, AI settings) + `09c594f` (convertible quote seeder, CRM search E2E, quota/E2E stability).
+
+### Session 40 deliverables
+- **Quote GP pricing:** `UnitCost`, `GrossProfitPercent`, blended margin UI; `QuotePricing` + unit tests.
+- **Tenant AI settings:** `/settings/ai`, `TenantAiSettingsService`, `AiConfigurationResolver`.
+- **Blazor fixes:** async Redis cache invalidation; `UpdateLineAsync` tracked-entity patch; convert-to-job visible in view mode.
+- **E2E hardening:** `E2EReceiveDemoPoSeeder` + endpoint; `E2EConvertibleQuoteSeeder` + `/e2e/ensure-convertible-quote` (endpoint-only — **not** startup seed, avoids quota crash); demo Acme `Max*PerMonth = 10_000`.
+- **Phase B (partial):** `Assets_Search_FiltersByName` + `Employees_Search_FiltersByName` E2E.
+
+---
+
 ## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST - Current as of 2026-06-18 session)
 
-**Session 40 complete — Quote GP, AI settings, E2E stability, CRM search tests.**
+**Session 41 complete — 295/295 green. SO→job E2E, job→invoice stability, jobs search.**
 
-### Exact Work Completed — Latest (2026-06-18, session 40)
+### Exact Work Completed — Latest (2026-06-19, session 41)
+- **Job→invoice E2E reset:** `POST /e2e/ensure-demo-invoice-job`; per-test `EnsureDemoInvoiceJobAsync`; `jobs-search` test id.
+- **Sales Order → Job E2E:** `E2EConvertibleSalesOrderSeeder` + endpoint; `SalesOrder_Convert_To_Job_Creates_Job_With_Travel` (46th).
+- **SalesOrders UI:** `sales-order-row-e2e-convertible`, `sales-order-convert-to-job`, `sales-orders-search`.
+- **Testing target**: **295/295 green** (238 unit + 11 web + 46 E2E).
+
+### Exact Work Completed — Prior (2026-06-18, session 40)
 - **Quote GP pricing + Blazor:** inline unit cost / GP% / blended margin; `QuoteUiHelper.DetachForUi`; cache deadlock fix.
 - **Tenant AI settings:** `AiSettings.razor`, migrations, resolver profiles.
-- **E2E stability:** `E2EConvertibleQuoteSeeder` + `POST /e2e/ensure-convertible-quote`; called from `EnsureAppReadyAsync` + startup seed.
+- **E2E stability:** `E2EConvertibleQuoteSeeder` + `POST /e2e/ensure-convertible-quote` (endpoint-only, not startup); demo quota 10k.
 - **Phase 2 E2E:**
   - `Assets_Search_FiltersByName` (38th) — Transformer / Warehouse filter assertions.
   - `Employees_Search_FiltersByName` (39th) — Johan / Thabo filter assertions.

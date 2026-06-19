@@ -27,6 +27,17 @@
     <strong>Creation, analysis and closeout recommendations are AI-first.</strong> Use the Copilot for "Create job from scope", "What-if travel +20% fuel", "Workforce utilization", or "Full operation review". The AI understands your historical labor/travel numbers and current ERP data.
 </div>
 
+<div class="mb-3" style="max-width: 420px;">
+    <div class="input-group">
+        <input type="search" class="form-control" placeholder="Search job #, customer, or notes..."
+               value="@searchTerm" @oninput="OnSearchInput" data-testid="jobs-search" />
+        @if (!string.IsNullOrEmpty(searchTerm))
+        {
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+        }
+    </div>
+</div>
+
 <h6>Recent / Live Jobs (powered by services)</h6>
 <JobList 
     Jobs="demoJobs"
@@ -55,6 +66,7 @@
 @code {
     private List<Job> demoJobs = new();
     private Job? selectedJob;
+    private string searchTerm = string.Empty;
     private int currentPage = 1;
     private const int PageSize = 2;
 
@@ -62,17 +74,37 @@
 
     protected override async Task OnInitializedAsync()
     {
-        demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList();
+        await LoadJobs();
+    }
+
+    private async Task LoadJobs()
+    {
+        var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
+        demoJobs = (await JobService.GetAllAsync(term, currentPage, PageSize)).ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+        await LoadJobs();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadJobs();
     }
 
     private async Task PreviousPage()
     {
-        if (currentPage > 1) { currentPage--; demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList(); }
+        if (currentPage > 1) { currentPage--; await LoadJobs(); }
     }
 
     private async Task NextPage()
     {
-        currentPage++; demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList();
+        currentPage++; await LoadJobs();
     }
 
     private async Task ViewJob(Job j)
@@ -89,7 +121,7 @@
         if (!ok) return;
         await JobService.DeleteAsync(j.Id);
         if (selectedJob?.Id == j.Id) selectedJob = null;
-        demoJobs = (await JobService.GetAllAsync(null, currentPage, PageSize)).ToList();
+        await LoadJobs();
     }
 
     private async Task ExportJobsCsv()

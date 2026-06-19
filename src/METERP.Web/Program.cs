@@ -441,6 +441,45 @@ if (app.Environment.IsDevelopment())
 
         return Results.Ok(new { ok = true, quoteNumber });
     }).DisableRateLimiting();
+
+    app.MapPost("/e2e/ensure-demo-invoice-job", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        var jobNumber = await E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync(
+            scope.ServiceProvider.GetRequiredService<IJobService>(),
+            scope.ServiceProvider.GetRequiredService<IInvoiceService>(),
+            scope.ServiceProvider.GetRequiredService<ICustomerService>(),
+            scope.ServiceProvider.GetRequiredService<IQuoteService>(),
+            scope.ServiceProvider.GetRequiredService<ITenantProvider>(),
+            tenant.Id,
+            ct);
+
+        return Results.Ok(new { ok = true, jobNumber });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/ensure-convertible-sales-order", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        var soNumber = await E2EConvertibleSalesOrderSeeder.EnsureConfirmedConvertibleSalesOrderAsync(
+            scope.ServiceProvider.GetRequiredService<ISalesOrderService>(),
+            scope.ServiceProvider.GetRequiredService<IQuoteService>(),
+            scope.ServiceProvider.GetRequiredService<ICustomerService>(),
+            scope.ServiceProvider.GetRequiredService<ITenantProvider>(),
+            tenant.Id,
+            ct);
+
+        return Results.Ok(new { ok = true, soNumber });
+    }).DisableRateLimiting();
 }
 
 app.MapPost("/webhooks/stripe", async (

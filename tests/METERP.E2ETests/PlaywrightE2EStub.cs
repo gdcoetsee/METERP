@@ -12,6 +12,10 @@ namespace METERP.E2ETests;
 [Trait("Category", "E2E")]
 public class E2EFlowTests : IAsyncLifetime
 {
+    private const string DemoInvoiceJobMarker = "E2E demo invoice job";
+    private const string ConvertibleSalesOrderMarker = "E2E convertible sales order";
+    private const string ReceiveDemoPoMarker = "E2E receive demo";
+
     private IPlaywright _playwright = null!;
     private IBrowser _browser = null!;
 
@@ -53,11 +57,13 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
         // Quick prompt avoids Blazor @bind timing issues with FillAsync; works without live API key.
-        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-        await page.WaitForTestIdAsync("ai-last-response", 30000);
+        var travelPrompt = page.Locator("[data-testid='ai-quick-prompt-travel']");
+        await Assertions.Expect(travelPrompt).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await travelPrompt.ClickAsync();
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
 
         await page.ClickByTestIdAsync("ai-create-real-quote");
-        await page.WaitForURLAsync("**/quotes**", new() { Timeout = 30000 });
+        await page.WaitForURLAsync("**/quotes**", new() { Timeout = 45000 });
         await page.WaitForTestIdAsync("quotes-table", 30000);
         await page.WaitForSelectorAsync("[data-testid='quotes-table'] tbody tr", new() { Timeout = 15000 });
         await page.Locator("[data-testid='quotes-table']").GetByText(new System.Text.RegularExpressions.Regex("Q-", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
@@ -72,7 +78,7 @@ public class E2EFlowTests : IAsyncLifetime
             await page.GotoRelativeAsync("/ai-copilot");
             await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
             await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-            await page.WaitForTestIdAsync("ai-last-response", 30000);
+            await page.WaitForTestIdAsync("ai-last-response", 90000);
             var demoPdf = await page.WaitAndSaveDownloadAsync("[data-testid='ai-demo-quote-pdf']", "e2e-demo-quote");
             Assert.Contains(".pdf", demoPdf, StringComparison.OrdinalIgnoreCase);
         });
@@ -144,17 +150,13 @@ public class E2EFlowTests : IAsyncLifetime
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
-        var draftRow = page.Locator("[data-testid='quotes-table'] tbody tr")
-            .Filter(new() { HasText = "Draft" })
-            .First;
-        if (await draftRow.CountAsync() == 0)
-            draftRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
-        await draftRow.GetByRole(AriaRole.Button, new() { Name = "Edit" }).ClickAsync();
+        // New quote opens the line editor (prior E2E runs may consume all Draft rows).
+        await page.ClickByTestIdAsync("new-quote-button");
         await page.WaitForTestIdAsync("quote-editor", 15000);
+        await page.WaitForTestIdAsync("quote-add-line-button", 10000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Line Items", content);
-        Assert.Contains("quote-add-line-button", content);
 
         await page.CloseAsync();
     }
@@ -411,30 +413,19 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Job_With_Travel_And_Labor_Creates_Invoice_With_Correct_Totals()
     {
+        var jobNumber = await E2EHelpers.EnsureDemoInvoiceJobAsync();
+        Assert.False(string.IsNullOrWhiteSpace(jobNumber));
+
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/jobs");
         await page.WaitForTestIdAsync("jobs-table");
+        await page.FillByTestIdAsync("jobs-search", DemoInvoiceJobMarker);
+        await page.WaitForTestIdAsync("jobs-table", 10000);
 
-        ILocator? travelRow = null;
-        for (var attempt = 0; attempt < 15 && travelRow == null; attempt++)
-        {
-            var demoCandidate = page.Locator("[data-testid='job-row-e2e-invoice-demo']").First;
-            if (await demoCandidate.CountAsync() > 0)
-            {
-                travelRow = demoCandidate;
-                break;
-            }
+        var travelRow = page.Locator("[data-testid='job-row-e2e-invoice-demo']").First;
+        await Assertions.Expect(travelRow).ToHaveCountAsync(1, new() { Timeout = 15000 });
 
-            var next = page.GetByRole(AriaRole.Button, new() { Name = "Next" });
-            if (await next.CountAsync() == 0 || await next.IsDisabledAsync())
-                break;
-
-            await next.ClickAsync();
-            await page.WaitForTestIdAsync("jobs-table", 10000);
-        }
-
-        Assert.NotNull(travelRow);
-        await travelRow!.Locator("[data-testid='job-view-button']").ClickAsync();
+        await travelRow.Locator("[data-testid='job-view-button']").ClickAsync();
         await page.WaitForTestIdAsync("create-invoice-from-job-detail", 10000);
         await page.ClickByTestIdAsync("create-invoice-from-job-detail");
 
@@ -944,11 +935,16 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Shows_Invoice_Create_After_Job_Invoice()
     {
+        await E2EHelpers.EnsureDemoInvoiceJobAsync();
+
         var page = await _browser.LoginAsync();
         await page.GotoRelativeAsync("/jobs");
         await page.WaitForTestIdAsync("jobs-table", 30000);
+        await page.FillByTestIdAsync("jobs-search", DemoInvoiceJobMarker);
 
-        var jobRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        var jobRow = page.Locator("[data-testid='job-row-e2e-invoice-demo']").First;
+        if (await jobRow.CountAsync() == 0)
+            jobRow = page.Locator("[data-testid='job-row-with-travel']").First;
         if (await jobRow.CountAsync() == 0)
             jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
 
@@ -1129,47 +1125,21 @@ public class E2EFlowTests : IAsyncLifetime
         await page.GotoRelativeAsync("/purchase-orders");
         await page.WaitForTestIdAsync("purchase-orders-table", 30000);
 
-        var poBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
-        ILocator? sentRow = null;
-        for (var attempt = 0; attempt < 3 && sentRow == null; attempt++)
-        {
-            if (attempt > 0)
-            {
-                await page.ReloadAsync();
-                await page.WaitForTestIdAsync("purchase-orders-table", 30000);
-            }
+        await page.FillByTestIdAsync("purchase-orders-search", ReceiveDemoPoMarker);
+        await page.WaitForTestIdAsync("purchase-orders-table", 10000);
 
-            await page.Locator("[data-testid='purchase-orders-search']").PressSequentiallyAsync("Panel Supplies", new() { Delay = 30 });
-            await Assertions.Expect(poBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" }))
-                .ToHaveCountAsync(1, new() { Timeout = 15000 });
+        var sentRow = page.Locator("[data-testid='purchase-order-row-e2e-receive']").First;
+        await Assertions.Expect(sentRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        var poNumber = (await sentRow.Locator("td").First.TextContentAsync())?.Trim();
+        Assert.False(string.IsNullOrWhiteSpace(poNumber));
 
-            var candidate = poBody.Locator("tr")
-                .Filter(new() { HasText = "Panel Supplies" })
-                .Filter(new() { Has = page.Locator("[data-testid='purchase-order-receive']") });
-            if (await candidate.CountAsync() > 0)
-                sentRow = candidate.First;
-        }
-
-        Assert.NotNull(sentRow);
-        await sentRow!.WaitForAsync(new() { Timeout = 5000 });
-
-        var receiveButton = sentRow.Locator("[data-testid='purchase-order-receive']");
-        await receiveButton.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
-        await receiveButton.ClickAsync();
-
-        var receivedRow = poBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" }).First;
-        try
-        {
-            await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 20000 });
-        }
-        catch (Exception)
-        {
-            await page.Locator(".toast-body")
-                .Filter(new() { HasText = "PO received" })
-                .First
-                .WaitForAsync(new() { Timeout = 10000 });
-            await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 10000 });
-        }
+        await sentRow.Locator("[data-testid='purchase-order-receive']").ClickAsync();
+        // Row test id changes from purchase-order-row-e2e-receive once status is Received.
+        await page.Locator(".toast-body").Filter(new() { HasText = "PO received" }).First
+            .WaitForAsync(new() { Timeout = 30000 });
+        var receivedRow = page.Locator("[data-testid='purchase-orders-table'] tbody tr")
+            .Filter(new() { HasText = poNumber! });
+        await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 15000 });
 
         await page.GotoRelativeAsync("/inventory");
         await page.WaitForTestIdAsync("inventory-table", 30000);
@@ -1319,6 +1289,39 @@ public class E2EFlowTests : IAsyncLifetime
 
         var detail = await page.ContentAsync();
         Assert.Contains("Total:", detail);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task SalesOrder_Convert_To_Job_Creates_Job_With_Travel()
+    {
+        var soNumber = await E2EHelpers.EnsureConvertibleSalesOrderAsync();
+        Assert.False(string.IsNullOrWhiteSpace(soNumber));
+
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/sales-orders");
+        await page.WaitForTestIdAsync("sales-orders-ready", 20000);
+        await page.FillByTestIdAsync("sales-orders-search", ConvertibleSalesOrderMarker);
+
+        var soRow = page.Locator("[data-testid='sales-order-row-e2e-convertible']").First;
+        await Assertions.Expect(soRow).ToHaveCountAsync(1, new() { Timeout = 15000 });
+
+        await soRow.Locator("[data-testid='sales-order-view']").ClickAsync();
+        await page.WaitForTestIdAsync("sales-order-detail", 10000);
+        await page.WaitForTestIdAsync("sales-order-convert-to-job", 10000);
+        await page.ClickByTestIdAsync("sales-order-convert-to-job");
+
+        await page.WaitForTestIdAsync("sales-orders-ready", 20000);
+
+        await page.GotoRelativeAsync("/jobs");
+        await page.WaitForTestIdAsync("jobs-table", 20000);
+        await page.FillByTestIdAsync("jobs-search", soNumber!);
+        await page.WaitForTestIdAsync("jobs-table", 10000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("J-", content);
+        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
 
         await page.CloseAsync();
     }

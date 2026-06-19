@@ -3,6 +3,7 @@
 @using METERP.Application.Interfaces
 @using METERP.Domain
 @using METERP.Common
+@using METERP.Infrastructure.Seeding
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
@@ -22,7 +23,7 @@
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
         <input type="search" class="form-control" placeholder="Search SO # or customer..."
-               value="@searchTerm" @oninput="OnSearchInput" />
+               value="@searchTerm" @oninput="OnSearchInput" data-testid="sales-orders-search" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
             <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
@@ -55,7 +56,7 @@ else
             <tbody>
                 @foreach (var so in sos)
                 {
-                    <tr data-testid="sales-order-row">
+                    <tr data-testid="@GetSalesOrderRowTestId(so)">
                         <td><strong>@so.SoNumber</strong></td>
                         <td>@(so.Customer?.Name ?? "—")<br /><small>@(so.Quote?.QuoteNumber ?? "")</small></td>
                         <td>@so.SoDate.ToString("yyyy-MM-dd")</td>
@@ -65,7 +66,7 @@ else
                             <button class="btn btn-sm btn-outline-primary me-1" data-testid="sales-order-view" @onclick="() => ViewSO(so)">View</button>
                             @if (UserCanManage && so.Status == SalesOrderStatus.Draft)
                             {
-                                <button class="btn btn-sm btn-success" @onclick="() => ConvertToJob(so)">Convert to Job</button>
+                                <button class="btn btn-sm btn-success" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(so)">Convert to Job</button>
                             }
                         </td>
                     </tr>
@@ -129,7 +130,7 @@ else
 
             @if (UserCanManage && (selectedSO.Status == SalesOrderStatus.Draft || selectedSO.Status == SalesOrderStatus.Confirmed))
             {
-                <button class="btn btn-success btn-sm" @onclick="() => ConvertToJob(selectedSO)">Convert to Job</button>
+                <button class="btn btn-success btn-sm" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(selectedSO)">Convert to Job</button>
             }
         </div>
     </div>
@@ -224,6 +225,16 @@ else
     {
         try { return await JS.InvokeAsync<bool>("confirm", message); }
         catch { return false; }
+    }
+
+    private static string GetSalesOrderRowTestId(SalesOrder so)
+    {
+        if (so.Notes != null
+            && so.Notes.Contains(E2EConvertibleSalesOrderSeeder.DemoNotesMarker, StringComparison.OrdinalIgnoreCase)
+            && so.Status == SalesOrderStatus.Confirmed)
+            return "sales-order-row-e2e-convertible";
+
+        return "sales-order-row";
     }
 
     private static string GetStatusBadge(SalesOrderStatus status)

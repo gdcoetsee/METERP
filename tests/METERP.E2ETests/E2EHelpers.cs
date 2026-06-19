@@ -121,6 +121,34 @@ public static class E2EHelpers
         return doc.RootElement.TryGetProperty("quoteNumber", out var prop) ? prop.GetString() : null;
     }
 
+    /// <summary>
+    /// Resets the demo invoice job (Development endpoint). Makes job→invoice E2E stable across runs.
+    /// </summary>
+    public static async Task<string?> EnsureDemoInvoiceJobAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-demo-invoice-job", null);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("jobNumber", out var prop) ? prop.GetString() : null;
+    }
+
+    /// <summary>
+    /// Resets a Confirmed convertible sales order with travel (Development endpoint).
+    /// </summary>
+    public static async Task<string?> EnsureConvertibleSalesOrderAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-convertible-sales-order", null);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("soNumber", out var prop) ? prop.GetString() : null;
+    }
+
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
@@ -136,6 +164,8 @@ public static class E2EHelpers
                     {
                         await EnsureReceiveDemoPoAsync(url);
                         await EnsureConvertibleQuoteAsync(url);
+                        await EnsureDemoInvoiceJobAsync(url);
+                        await EnsureConvertibleSalesOrderAsync(url);
                     }
                     catch { /* optional in non-Development hosts */ }
                     return;
