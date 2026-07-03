@@ -127,7 +127,7 @@ public static class E2EHelpers
     {
         var url = baseUrl ?? BaseUrl;
         var cleanPath = relativePath.TrimStart('/');
-        await page.GotoAsync($"{url}/{cleanPath}", new() { WaitUntil = WaitUntil.DOMContentLoaded, Timeout = 60000 });
+        await page.GotoAsync($"{url}/{cleanPath}", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
         try
         {
             await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 5000 });
