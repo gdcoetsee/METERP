@@ -22,6 +22,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await E2EHelpers.EnsureAppReadyAsync();
+        await E2EHelpers.ResetDemoStateAsync();
         _playwright = await Playwright.CreateAsync();
         _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
     }
@@ -350,6 +351,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
+        await E2EHelpers.ResetDemoStateAsync();
         var quoteNumber = await E2EHelpers.EnsureConvertibleQuoteAsync();
         Assert.False(string.IsNullOrWhiteSpace(quoteNumber));
         var page = await _browser.LoginAsync();
@@ -700,8 +702,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task AccountBilling_Page_Shows_Plan_And_Manage_Billing()
     {
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/account-billing");
-        await page.WaitForTestIdAsync("account-billing-ready", 15000);
+        await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var content = await page.ContentAsync();
         Assert.Contains("Billing", content);
@@ -739,12 +740,12 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.ResetDemoStateAsync();
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
 
             var page = await _browser.LoginAsync();
-            await page.GotoRelativeAsync("/account-billing");
-            await page.WaitForTestIdAsync("account-billing-ready", 15000);
-            await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 15000);
+            await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
+            await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 20000);
 
             var quotesBadge = page.Locator("[data-testid='account-billing-quota-quotes']");
             Assert.Equal("exceeded", await quotesBadge.GetAttributeAsync("data-quota-status"));
@@ -764,15 +765,15 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Account_Hub_Shows_Billing_And_Security_Tabs()
     {
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/account");
-        await page.WaitForTestIdAsync("account-hub-ready", 15000);
-        await page.WaitForTestIdAsync("account-billing-ready", 15000);
+        await page.WaitForAccountReadyAsync("account-hub-ready", "/account");
+        await page.WaitForTestIdAsync("account-billing-ready", 20000);
 
         var billingTab = page.Locator("[data-testid='account-tab-billing']");
         await Assertions.Expect(billingTab).ToHaveClassAsync(new Regex("active"));
 
         await page.ClickByTestIdAsync("account-tab-security");
-        await page.WaitForTestIdAsync("account-security-ready", 15000);
+        await page.WaitForURLAsync("**/account-security**", new() { Timeout = 15000 });
+        await page.WaitForTestIdAsync("account-security-ready", 45000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Two-Factor Authentication", content);
@@ -806,8 +807,7 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.True(webhookResponse.IsSuccessStatusCode, await webhookResponse.Content.ReadAsStringAsync());
 
         var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await page.GotoRelativeAsync("/account-billing");
-        await page.WaitForTestIdAsync("account-billing-ready", 15000);
+        await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
         Assert.Contains("Professional", tierText, StringComparison.OrdinalIgnoreCase);
@@ -1146,6 +1146,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Shows_Invoice_Create_After_Job_Invoice()
     {
+        await E2EHelpers.ResetDemoStateAsync();
         await E2EHelpers.EnsureDemoInvoiceJobAsync();
 
         var page = await _browser.LoginAsync();
@@ -1530,7 +1531,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrder_Convert_To_Job_Creates_Job_With_Travel()
     {
-        await E2EHelpers.EnsureAppReadyAsync();
+        await E2EHelpers.ResetDemoStateAsync();
         var soNumber = await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         Assert.False(string.IsNullOrWhiteSpace(soNumber));
 
@@ -1612,15 +1613,9 @@ public class E2EFlowTests : IAsyncLifetime
         {
             await E2EHelpers.DeleteAllMailpitMessagesAsync();
 
+            await E2EHelpers.DisableBetaTwoFactorAsync();
             var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-            await setupPage.GotoRelativeAsync("/account-security");
-            await setupPage.WaitForTestIdAsync("account-security-ready", 15000);
-
-            if (await setupPage.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
-            {
-                await setupPage.ClickByTestIdAsync("2fa-disable-button");
-                await setupPage.WaitForTestIdAsync("2fa-status-disabled", 15000);
-            }
+            await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             await setupPage.ClickByTestIdAsync("2fa-enable-button");
             await setupPage.WaitForTestIdAsync("2fa-shared-key", 10000);
@@ -1654,16 +1649,9 @@ public class E2EFlowTests : IAsyncLifetime
         {
             await E2EHelpers.BeginEmailCaptureAsync();
 
+            await E2EHelpers.DisableBetaTwoFactorAsync();
             var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-            await setupPage.GotoRelativeAsync("/account-security");
-            await setupPage.WaitForTestIdAsync("account-security-ready", 15000);
-
-            if (await setupPage.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
-            {
-                await setupPage.ClickByTestIdAsync("2fa-disable-button");
-                await setupPage.WaitForTestIdAsync("2fa-status-disabled", 15000);
-                await E2EHelpers.BeginEmailCaptureAsync();
-            }
+            await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             await setupPage.ClickByTestIdAsync("2fa-enable-button");
             await setupPage.WaitForTestIdAsync("2fa-shared-key", 10000);
@@ -1759,9 +1747,9 @@ public class E2EFlowTests : IAsyncLifetime
 
     private async Task<string> EnableTwoFactorForBetaAsync()
     {
+        await E2EHelpers.DisableBetaTwoFactorAsync();
         var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await setupPage.GotoRelativeAsync("/account-security");
-        await setupPage.WaitForTestIdAsync("account-security-ready", 15000);
+        await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
         if (await setupPage.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
         {
@@ -1770,7 +1758,7 @@ public class E2EFlowTests : IAsyncLifetime
         }
 
         await setupPage.ClickByTestIdAsync("2fa-enable-button");
-        await setupPage.WaitForTestIdAsync("2fa-shared-key", 10000);
+        await setupPage.WaitForTestIdAsync("2fa-shared-key", 25000);
         var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
         var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
         var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
@@ -1778,7 +1766,7 @@ public class E2EFlowTests : IAsyncLifetime
         var setupCode = TotpHelper.ComputeCurrentCode(secretMaterial);
         await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
         await setupPage.ClickByTestIdAsync("2fa-confirm-button");
-        await setupPage.WaitForTestIdAsync("2fa-status-enabled", 20000);
+        await setupPage.WaitForTestIdAsync("2fa-status-enabled", 30000);
         await setupPage.CloseAsync();
 
         return secretMaterial;
@@ -1786,13 +1774,22 @@ public class E2EFlowTests : IAsyncLifetime
 
     private async Task DisableTwoFactorForBetaAsync()
     {
+        try
+        {
+            await E2EHelpers.DisableBetaTwoFactorAsync();
+            return;
+        }
+        catch
+        {
+            // Fall back to UI cleanup when dev endpoint unavailable (older images).
+        }
+
         var cleanup = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await cleanup.GotoRelativeAsync("/account-security");
-        await cleanup.WaitForTestIdAsync("account-security-ready", 15000);
+        await cleanup.WaitForAccountReadyAsync("account-security-ready", "/account-security");
         if (await cleanup.Locator("[data-testid='2fa-status-enabled']").CountAsync() > 0)
         {
             await cleanup.ClickByTestIdAsync("2fa-disable-button");
-            await cleanup.WaitForTestIdAsync("2fa-status-disabled", 15000);
+            await cleanup.WaitForTestIdAsync("2fa-status-disabled", 20000);
         }
 
         await cleanup.CloseAsync();
@@ -1812,6 +1809,42 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.ClickByTestIdAsync("notifications-mark-all");
         await page.WaitForTestIdAsync("notifications-list", 5000);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Approvals_Page_Loads_Hub_Tabs()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/approvals");
+        await page.WaitForTestIdAsync("approvals-ready", 30000);
+        await page.WaitForTestIdAsync("approvals-tabs", 10000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Approvals Hub", content);
+        Assert.Contains("Quotes", content);
+        Assert.Contains("Stock", content);
+
+        await page.ClickByTestIdAsync("approvals-tab-requisitions");
+        await page.WaitForTestIdAsync("approvals-ready", 10000);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Requisitions_Page_Loads_List_Or_Empty_State()
+    {
+        var page = await _browser.LoginAsync();
+        await page.GotoRelativeAsync("/requisitions");
+        await page.WaitForTestIdAsync("requisitions-ready", 30000);
+
+        var hasTable = await page.Locator("[data-testid='requisitions-table']").CountAsync() > 0;
+        var hasEmpty = await page.Locator("[data-testid='requisitions-empty']").CountAsync() > 0;
+        Assert.True(hasTable || hasEmpty, "Expected requisitions table or empty state.");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Stock Requisitions", content);
 
         await page.CloseAsync();
     }

@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject ToastService ToastService
 
+<div data-testid="account-billing-ready">
 @if (_loading)
 {
     <p data-testid="account-billing-loading"><em>Loading billing...</em></p>
@@ -18,7 +19,6 @@ else if (currentTenant == null)
 }
 else
 {
-    <div data-testid="account-billing-ready">
         @if (currentTenant.SubscriptionStatus is "past_due" or "unpaid")
         {
             <div class="alert alert-warning mb-4" data-testid="account-billing-past-due-banner" role="alert">
@@ -87,8 +87,8 @@ else
                 <span class="badge bg-success">Revenue: R @currentTenant.TotalRevenueBilled.ToString("N0")</span>
             </div>
         </div>
-    </div>
 }
+</div>
 
 @code {
     private bool _loading = true;

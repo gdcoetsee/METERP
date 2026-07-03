@@ -171,4 +171,48 @@ public class UserServiceCacheTests
 
         Assert.Equal("cached@acme.demo", (await harness.Service.GetAllAsync(search: "   ", pageSize: 50))[0].Email);
     }
+
+    [Fact]
+    public async Task GetAvailableRolesAsync_ReturnsCachedListUntilCategoryInvalidated()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new TestHarness(tenantId);
+        await SeedRoleAsync(harness.RoleManager, tenantId, "Alpha");
+        await SeedRoleAsync(harness.RoleManager, tenantId, "Zulu");
+
+        var first = await harness.Service.GetAvailableRolesAsync();
+        Assert.Equal(2, first.Count);
+        Assert.Equal("Alpha", first[0]);
+
+        var role = await harness.Db.Roles.FirstAsync(r => r.Name == "Alpha");
+        role.Name = "Mutated";
+        role.NormalizedName = "MUTATED";
+        await harness.Db.SaveChangesAsync();
+
+        Assert.Equal("Alpha", (await harness.Service.GetAvailableRolesAsync())[0]);
+
+        harness.Cache.InvalidateCategory("roles");
+        var refreshed = await harness.Service.GetAvailableRolesAsync();
+        Assert.Contains("Mutated", refreshed);
+    }
+
+    [Fact]
+    public async Task CreateUserAsync_InvalidatesRolesCache()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new TestHarness(tenantId);
+        await SeedRoleAsync(harness.RoleManager, tenantId, "Viewer");
+        await harness.Service.GetAvailableRolesAsync();
+
+        var role = await harness.Db.Roles.FirstAsync();
+        role.Name = "ChangedRole";
+        role.NormalizedName = "CHANGEDROLE";
+        await harness.Db.SaveChangesAsync();
+
+        Assert.Equal("Viewer", (await harness.Service.GetAvailableRolesAsync())[0]);
+
+        var (ok, errors) = await harness.Service.CreateUserAsync("roles@acme.demo", "SecurePass1!", "ChangedRole");
+        Assert.True(ok, string.Join("; ", errors));
+        Assert.Equal("ChangedRole", (await harness.Service.GetAvailableRolesAsync())[0]);
+    }
 }

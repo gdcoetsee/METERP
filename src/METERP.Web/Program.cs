@@ -589,6 +589,82 @@ if (app.Environment.IsDevelopment())
         return Results.Ok(new { ok = true });
     }).DisableRateLimiting();
 
+    app.MapPost("/e2e/disable-beta-two-factor", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var tenant = await tenantService.GetBySubdomainAsync("beta", ct);
+        if (tenant == null)
+            return Results.NotFound(new { error = "Beta demo tenant not found." });
+
+        var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
+        tenantProvider.SetTenantId(tenant.Id);
+
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
+        var user = await userManager.FindByEmailAsync("admin@beta.demo");
+        if (user == null)
+            return Results.NotFound(new { error = "Beta admin user not found." });
+
+        await twoFactor.DisableAsync(user.Id, ct);
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/reset-demo-state", async (IServiceProvider sp, CancellationToken ct) =>
+    {
+        using var scope = sp.CreateScope();
+        var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+        var acme = await tenantService.GetBySubdomainAsync("acme", ct);
+        if (acme == null)
+            return Results.NotFound(new { error = "Acme demo tenant not found." });
+
+        var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
+        tenantProvider.SetTenantId(acme.Id);
+
+        await E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, acme.Id, ct);
+        await E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
+            scope.ServiceProvider.GetRequiredService<IPurchaseOrderService>(),
+            scope.ServiceProvider.GetRequiredService<ISupplierService>(),
+            scope.ServiceProvider.GetRequiredService<IInventoryService>(),
+            tenantProvider,
+            acme.Id,
+            ct);
+        await E2EConvertibleQuoteSeeder.EnsureSentConvertibleQuoteAsync(
+            scope.ServiceProvider.GetRequiredService<IQuoteService>(),
+            scope.ServiceProvider.GetRequiredService<ICustomerService>(),
+            tenantProvider,
+            acme.Id,
+            ct);
+        await E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync(
+            scope.ServiceProvider.GetRequiredService<IJobService>(),
+            scope.ServiceProvider.GetRequiredService<IInvoiceService>(),
+            scope.ServiceProvider.GetRequiredService<ICustomerService>(),
+            scope.ServiceProvider.GetRequiredService<IQuoteService>(),
+            tenantProvider,
+            acme.Id,
+            ct);
+        await E2EConvertibleSalesOrderSeeder.EnsureConfirmedConvertibleSalesOrderAsync(
+            scope.ServiceProvider.GetRequiredService<ISalesOrderService>(),
+            scope.ServiceProvider.GetRequiredService<IQuoteService>(),
+            scope.ServiceProvider.GetRequiredService<ICustomerService>(),
+            tenantProvider,
+            acme.Id,
+            ct);
+
+        var beta = await tenantService.GetBySubdomainAsync("beta", ct);
+        if (beta != null)
+        {
+            tenantProvider.SetTenantId(beta.Id);
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
+            var betaUser = await userManager.FindByEmailAsync("admin@beta.demo");
+            if (betaUser != null)
+                await twoFactor.DisableAsync(betaUser.Id, ct);
+        }
+
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
+
     app.MapPost("/e2e/begin-email-capture", (IE2EEmailCaptureStore capture) =>
     {
         capture.BeginCapture();

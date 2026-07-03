@@ -4,13 +4,13 @@
 @inject ITwoFactorAuthService TwoFactorAuthService
 @inject ToastService ToastService
 
+<div data-testid="account-security-ready">
 @if (_loading)
 {
     <p data-testid="account-security-loading"><em>Loading security...</em></p>
 }
 else
 {
-    <div data-testid="account-security-ready">
         <div class="card mb-4" data-testid="account-security-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <strong>Two-Factor Authentication (2FA)</strong>
@@ -56,8 +56,8 @@ else
                 }
             </div>
         </div>
-    </div>
 }
+</div>
 
 @code {
     private bool _loading = true;

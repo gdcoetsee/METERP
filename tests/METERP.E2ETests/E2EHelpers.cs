@@ -17,18 +17,33 @@ public static class E2EHelpers
     public static async Task<IPage> LoginAsync(this IBrowser browser, string? email = null, string? password = null, string? baseUrl = null)
     {
         var url = baseUrl ?? BaseUrl;
-        var page = await browser.NewPageAsync();
-        page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
-
-        // Use login-complete endpoint (same as production forceLoad path) — reliable vs Blazor @bind in Playwright.
         var loginEmail = email ?? AcmeEmail;
-        await page.GotoAsync($"{url}/login-complete?email={Uri.EscapeDataString(loginEmail)}");
-        await page.WaitForURLAsync(
-            u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
-            new() { Timeout = 45000 });
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        Exception? lastError = null;
 
-        return page;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var page = await browser.NewPageAsync();
+            page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
+
+            try
+            {
+                await page.GotoAsync($"{url}/login-complete?email={Uri.EscapeDataString(loginEmail)}", new() { Timeout = 60000 });
+                await page.WaitForURLAsync(
+                    u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
+                    new() { Timeout = 60000 });
+                await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+                return page;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                await page.CloseAsync();
+                if (attempt < 2)
+                    await Task.Delay(1500);
+            }
+        }
+
+        throw new InvalidOperationException($"Login failed for {loginEmail} after 3 attempts.", lastError);
     }
 
     public static async Task WaitForTestIdAsync(this IPage page, string testId, int timeoutMs = 10000)
@@ -266,6 +281,56 @@ public static class E2EHelpers
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Resets quotas, spine demo entities, and beta 2FA — stabilizes full sequential E2E runs.
+    /// </summary>
+    public static async Task ResetDemoStateAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var response = await client.PostAsync($"{url}/e2e/reset-demo-state", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task DisableBetaTwoFactorAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/disable-beta-two-factor", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task WaitForAccountReadyAsync(this IPage page, string panelTestId, string relativePath, int timeoutMs = 45000)
+    {
+        var contentSelector = panelTestId switch
+        {
+            "account-billing-ready" =>
+                "[data-testid='account-billing-tier'], [data-testid='account-billing-no-tenant'], [data-testid='account-billing-quota-exceeded-banner']",
+            "account-security-ready" =>
+                "[data-testid='2fa-enable-button'], [data-testid='2fa-status-enabled'], [data-testid='2fa-status-disabled']",
+            _ => $"[data-testid='{panelTestId}']"
+        };
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await page.GotoRelativeAsync(relativePath);
+                await page.WaitForTestIdAsync(panelTestId, timeoutMs);
+                await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs });
+                return;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                await Task.Delay(2000);
+            }
+        }
+
+        await page.GotoRelativeAsync(relativePath);
+        await page.WaitForTestIdAsync(panelTestId, timeoutMs);
+        await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs });
+    }
+
     public static async Task BeginEmailCaptureAsync(string? baseUrl = null)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
@@ -411,10 +476,7 @@ public static class E2EHelpers
     {
         try
         {
-            await EnsureDemoInvoiceJobAsync(url, maxAttempts: 1);
-            await EnsureReceiveDemoPoAsync(url);
-            await EnsureConvertibleQuoteAsync(url);
-            await EnsureConvertibleSalesOrderAsync(url);
+            await ResetDemoStateAsync(url);
             return true;
         }
         catch

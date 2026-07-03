@@ -184,7 +184,20 @@ public class UserService : IUserService
 
     public async Task<IReadOnlyList<string>> GetAvailableRolesAsync(CancellationToken ct = default)
     {
-        // Because of query filters on ApplicationRole, this will only return roles for current tenant
+        if (_cache != null)
+        {
+            return await _cache.GetOrCreateAsync(
+                "roles",
+                "all",
+                () => LoadAvailableRolesAsync(ct),
+                ct: ct);
+        }
+
+        return await LoadAvailableRolesAsync(ct);
+    }
+
+    private async Task<IReadOnlyList<string>> LoadAvailableRolesAsync(CancellationToken ct)
+    {
         var roles = await _dbContext.Roles
             .OrderBy(r => r.Name)
             .Select(r => r.Name!)
@@ -231,5 +244,9 @@ public class UserService : IUserService
         return (true, Array.Empty<string>());
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("users");
+    private void InvalidateListCaches()
+    {
+        _cache?.InvalidateCategory("users");
+        _cache?.InvalidateCategory("roles");
+    }
 }
