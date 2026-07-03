@@ -7,7 +7,7 @@ namespace METERP.E2ETests;
 /// Beta 2FA flows isolated so authenticator state cannot leak into the main E2E suite.
 /// </summary>
 [Trait("Category", "E2E")]
-[Collection("E2E TwoFactor")]
+[Collection("E2E")]
 public class E2ETwoFactorFlowTests : IAsyncLifetime
 {
     private IPlaywright _playwright = null!;
@@ -188,6 +188,3 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
         return secretMaterial;
     }
 }
-
-[CollectionDefinition("E2E TwoFactor", DisableParallelization = true)]
-public sealed class E2ETwoFactorCollection;

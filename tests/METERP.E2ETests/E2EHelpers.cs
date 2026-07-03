@@ -128,13 +128,14 @@ public static class E2EHelpers
         var url = baseUrl ?? BaseUrl;
         var cleanPath = relativePath.TrimStart('/');
         await page.GotoAsync($"{url}/{cleanPath}", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
+        await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 30000 });
         try
         {
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 5000 });
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 8000 });
         }
         catch (TimeoutException)
         {
-            // Blazor Server keeps sockets open — DOM ready is enough for test-id waits.
+            // Blazor Server keeps sockets open — load + test-id waits are enough.
         }
     }
 

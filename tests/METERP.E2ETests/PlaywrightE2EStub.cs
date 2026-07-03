@@ -10,6 +10,7 @@ using Xunit;
 namespace METERP.E2ETests;
 
 [Trait("Category", "E2E")]
+[Collection("E2E")]
 public class E2EFlowTests : IAsyncLifetime
 {
     private const string DemoInvoiceJobMarker = "E2E demo invoice job";
