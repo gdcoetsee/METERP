@@ -38,6 +38,15 @@
         </div>
 
         <div class="nav-section-label px-3 mt-2">Operations</div>
+        <AuthorizeView Policy="Approvals.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="approvals">
+                        <i class="bi bi-check2-square me-2" aria-hidden="true"></i> Approvals
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="jobs">
                 <i class="bi bi-briefcase me-2" aria-hidden="true"></i> Jobs
@@ -53,6 +62,33 @@
                 <i class="bi bi-box-seam me-2" aria-hidden="true"></i> Inventory
             </NavLink>
         </div>
+        <AuthorizeView Policy="Inventory.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="stock-take">
+                        <i class="bi bi-clipboard-data me-2" aria-hidden="true"></i> Stock Take
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Policy="Requisitions.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="requisitions">
+                        <i class="bi bi-clipboard-check me-2" aria-hidden="true"></i> Requisitions
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Policy="Approvals.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="ppe-history">
+                        <i class="bi bi-shield-check me-2" aria-hidden="true"></i> PPE History
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="assets">
                 <i class="bi bi-lightning-charge me-2" aria-hidden="true"></i> Assets
@@ -85,6 +121,15 @@
                 <i class="bi bi-person-badge me-2" aria-hidden="true"></i> Employees
             </NavLink>
         </div>
+        <AuthorizeView Policy="Divisions.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="divisions">
+                        <i class="bi bi-diagram-3 me-2" aria-hidden="true"></i> Divisions
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="payroll">
                 <i class="bi bi-cash-stack me-2" aria-hidden="true"></i> Payroll
@@ -113,6 +158,15 @@
                 <i class="bi bi-bell me-2" aria-hidden="true"></i> Notifications
             </NavLink>
         </div>
+        <AuthorizeView Policy="CompanyDocs.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="company-documents">
+                        <i class="bi bi-file-earmark-lock me-2" aria-hidden="true"></i> Company Docs
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="audit">
                 <i class="bi bi-journal-text me-2" aria-hidden="true"></i> Audit Log
@@ -128,6 +182,17 @@
                 <i class="bi bi-people me-2" aria-hidden="true"></i> Users
             </NavLink>
         </div>
+
+        <AuthorizeView Policy="Field.View">
+            <Authorized>
+                <div class="nav-section-label px-3 mt-2">Field</div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="field">
+                        <i class="bi bi-phone me-2" aria-hidden="true"></i> Field Portal
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
 
         <AuthorizeView>
             <Authorized>

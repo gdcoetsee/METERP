@@ -41,8 +41,38 @@ public class AuditService : IAuditService
 
     public async Task<IReadOnlyList<AuditLogRow>> GetRecentAsync(int page = 1, int pageSize = 50, CancellationToken ct = default)
     {
-        return await _dbContext.Set<AuditLogEntry>()
-            .AsNoTracking()
+        return await SearchAsync(null, null, null, page, pageSize, ct);
+    }
+
+    public async Task<IReadOnlyList<AuditLogRow>> SearchAsync(
+        string? entityType = null,
+        string? entityReference = null,
+        string? userEmail = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        var query = _dbContext.Set<AuditLogEntry>().AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(entityType))
+        {
+            var type = entityType.Trim();
+            query = query.Where(e => e.EntityType == type);
+        }
+
+        if (!string.IsNullOrWhiteSpace(entityReference))
+        {
+            var reference = entityReference.Trim();
+            query = query.Where(e => e.EntityReference.Contains(reference));
+        }
+
+        if (!string.IsNullOrWhiteSpace(userEmail))
+        {
+            var email = userEmail.Trim();
+            query = query.Where(e => e.UserEmail.Contains(email));
+        }
+
+        return await query
             .OrderByDescending(e => e.OccurredAtUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

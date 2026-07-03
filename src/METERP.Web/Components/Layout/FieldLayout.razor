@@ -1,0 +1,60 @@
+@inherits LayoutComponentBase
+
+<div class="field-portal-layout">
+    <header class="field-portal-header px-3 py-2 d-flex justify-content-between align-items-center">
+        <a href="/field" class="text-decoration-none text-white fw-semibold" data-testid="field-portal-home">
+            <i class="bi bi-phone me-1" aria-hidden="true"></i> METERP Field
+        </a>
+        <AuthorizeView>
+            <Authorized>
+                <a href="/" class="btn btn-sm btn-outline-light" data-testid="field-portal-office-link">Office</a>
+            </Authorized>
+        </AuthorizeView>
+    </header>
+
+    <main class="field-portal-content px-3 py-3">
+        @Body
+    </main>
+
+    <nav class="field-portal-nav" aria-label="Field navigation">
+        <a href="/field" class="field-nav-item @(IsActive("/field") ? "active" : "")" data-testid="field-nav-home">
+            <i class="bi bi-house-door" aria-hidden="true"></i>
+            <span>Home</span>
+        </a>
+        <a href="/field/jobs" class="field-nav-item @(IsActive("/field/jobs") ? "active" : "")" data-testid="field-nav-jobs">
+            <i class="bi bi-briefcase" aria-hidden="true"></i>
+            <span>My Jobs</span>
+        </a>
+        <a href="/field/stock" class="field-nav-item @(IsActive("/field/stock") ? "active" : "")" data-testid="field-nav-stock">
+            <i class="bi bi-box-seam" aria-hidden="true"></i>
+            <span>Stock</span>
+        </a>
+        <a href="/field/leave" class="field-nav-item @(IsActive("/field/leave") ? "active" : "")" data-testid="field-nav-leave">
+            <i class="bi bi-calendar-check" aria-hidden="true"></i>
+            <span>Leave</span>
+        </a>
+    </nav>
+</div>
+
+<METERP.Web.Components.Shared.ToastContainer />
+<METERP.Web.Components.Shared.ConfirmDialogHost />
+
+<div id="blazor-error-ui" role="alert" aria-live="assertive">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss" aria-label="Dismiss error">🗙</a>
+</div>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private bool IsActive(string path)
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        if (string.IsNullOrEmpty(relative))
+            relative = "";
+        return path == "/field"
+            ? relative is "" or "field"
+            : relative.StartsWith(path.TrimStart('/'), StringComparison.OrdinalIgnoreCase);
+    }
+}

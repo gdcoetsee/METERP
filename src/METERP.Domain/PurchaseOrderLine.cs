@@ -15,6 +15,10 @@ public class PurchaseOrderLine : BaseEntity
 
     public decimal Quantity { get; set; } = 1m;
 
+    public decimal QuantityReceived { get; set; }
+
+    public decimal QuantityOutstanding => Math.Max(0m, Quantity - QuantityReceived);
+
     public decimal UnitPrice { get; set; }
 
     public string? Unit { get; set; }

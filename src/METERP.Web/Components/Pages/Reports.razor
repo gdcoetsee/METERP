@@ -1,4 +1,5 @@
 @page "/reports"
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Common
@@ -16,15 +17,21 @@
 @inject ICashflowReportService CashflowReportService
 @inject IFinanceService FinanceService
 @inject ICurrentUserService CurrentUserService
+@inject ITenantService TenantService
 @inject IAiAssistantService AiAssistantService
+@using METERP.Web.Reports
 @inject IJSRuntime JS
 @inject ToastService Toast
 
 <PageTitle>Reports & Insights</PageTitle>
 
-<h1>Reports & Insights</h1>
-
-<p class="text-muted">High-level operational summary for the current tenant.</p>
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <div>
+        <h1 class="mb-0">Reports &amp; Insights</h1>
+        <p class="text-muted mb-0">High-level operational summary for the current tenant.</p>
+    </div>
+    <ExportToolbar TestId="reports-export" OnExportCsv="ExportSummaryCsvAsync" OnExportPdf="ExportSummaryPdfAsync" ShowExcel="false" Disabled="@_loading" />
+</div>
 
 @if (_loading)
 {
@@ -249,6 +256,7 @@ else
 
 @code {
     private bool _loading = true;
+    private TenantBranding _branding = TenantBranding.Default;
     private int _totalQuotes;
     private int _acceptedQuotes;
     private int _activeJobs;
@@ -282,6 +290,12 @@ else
     {
         try
         {
+            if (CurrentUserService.TenantId != Guid.Empty)
+            {
+                var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+                _branding = TenantBranding.From(tenant);
+            }
+
             var quotes = await QuoteService.GetAllAsync();
             _totalQuotes = quotes.Count;
             _acceptedQuotes = quotes.Count(q => q.Status == METERP.Domain.QuoteStatus.Accepted);
@@ -402,7 +416,38 @@ else
             return;
         }
 
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
-        Toast.ShowSuccess("GL journal CSV copied (Xero/Sage-compatible columns).");
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "gl-journals.csv", csv, "text/csv;charset=utf-8");
+        Toast.ShowSuccess("GL journal CSV downloaded.");
+    }
+
+    private string[][] BuildSummaryExportRows() => new[]
+    {
+        new[] { "Quotes (total)", _totalQuotes.ToString() },
+        new[] { "Quotes (accepted)", _acceptedQuotes.ToString() },
+        new[] { "Active jobs", _activeJobs.ToString() },
+        new[] { "Active jobs quoted R", TabularExportHelper.FormatDecimal(_activeQuoted) },
+        new[] { "Outstanding invoices", _outstandingInvoices.ToString() },
+        new[] { "Outstanding value R", TabularExportHelper.FormatDecimal(_outstandingValue) },
+        new[] { "Low stock SKUs", _lowStock.ToString() },
+        new[] { "Open POs", _openPOs.ToString() },
+        new[] { "Open PO value R", TabularExportHelper.FormatDecimal(_openPOValue) },
+        new[] { "Job profitability %", _jobProfitability.AverageMarginPercent.ToString("0.0") },
+        new[] { "Cashflow net forecast R", TabularExportHelper.FormatDecimal(_cashflowForecast.NetForecastInflow) }
+    };
+
+    private async Task ExportSummaryCsvAsync()
+    {
+        if (_loading) return;
+        var csv = TabularExportHelper.BuildCsv("Metric,Value", BuildSummaryExportRows().Select(r => r.AsEnumerable()));
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "reports-summary.csv", csv, "text/csv;charset=utf-8");
+        Toast.ShowSuccess("Reports summary CSV downloaded.");
+    }
+
+    private async Task ExportSummaryPdfAsync()
+    {
+        if (_loading) return;
+        var pdf = TabularPdfGenerator.Generate("Operational Summary", new[] { "Metric", "Value" }, BuildSummaryExportRows(), _branding);
+        await JS.InvokeVoidAsync("meterpUi.downloadBytes", "reports-summary.pdf", Convert.ToBase64String(pdf), "application/pdf");
+        Toast.ShowSuccess("Reports summary PDF downloaded.");
     }
 }

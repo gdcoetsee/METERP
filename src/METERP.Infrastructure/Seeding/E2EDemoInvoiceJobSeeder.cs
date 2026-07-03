@@ -34,7 +34,7 @@ public static class E2EDemoInvoiceJobSeeder
         return demoJob.JobNumber;
     }
 
-    public static async Task<string?> EnsureInvoiceReadyDemoJobAsync(
+    public static async Task<(string JobNumber, Guid JobId)?> EnsureInvoiceReadyDemoJobAsync(
         IJobService jobService,
         IInvoiceService invoiceService,
         ICustomerService customerService,
@@ -112,7 +112,10 @@ public static class E2EDemoInvoiceJobSeeder
         loaded.Notes = DemoNotesMarker;
         await jobService.UpdateAsync(loaded, ct);
 
-        return loaded.JobNumber;
+        if (loaded.SignOffStatus != JobSignOffStatus.SignedOff)
+            await jobService.SignOffAsync(loaded.Id, Guid.Empty, ct);
+
+        return (loaded.JobNumber, loaded.Id);
     }
 
     private static async Task<Job?> CreateFreshDemoJobAsync(

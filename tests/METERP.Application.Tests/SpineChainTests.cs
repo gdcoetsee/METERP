@@ -64,6 +64,9 @@ public class SpineChainTests
         var travelCost = job.ActualCosts.Single(c => c.CostType == "Travel");
         Assert.Equal(1500m, travelCost.Amount);
 
+        var jobService = new JobService(db);
+        await jobService.SignOffAsync(job.Id, Guid.NewGuid());
+
         var invoiceService = new InvoiceService(db);
         var invoice = await invoiceService.CreateFromJobAsync(job.Id);
 
@@ -120,6 +123,8 @@ public class SpineChainTests
 
         var loadedSo = await salesOrderService.GetByIdAsync(soId);
         Assert.Equal(SalesOrderStatus.InProgress, loadedSo!.Status);
+
+        await jobService.SignOffAsync(job.Id, Guid.NewGuid());
 
         var invoiceService = new InvoiceService(db);
         var invoice = await invoiceService.CreateFromJobAsync(job.Id);

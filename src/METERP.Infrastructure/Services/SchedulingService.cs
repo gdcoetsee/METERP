@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
 
@@ -9,15 +11,18 @@ public class SchedulingService : ISchedulingService
     private readonly IJobService _jobService;
     private readonly IAssetService _assetService;
     private readonly IEmployeeService _employeeService;
+    private readonly AppDbContext _dbContext;
 
     public SchedulingService(
         IJobService jobService,
         IAssetService assetService,
-        IEmployeeService employeeService)
+        IEmployeeService employeeService,
+        AppDbContext dbContext)
     {
         _jobService = jobService;
         _assetService = assetService;
         _employeeService = employeeService;
+        _dbContext = dbContext;
     }
 
     public async Task<SchedulingBoard> GetBoardAsync(int jobPage = 1, int jobPageSize = 50, CancellationToken ct = default)
@@ -118,5 +123,32 @@ public class SchedulingService : ISchedulingService
         }
 
         return new CrewLaborAddResult(laborIds.Count, laborIds);
+    }
+
+    public async Task UpdateScheduledStartAsync(Guid jobId, DateTime? scheduledStart, CancellationToken ct = default)
+    {
+        var job = await _jobService.GetByIdAsync(jobId, ct)
+            ?? throw new InvalidOperationException($"Job {jobId} was not found.");
+
+        job.ScheduledStart = scheduledStart?.Date;
+        await _jobService.UpdateAsync(job, ct);
+    }
+
+    public async Task<IReadOnlyList<Job>> GetCalendarJobsAsync(DateTime weekStart, int dayCount = 7, CancellationToken ct = default)
+    {
+        var start = weekStart.Date;
+        var end = start.AddDays(Math.Max(1, dayCount));
+
+        var candidates = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Include(j => j.AssignedEmployee)
+            .Where(j => j.ScheduledStart.HasValue && j.Status != JobStatus.Invoiced)
+            .ToListAsync(ct);
+
+        return candidates
+            .Where(j => j.ScheduledStart!.Value.Date >= start && j.ScheduledStart.Value.Date < end)
+            .OrderBy(j => j.ScheduledStart)
+            .ToList();
     }
 }

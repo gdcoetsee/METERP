@@ -15,6 +15,9 @@ public class Job : BaseEntity
     public Guid CustomerId { get; set; }
     public Customer? Customer { get; set; }
 
+    public Guid? DivisionId { get; set; }
+    public Division? Division { get; set; }
+
     public Guid? AssetId { get; set; }
     public Asset? Asset { get; set; }
 
@@ -36,6 +39,20 @@ public class Job : BaseEntity
 
     public DateTime? CompletedDate { get; set; }
 
+    public JobSignOffStatus SignOffStatus { get; set; } = JobSignOffStatus.None;
+
+    public DateTime? SignedOffAt { get; set; }
+
+    public Guid? SignedOffByUserId { get; set; }
+
+    /// <summary>Retention % applied on final invoices (e.g. 10 for construction).</summary>
+    public decimal RetentionPercent { get; set; } = 10m;
+
+    /// <summary>Deposit % required before mobilisation (informational for deposit invoices).</summary>
+    public decimal DepositPercent { get; set; } = 30m;
+
+    public bool DepositReceived { get; set; }
+
     /// <summary>
     /// Snapshot of the quote total at time of conversion.
     /// </summary>
@@ -53,6 +70,12 @@ public class Job : BaseEntity
     public ICollection<JobLabor> Labors { get; set; } = new List<JobLabor>();
 
     public ICollection<JobCrewAssignment> CrewAssignments { get; set; } = new List<JobCrewAssignment>();
+
+    public ICollection<JobMilestone> Milestones { get; set; } = new List<JobMilestone>();
+
+    public ICollection<JobSnagItem> SnagItems { get; set; } = new List<JobSnagItem>();
+
+    public ICollection<JobSafetyIncident> SafetyIncidents { get; set; } = new List<JobSafetyIncident>();
 
     /// <summary>Active crew members (excludes soft-deleted assignments).</summary>
     public IEnumerable<Employee> GetCrewEmployees() =>
@@ -84,5 +107,25 @@ public class Job : BaseEntity
             return 0m;
 
         return Math.Round((QuotedTotal - GetActualTotal()) / QuotedTotal * 100m, 1);
+    }
+
+    public bool IsReadyToInvoice() =>
+        SignOffStatus == JobSignOffStatus.SignedOff && Status != JobStatus.Invoiced;
+
+    public int GetProgressPercent()
+    {
+        var milestones = Milestones.Where(m => !m.IsDeleted).ToList();
+        if (milestones.Count > 0)
+            return (int)Math.Round(milestones.Average(m => m.PercentComplete));
+
+        return Status switch
+        {
+            JobStatus.Scheduled => 10,
+            JobStatus.InProgress => 50,
+            JobStatus.OnHold => 40,
+            JobStatus.Completed => 90,
+            JobStatus.Invoiced => 100,
+            _ => 0
+        };
     }
 }

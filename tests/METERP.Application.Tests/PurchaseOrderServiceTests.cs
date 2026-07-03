@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -10,12 +11,14 @@ namespace METERP.Application.Tests;
 
 public class PurchaseOrderServiceTests
 {
+    private static readonly Guid TestUserId = Guid.NewGuid();
+
     private (AppDbContext Db, PurchaseOrderService Service, InventoryService Inventory) CreateServices(Guid tenantId)
     {
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
         var currentUser = new Mock<ICurrentUserService>();
-        currentUser.Setup(u => u.UserId).Returns(Guid.NewGuid());
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -143,8 +146,9 @@ public class PurchaseOrderServiceTests
                 }
             });
 
-            await service.ReceiveAsync(poId);
+            var grv = await ReceiveSentPoAsync(service, poId);
 
+            Assert.NotNull(grv);
             var loaded = await service.GetByIdAsync(poId);
             Assert.Equal(PurchaseOrderStatus.Received, loaded!.Status);
 
@@ -260,12 +264,13 @@ public class PurchaseOrderServiceTests
         var (db, service, _) = CreateServices(tenantId);
         using (db)
         {
-            await service.ReceiveAsync(Guid.NewGuid());
+            var result = await service.ReceiveAsync(Guid.NewGuid(), TestUserId);
+            Assert.Null(result);
         }
     }
 
     [Fact]
-    public async Task ReceiveAsync_WithoutInventoryLinks_StillMarksReceived()
+    public async Task ReceiveAsync_WithoutInventoryLinks_DoesNotCreateGrv()
     {
         var tenantId = Guid.NewGuid();
         var (db, service, inventory) = CreateServices(tenantId);
@@ -283,10 +288,12 @@ public class PurchaseOrderServiceTests
                 }
             });
 
-            await service.ReceiveAsync(poId);
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+            var grv = await service.ReceiveAsync(poId, TestUserId);
 
+            Assert.Null(grv);
             var loaded = await service.GetByIdAsync(poId);
-            Assert.Equal(PurchaseOrderStatus.Received, loaded!.Status);
+            Assert.Equal(PurchaseOrderStatus.Sent, loaded!.Status);
             Assert.Empty(await inventory.GetRecentTransactionsAsync(10));
         }
     }
@@ -326,8 +333,9 @@ public class PurchaseOrderServiceTests
                 }
             });
 
-            await service.ReceiveAsync(poId);
+            var grv = await ReceiveSentPoAsync(service, poId);
 
+            Assert.NotNull(grv);
             var item = await inventory.GetItemByIdAsync(linkedItemId);
             Assert.Equal(10, item!.QuantityOnHand);
 
@@ -335,5 +343,145 @@ public class PurchaseOrderServiceTests
             Assert.Single(txs);
             Assert.Equal(6, txs[0].Quantity);
         }
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_WhenDraft_Throws()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "X-1",
+                Name = "Part",
+                QuantityOnHand = 0,
+                ReorderLevel = 1,
+                UnitCost = 5m
+            });
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new PurchaseOrderLine
+                    {
+                        Description = "Part",
+                        Quantity = 5,
+                        UnitPrice = 5m,
+                        InventoryItemId = itemId
+                    }
+                }
+            });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReceiveAsync(poId, TestUserId));
+        }
+    }
+
+    private static async Task<GoodsReceiptVoucher?> ReceiveSentPoAsync(PurchaseOrderService service, Guid poId)
+    {
+        await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+        return await service.ReceiveAsync(poId, TestUserId);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Sent_CreatesProcurementNotification()
+    {
+        var tenantId = Guid.NewGuid();
+        var notifications = new Mock<ITenantNotificationService>();
+        TenantNotification? captured = null;
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Callback<TenantNotification, CancellationToken>((n, _) => captured = n)
+            .Returns(Task.CompletedTask);
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var inventory = new InventoryService(db);
+        var service = new PurchaseOrderService(db, inventory, notifications: notifications.Object);
+
+        var supplierId = Guid.NewGuid();
+        db.Set<Supplier>().Add(new Supplier
+        {
+            Id = supplierId,
+            TenantId = tenantId,
+            Name = "Cable Co",
+            Email = "orders@cable.demo"
+        });
+
+        var poId = await service.CreateAsync(new PurchaseOrder
+        {
+            SupplierId = supplierId,
+            TaxRate = 0m,
+            Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 10m } }
+        });
+
+        await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+        Assert.NotNull(captured);
+        Assert.Equal("PO sent to supplier", captured!.Title);
+        Assert.True(
+            captured.Message.Contains("orders@cable.demo", StringComparison.OrdinalIgnoreCase)
+            || captured.Message.Contains("SMTP not configured", StringComparison.OrdinalIgnoreCase),
+            captured.Message);
+        Assert.Equal("procurement", captured.Category);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Sent_EmailsSupplier_WhenSmtpConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var inventory = new InventoryService(db);
+        var service = new PurchaseOrderService(db, inventory, email: email.Object);
+
+        var supplierId = Guid.NewGuid();
+        db.Set<Supplier>().Add(new Supplier
+        {
+            Id = supplierId,
+            TenantId = tenantId,
+            Name = "Cable Co",
+            Email = "po@cable.demo"
+        });
+
+        var poId = await service.CreateAsync(new PurchaseOrder
+        {
+            SupplierId = supplierId,
+            TaxRate = 0m,
+            Lines = { new PurchaseOrderLine { Description = "Cable 4mm", Quantity = 2, UnitPrice = 50m, Unit = "m" } }
+        });
+
+        await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+        email.Verify(e => e.SendEmailAsync(
+            "po@cable.demo",
+            It.Is<string>(s => s.Contains("Purchase Order")),
+            It.Is<string>(b => b.Contains("Cable 4mm")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

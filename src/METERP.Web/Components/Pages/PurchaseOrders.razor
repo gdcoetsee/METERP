@@ -22,12 +22,15 @@
     <span data-testid="purchase-orders-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Purchase Orders</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New PO</button>
-    }
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="mb-0">Purchase Orders</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="purchase-orders-export" OnExportCsv="ExportCsvAsync" />
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ New PO</button>
+        }
+    </div>
 </div>
 
 <div class="mb-3" style="max-width: 420px;">
@@ -77,6 +80,7 @@ else
                             @if (UserCanManage && po.Status == PurchaseOrderStatus.Draft)
                             {
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditPO(po)">Edit</button>
+                                <button class="btn btn-sm btn-outline-info ms-1" data-testid="purchase-order-send" @onclick="() => MarkSent(po)">Mark Sent</button>
                             }
                             @if (UserCanManage && (po.Status == PurchaseOrderStatus.Sent || po.Status == PurchaseOrderStatus.PartiallyReceived))
                             {
@@ -146,9 +150,13 @@ else
             <h5 class="mb-0">@selectedPO.PoNumber — @(selectedPO.Supplier?.Name)</h5>
             <div>
                 <button class="btn btn-sm btn-light me-2" @onclick="ClosePOView">Close</button>
+                @if (UserCanManage && selectedPO.Status == PurchaseOrderStatus.Draft)
+                {
+                    <button class="btn btn-sm btn-info me-2" data-testid="purchase-order-send" @onclick="() => MarkSent(selectedPO)">Mark Sent</button>
+                }
                 @if (UserCanManage && (selectedPO.Status == PurchaseOrderStatus.Sent || selectedPO.Status == PurchaseOrderStatus.PartiallyReceived))
                 {
-                    <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => ReceivePO(selectedPO)">Mark Received</button>
+                    <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => ReceivePO(selectedPO)">Create GRV</button>
                 }
             </div>
         </div>
@@ -175,6 +183,7 @@ else
                         <tr>
                             <th>Description</th>
                             <th class="text-end">Qty</th>
+                            <th class="text-end">Received</th>
                             <th>Unit</th>
                             <th class="text-end">Unit Price</th>
                             <th class="text-end">Line Total</th>
@@ -190,6 +199,7 @@ else
                             <tr>
                                 <td>@line.Description</td>
                                 <td class="text-end">@line.Quantity</td>
+                                <td class="text-end">@line.QuantityReceived</td>
                                 <td>@line.Unit</td>
                                 <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
                                 <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
@@ -239,7 +249,7 @@ else
                 </div>
             }
 
-            <p class="mt-3 text-muted small">Receiving a PO will create Receipt stock transactions and update on-hand quantities for linked inventory items.</p>
+            <p class="mt-3 text-muted small">Mark the PO as Sent before receiving. Creating a GRV records a formal goods receipt, updates on-hand quantities for linked inventory items, and auto-reserves stock for linked requisitions.</p>
         </div>
     </div>
 }
@@ -381,13 +391,42 @@ else
         showLineForm = false;
     }
 
-    private async Task ReceivePO(PurchaseOrder po)
+    private async Task MarkSent(PurchaseOrder po)
     {
-        if (!await Confirm("Mark this PO as fully received? This will update inventory stock.")) return;
-        await PurchaseOrderService.ReceiveAsync(po.Id);
+        if (!await Confirm($"Mark {po.PoNumber} as sent to supplier?")) return;
+        await PurchaseOrderService.UpdateStatusAsync(po.Id, PurchaseOrderStatus.Sent);
         selectedPO = await PurchaseOrderService.GetByIdAsync(po.Id);
         await LoadPOs();
-        ToastService.ShowSuccess("PO received. Inventory updated.");
+        ToastService.ShowSuccess($"{po.PoNumber} marked as sent — ready for GRV.");
+    }
+
+    private async Task ReceivePO(PurchaseOrder po)
+    {
+        if (CurrentUserService.UserId is not { } userId)
+        {
+            ToastService.ShowError("User session required to record a GRV.");
+            return;
+        }
+
+        if (!await Confirm("Create a GRV and receive outstanding quantities into inventory?")) return;
+
+        try
+        {
+            var grv = await PurchaseOrderService.ReceiveAsync(po.Id, userId);
+            if (grv == null)
+            {
+                ToastService.ShowError("Nothing to receive — link inventory items to PO lines first.");
+                return;
+            }
+
+            selectedPO = await PurchaseOrderService.GetByIdAsync(po.Id);
+            await LoadPOs();
+            ToastService.ShowSuccess($"GRV {grv.GrvNumber} created — inventory updated.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private void ShowAddLineForm()
@@ -419,6 +458,21 @@ else
         await PurchaseOrderService.DeleteLineAsync(line.Id);
         selectedPO = await PurchaseOrderService.GetByIdAsync(selectedPO!.Id);
         await LoadPOs();
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (pos == null || !pos.Any()) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("PoNumber,Supplier,Status,PoDate,Total");
+        foreach (var po in pos)
+        {
+            sb.AppendLine($"{po.PoNumber},{po.Supplier?.Name},{po.Status},{po.PoDate:yyyy-MM-dd},{po.Total}");
+        }
+
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "purchase-orders.csv", sb.ToString(), "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Purchase orders CSV downloaded.");
     }
 
     private async Task<bool> Confirm(string msg)

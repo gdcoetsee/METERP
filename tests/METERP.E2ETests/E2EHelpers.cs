@@ -43,7 +43,61 @@ public static class E2EHelpers
 
     public static async Task FillByTestIdAsync(this IPage page, string testId, string value)
     {
-        await page.FillAsync($"[data-testid='{testId}']", value);
+        var locator = page.Locator($"[data-testid='{testId}']");
+        await locator.FillAsync(value);
+        // Blazor @oninput handlers need an explicit input event after FillAsync (Playwright can miss it on SSR).
+        await locator.DispatchEventAsync("input");
+        await locator.DispatchEventAsync("change");
+    }
+
+    /// <summary>
+    /// Waits for a list page to finish loading (data-testid="{pageKey}-ready").
+    /// </summary>
+    public static async Task WaitForListReadyAsync(this IPage page, string pageKey, int timeoutMs = 30000)
+    {
+        try
+        {
+            await page.WaitForTestIdAsync($"{pageKey}-ready", timeoutMs);
+        }
+        catch (TimeoutException)
+        {
+            // Older images may not expose *-ready; caller already waited for table.
+        }
+    }
+
+    /// <summary>
+    /// Fills a search box and waits until a matching table row is visible (Blazor debounce-safe).
+    /// </summary>
+    public static async Task WaitForSalesOrdersReadyAsync(this IPage page, int timeoutMs = 45000)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await page.WaitForTestIdAsync("sales-orders-ready", timeoutMs);
+                return;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                await EnsureConvertibleSalesOrderAsync();
+                await page.GotoRelativeAsync("/sales-orders");
+            }
+        }
+    }
+
+    public static async Task FillSearchAndExpectRowAsync(
+        this IPage page,
+        string searchTestId,
+        string tableTestId,
+        string searchTerm,
+        string expectedRowText,
+        int timeoutMs = 20000)
+    {
+        await page.FillByTestIdAsync(searchTestId, searchTerm);
+        var tableBody = page.Locator($"[data-testid='{tableTestId}'] tbody");
+        await Microsoft.Playwright.Assertions.Expect(
+            tableBody.Locator("tr").Filter(new() { HasText = expectedRowText }))
+            .ToHaveCountAsync(1, new() { Timeout = timeoutMs });
     }
 
     public static async Task GotoRelativeAsync(this IPage page, string relativePath, string? baseUrl = null)
@@ -124,15 +178,40 @@ public static class E2EHelpers
     /// <summary>
     /// Resets the demo invoice job (Development endpoint). Makes job→invoice E2E stable across runs.
     /// </summary>
-    public static async Task<string?> EnsureDemoInvoiceJobAsync(string? baseUrl = null)
+    public static async Task<(string JobNumber, Guid JobId)?> EnsureDemoInvoiceJobAsync(string? baseUrl = null, int maxAttempts = 1)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        var response = await client.PostAsync($"{url}/e2e/ensure-demo-invoice-job", null);
-        response.EnsureSuccessStatusCode();
-        var json = await response.Content.ReadAsStringAsync();
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        return doc.RootElement.TryGetProperty("jobNumber", out var prop) ? prop.GetString() : null;
+        Exception? lastError = null;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                var response = await client.PostAsync($"{url}/e2e/ensure-demo-invoice-job", null);
+                response.EnsureSuccessStatusCode();
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("jobNumber", out var numProp) || !root.TryGetProperty("jobId", out var idProp))
+                    return null;
+                var jobNumber = numProp.GetString();
+                if (string.IsNullOrWhiteSpace(jobNumber) || !Guid.TryParse(idProp.GetString(), out var jobId))
+                    return null;
+                return (jobNumber, jobId);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                if (attempt < maxAttempts - 1)
+                    await Task.Delay(3000);
+            }
+        }
+
+        if (lastError != null)
+            throw new InvalidOperationException("Demo invoice job endpoint not ready.", lastError);
+
+        return null;
     }
 
     /// <summary>
@@ -297,22 +376,23 @@ public static class E2EHelpers
     public static async Task EnsureAppReadyAsync(string? baseUrl = null, int maxAttempts = 30, int delayMs = 2000)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             try
             {
                 var response = await client.GetAsync($"{url}/health/ready");
-                if (response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
                 {
-                    try
-                    {
-                        await EnsureReceiveDemoPoAsync(url);
-                        await EnsureConvertibleQuoteAsync(url);
-                        await EnsureDemoInvoiceJobAsync(url);
-                        await EnsureConvertibleSalesOrderAsync(url);
-                    }
-                    catch { /* optional in non-Development hosts */ }
+                    await Task.Delay(delayMs);
+                    continue;
+                }
+
+                // Health can pass before DatabaseSeeder finishes — poll E2E setup until demo data exists.
+                if (await TryPrepareE2EDemoDataAsync(url))
+                {
+                    await Task.Delay(1000);
                     return;
                 }
             }
@@ -324,7 +404,23 @@ public static class E2EHelpers
             await Task.Delay(delayMs);
         }
 
-        throw new InvalidOperationException($"App not ready at {url}/health/ready after {maxAttempts} attempts.");
+        throw new InvalidOperationException($"App not ready at {url} after {maxAttempts} attempts (health + E2E seed).");
+    }
+
+    private static async Task<bool> TryPrepareE2EDemoDataAsync(string url)
+    {
+        try
+        {
+            await EnsureDemoInvoiceJobAsync(url, maxAttempts: 1);
+            await EnsureReceiveDemoPoAsync(url);
+            await EnsureConvertibleQuoteAsync(url);
+            await EnsureConvertibleSalesOrderAsync(url);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static Task InstallMeterpClipboardStubAsync(this IPage page) =>

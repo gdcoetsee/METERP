@@ -17,6 +17,7 @@ using METERP.Infrastructure.Seeding;
 using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Services;
+using METERP.Infrastructure.Storage;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
 using METERP.Web.Components;
@@ -148,6 +149,27 @@ builder.Services.AddScoped<IBillingPortalService, BillingPortalService>();
 builder.Services.AddScoped<ISchedulingService, SchedulingService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<ConfirmService>();
+builder.Services.AddScoped<IDocumentSequenceService, DocumentSequenceService>();
+builder.Services.AddScoped<IDivisionService, DivisionService>();
+builder.Services.AddScoped<ILeaveService, LeaveService>();
+builder.Services.AddScoped<ICompanyDocumentService, CompanyDocumentService>();
+builder.Services.AddScoped<ITenantNotificationService, TenantNotificationService>();
+builder.Services.AddScoped<IComplianceAlertService, ComplianceAlertService>();
+builder.Services.AddScoped<IStockRequisitionService, StockRequisitionService>();
+builder.Services.AddScoped<IStockTakeService, StockTakeService>();
+builder.Services.AddScoped<IPpeIssueService, PpeIssueService>();
+builder.Services.AddScoped<IFieldReportService, FieldReportService>();
+builder.Services.AddScoped<IExecutiveDashboardService, ExecutiveDashboardService>();
+builder.Services.AddScoped<IAccountabilityReportService, AccountabilityReportService>();
+builder.Services.AddScoped<IRecurringJobService, RecurringJobService>();
+builder.Services.AddScoped<IScheduledReportService, ScheduledReportService>();
+builder.Services.Configure<ScheduledReportOptions>(
+    builder.Configuration.GetSection(ScheduledReportOptions.SectionName));
+builder.Services.AddHostedService<ExecutiveReportSchedulerService>();
+builder.Services.Configure<DocumentStorageOptions>(
+    builder.Configuration.GetSection(DocumentStorageOptions.SectionName));
+builder.Services.AddScoped<IDocumentStorageService, LocalDocumentStorageService>();
 
 // === Health checks (production readiness) ===
 builder.Services.AddHealthChecks()
@@ -298,6 +320,15 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Inventory.Manage", policy =>
         policy.RequireClaim("Permission", Permissions.InventoryManage));
 
+    options.AddPolicy("Requisitions.View", policy =>
+        policy.RequireClaim("Permission", Permissions.RequisitionsView, Permissions.RequisitionsManage, Permissions.RequisitionsApprove, Permissions.TenantsManage));
+
+    options.AddPolicy("Requisitions.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.RequisitionsManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Requisitions.Approve", policy =>
+        policy.RequireClaim("Permission", Permissions.RequisitionsApprove, Permissions.TenantsManage));
+
     // Assets policies
     options.AddPolicy("Assets.View", policy =>
         policy.RequireClaim("Permission", Permissions.AssetsView, Permissions.AssetsManage));
@@ -347,6 +378,39 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy("Audit.View", policy =>
         policy.RequireClaim("Permission", Permissions.AuditView, Permissions.TenantsManage));
+
+    options.AddPolicy("Field.View", policy =>
+        policy.RequireClaim("Permission", Permissions.FieldView, Permissions.JobsManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Approvals.View", policy =>
+        policy.RequireClaim("Permission", Permissions.ApprovalsView, Permissions.TenantsManage));
+
+    options.AddPolicy("Users.ManagePermissions", policy =>
+        policy.RequireClaim("Permission", Permissions.UsersManagePermissions, Permissions.TenantsManage));
+
+    options.AddPolicy("Divisions.View", policy =>
+        policy.RequireClaim("Permission", Permissions.DivisionsView, Permissions.DivisionsManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Divisions.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.DivisionsManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Leave.View", policy =>
+        policy.RequireClaim("Permission", Permissions.LeaveView, Permissions.LeaveManage, Permissions.LeaveApprove, Permissions.TenantsManage));
+
+    options.AddPolicy("Leave.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.LeaveManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Leave.Approve", policy =>
+        policy.RequireClaim("Permission", Permissions.LeaveApprove, Permissions.LeaveManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Quotes.Approve", policy =>
+        policy.RequireClaim("Permission", Permissions.QuotesApprove, Permissions.TenantsManage));
+
+    options.AddPolicy("CompanyDocs.View", policy =>
+        policy.RequireClaim("Permission", Permissions.CompanyDocsView, Permissions.CompanyDocsManage, Permissions.TenantsManage));
+
+    options.AddPolicy("CompanyDocs.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.CompanyDocsManage, Permissions.TenantsManage));
 });
 
 // For development/demo only: ensure DB + seed data (idempotent by default).
@@ -443,7 +507,7 @@ if (app.Environment.IsDevelopment())
         if (tenant == null)
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
-        var jobNumber = await E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync(
+        var demoJob = await E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync(
             scope.ServiceProvider.GetRequiredService<IJobService>(),
             scope.ServiceProvider.GetRequiredService<IInvoiceService>(),
             scope.ServiceProvider.GetRequiredService<ICustomerService>(),
@@ -452,7 +516,10 @@ if (app.Environment.IsDevelopment())
             tenant.Id,
             ct);
 
-        return Results.Ok(new { ok = true, jobNumber });
+        if (demoJob == null)
+            return Results.NotFound(new { error = "Demo invoice job could not be prepared." });
+
+        return Results.Ok(new { ok = true, jobNumber = demoJob.Value.JobNumber, jobId = demoJob.Value.JobId });
     }).DisableRateLimiting();
 
     app.MapPost("/e2e/ensure-convertible-sales-order", async (IServiceProvider sp, CancellationToken ct) =>
@@ -606,8 +673,14 @@ public class DatabaseSeeder : IHostedService
         var purchaseOrderService = scope.ServiceProvider.GetRequiredService<IPurchaseOrderService>();
         var financeService = scope.ServiceProvider.GetRequiredService<IFinanceService>();
         var employeeService = scope.ServiceProvider.GetRequiredService<IEmployeeService>();
+        var divisionService = scope.ServiceProvider.GetRequiredService<IDivisionService>();
         var salesOrderService = scope.ServiceProvider.GetRequiredService<ISalesOrderService>();
         var opportunityService = scope.ServiceProvider.GetRequiredService<IOpportunityService>();
+        var companyDocumentService = scope.ServiceProvider.GetRequiredService<ICompanyDocumentService>();
+        var complianceAlertService = scope.ServiceProvider.GetRequiredService<IComplianceAlertService>();
+        var tenantNotificationService = scope.ServiceProvider.GetRequiredService<ITenantNotificationService>();
+        var stockRequisitionService = scope.ServiceProvider.GetRequiredService<IStockRequisitionService>();
+        var recurringJobService = scope.ServiceProvider.GetRequiredService<IRecurringJobService>();
         var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
 
         var env = scope.ServiceProvider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>();
@@ -684,6 +757,10 @@ public class DatabaseSeeder : IHostedService
                 demoTenant.EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Professional) + ",compliance";
                 demoTenant.StripeCustomerId ??= "cus_demo_acme";
                 demoTenant.SubscriptionStatus ??= "active";
+                demoTenant.BrandDisplayName ??= "Acme Electrical";
+                demoTenant.BrandColorHex ??= "#0d6efd";
+                demoTenant.NotificationEmail ??= "admin@acme.demo";
+                demoTenant.DefaultApprovalSlaHours = 48;
                 await tenantService.UpdateAsync(demoTenant, cancellationToken);
             }
         }
@@ -707,6 +784,11 @@ public class DatabaseSeeder : IHostedService
 
                 acme.StripeCustomerId ??= "cus_demo_acme";
                 acme.SubscriptionStatus ??= "active";
+                acme.BrandDisplayName ??= "Acme Electrical";
+                acme.BrandColorHex ??= "#0d6efd";
+                acme.NotificationEmail ??= "admin@acme.demo";
+                if (acme.DefaultApprovalSlaHours <= 0)
+                    acme.DefaultApprovalSlaHours = 48;
                 await tenantService.UpdateAsync(acme, cancellationToken);
             }
         }
@@ -714,76 +796,93 @@ public class DatabaseSeeder : IHostedService
         // 2. Ensure roles with permissions exist for the tenant
         tenantProvider.SetTenantId(defaultTenantId);
 
-        await EnsureRoleWithPermissions(roleManager, tenantProvider, "Admin", new[]
+        foreach (var roleName in RoleTemplates.AllRoleNames)
         {
-            Permissions.TenantsView,
-            Permissions.TenantsManage,
-            Permissions.CustomersView,
-            Permissions.CustomersManage,
-            Permissions.QuotesView,
-            Permissions.QuotesManage,
-            Permissions.JobsView,
-            Permissions.JobsManage,
-            Permissions.UsersView,
-            Permissions.UsersManage,
-            Permissions.InvoicesView,
-            Permissions.InvoicesManage,
-            Permissions.InventoryView,
-            Permissions.InventoryManage,
-            Permissions.AssetsView,
-            Permissions.AssetsManage,
-            Permissions.SuppliersView,
-            Permissions.SuppliersManage,
-            Permissions.PurchaseOrdersView,
-            Permissions.PurchaseOrdersManage,
-            Permissions.FinanceView,
-            Permissions.FinanceManage,
-            Permissions.EmployeesView,
-            Permissions.EmployeesManage,
-            Permissions.SalesOrdersView,
-            Permissions.SalesOrdersManage,
-            Permissions.OpportunitiesView,
-            Permissions.OpportunitiesManage,
-            Permissions.AuditView
-        }, defaultTenantId, cancellationToken);
+            await EnsureRoleWithPermissions(
+                roleManager,
+                tenantProvider,
+                roleName,
+                RoleTemplates.GetPermissions(roleName),
+                defaultTenantId,
+                cancellationToken);
+        }
 
-        await EnsureRoleWithPermissions(roleManager, tenantProvider, "Manager", new[]
+        var existingCompanyDocs = await companyDocumentService.GetAllAsync(ct: cancellationToken);
+        if (!existingCompanyDocs.Any())
         {
-            Permissions.TenantsView,
-            Permissions.CustomersView,
-            Permissions.CustomersManage,
-            Permissions.QuotesView,
-            Permissions.QuotesManage,
-            Permissions.JobsView,
-            Permissions.JobsManage,
-            Permissions.UsersView,
-            Permissions.UsersManage,
-            Permissions.InvoicesView,
-            Permissions.InvoicesManage,
-            Permissions.InventoryView,
-            Permissions.InventoryManage,
-            Permissions.AssetsView,
-            Permissions.AssetsManage,
-            Permissions.SuppliersView,
-            Permissions.SuppliersManage,
-            Permissions.PurchaseOrdersView,
-            Permissions.PurchaseOrdersManage,
-            Permissions.FinanceView,
-            Permissions.FinanceManage,
-            Permissions.EmployeesView,
-            Permissions.EmployeesManage,
-            Permissions.SalesOrdersView,
-            Permissions.SalesOrdersManage,
-            Permissions.OpportunitiesView,
-            Permissions.OpportunitiesManage,
-            Permissions.AuditView
-        }, defaultTenantId, cancellationToken);
+            await using var sample = new MemoryStream("METERP demo COID certificate placeholder"u8.ToArray());
+            await companyDocumentService.UploadAsync(
+                "COID",
+                "Compensation Fund Letter of Good Standing",
+                "coid-letter.pdf",
+                sample,
+                "application/pdf",
+                noExpiry: false,
+                expiryDate: DateTime.UtcNow.AddDays(14),
+                notes: "Demo document — expiry alerts fire for HR + Executive",
+                ct: cancellationToken);
+        }
 
-        await EnsureRoleWithPermissions(roleManager, tenantProvider, "Technician", new[]
+        try
         {
-            Permissions.CustomersView,
-            Permissions.JobsView
-        }, defaultTenantId, cancellationToken);
+            await complianceAlertService.RunExpiryScanAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Compliance expiry scan skipped during seeding.");
+        }
+
+        tenantProvider.SetTenantId(defaultTenantId);
+        if (!await db.Set<TenantNotification>().AnyAsync(n => n.Title.Contains("Low Stock"), cancellationToken))
+        {
+            await tenantNotificationService.CreateAsync(new TenantNotification
+            {
+                Title = "Low Stock Alert",
+                Message = "Transformer oil and safety gloves below reorder level. Check Inventory and upcoming jobs for travel impact.",
+                Category = "operations",
+                TargetRoles = "*"
+            }, cancellationToken);
+        }
+
+        if (!await db.Set<TenantNotification>().AnyAsync(n => n.Title.Contains("Job Overdue"), cancellationToken))
+        {
+            await tenantNotificationService.CreateAsync(new TenantNotification
+            {
+                Title = "Job Overdue",
+                Message = "JOB-2024-001 is past its scheduled completion date. Review scheduling and notify the client.",
+                Category = "operations",
+                TargetRoles = "*"
+            }, cancellationToken);
+        }
+
+        var demoCustomers = await customerService.GetAllAsync(ct: cancellationToken);
+        if (demoCustomers.Any() && !await db.Set<RecurringJobSchedule>().AnyAsync(cancellationToken))
+        {
+            await recurringJobService.CreateAsync(new RecurringJobSchedule
+            {
+                CustomerId = demoCustomers[0].Id,
+                Title = "Quarterly panel inspection (recurring)",
+                IntervalDays = 90,
+                NextRunDate = DateTime.UtcNow.Date.AddDays(14),
+                DefaultQuotedTotal = 8500m
+            }, cancellationToken);
+        }
+
+        var existingDivisions = await divisionService.GetAllAsync(activeOnly: false, ct: cancellationToken);
+        if (!existingDivisions.Any())
+        {
+            await divisionService.CreateAsync(new Division
+            {
+                Code = "JHB",
+                Name = "Johannesburg Operations"
+            }, cancellationToken);
+
+            await divisionService.CreateAsync(new Division
+            {
+                Code = "CPT",
+                Name = "Cape Town Operations"
+            }, cancellationToken);
+        }
 
         // 3. Create a demo admin user if none exists for this tenant
         var adminEmail = "admin@acme.demo";
@@ -1070,6 +1169,7 @@ public class DatabaseSeeder : IHostedService
                 // Create a demo invoice from the job (completes Quote -> Job -> Invoice flow)
                 try
                 {
+                    await jobService.SignOffAsync(createdJob.Id, Guid.Empty, cancellationToken);
                     var demoInvoice = await invoiceService.CreateFromJobAsync(createdJob.Id, cancellationToken);
                     await invoiceService.UpdateStatusAsync(demoInvoice.Id, InvoiceStatus.Sent, cancellationToken);
                 }
@@ -1303,7 +1403,9 @@ public class DatabaseSeeder : IHostedService
                                 FirstName = "Thabo",
                                 LastName = "Mokoena",
                                 JobTitle = "Electrician",
-                                DefaultHourlyRate = 195
+                                DefaultHourlyRate = 195,
+                                HireDate = DateTime.UtcNow.AddYears(-2),
+                                AnnualLeaveEntitlementDays = 15
                             }, cancellationToken);
 
                             await employeeService.CreateAsync(new Employee
@@ -1312,7 +1414,9 @@ public class DatabaseSeeder : IHostedService
                                 FirstName = "Johan",
                                 LastName = "van der Berg",
                                 JobTitle = "Technician",
-                                DefaultHourlyRate = 210
+                                DefaultHourlyRate = 210,
+                                HireDate = DateTime.UtcNow.AddMonths(-8),
+                                AnnualLeaveEntitlementDays = 15
                             }, cancellationToken);
                         }
                     }
@@ -1428,6 +1532,69 @@ public class DatabaseSeeder : IHostedService
 
             if (laborLinked)
                 await db.SaveChangesAsync(cancellationToken);
+        }
+
+        tenantProvider.SetTenantId(defaultTenantId);
+        if (seededEmployees.Any() && !await db.Set<LeaveRequest>().AnyAsync(cancellationToken))
+        {
+            try
+            {
+                var demoEmployee = seededEmployees
+                    .Where(e => e.HireDate != null && e.AnnualLeaveEntitlementDays > 0)
+                    .OrderBy(e => e.HireDate)
+                    .FirstOrDefault() ?? seededEmployees.First();
+
+                db.Set<LeaveRequest>().Add(new LeaveRequest
+                {
+                    TenantId = defaultTenantId,
+                    EmployeeId = demoEmployee.Id,
+                    StartDate = DateTime.UtcNow.AddDays(14),
+                    EndDate = DateTime.UtcNow.AddDays(14),
+                    DaysRequested = 1,
+                    IsPaid = true,
+                    Reason = "Family visit — demo pending manager approval",
+                    Status = LeaveRequestStatus.PendingManager
+                });
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Demo leave request seed skipped.");
+            }
+        }
+
+        tenantProvider.SetTenantId(defaultTenantId);
+        if (!await db.Set<StockRequisition>().AnyAsync(cancellationToken))
+        {
+            try
+            {
+                var demoJob = (await jobService.GetAllAsync(pageSize: 1, ct: cancellationToken)).FirstOrDefault();
+                var demoItem = (await inventoryService.GetAllItemsAsync(pageSize: 1, ct: cancellationToken))
+                    .FirstOrDefault(i => i.QuantityOnHand > 0 && i.IsActive);
+                var adminUser = await userManager.FindByEmailAsync("admin@acme.demo");
+
+                if (demoJob != null && demoItem != null && adminUser != null)
+                {
+                    await stockRequisitionService.SubmitAsync(new StockRequisition
+                    {
+                        JobId = demoJob.Id,
+                        RequestedByUserId = adminUser.Id,
+                        Notes = "Demo cable for warehouse lighting — pending manager approval",
+                        Lines =
+                        [
+                            new StockRequisitionLine
+                            {
+                                InventoryItemId = demoItem.Id,
+                                QuantityRequested = Math.Min(2m, demoItem.QuantityOnHand)
+                            }
+                        ]
+                    }, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Demo stock requisition seed skipped.");
+            }
         }
 
         // Optional large dataset for performance demos (Seed:LargeDataset or METERP_SEED_LARGE=true)

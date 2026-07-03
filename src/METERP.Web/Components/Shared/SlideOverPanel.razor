@@ -1,0 +1,42 @@
+@if (IsOpen)
+{
+    <div class="meterp-slideover-backdrop" data-testid="@BackdropTestId" @onclick="HandleBackdropClick"></div>
+    <div class="meterp-slideover" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
+         data-testid="@TestId">
+        <div class="meterp-slideover-header">
+            <h5 class="mb-0" id="@TitleId">@Title</h5>
+            <button type="button" class="btn-close" aria-label="Close" @onclick="CloseAsync" disabled="@CloseDisabled"></button>
+        </div>
+        <div class="meterp-slideover-body">
+            @ChildContent
+        </div>
+        @if (Footer != null)
+        {
+            <div class="meterp-slideover-footer">
+                @Footer
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
+    [Parameter] public bool CloseDisabled { get; set; }
+    [Parameter] public string TestId { get; set; } = "slide-over";
+    [Parameter] public string BackdropTestId { get; set; } = "slide-over-backdrop";
+
+    private string TitleId => $"{TestId}-title";
+
+    private async Task CloseAsync() => await OnClose.InvokeAsync();
+
+    private async Task HandleBackdropClick()
+    {
+        if (CloseOnBackdrop)
+            await CloseAsync();
+    }
+}

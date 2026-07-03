@@ -54,7 +54,6 @@ else
             <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnPrevious.InvokeAsync()" disabled="@DisablePrevious">Previous</button>
             <span class="text-muted small">Page @CurrentPage</span>
             <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnNext.InvokeAsync()" disabled="@DisableNext">Next</button>
-            <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="OnExportCsv">Export CSV</button>
         </div>
     }
 }
@@ -72,7 +71,6 @@ else
     [Parameter] public EventCallback<Quote> OnDelete { get; set; }
     [Parameter] public EventCallback OnPrevious { get; set; }
     [Parameter] public EventCallback OnNext { get; set; }
-    [Parameter] public EventCallback OnExportCsv { get; set; }
 
     private static string GetQuoteRowTestId(Quote q)
     {

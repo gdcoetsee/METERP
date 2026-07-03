@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
+using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 
@@ -10,13 +11,31 @@ public class PurchaseOrderService : IPurchaseOrderService
 {
     private readonly AppDbContext _dbContext;
     private readonly IInventoryService _inventoryService;
+    private readonly IStockRequisitionService? _requisitionService;
+    private readonly IDocumentSequenceService? _documentSequence;
+    private readonly IAuditService? _audit;
     private readonly ITenantCacheService? _cache;
+    private readonly ITenantNotificationService? _notifications;
+    private readonly IEmailSender? _email;
 
-    public PurchaseOrderService(AppDbContext dbContext, IInventoryService inventoryService, ITenantCacheService? cache = null)
+    public PurchaseOrderService(
+        AppDbContext dbContext,
+        IInventoryService inventoryService,
+        IStockRequisitionService? requisitionService = null,
+        IDocumentSequenceService? documentSequence = null,
+        IAuditService? audit = null,
+        ITenantCacheService? cache = null,
+        ITenantNotificationService? notifications = null,
+        IEmailSender? email = null)
     {
         _dbContext = dbContext;
         _inventoryService = inventoryService;
+        _requisitionService = requisitionService;
+        _documentSequence = documentSequence;
+        _audit = audit;
         _cache = cache;
+        _notifications = notifications;
+        _email = email;
     }
 
     public async Task<PurchaseOrder?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -68,7 +87,9 @@ public class PurchaseOrderService : IPurchaseOrderService
     {
         if (string.IsNullOrWhiteSpace(po.PoNumber))
         {
-            po.PoNumber = $"PO-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
+            po.PoNumber = _documentSequence != null
+                ? await _documentSequence.GetNextNumberAsync("PurchaseOrder", "PO", ct)
+                : $"PO-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
 
         RecalculateTotals(po);
@@ -106,12 +127,59 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task UpdateStatusAsync(Guid poId, PurchaseOrderStatus newStatus, CancellationToken ct = default)
     {
-        var po = await _dbContext.Set<PurchaseOrder>().FirstOrDefaultAsync(p => p.Id == poId, ct);
+        var po = await _dbContext.Set<PurchaseOrder>()
+            .Include(p => p.Supplier)
+            .Include(p => p.Lines)
+            .FirstOrDefaultAsync(p => p.Id == poId, ct);
         if (po == null) return;
 
+        var previous = po.Status;
         po.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+
+        if (_audit != null)
+            await _audit.LogAsync("STATUS", "PurchaseOrder", po.PoNumber, $"{previous} → {newStatus}", ct);
+
+        if (newStatus == PurchaseOrderStatus.Sent && previous != PurchaseOrderStatus.Sent)
+        {
+            var supplierName = po.Supplier?.Name ?? "supplier";
+            var supplierEmail = po.Supplier?.Email?.Trim();
+            var emailSent = false;
+
+            if (_email?.IsConfigured == true && !string.IsNullOrWhiteSpace(supplierEmail))
+            {
+                var lines = po.Lines
+                    .Where(l => !l.IsDeleted)
+                    .Select(l => (l.Description, l.Quantity, l.Unit ?? "ea", l.UnitPrice));
+                var html = PurchaseOrderEmailBuilder.BuildHtml(
+                    po.PoNumber, supplierName, po.Total, po.ExpectedDate, lines);
+                await _email.SendEmailAsync(supplierEmail, $"Purchase Order {po.PoNumber}", html, ct);
+                emailSent = true;
+
+                if (_audit != null)
+                    await _audit.LogAsync("EMAIL", "PurchaseOrder", po.PoNumber, $"E-PO sent to {supplierEmail}", ct);
+            }
+
+            if (_notifications != null)
+            {
+                var emailNote = emailSent
+                    ? $"E-PO emailed to {supplierEmail}."
+                    : string.IsNullOrWhiteSpace(supplierEmail)
+                        ? "Add supplier email to enable outbound PO email."
+                        : "SMTP not configured — PO marked sent in-system only.";
+
+                await _notifications.CreateAsync(new TenantNotification
+                {
+                    Title = "PO sent to supplier",
+                    Message = $"{po.PoNumber} marked sent to {supplierName}. {emailNote}",
+                    Category = "procurement",
+                    TargetRoles = "Admin,Executive,Procurement",
+                    RelatedEntityId = po.Id,
+                    RelatedEntityType = "PurchaseOrder"
+                }, ct);
+            }
+        }
     }
 
     public async Task<Guid> AddLineAsync(PurchaseOrderLine line, CancellationToken ct = default)
@@ -175,28 +243,154 @@ public class PurchaseOrderService : IPurchaseOrderService
         InvalidateListCaches();
     }
 
-    public async Task ReceiveAsync(Guid poId, CancellationToken ct = default)
+    public async Task<Guid> CreateFromRequisitionAsync(Guid requisitionId, Guid supplierId, CancellationToken ct = default)
+    {
+        var req = await _dbContext.Set<StockRequisition>()
+            .Include(r => r.Lines).ThenInclude(l => l.InventoryItem)
+            .FirstOrDefaultAsync(r => r.Id == requisitionId, ct);
+
+        if (req == null)
+            throw new InvalidOperationException("Requisition not found.");
+
+        if (req.Status is not (RequisitionStatus.AwaitingProcurement or RequisitionStatus.ProcurementOrdered))
+            throw new InvalidOperationException("Requisition is not awaiting procurement.");
+
+        if (req.PurchaseOrderId.HasValue)
+            throw new InvalidOperationException("A purchase order already exists for this requisition.");
+
+        var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId, ct);
+        if (supplier == null)
+            throw new InvalidOperationException("Supplier not found.");
+
+        var po = new PurchaseOrder
+        {
+            SupplierId = supplierId,
+            PoDate = DateTime.UtcNow,
+            ExpectedDate = DateTime.UtcNow.AddDays(7),
+            Status = PurchaseOrderStatus.Draft,
+            TaxRate = 0.15m,
+            Notes = $"From requisition {req.RequisitionNumber}"
+        };
+
+        foreach (var line in req.Lines.Where(l => !l.IsDeleted))
+        {
+            var toOrder = line.QuantityRequested - line.QuantityReserved;
+            if (toOrder <= 0) continue;
+
+            po.Lines.Add(new PurchaseOrderLine
+            {
+                InventoryItemId = line.InventoryItemId,
+                Description = line.InventoryItem?.Name ?? "Material",
+                Quantity = toOrder,
+                UnitPrice = line.InventoryItem?.UnitCost ?? 0m,
+                Unit = line.InventoryItem?.Unit ?? "ea"
+            });
+        }
+
+        if (!po.Lines.Any())
+            throw new InvalidOperationException("No shortfall quantity to order.");
+
+        await CreateAsync(po, ct);
+
+        req.PurchaseOrderId = po.Id;
+        req.Status = RequisitionStatus.ProcurementOrdered;
+        await _dbContext.SaveChangesAsync(ct);
+
+        if (_audit != null)
+            await _audit.LogAsync("CREATE_FROM_REQ", "PurchaseOrder", po.PoNumber,
+                $"Created from {req.RequisitionNumber}", ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                Title = "Procurement PO created",
+                Message = $"{po.PoNumber} drafted for {req.RequisitionNumber} — mark sent then receive via GRV.",
+                Category = "procurement",
+                TargetRoles = "Admin,Executive,Procurement",
+                RelatedEntityId = po.Id,
+                RelatedEntityType = "PurchaseOrder"
+            }, ct);
+        }
+
+        return po.Id;
+    }
+
+    public async Task<GoodsReceiptVoucher?> ReceiveAsync(Guid poId, Guid receivedByUserId, CancellationToken ct = default)
     {
         var po = await _dbContext.Set<PurchaseOrder>()
             .Include(p => p.Lines)
             .FirstOrDefaultAsync(p => p.Id == poId, ct);
-        if (po == null) return;
+        if (po == null) return null;
 
+        if (po.Status is PurchaseOrderStatus.Received or PurchaseOrderStatus.Cancelled)
+            return null;
+
+        if (po.Status is not (PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived))
+            throw new InvalidOperationException("PO must be Sent before receiving (GRV).");
+
+        var linkedRequisitionId = await _dbContext.Set<StockRequisition>()
+            .Where(r => r.PurchaseOrderId == po.Id)
+            .Select(r => (Guid?)r.Id)
+            .FirstOrDefaultAsync(ct);
+
+        var grv = new GoodsReceiptVoucher
+        {
+            GrvNumber = _documentSequence != null
+                ? await _documentSequence.GetNextNumberAsync("GRV", "GRV", ct)
+                : $"GRV-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}",
+            PurchaseOrderId = po.Id,
+            StockRequisitionId = linkedRequisitionId,
+            ReceivedByUserId = receivedByUserId,
+            ReceivedAt = DateTime.UtcNow
+        };
+
+        _dbContext.Set<GoodsReceiptVoucher>().Add(grv);
+        await _dbContext.SaveChangesAsync(ct);
+
+        var receivedAny = false;
         foreach (var line in po.Lines.Where(l => !l.IsDeleted && l.InventoryItemId.HasValue))
         {
+            var outstanding = line.QuantityOutstanding;
+            if (outstanding <= 0) continue;
+
             await _inventoryService.RecordStockTransactionAsync(
                 line.InventoryItemId!.Value,
-                line.Quantity,
+                outstanding,
                 StockTransactionType.Receipt,
-                po.PoNumber,
+                grv.GrvNumber,
                 null,
-                $"PO receipt for line: {line.Description}",
+                $"GRV {grv.GrvNumber} — PO {po.PoNumber}: {line.Description}",
                 ct);
+
+            _dbContext.Set<GoodsReceiptLine>().Add(new GoodsReceiptLine
+            {
+                GoodsReceiptVoucherId = grv.Id,
+                PurchaseOrderLineId = line.Id,
+                InventoryItemId = line.InventoryItemId,
+                QuantityReceived = outstanding
+            });
+
+            line.QuantityReceived += outstanding;
+            receivedAny = true;
         }
 
-        po.Status = PurchaseOrderStatus.Received;
+        if (!receivedAny)
+            return null;
+
+        var allReceived = po.Lines.Where(l => !l.IsDeleted).All(l => l.QuantityReceived >= l.Quantity);
+        po.Status = allReceived ? PurchaseOrderStatus.Received : PurchaseOrderStatus.PartiallyReceived;
+
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+
+        if (_audit != null)
+            await _audit.LogAsync("RECEIVE", "GRV", grv.GrvNumber, $"PO {po.PoNumber}", ct);
+
+        if (_requisitionService != null)
+            await _requisitionService.FulfillAfterPoReceiptAsync(po.Id, ct);
+
+        return grv;
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory("purchase-orders");

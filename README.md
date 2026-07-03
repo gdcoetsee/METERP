@@ -34,8 +34,10 @@
 - **Email (docker):** Mailpit SMTP on port 1025, web UI http://localhost:8025 — wired by default in docker-compose for invoice and 2FA security emails.
 - Sell: per-tenant, brand via CSS, bill on usage (jobs/AI calls).
 
+**Phases 8–11 (latest):** Tenant white-label PDF/UI branding (`BrandDisplayName`, `BrandColorHex`), approval SLA overdue tracking on Home and `/approvals`, scheduled executive report background job (`ScheduledReports:Enabled`), role-based home dashboards (Technician, Procurement, HR, Stores, Finance), payslip PDF branding.
+
 **How to Test:**
-- **Unit tests (35):** `dotnet test tests/METERP.Application.Tests/METERP.Application.Tests.csproj`
+- **Unit tests:** `dotnet test tests/METERP.Application.Tests/METERP.Application.Tests.csproj` (393+)
 - **E2E tests (6 Playwright flows):**
   1. Start the app: `docker-compose up --build` (or `dotnet run --project src/METERP.Web --urls http://localhost:8080`)
   2. Install browsers once: `pwsh tests/METERP.E2ETests/bin/Debug/net9.0/playwright.ps1 install chromium`

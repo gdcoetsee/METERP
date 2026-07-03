@@ -1,0 +1,184 @@
+@page "/divisions"
+@using METERP.Application.Services
+@using METERP.Domain
+@attribute [Authorize(Policy = "Divisions.View")]
+@rendermode InteractiveServer
+@inject IDivisionService DivisionService
+@inject ToastService Toast
+
+<PageTitle>Divisions</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Divisions</h1>
+        <p class="text-muted small mb-0">Branches for accountability, performance scorecards, and job assignment.</p>
+    </div>
+    <AuthorizeView Policy="Divisions.Manage">
+        <Authorized>
+            <button type="button" class="btn btn-primary btn-sm" data-testid="divisions-add" @onclick="OpenCreate">Add division</button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="4" TestId="divisions-skeleton" />
+}
+else if (_divisions.Count == 0)
+{
+    <EmptyState Title="No divisions yet"
+                Description="Create divisions to track throughput and approvals per branch."
+                Icon="🏢"
+                TestId="divisions-empty" />
+}
+else
+{
+    <div class="table-responsive" data-testid="divisions-table">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <AuthorizeView Policy="Divisions.Manage">
+                        <Authorized><th></th></Authorized>
+                    </AuthorizeView>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var div in _divisions)
+                {
+                    <tr data-testid="division-row">
+                        <td><strong>@div.Code</strong></td>
+                        <td>@div.Name</td>
+                        <td>
+                            @if (div.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                        </td>
+                        <AuthorizeView Policy="Divisions.Manage">
+                            <Authorized>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            data-testid="division-edit"
+                                            @onclick="() => OpenEdit(div)">Edit</button>
+                                </td>
+                            </Authorized>
+                        </AuthorizeView>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<FormModal IsOpen="_modalOpen"
+           Title="@(_editing == null ? "Add division" : "Edit division")"
+           TestId="division-modal"
+           OnClose="CloseModal">
+    <ChildContent>
+        <div class="mb-3">
+            <label class="form-label" for="div-code">Code</label>
+            <input id="div-code" class="form-control" @bind="_formCode" maxlength="16" data-testid="division-code" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="div-name">Name</label>
+            <input id="div-name" class="form-control" @bind="_formName" data-testid="division-name" />
+        </div>
+        @if (_editing != null)
+        {
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="div-active" @bind="_formActive" data-testid="division-active" />
+                <label class="form-check-label" for="div-active">Active</label>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
+        <button type="button" class="btn btn-primary" data-testid="division-save" @onclick="SaveAsync">Save</button>
+    </Footer>
+</FormModal>
+
+@code {
+    private List<Division> _divisions = new();
+    private bool _loading = true;
+    private bool _modalOpen;
+    private Division? _editing;
+    private string _formCode = "";
+    private string _formName = "";
+    private bool _formActive = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _divisions = (await DivisionService.GetAllAsync(activeOnly: false)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreate()
+    {
+        _editing = null;
+        _formCode = "";
+        _formName = "";
+        _formActive = true;
+        _modalOpen = true;
+    }
+
+    private void OpenEdit(Division div)
+    {
+        _editing = div;
+        _formCode = div.Code;
+        _formName = div.Name;
+        _formActive = div.IsActive;
+        _modalOpen = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalOpen = false;
+        _editing = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_formCode) || string.IsNullOrWhiteSpace(_formName))
+        {
+            Toast.ShowInfo("Code and name are required.");
+            return;
+        }
+
+        if (_editing == null)
+        {
+            await DivisionService.CreateAsync(new Division
+            {
+                Code = _formCode.Trim().ToUpperInvariant(),
+                Name = _formName.Trim()
+            });
+            Toast.ShowSuccess("Division created.");
+        }
+        else
+        {
+            _editing.Code = _formCode.Trim().ToUpperInvariant();
+            _editing.Name = _formName.Trim();
+            _editing.IsActive = _formActive;
+            await DivisionService.UpdateAsync(_editing);
+            Toast.ShowSuccess("Division updated.");
+        }
+
+        CloseModal();
+        await LoadAsync();
+    }
+}

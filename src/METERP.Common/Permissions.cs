@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace METERP.Common;
 
 /// <summary>
@@ -19,6 +21,7 @@ public static class Permissions
     // Quote -> Job workflow (Module 2)
     public const string QuotesView = "Quotes.View";
     public const string QuotesManage = "Quotes.Manage";
+    public const string QuotesApprove = "Quotes.Approve";
 
     public const string JobsView = "Jobs.View";
     public const string JobsManage = "Jobs.Manage";
@@ -26,6 +29,7 @@ public static class Permissions
     // User management (foundation - tenant-scoped user admin)
     public const string UsersView = "Users.View";
     public const string UsersManage = "Users.Manage";
+    public const string UsersManagePermissions = "Users.ManagePermissions";
 
     // Invoicing (completes Quote -> Job -> Invoice flow)
     public const string InvoicesView = "Invoices.View";
@@ -34,6 +38,10 @@ public static class Permissions
     // Inventory & Stock (materials tracking for quotes/jobs)
     public const string InventoryView = "Inventory.View";
     public const string InventoryManage = "Inventory.Manage";
+
+    public const string RequisitionsView = "Requisitions.View";
+    public const string RequisitionsManage = "Requisitions.Manage";
+    public const string RequisitionsApprove = "Requisitions.Approve";
 
     // Assets / Transformers management
     public const string AssetsView = "Assets.View";
@@ -65,5 +73,29 @@ public static class Permissions
     // Audit / compliance
     public const string AuditView = "Audit.View";
 
-    // Add more as modules are implemented
+    public const string CompanyDocsView = "CompanyDocs.View";
+    public const string CompanyDocsManage = "CompanyDocs.Manage";
+
+    // Field portal (technicians — mobile-first restricted UI)
+    public const string FieldView = "Field.View";
+
+    // Approvals hub (managers / executives — unified workflow queue)
+    public const string ApprovalsView = "Approvals.View";
+
+    // Divisions (branch accountability)
+    public const string DivisionsView = "Divisions.View";
+    public const string DivisionsManage = "Divisions.Manage";
+
+    // HR leave
+    public const string LeaveView = "Leave.View";
+    public const string LeaveManage = "Leave.Manage";
+    public const string LeaveApprove = "Leave.Approve";
+
+    /// <summary>All permission constants for role/permission matrix UI.</summary>
+    public static IReadOnlyList<string> All { get; } = typeof(Permissions)
+        .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+        .Where(f => f is { IsLiteral: true, IsInitOnly: false } && f.FieldType == typeof(string))
+        .Select(f => (string)f.GetRawConstantValue()!)
+        .OrderBy(v => v)
+        .ToList();
 }

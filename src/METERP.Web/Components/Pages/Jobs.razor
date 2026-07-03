@@ -1,12 +1,16 @@
 @page "/jobs"
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Domain
-@using Microsoft.AspNetCore.Authorization
 @using METERP.Common
+@using METERP.Web.Reports
+@using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "Jobs.View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IJobService JobService
 @inject IInvoiceService InvoiceService
+@inject ITenantService TenantService
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
 @inject IAiAssistantService AiAssistantService
@@ -15,12 +19,15 @@
 
 <PageTitle>Jobs</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         <h1>Jobs <span class="badge bg-primary">AI-Powered</span></h1>
         <p class="text-muted mb-0">Track real costs: materials (consume from inventory), explicit Travel (JobCost type Travel), and labor (JobLabor with rates). AI provides closeout variance analysis and margin recommendations.</p>
     </div>
-    <a href="/ai-copilot" class="btn btn-primary">Open AI Copilot to Create/Analyze Jobs</a>
+    <div class="d-flex gap-2 align-items-center">
+        <ExportToolbar TestId="jobs-export" OnExportCsv="ExportJobsCsvAsync" OnExportExcel="ExportJobsExcelAsync" OnExportPdf="ExportJobsPdfAsync" />
+        <a href="/ai-copilot" class="btn btn-primary">Open AI Copilot to Create/Analyze Jobs</a>
+    </div>
 </div>
 
 <div class="alert alert-info">
@@ -30,7 +37,7 @@
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
         <input type="search" class="form-control" placeholder="Search job #, customer, or notes..."
-               value="@searchTerm" @oninput="OnSearchInput" data-testid="jobs-search" />
+               @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" data-testid="jobs-search" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
             <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
@@ -42,6 +49,10 @@
 <JobList 
     Jobs="demoJobs"
     SelectedJob="selectedJob"
+    CommandCenter="commandCenter"
+    Milestones="jobMilestones"
+    Snags="jobSnags"
+    SafetyIncidents="jobSafetyIncidents"
     CanManage="UserCanManage"
     CurrentPage="currentPage"
     DisablePrevious="@(currentPage <= 1)"
@@ -50,9 +61,15 @@
     OnDelete="DeleteJob"
     OnPrevious="PreviousPage"
     OnNext="NextPage"
-    OnExportCsv="ExportJobsCsv"
+    OnExportCsv="ExportJobsCsvAsync"
     OnAiAnalyze="AnalyzeWithAi"
     OnCreateInvoice="CreateInvoiceFromJob"
+    OnSignOff="SignOffJobAsync"
+    OnAddMilestone="AddMilestoneAsync"
+    OnAddSnag="AddSnagAsync"
+    OnResolveSnag="ResolveSnagAsync"
+    OnAddSafetyIncident="AddSafetyIncidentAsync"
+    OnCloseSafetyIncident="CloseSafetyIncidentAsync"
     OnCloseView="CloseJobView" />
 
 <div class="card mt-3">
@@ -65,16 +82,33 @@
 
 @code {
     private List<Job> demoJobs = new();
+    private TenantBranding _branding = TenantBranding.Default;
     private Job? selectedJob;
+    private JobCommandCenterSummary? commandCenter;
+    private List<JobMilestone> jobMilestones = new();
+    private List<JobSnagItem> jobSnags = new();
+    private List<JobSafetyIncident> jobSafetyIncidents = new();
     private string searchTerm = string.Empty;
     private int currentPage = 1;
-    private const int PageSize = 2;
+    private const int PageSize = 10;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage);
 
+    [SupplyParameterFromQuery(Name = "job")]
+    public Guid? OpenJobId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
+        if (CurrentUserService.TenantId != Guid.Empty)
+        {
+            var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+            _branding = TenantBranding.From(tenant);
+        }
+
         await LoadJobs();
+
+        if (OpenJobId is { } jobId && jobId != Guid.Empty)
+            await OpenJobAsync(jobId);
     }
 
     private async Task LoadJobs()
@@ -83,9 +117,8 @@
         demoJobs = (await JobService.GetAllAsync(term, currentPage, PageSize)).ToList();
     }
 
-    private async Task OnSearchInput(ChangeEventArgs e)
+    private async Task OnSearchChangedAsync()
     {
-        searchTerm = e.Value?.ToString() ?? string.Empty;
         currentPage = 1;
         await LoadJobs();
     }
@@ -107,12 +140,36 @@
         currentPage++; await LoadJobs();
     }
 
-    private async Task ViewJob(Job j)
+    private async Task ViewJob(Job j) => await OpenJobAsync(j.Id);
+
+    private async Task OpenJobAsync(Guid jobId)
     {
-        selectedJob = await JobService.GetByIdAsync(j.Id);
+        selectedJob = await JobService.GetByIdAsync(jobId);
+        commandCenter = selectedJob != null
+            ? await JobService.GetCommandCenterSummaryAsync(jobId)
+            : null;
+        if (selectedJob != null)
+        {
+            jobMilestones = (await JobService.GetMilestonesAsync(jobId)).ToList();
+            jobSnags = (await JobService.GetSnagsAsync(jobId)).ToList();
+            jobSafetyIncidents = (await JobService.GetSafetyIncidentsAsync(jobId)).ToList();
+        }
+        else
+        {
+            jobMilestones.Clear();
+            jobSnags.Clear();
+            jobSafetyIncidents.Clear();
+        }
     }
 
-    private void CloseJobView() { selectedJob = null; }
+    private void CloseJobView()
+    {
+        selectedJob = null;
+        commandCenter = null;
+        jobMilestones.Clear();
+        jobSnags.Clear();
+        jobSafetyIncidents.Clear();
+    }
 
     private async Task DeleteJob(Job j)
     {
@@ -124,18 +181,149 @@
         await LoadJobs();
     }
 
-    private async Task ExportJobsCsv()
+    private IEnumerable<string[]> BuildJobExportRows()
     {
-        if (demoJobs == null || !demoJobs.Any()) return;
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("JobNumber,Title,Status,Quoted,Actual,Variance");
         foreach (var j in demoJobs)
         {
             var act = j.ActualCost + ((j.Labors?.Where(l => !l.IsDeleted).Sum(l => l.TotalCost)) ?? 0);
-            sb.AppendLine($"{j.JobNumber},\"{j.Title}\",{j.Status},{j.QuotedTotal},{act},{act - j.QuotedTotal}");
+            yield return new[]
+            {
+                j.JobNumber,
+                j.Title,
+                j.Customer?.Name ?? "",
+                j.Status.ToString(),
+                TabularExportHelper.FormatDecimal(j.QuotedTotal),
+                TabularExportHelper.FormatDecimal(act),
+                TabularExportHelper.FormatDecimal(act - j.QuotedTotal)
+            };
         }
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
-        ToastService.ShowSuccess("Jobs CSV copied to clipboard.");
+    }
+
+    private async Task ExportJobsCsvAsync()
+    {
+        if (!demoJobs.Any()) return;
+        var csv = TabularExportHelper.BuildCsv(
+            "JobNumber,Title,Customer,Status,Quoted,Actual,Variance",
+            BuildJobExportRows().Select(r => r.AsEnumerable()));
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "jobs.csv", csv, "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Jobs CSV downloaded.");
+    }
+
+    private async Task ExportJobsExcelAsync()
+    {
+        if (!demoJobs.Any()) return;
+        var tsv = TabularExportHelper.BuildExcelTsv(
+            "JobNumber\tTitle\tCustomer\tStatus\tQuoted\tActual\tVariance",
+            BuildJobExportRows().Select(r => r.AsEnumerable()));
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "jobs.xls", tsv, "application/vnd.ms-excel");
+        ToastService.ShowSuccess("Jobs Excel file downloaded.");
+    }
+
+    private async Task ExportJobsPdfAsync()
+    {
+        if (!demoJobs.Any()) return;
+        var pdf = TabularPdfGenerator.Generate(
+            "Jobs Export",
+            new[] { "Job #", "Title", "Customer", "Status", "Quoted", "Actual", "Variance" },
+            BuildJobExportRows(),
+            _branding);
+        await JS.InvokeVoidAsync("meterpUi.downloadBytes", "jobs.pdf", Convert.ToBase64String(pdf), "application/pdf");
+        ToastService.ShowSuccess("Jobs PDF downloaded.");
+    }
+
+    private async Task AddMilestoneAsync((string Title, DateTime? DueDate) input)
+    {
+        if (selectedJob == null || string.IsNullOrWhiteSpace(input.Title)) return;
+        try
+        {
+            await JobService.AddMilestoneAsync(new JobMilestone
+            {
+                JobId = selectedJob.Id,
+                Title = input.Title,
+                DueDate = input.DueDate,
+                SortOrder = jobMilestones.Count,
+                Status = JobMilestoneStatus.Pending
+            });
+            jobMilestones = (await JobService.GetMilestonesAsync(selectedJob.Id)).ToList();
+            ToastService.ShowSuccess("Milestone added.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task AddSnagAsync(string description)
+    {
+        if (selectedJob == null || string.IsNullOrWhiteSpace(description)) return;
+        if (CurrentUserService.UserId is not { } userId) return;
+        try
+        {
+            await JobService.AddSnagAsync(new JobSnagItem
+            {
+                JobId = selectedJob.Id,
+                Description = description,
+                ReportedByUserId = userId
+            });
+            jobSnags = (await JobService.GetSnagsAsync(selectedJob.Id)).ToList();
+            ToastService.ShowSuccess("Snag recorded.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ResolveSnagAsync(JobSnagItem snag)
+    {
+        if (selectedJob == null || CurrentUserService.UserId is not { } userId) return;
+        try
+        {
+            await JobService.ResolveSnagAsync(snag.Id, userId);
+            jobSnags = (await JobService.GetSnagsAsync(selectedJob.Id)).ToList();
+            ToastService.ShowSuccess("Snag resolved.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task AddSafetyIncidentAsync((string Description, SafetyIncidentSeverity Severity) input)
+    {
+        if (selectedJob == null || string.IsNullOrWhiteSpace(input.Description)) return;
+        if (CurrentUserService.UserId is not { } userId) return;
+        try
+        {
+            await JobService.AddSafetyIncidentAsync(new JobSafetyIncident
+            {
+                JobId = selectedJob.Id,
+                Description = input.Description,
+                Severity = input.Severity,
+                ReportedByUserId = userId
+            });
+            jobSafetyIncidents = (await JobService.GetSafetyIncidentsAsync(selectedJob.Id)).ToList();
+            ToastService.ShowSuccess("Safety incident recorded.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task CloseSafetyIncidentAsync(JobSafetyIncident incident)
+    {
+        if (selectedJob == null || CurrentUserService.UserId is not { } userId) return;
+        try
+        {
+            await JobService.CloseSafetyIncidentAsync(incident.Id, userId, "Corrective action documented.");
+            jobSafetyIncidents = (await JobService.GetSafetyIncidentsAsync(selectedJob.Id)).ToList();
+            ToastService.ShowSuccess("Safety incident closed.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private async Task AnalyzeWithAi(Job j)
@@ -168,13 +356,34 @@
 
     private void ShowTravelNote() => ToastService.ShowInfo("Travel is recorded as JobCost records with CostType 'Travel' (daily allowance or km rate). It is included in every variance calculation and in the AI prompts so recommendations are realistic for Gauteng/mining site work.");
 
+    private async Task SignOffJobAsync(Job j)
+    {
+        if (CurrentUserService.UserId is not { } userId) return;
+        try
+        {
+            if (!await JobService.SignOffAsync(j.Id, userId))
+            {
+                ToastService.ShowError("Could not record sign-off.");
+                return;
+            }
+
+            ToastService.ShowSuccess($"{j.JobNumber} signed off — ready for final invoicing.");
+            await LoadJobs();
+            selectedJob = demoJobs.FirstOrDefault(x => x.Id == j.Id);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
     private async Task CreateInvoiceFromJob(Job j)
     {
         try
         {
             var inv = await InvoiceService.CreateFromJobAsync(j.Id);
             ToastService.ShowSuccess($"Invoice {inv.InvoiceNumber} created from job {j.JobNumber}.");
-            Nav.NavigateTo("/invoices");
+            Nav.NavigateTo($"/invoices?open={inv.Id}");
         }
         catch (QuotaExceededException ex)
         {

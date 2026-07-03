@@ -141,6 +141,7 @@ public static class LargeDatasetSeeder
                     {
                         try
                         {
+                            await jobService.SignOffAsync(job.Id, Guid.Empty, ct);
                             await invoiceService.CreateFromJobAsync(job.Id, ct);
                             invoicesCreated++;
                         }

@@ -1,0 +1,241 @@
+@page "/company-documents"
+@using METERP.Application.Services
+@using METERP.Domain
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Policy = "CompanyDocs.View")]
+@rendermode InteractiveServer
+@inject ICompanyDocumentService DocumentService
+@inject ToastService Toast
+
+<PageTitle>Company Documents</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Company Documents</h1>
+        <p class="text-muted small mb-0">COID, tax clearance, insurance — expiry tracked with alerts to HR and Executive.</p>
+    </div>
+    <AuthorizeView Policy="CompanyDocs.Manage">
+        <Authorized>
+            <button type="button" class="btn btn-primary btn-sm" data-testid="company-docs-upload-btn" @onclick="OpenUpload">Upload document</button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="4" TestId="company-docs-skeleton" />
+}
+else if (_documents.Count == 0)
+{
+    <EmptyState Title="No company documents"
+                Description="Upload compliance documents with expiry dates to eliminate paper chasing and missed renewals."
+                Icon="📄"
+                TestId="company-docs-empty" />
+}
+else
+{
+    <div class="table-responsive" data-testid="company-docs-table">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Expiry</th>
+                    <th>File</th>
+                    <AuthorizeView Policy="CompanyDocs.Manage">
+                        <Authorized><th></th></Authorized>
+                    </AuthorizeView>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var doc in _documents)
+                {
+                    var days = doc.NoExpiry || doc.ExpiryDate is null
+                        ? (int?)null
+                        : (doc.ExpiryDate.Value.Date - DateTime.UtcNow.Date).Days;
+                    <tr data-testid="company-doc-row">
+                        <td><strong>@doc.Title</strong></td>
+                        <td><span class="badge bg-light text-dark">@doc.DocumentType</span></td>
+                        <td>
+                            @if (doc.NoExpiry)
+                            {
+                                <span class="text-muted">No expiry</span>
+                            }
+                            else if (days is <= 7)
+                            {
+                                <span class="badge bg-danger">@doc.ExpiryDate:yyyy-MM-dd (@days d)</span>
+                            }
+                            else if (days is <= 30)
+                            {
+                                <span class="badge bg-warning text-dark">@doc.ExpiryDate:yyyy-MM-dd (@days d)</span>
+                            }
+                            else
+                            {
+                                <span>@doc.ExpiryDate:yyyy-MM-dd</span>
+                            }
+                        </td>
+                        <td class="small text-muted">@doc.FileName</td>
+                        <AuthorizeView Policy="CompanyDocs.Manage">
+                            <Authorized>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            data-testid="company-doc-delete"
+                                            @onclick="() => DeleteAsync(doc)">Delete</button>
+                                </td>
+                            </Authorized>
+                        </AuthorizeView>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<FormModal IsOpen="_uploadOpen"
+           Title="Upload company document"
+           TestId="company-doc-upload-modal"
+           OnClose="CloseUpload">
+    <ChildContent>
+        <div class="mb-3">
+            <label class="form-label" for="doc-type">Document type</label>
+            <input id="doc-type" class="form-control" @bind="_docType" list="doc-type-suggestions" data-testid="company-doc-type" />
+            <datalist id="doc-type-suggestions">
+                <option value="COID" />
+                <option value="TaxClearance" />
+                <option value="Insurance" />
+                <option value="BEE" />
+                <option value="ISO" />
+            </datalist>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="doc-title">Title</label>
+            <input id="doc-title" class="form-control" @bind="_title" data-testid="company-doc-title" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="doc-file">File</label>
+            <InputFile id="doc-file" class="form-control" OnChange="OnFileSelected" data-testid="company-doc-file" />
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="doc-no-expiry" @bind="_noExpiry" data-testid="company-doc-no-expiry" />
+            <label class="form-check-label" for="doc-no-expiry">No expiry date</label>
+        </div>
+        @if (!_noExpiry)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="doc-expiry">Expiry date</label>
+                <input id="doc-expiry" type="date" class="form-control" @bind="_expiryDate" data-testid="company-doc-expiry" />
+            </div>
+        }
+        <div class="mb-3">
+            <label class="form-label" for="doc-notes">Notes</label>
+            <textarea id="doc-notes" class="form-control" rows="2" @bind="_notes"></textarea>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseUpload">Cancel</button>
+        <button type="button" class="btn btn-primary" data-testid="company-doc-save" @onclick="SaveUploadAsync" disabled="@_saving">Upload</button>
+    </Footer>
+</FormModal>
+
+<ConfirmDialogHost />
+
+@code {
+    private List<CompanyDocument> _documents = new();
+    private bool _loading = true;
+    private bool _uploadOpen;
+    private bool _saving;
+    private IBrowserFile? _selectedFile;
+    private string _docType = "COID";
+    private string _title = "";
+    private bool _noExpiry;
+    private DateTime _expiryDate = DateTime.Today.AddMonths(6);
+    private string? _notes;
+
+    [Inject] private ConfirmService Confirm { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _documents = (await DocumentService.GetAllAsync()).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenUpload()
+    {
+        _docType = "COID";
+        _title = "";
+        _noExpiry = false;
+        _expiryDate = DateTime.Today.AddMonths(6);
+        _notes = null;
+        _selectedFile = null;
+        _uploadOpen = true;
+    }
+
+    private void CloseUpload() => _uploadOpen = false;
+
+    private void OnFileSelected(InputFileChangeEventArgs e) => _selectedFile = e.File;
+
+    private async Task SaveUploadAsync()
+    {
+        if (_selectedFile is null)
+        {
+            Toast.ShowInfo("Select a file to upload.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_title) || string.IsNullOrWhiteSpace(_docType))
+        {
+            Toast.ShowInfo("Type and title are required.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await using var stream = _selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            await DocumentService.UploadAsync(
+                _docType,
+                _title,
+                _selectedFile.Name,
+                stream,
+                _selectedFile.ContentType,
+                _noExpiry,
+                _noExpiry ? null : _expiryDate,
+                _notes);
+
+            Toast.ShowSuccess("Document uploaded.");
+            CloseUpload();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync(CompanyDocument doc)
+    {
+        var ok = await Confirm.ConfirmAsync(
+            $"Delete '{doc.Title}'? The file will be removed from storage.",
+            "Delete document",
+            confirmLabel: "Delete",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        await DocumentService.DeleteAsync(doc.Id);
+        Toast.ShowSuccess("Document deleted.");
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,229 @@
+@page "/stock-take"
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@attribute [Authorize(Policy = "Inventory.View")]
+@rendermode InteractiveServer
+@inject IStockTakeService StockTakeService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+
+<PageTitle>Stock Take</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Stock Take</h1>
+        <p class="text-muted small mb-0">Cycle counts with variance posting — paperless stores reconciliation.</p>
+    </div>
+    @if (CanManage)
+    {
+        <button type="button" class="btn btn-primary" data-testid="stock-take-start" @onclick="StartSessionAsync">Start new session</button>
+    }
+</div>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="4" TestId="stock-take-skeleton" />
+}
+else if (_sessions.Count == 0)
+{
+    <EmptyState Title="No stock take sessions"
+                Description="Start a session to snapshot on-hand quantities and record physical counts."
+                Icon="📋"
+                TestId="stock-take-empty" />
+}
+else
+{
+    <div class="table-responsive mb-4" data-testid="stock-take-sessions">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Session</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var session in _sessions)
+                {
+                    <tr>
+                        <td><strong>@session.SessionNumber</strong></td>
+                        <td>@((MarkupString)GetStatusBadge(session.Status))</td>
+                        <td>@session.StartedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => OpenSession(session.Id)">Open</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_activeSession != null)
+{
+    <div class="card border-primary" data-testid="stock-take-detail">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@_activeSession.SessionNumber — @((MarkupString)GetStatusBadge(_activeSession.Status))</h5>
+            <div>
+                @if (CanManage && _activeSession.Status == StockTakeStatus.Open)
+                {
+                    <button type="button" class="btn btn-sm btn-success me-2" data-testid="stock-take-post"
+                            @onclick="PostSessionAsync">Post variances</button>
+                }
+                <button type="button" class="btn btn-sm btn-light" @onclick="CloseSession">Close</button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="text-end">System</th>
+                            <th class="text-end">Counted</th>
+                            <th class="text-end">Variance</th>
+                            @if (CanManage && _activeSession.Status == StockTakeStatus.Open)
+                            {
+                                <th></th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _activeSession.Lines.Where(l => !l.IsDeleted))
+                        {
+                            var variance = line.CountedQuantity.HasValue
+                                ? line.CountedQuantity.Value - line.SystemQuantity
+                                : (decimal?)null;
+                            <tr>
+                                <td>@(line.InventoryItem?.Name ?? "—")</td>
+                                <td class="text-end">@line.SystemQuantity.ToString("N2")</td>
+                                <td class="text-end">@(line.CountedQuantity?.ToString("N2") ?? "—")</td>
+                                <td class="text-end">
+                                    @if (variance.HasValue)
+                                    {
+                                        <span class="@(variance == 0 ? "text-muted" : variance > 0 ? "text-success" : "text-danger")">
+                                            @variance.Value.ToString("N2")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                @if (CanManage && _activeSession.Status == StockTakeStatus.Open)
+                                {
+                                    <td class="text-end" style="min-width: 120px;">
+                                        <input type="number" step="0.01" class="form-control form-control-sm d-inline-block"
+                                               style="width: 90px;"
+                                               value="@GetCountInput(line)"
+                                               @onchange="e => SaveCount(line, e)" />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<ConfirmDialogHost />
+
+@code {
+    private List<StockTakeSession> _sessions = new();
+    private StockTakeSession? _activeSession;
+    private bool _loading = true;
+    private readonly Dictionary<Guid, string> _countInputs = new();
+
+    [Inject] private ConfirmService Confirm { get; set; } = default!;
+
+    private bool CanManage => CurrentUser.Permissions.Contains(Permissions.InventoryManage);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _sessions = (await StockTakeService.GetAllAsync()).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task StartSessionAsync()
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            "Start a new stock take session for all active inventory items?",
+            "Start stock take",
+            confirmLabel: "Start");
+        if (!ok) return;
+
+        var id = await StockTakeService.StartSessionAsync(userId);
+        await LoadAsync();
+        await OpenSession(id);
+        Toast.ShowSuccess("Stock take session started.");
+    }
+
+    private async Task OpenSession(Guid id)
+    {
+        _activeSession = await StockTakeService.GetByIdAsync(id);
+        _countInputs.Clear();
+    }
+
+    private void CloseSession() => _activeSession = null;
+
+    private string GetCountInput(StockTakeLine line) =>
+        _countInputs.TryGetValue(line.Id, out var v)
+            ? v
+            : line.CountedQuantity?.ToString("G") ?? string.Empty;
+
+    private async Task SaveCount(StockTakeLine line, ChangeEventArgs e)
+    {
+        if (_activeSession == null || !decimal.TryParse(e.Value?.ToString(), out var qty)) return;
+
+        _countInputs[line.Id] = e.Value?.ToString() ?? string.Empty;
+        await StockTakeService.RecordCountAsync(_activeSession.Id, line.InventoryItemId, qty);
+        _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+    }
+
+    private async Task PostSessionAsync()
+    {
+        if (_activeSession == null || CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            "Post variances to inventory? This cannot be undone.",
+            "Post stock take",
+            confirmLabel: "Post",
+            confirmVariant: "success");
+        if (!ok) return;
+
+        if (!await StockTakeService.PostSessionAsync(_activeSession.Id, userId))
+        {
+            Toast.ShowError("Session could not be posted.");
+            return;
+        }
+
+        Toast.ShowSuccess("Stock take posted — variances applied.");
+        _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+        await LoadAsync();
+    }
+
+    private static string GetStatusBadge(StockTakeStatus status) => status switch
+    {
+        StockTakeStatus.Open => "<span class=\"badge bg-warning text-dark\">Open</span>",
+        StockTakeStatus.Posted => "<span class=\"badge bg-success\">Posted</span>",
+        StockTakeStatus.Cancelled => "<span class=\"badge bg-secondary\">Cancelled</span>",
+        _ => status.ToString()
+    };
+}

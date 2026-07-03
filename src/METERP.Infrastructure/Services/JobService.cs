@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
@@ -14,19 +15,78 @@ public class JobService : IJobService
     private readonly ITenantProvider? _tenantProvider;
     private readonly IQuotaService? _quotaService;
     private readonly ITenantCacheService? _cache;
+    private readonly IDocumentSequenceService? _documentSequence;
 
     public JobService(
         AppDbContext dbContext,
         ITenantService? tenantService = null,
         ITenantProvider? tenantProvider = null,
         IQuotaService? quotaService = null,
-        ITenantCacheService? cache = null)
+        ITenantCacheService? cache = null,
+        IDocumentSequenceService? documentSequence = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
         _tenantProvider = tenantProvider;
         _quotaService = quotaService;
         _cache = cache;
+        _documentSequence = documentSequence;
+    }
+
+    public async Task<JobCommandCenterSummary?> GetCommandCenterSummaryAsync(Guid jobId, CancellationToken ct = default)
+    {
+        var job = await GetByIdAsync(jobId, ct);
+        if (job == null) return null;
+
+        var costs = job.ActualCosts.Where(c => !c.IsDeleted).ToList();
+        var laborCost = job.Labors.Where(l => !l.IsDeleted).Sum(l => l.TotalCost);
+
+        var requisitions = await _dbContext.Set<StockRequisition>()
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .Include(r => r.PurchaseOrder)
+            .Where(r => r.JobId == jobId)
+            .OrderByDescending(r => r.CreatedDate)
+            .ToListAsync(ct);
+
+        var poIds = requisitions
+            .Where(r => r.PurchaseOrderId.HasValue)
+            .Select(r => r.PurchaseOrderId!.Value)
+            .Distinct()
+            .ToList();
+
+        var grvs = poIds.Count == 0
+            ? new List<GoodsReceiptVoucher>()
+            : await _dbContext.Set<GoodsReceiptVoucher>()
+                .AsNoTracking()
+                .Where(g => poIds.Contains(g.PurchaseOrderId))
+                .ToListAsync(ct);
+
+        var grvByPo = grvs.GroupBy(g => g.PurchaseOrderId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.ReceivedAt).First().GrvNumber);
+
+        return new JobCommandCenterSummary
+        {
+            JobId = jobId,
+            MaterialCost = costs.Where(c => c.CostType.Equals("Material", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
+            TravelCost = costs.Where(c => c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
+            OtherCost = costs.Where(c => !c.CostType.Equals("Material", StringComparison.OrdinalIgnoreCase)
+                && !c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
+            LaborCost = laborCost,
+            MarginPercent = job.GetMarginPercent(),
+            IsReadyToInvoice = job.IsReadyToInvoice(),
+            ProgressPercent = job.GetProgressPercent(),
+            Requisitions = requisitions.Select(r => new JobRequisitionSummary
+            {
+                RequisitionNumber = r.RequisitionNumber,
+                Status = r.Status,
+                PurchaseOrderNumber = r.PurchaseOrder?.PoNumber,
+                GrvNumber = r.PurchaseOrderId.HasValue && grvByPo.TryGetValue(r.PurchaseOrderId.Value, out var grv)
+                    ? grv
+                    : null,
+                LineCount = r.Lines.Count(l => !l.IsDeleted)
+            }).ToList()
+        };
     }
 
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -102,7 +162,9 @@ public class JobService : IJobService
 
         if (string.IsNullOrWhiteSpace(job.JobNumber))
         {
-            job.JobNumber = $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
+            job.JobNumber = _documentSequence != null
+                ? await _documentSequence.GetNextNumberAsync("Job", "J", ct)
+                : $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
 
         _dbContext.Set<Job>().Add(job);
@@ -188,6 +250,25 @@ public class JobService : IJobService
 
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+    }
+
+    public async Task<bool> SignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default)
+    {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null)
+            return false;
+
+        job.SignOffStatus = JobSignOffStatus.SignedOff;
+        job.SignedOffAt = DateTime.UtcNow;
+        job.SignedOffByUserId = userId;
+
+        if (job.Status is JobStatus.Scheduled or JobStatus.InProgress)
+            job.Status = JobStatus.Completed;
+
+        job.CompletedDate ??= DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+        return true;
     }
 
     public async Task<Guid> AddCostAsync(JobCost cost, CancellationToken ct = default)
@@ -316,5 +397,87 @@ public class JobService : IJobService
         {
             // Best-effort commercial tracking — must not break business operations.
         }
+    }
+
+    public async Task<IReadOnlyList<JobMilestone>> GetMilestonesAsync(Guid jobId, CancellationToken ct = default) =>
+        await _dbContext.Set<JobMilestone>()
+            .AsNoTracking()
+            .Where(m => m.JobId == jobId)
+            .OrderBy(m => m.SortOrder)
+            .ThenBy(m => m.DueDate)
+            .ToListAsync(ct);
+
+    public async Task<Guid> AddMilestoneAsync(JobMilestone milestone, CancellationToken ct = default)
+    {
+        _dbContext.Set<JobMilestone>().Add(milestone);
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+        return milestone.Id;
+    }
+
+    public async Task UpdateMilestoneAsync(JobMilestone milestone, CancellationToken ct = default)
+    {
+        _dbContext.Set<JobMilestone>().Update(milestone);
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
+    public async Task DeleteMilestoneAsync(Guid milestoneId, CancellationToken ct = default)
+    {
+        var milestone = await _dbContext.Set<JobMilestone>().FirstOrDefaultAsync(m => m.Id == milestoneId, ct);
+        if (milestone == null) return;
+        milestone.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<JobSnagItem>> GetSnagsAsync(Guid jobId, CancellationToken ct = default) =>
+        await _dbContext.Set<JobSnagItem>()
+            .AsNoTracking()
+            .Where(s => s.JobId == jobId)
+            .OrderByDescending(s => s.ReportedAt)
+            .ToListAsync(ct);
+
+    public async Task<Guid> AddSnagAsync(JobSnagItem snag, CancellationToken ct = default)
+    {
+        _dbContext.Set<JobSnagItem>().Add(snag);
+        await _dbContext.SaveChangesAsync(ct);
+        return snag.Id;
+    }
+
+    public async Task ResolveSnagAsync(Guid snagId, Guid userId, CancellationToken ct = default)
+    {
+        var snag = await _dbContext.Set<JobSnagItem>().FirstOrDefaultAsync(s => s.Id == snagId, ct);
+        if (snag == null || snag.IsResolved) return;
+        snag.IsResolved = true;
+        snag.ResolvedAt = DateTime.UtcNow;
+        snag.ResolvedByUserId = userId;
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<JobSafetyIncident>> GetSafetyIncidentsAsync(Guid jobId, CancellationToken ct = default) =>
+        await _dbContext.Set<JobSafetyIncident>()
+            .AsNoTracking()
+            .Where(i => i.JobId == jobId)
+            .OrderByDescending(i => i.ReportedAt)
+            .ToListAsync(ct);
+
+    public async Task<Guid> AddSafetyIncidentAsync(JobSafetyIncident incident, CancellationToken ct = default)
+    {
+        _dbContext.Set<JobSafetyIncident>().Add(incident);
+        await _dbContext.SaveChangesAsync(ct);
+        return incident.Id;
+    }
+
+    public async Task CloseSafetyIncidentAsync(Guid incidentId, Guid userId, string? correctiveAction, CancellationToken ct = default)
+    {
+        var incident = await _dbContext.Set<JobSafetyIncident>().FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident == null || incident.IsClosed) return;
+        incident.IsClosed = true;
+        incident.ClosedAt = DateTime.UtcNow;
+        incident.ClosedByUserId = userId;
+        if (!string.IsNullOrWhiteSpace(correctiveAction))
+            incident.CorrectiveAction = correctiveAction.Trim();
+        await _dbContext.SaveChangesAsync(ct);
     }
 }

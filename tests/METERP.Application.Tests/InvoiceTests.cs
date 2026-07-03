@@ -49,7 +49,8 @@ public class InvoiceTests
             CustomerId = customer.Id,
             JobNumber = "J-AUDIT-001",
             QuotedTotal = 4500m,
-            Title = "Audit job"
+            Title = "Audit job",
+            SignOffStatus = JobSignOffStatus.SignedOff
         };
         db.Set<Job>().Add(job);
         await db.SaveChangesAsync();
@@ -102,7 +103,8 @@ public class InvoiceTests
             CustomerId = customer.Id,
             QuoteId = quote.Id,
             QuotedTotal = quote.Total,
-            Title = "Job from quote"
+            Title = "Job from quote",
+            SignOffStatus = JobSignOffStatus.SignedOff
         };
         db.Set<Job>().Add(job);
         await db.SaveChangesAsync();
@@ -147,7 +149,8 @@ public class InvoiceTests
             TenantId = tenantId,
             CustomerId = customer.Id,
             QuotedTotal = 5500m,
-            Title = "Standalone job"
+            Title = "Standalone job",
+            SignOffStatus = JobSignOffStatus.SignedOff
         };
         // For fallback test, use 0 tax to keep total == quoted for simple assert
         // (real invoices would have tax added on top)

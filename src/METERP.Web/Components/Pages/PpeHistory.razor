@@ -1,0 +1,77 @@
+@page "/ppe-history"
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@attribute [Authorize(Policy = "Approvals.View")]
+@rendermode InteractiveServer
+@inject IPpeIssueService PpeIssueService
+
+<PageTitle>PPE Issue History</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">PPE Issue History</h1>
+        <p class="text-muted small mb-0">Executive visibility into safety equipment issued to field crews via requisitions.</p>
+    </div>
+    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="ppe-history-export" />
+</div>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="5" TestId="ppe-history-skeleton" />
+}
+else if (_issues.Count == 0)
+{
+    <EmptyState Title="No PPE issues recorded"
+                Description="PPE requisitions issued to jobs appear here for compliance tracking."
+                Icon="🦺"
+                TestId="ppe-history-empty" />
+}
+else
+{
+    <div class="table-responsive" data-testid="ppe-history-table">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Issued</th>
+                    <th>Employee</th>
+                    <th>Job</th>
+                    <th>Item</th>
+                    <th class="text-end">Qty</th>
+                    <th>Requisition</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var issue in _issues)
+                {
+                    <tr data-testid="ppe-history-row">
+                        <td>@issue.IssuedAt.ToString("yyyy-MM-dd")</td>
+                        <td>@(issue.Employee != null ? $"{issue.Employee.FirstName} {issue.Employee.LastName}" : "—")</td>
+                        <td>@(issue.Job?.JobNumber ?? "—")</td>
+                        <td>@(issue.InventoryItem?.Name ?? "—")</td>
+                        <td class="text-end">@issue.Quantity.ToString("N2")</td>
+                        <td>@(issue.StockRequisition?.RequisitionNumber ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<EmployeePpeIssue> _issues = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _issues = (await PpeIssueService.GetHistoryAsync(pageSize: 100)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

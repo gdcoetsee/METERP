@@ -26,4 +26,14 @@ public interface IUserService
     Task<IReadOnlyList<string>> GetUserRolesAsync(Guid userId, CancellationToken ct = default);
 
     Task<IReadOnlyList<string>> GetAvailableRolesAsync(CancellationToken ct = default);
+
+    Task<IReadOnlyList<string>> GetUserPermissionsAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces direct Permission claims on the user (role template + custom overrides).
+    /// </summary>
+    Task<(bool Succeeded, string[] Errors)> SetUserPermissionsAsync(
+        Guid userId,
+        IReadOnlyList<string> permissions,
+        CancellationToken ct = default);
 }

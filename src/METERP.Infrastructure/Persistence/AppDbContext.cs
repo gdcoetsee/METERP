@@ -42,10 +42,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     // Invoicing (completes sales flow)
     public DbSet<Invoice> Invoices { get; set; } = null!;
     public DbSet<InvoiceLine> InvoiceLines { get; set; } = null!;
+    public DbSet<InvoicePayment> InvoicePayments { get; set; } = null!;
 
     // Inventory & Stock Transactions (Module 3)
     public DbSet<InventoryItem> InventoryItems { get; set; } = null!;
     public DbSet<StockTransaction> StockTransactions { get; set; } = null!;
+    public DbSet<StockRequisition> StockRequisitions { get; set; } = null!;
+    public DbSet<StockRequisitionLine> StockRequisitionLines { get; set; } = null!;
 
     // Assets / Transformers (electrical contracting specific)
     public DbSet<Asset> Assets { get; set; } = null!;
@@ -57,6 +60,16 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Supplier> Suppliers { get; set; } = null!;
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; } = null!;
     public DbSet<PurchaseOrderLine> PurchaseOrderLines { get; set; } = null!;
+    public DbSet<GoodsReceiptVoucher> GoodsReceiptVouchers { get; set; } = null!;
+    public DbSet<GoodsReceiptLine> GoodsReceiptLines { get; set; } = null!;
+    public DbSet<EmployeePpeIssue> EmployeePpeIssues { get; set; } = null!;
+    public DbSet<StockTakeSession> StockTakeSessions { get; set; } = null!;
+    public DbSet<StockTakeLine> StockTakeLines { get; set; } = null!;
+    public DbSet<FieldReport> FieldReports { get; set; } = null!;
+    public DbSet<JobMilestone> JobMilestones { get; set; } = null!;
+    public DbSet<JobSnagItem> JobSnagItems { get; set; } = null!;
+    public DbSet<JobSafetyIncident> JobSafetyIncidents { get; set; } = null!;
+    public DbSet<RecurringJobSchedule> RecurringJobSchedules { get; set; } = null!;
 
     // Finance / Accounting (Phase 3 - minimal GL to support real costing + invoicing)
     public DbSet<Account> Accounts { get; set; } = null!;
@@ -65,6 +78,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
 
     // HR / Payroll (Phase 4 - links labor to people)
     public DbSet<Employee> Employees { get; set; } = null!;
+    public DbSet<Division> Divisions { get; set; } = null!;
+    public DbSet<LeaveRequest> LeaveRequests { get; set; } = null!;
+    public DbSet<TenantDocumentSequence> TenantDocumentSequences { get; set; } = null!;
 
     // Sales Order (intermediate Quote -> SO -> Job per original roadmap)
     public DbSet<SalesOrder> SalesOrders { get; set; } = null!;
@@ -74,6 +90,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Opportunity> Opportunities { get; set; } = null!;
     public DbSet<AuditLogEntry> AuditLogEntries { get; set; } = null!;
     public DbSet<ProcessedStripeWebhookEvent> ProcessedStripeWebhookEvents { get; set; } = null!;
+    public DbSet<CompanyDocument> CompanyDocuments { get; set; } = null!;
+    public DbSet<EmployeeCertification> EmployeeCertifications { get; set; } = null!;
+    public DbSet<JobComplianceCertificate> JobComplianceCertificates { get; set; } = null!;
+    public DbSet<TenantNotification> TenantNotifications { get; set; } = null!;
 
     public Guid CurrentTenantId => _tenantProvider.GetCurrentTenantId();
 
@@ -132,6 +152,24 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasKey(e => e.EventId);
             entity.Property(e => e.EventId).HasMaxLength(128);
             entity.Property(e => e.EventType).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<TenantDocumentSequence>(entity =>
+        {
+            entity.HasIndex(s => new { s.TenantId, s.DocumentType, s.Year }).IsUnique();
+        });
+
+        modelBuilder.Entity<Division>(entity =>
+        {
+            entity.HasIndex(d => new { d.TenantId, d.Code }).IsUnique();
+        });
+
+        modelBuilder.Entity<StockRequisition>(entity =>
+        {
+            entity.HasOne(r => r.PurchaseOrder)
+                .WithOne()
+                .HasForeignKey<StockRequisition>(r => r.PurchaseOrderId)
+                .IsRequired(false);
         });
 
         // Configure Identity tables to include TenantId in keys where useful (optional but good for multi-tenant)

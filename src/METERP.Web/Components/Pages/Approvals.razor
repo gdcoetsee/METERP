@@ -1,0 +1,594 @@
+@page "/approvals"
+@using METERP.Application.Interfaces
+@using METERP.Application.Models
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@attribute [Authorize(Policy = "Approvals.View")]
+@rendermode InteractiveServer
+@inject IQuoteService QuoteService
+@inject ILeaveService LeaveService
+@inject IStockRequisitionService RequisitionService
+@inject IFieldReportService FieldReportService
+@inject IAccountabilityReportService AccountabilityReports
+@inject ICurrentUserService CurrentUser
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+<PageTitle>Approvals</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Approvals Hub</h1>
+        <p class="text-muted small mb-0">One queue for quotes, requisitions, leave, field reports, and sign-offs — no more chasing paper.</p>
+    </div>
+    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="approvals-export" OnExportCsv="ExportOverdueCsvAsync" />
+</div>
+
+@if (_overdueApprovals.Count > 0)
+{
+    <div class="alert alert-danger py-2 mb-3" data-testid="approvals-sla-overdue" role="alert">
+        <strong>@_overdueApprovals.Count approval(s) past SLA.</strong>
+        <span class="ms-1 small">Longest wait: @_overdueApprovals.Max(o => o.HoursInQueue)h (SLA @_overdueApprovals[0].SlaHours h).</span>
+    </div>
+}
+
+<ul class="nav nav-tabs mb-3" role="tablist" data-testid="approvals-tabs">
+    @foreach (var tab in _tabs)
+    {
+        <li class="nav-item" role="presentation">
+            <button type="button" class="nav-link @(_activeTab == tab.Key ? "active" : "")"
+                    data-testid="@($"approvals-tab-{tab.Key}")"
+                    @onclick="() => SelectTab(tab.Key)">
+                @tab.Label
+                @if (tab.Count > 0)
+                {
+                    <span class="badge bg-warning text-dark ms-1">@tab.Count</span>
+                }
+            </button>
+        </li>
+    }
+</ul>
+
+<div data-testid="approvals-ready">
+    @if (_loading)
+    {
+        <ListSkeleton Rows="3" TestId="approvals-skeleton" />
+    }
+    else if (_activeTab == "field" && _pendingFieldReports.Count > 0)
+    {
+        @FieldReportList()
+    }
+    else if (_activeTab == "field")
+    {
+        <EmptyState Title="No field reports pending"
+                    Description="Technicians submit hours and travel from the Field Portal."
+                    Icon="📝"
+                    TestId="approvals-field-empty" />
+    }
+    else if (_activeTab == "signoff")
+    {
+        <div class="alert alert-info" data-testid="approvals-tab-panel">
+            <strong>Job sign-off</strong> — record client sign-off on the Jobs page before invoicing.
+            <a href="/jobs" class="alert-link ms-1">Open jobs</a>
+        </div>
+    }
+    else if (ShowQuotes && _pendingQuotes.Count > 0)
+    {
+        <div class="list-group @(HasMoreAfterQuotes ? "mb-3" : "")" data-testid="approvals-quotes-list">
+            @foreach (var quote in _pendingQuotes)
+            {
+                <div class="list-group-item" data-testid="approvals-quote-row">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <span class="badge bg-light text-dark me-1">Quote</span>
+                            <strong>@quote.QuoteNumber</strong> — @(quote.Customer?.Name ?? "—")
+                            <div class="small text-muted">R @quote.Total.ToString("N2") · submitted @quote.SubmittedForApprovalAt?.ToString("dd MMM yyyy HH:mm")</div>
+                        </div>
+                        @if (CanApproveQuotes)
+                        {
+                            <div class="d-flex gap-2">
+                                <a href="/quotes" class="btn btn-sm btn-outline-secondary">Open quotes</a>
+                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-quote-approve"
+                                        @onclick="() => ApproveQuoteAsync(quote)">Approve</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-quote-reject"
+                                        @onclick="() => RejectQuoteAsync(quote)">Reject</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        @if (ShowRequisitions && _pendingRequisitions.Count > 0)
+        {
+            @RequisitionList()
+        }
+        @if (ShowLeave && _pendingLeave.Count > 0)
+        {
+            @LeaveList()
+        }
+        @if (ShowFieldReports && _pendingFieldReports.Count > 0)
+        {
+            @FieldReportList()
+        }
+    }
+    else if (ShowRequisitions && _pendingRequisitions.Count > 0)
+    {
+        @RequisitionList()
+    }
+    else if (ShowLeave && _pendingLeave.Count > 0)
+    {
+        @LeaveList()
+    }
+    else if (_activeTab == "requisitions")
+    {
+        <EmptyState Title="No stock requisitions pending approval"
+                    Description="Field technicians submit material requests; managers and executives approve here."
+                    Icon="📦"
+                    TestId="approvals-requisitions-empty" />
+    }
+    else if (_activeTab == "quotes")
+    {
+        <EmptyState Title="No quotes awaiting executive approval"
+                    Description="Estimators submit draft quotes for review before client send."
+                    Icon="📋"
+                    TestId="approvals-quotes-empty" />
+    }
+    else if (_activeTab == "leave")
+    {
+        <EmptyState Title="No leave requests pending approval"
+                    Description="Technicians submit leave via the Field Portal; managers and HR approve here."
+                    Icon="🏖️"
+                    TestId="approvals-leave-empty" />
+    }
+    else
+    {
+        <EmptyState Title="No pending approvals"
+                    Description="When items need your action, they will appear here with accountable queues per role."
+                    Icon="✅"
+                    TestId="approvals-empty" />
+    }
+</div>
+
+<ConfirmDialogHost />
+
+@code {
+    private string _activeTab = "all";
+    private bool _loading = true;
+    private List<Quote> _pendingQuotes = new();
+    private List<LeaveRequest> _pendingLeave = new();
+    private List<StockRequisition> _pendingRequisitions = new();
+    private List<FieldReport> _pendingFieldReports = new();
+    private List<OverdueApprovalRow> _overdueApprovals = new();
+
+    private readonly List<ApprovalTab> _tabs =
+    [
+        new("all", "All", 0),
+        new("quotes", "Quotes", 0),
+        new("requisitions", "Stock", 0),
+        new("leave", "Leave", 0),
+        new("field", "Field reports", 0),
+        new("signoff", "Job sign-off", 0)
+    ];
+
+    [Inject] private ConfirmService Confirm { get; set; } = default!;
+
+    private bool CanApproveQuotes => CurrentUser.Permissions.Contains(Permissions.QuotesApprove);
+    private bool CanApproveLeave => CurrentUser.Permissions.Contains(Permissions.LeaveApprove);
+    private bool CanApproveRequisitions => CurrentUser.Permissions.Contains(Permissions.RequisitionsApprove);
+    private bool ShowQuotes => _activeTab is "all" or "quotes";
+    private bool ShowRequisitions => _activeTab is "all" or "requisitions";
+    private bool ShowLeave => _activeTab is "all" or "leave";
+    private bool ShowFieldReports => _activeTab is "all" or "field";
+    private bool CanApproveFieldReports => CurrentUser.Permissions.Contains(Permissions.JobsManage);
+    private bool HasMoreAfterQuotes =>
+        (ShowRequisitions && _pendingRequisitions.Count > 0)
+        || (ShowLeave && _pendingLeave.Count > 0)
+        || (ShowFieldReports && _pendingFieldReports.Count > 0);
+
+    private int TotalPending => _tabs.Sum(t => t.Count);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _pendingQuotes = (await QuoteService.GetPendingExecutiveApprovalAsync()).ToList();
+            _pendingLeave = (await LeaveService.GetPendingApprovalsAsync()).ToList();
+            _pendingRequisitions = (await RequisitionService.GetPendingApprovalsAsync()).ToList();
+            _pendingFieldReports = (await FieldReportService.GetPendingAsync()).ToList();
+            _overdueApprovals = (await AccountabilityReports.GetOverdueApprovalsAsync()).ToList();
+            UpdateTabCount("quotes", _pendingQuotes.Count);
+            UpdateTabCount("requisitions", _pendingRequisitions.Count);
+            UpdateTabCount("leave", _pendingLeave.Count);
+            UpdateTabCount("field", _pendingFieldReports.Count);
+            UpdateTabCount("all", _pendingQuotes.Count + _pendingRequisitions.Count + _pendingLeave.Count + _pendingFieldReports.Count);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void UpdateTabCount(string key, int count)
+    {
+        var idx = _tabs.FindIndex(t => t.Key == key);
+        if (idx >= 0)
+            _tabs[idx] = _tabs[idx] with { Count = count };
+    }
+
+    private void SelectTab(string key) => _activeTab = key;
+
+    private string GetTabLabel(string key) => _tabs.First(t => t.Key == key).Label;
+
+    private RenderFragment RequisitionList() => __builder =>
+    {
+        <div class="list-group mb-3" data-testid="approvals-requisitions-list">
+            @foreach (var req in _pendingRequisitions)
+            {
+                var lineSummary = string.Join(", ", req.Lines.Select(l =>
+                    $"{l.InventoryItem?.Name ?? "Item"} x{l.QuantityRequested:N0}"));
+                <div class="list-group-item" data-testid="approvals-requisition-row">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <span class="badge bg-light text-dark me-1">Stock</span>
+                            <strong>@req.RequisitionNumber</strong> — @(req.Job?.JobNumber ?? "—")
+                            @if (req.IsPpe)
+                            {
+                                <span class="badge bg-warning text-dark ms-1">PPE</span>
+                            }
+                            <div class="small text-muted">@GetRequisitionStatusLabel(req.Status)</div>
+                            <div class="small">@lineSummary</div>
+                        </div>
+                        @if (CanApproveRequisitions)
+                        {
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-requisition-approve"
+                                        @onclick="() => ApproveRequisitionAsync(req)">Approve</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-requisition-reject"
+                                        @onclick="() => RejectRequisitionAsync(req)">Reject</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    };
+
+    private static string GetRequisitionStatusLabel(RequisitionStatus status) => status switch
+    {
+        RequisitionStatus.PendingManager => "Awaiting manager",
+        RequisitionStatus.PendingExecutive => "Awaiting executive",
+        _ => status.ToString()
+    };
+
+    private RenderFragment FieldReportList() => __builder =>
+    {
+        <div class="list-group mb-3" data-testid="approvals-field-list">
+            @foreach (var report in _pendingFieldReports)
+            {
+                <div class="list-group-item" data-testid="approvals-field-row">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <span class="badge bg-light text-dark me-1">Field</span>
+                            <strong>@(report.Job?.JobNumber ?? "—")</strong>
+                            <div class="small text-muted">
+                                @report.WorkDate.ToString("dd MMM yyyy") · @report.HoursWorked.ToString("N1")h · travel R @report.TravelCost.ToString("N2")
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(report.Comments))
+                            {
+                                <div class="small">@report.Comments</div>
+                            }
+                        </div>
+                        @if (CanApproveFieldReports)
+                        {
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-field-approve"
+                                        @onclick="() => ApproveFieldReportAsync(report)">Approve & post costs</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-field-reject"
+                                        @onclick="() => RejectFieldReportAsync(report)">Reject</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment LeaveList() => __builder =>
+    {
+        <div class="list-group" data-testid="approvals-leave-list">
+            @foreach (var request in _pendingLeave)
+            {
+                var employeeName = request.Employee != null
+                    ? $"{request.Employee.FirstName} {request.Employee.LastName}"
+                    : "Employee";
+                <div class="list-group-item" data-testid="approvals-leave-row">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <span class="badge bg-light text-dark me-1">Leave</span>
+                            <strong>@employeeName</strong>
+                            <div class="small text-muted">
+                                @request.StartDate.ToString("dd MMM") – @request.EndDate.ToString("dd MMM yyyy")
+                                · @request.DaysRequested.ToString("N1") day(s) · @GetLeaveStatusLabel(request.Status)
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(request.Reason))
+                            {
+                                <div class="small">@request.Reason</div>
+                            }
+                        </div>
+                        @if (CanApproveLeave && CanActOnLeave(request))
+                        {
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-leave-approve"
+                                        @onclick="() => ApproveLeaveAsync(request)">Approve</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-leave-reject"
+                                        @onclick="() => RejectLeaveAsync(request)">Reject</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    };
+
+    private static string GetLeaveStatusLabel(LeaveRequestStatus status) => status switch
+    {
+        LeaveRequestStatus.PendingManager => "Awaiting manager",
+        LeaveRequestStatus.PendingExecutive => "Awaiting executive",
+        LeaveRequestStatus.PendingHr => "Awaiting HR",
+        _ => status.ToString()
+    };
+
+    private static bool CanActOnLeave(LeaveRequest request) =>
+        request.Status is LeaveRequestStatus.PendingManager
+            or LeaveRequestStatus.PendingExecutive
+            or LeaveRequestStatus.PendingHr;
+
+    private async Task ExportOverdueCsvAsync()
+    {
+        var csv = await AccountabilityReports.ExportOverdueApprovalsCsvAsync();
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "overdue-approvals.csv", csv, "text/csv;charset=utf-8");
+        Toast.ShowSuccess("Overdue approvals exported.");
+    }
+
+    private async Task ApproveQuoteAsync(Quote quote)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Approve {quote.QuoteNumber} for client send?",
+            "Executive quote approval",
+            confirmLabel: "Approve",
+            confirmVariant: "success");
+        if (!ok) return;
+
+        try
+        {
+            await QuoteService.ExecutiveApproveAsync(quote.Id, userId);
+            Toast.ShowSuccess($"{quote.QuoteNumber} approved — can now be marked Sent.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task RejectQuoteAsync(Quote quote)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            "Reject this quote and return it to the estimator?",
+            "Reject quote",
+            confirmLabel: "Reject",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        try
+        {
+            await QuoteService.ExecutiveRejectAsync(quote.Id, userId, "Rejected via Approvals hub");
+            Toast.ShowInfo($"{quote.QuoteNumber} rejected.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveLeaveAsync(LeaveRequest request)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Approve leave for {request.StartDate:dd MMM} – {request.EndDate:dd MMM}?",
+            "Leave approval",
+            confirmLabel: "Approve",
+            confirmVariant: "success");
+        if (!ok) return;
+
+        try
+        {
+            var approved = request.Status switch
+            {
+                LeaveRequestStatus.PendingManager => await LeaveService.ApproveManagerAsync(request.Id, userId),
+                LeaveRequestStatus.PendingExecutive => await LeaveService.ApproveExecutiveAsync(request.Id, userId),
+                LeaveRequestStatus.PendingHr => await LeaveService.ApproveHrAsync(request.Id, userId),
+                _ => false
+            };
+
+            if (!approved)
+            {
+                Toast.ShowError("Leave request is no longer pending at this approval stage.");
+                await LoadAsync();
+                return;
+            }
+
+            Toast.ShowSuccess("Leave request advanced in the approval chain.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task RejectLeaveAsync(LeaveRequest request)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            "Reject this leave request?",
+            "Reject leave",
+            confirmLabel: "Reject",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        try
+        {
+            if (!await LeaveService.RejectAsync(request.Id, userId, "Rejected via Approvals hub"))
+            {
+                Toast.ShowError("Leave request could not be rejected.");
+                return;
+            }
+
+            Toast.ShowInfo("Leave request rejected.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveRequisitionAsync(StockRequisition req)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var stage = req.Status == RequisitionStatus.PendingManager ? "manager" : "executive";
+        var ok = await Confirm.ConfirmAsync(
+            $"Approve {req.RequisitionNumber} at {stage} level?",
+            "Stock requisition approval",
+            confirmLabel: "Approve",
+            confirmVariant: "success");
+        if (!ok) return;
+
+        try
+        {
+            var wasManager = req.Status == RequisitionStatus.PendingManager;
+            var approved = req.Status switch
+            {
+                RequisitionStatus.PendingManager => await RequisitionService.ApproveManagerAsync(req.Id, userId),
+                RequisitionStatus.PendingExecutive => await RequisitionService.ApproveExecutiveAsync(req.Id, userId),
+                _ => false
+            };
+
+            if (!approved)
+            {
+                Toast.ShowError("Requisition is no longer pending at this approval stage.");
+                await LoadAsync();
+                return;
+            }
+
+            Toast.ShowSuccess(wasManager
+                ? $"{req.RequisitionNumber} advanced to executive approval."
+                : $"{req.RequisitionNumber} approved — stock reserved for issue.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task RejectRequisitionAsync(StockRequisition req)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Reject {req.RequisitionNumber} and return to requester?",
+            "Reject requisition",
+            confirmLabel: "Reject",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        try
+        {
+            if (!await RequisitionService.RejectAsync(req.Id, userId, "Rejected via Approvals hub"))
+            {
+                Toast.ShowError("Requisition could not be rejected.");
+                return;
+            }
+
+            Toast.ShowInfo($"{req.RequisitionNumber} rejected.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveFieldReportAsync(FieldReport report)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Approve field report for {report.Job?.JobNumber}? Hours and travel will post to job costing.",
+            "Approve field report",
+            confirmLabel: "Approve",
+            confirmVariant: "success");
+        if (!ok) return;
+
+        try
+        {
+            if (!await FieldReportService.ApproveAsync(report.Id, userId))
+            {
+                Toast.ShowError("Field report is no longer pending.");
+                await LoadAsync();
+                return;
+            }
+
+            Toast.ShowSuccess("Field report approved — labor and travel posted to job.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task RejectFieldReportAsync(FieldReport report)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            "Reject this field report?",
+            "Reject field report",
+            confirmLabel: "Reject",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        try
+        {
+            if (!await FieldReportService.RejectAsync(report.Id, userId, "Rejected via Approvals hub"))
+            {
+                Toast.ShowError("Field report could not be rejected.");
+                return;
+            }
+
+            Toast.ShowInfo("Field report rejected.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private sealed record ApprovalTab(string Key, string Label, int Count);
+}

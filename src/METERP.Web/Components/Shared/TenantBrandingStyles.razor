@@ -1,0 +1,35 @@
+@using METERP.Application.Interfaces
+@using METERP.Application.Models
+@using METERP.Application.Services
+@inject ITenantService TenantService
+@inject ICurrentUserService CurrentUser
+
+@if (!string.IsNullOrEmpty(_css))
+{
+    <style>@((MarkupString)_css)</style>
+}
+
+@code {
+    private string? _css;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tenantId = CurrentUser.TenantId;
+            if (tenantId == Guid.Empty)
+                return;
+
+            var tenant = await TenantService.GetByIdAsync(tenantId);
+            var branding = TenantBranding.From(tenant);
+            if (branding.ColorHex == TenantBranding.DefaultColorHex && branding.DisplayName == "METERP")
+                return;
+
+            _css = $":root {{ --primary-color: {branding.ColorHex}; }}";
+        }
+        catch
+        {
+            // Branding is optional — ignore load failures
+        }
+    }
+}

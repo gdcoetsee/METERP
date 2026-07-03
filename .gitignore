@@ -31,6 +31,9 @@ packages/
 *.nuget.props
 *.nuget.targets
 
+# Local document uploads (demo/dev storage)
+src/METERP.Web/uploads/
+
 # .NET Core / .NET
 project.lock.json
 project.fragment.lock.json

@@ -19,4 +19,23 @@ public class Employee : BaseEntity
     public bool IsActive { get; set; } = true;
 
     public string? Notes { get; set; }
+
+    public Guid? DivisionId { get; set; }
+    public Division? Division { get; set; }
+
+    /// <summary>Linked login user for Field Portal / self-service leave.</summary>
+    public Guid? LinkedUserId { get; set; }
+
+    public Guid? ManagerEmployeeId { get; set; }
+    public Employee? Manager { get; set; }
+
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+
+    public DateTime? HireDate { get; set; }
+
+    public decimal AnnualLeaveEntitlementDays { get; set; } = 15m;
+
+    /// <summary>Running balance after approved leave (accrual minus taken).</summary>
+    public decimal LeaveBalanceDays { get; set; }
 }

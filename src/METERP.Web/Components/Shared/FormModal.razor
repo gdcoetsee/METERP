@@ -1,0 +1,50 @@
+@if (IsOpen)
+{
+    <div class="meterp-modal-backdrop" data-testid="@BackdropTestId" @onclick="HandleBackdropClick">
+        <div class="meterp-modal @(SizeClass)" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
+             data-testid="@TestId" @onclick:stopPropagation="true">
+            <div class="meterp-modal-header">
+                <h5 class="meterp-modal-title" id="@TitleId">@Title</h5>
+                <button type="button" class="btn-close" aria-label="Close" @onclick="CloseAsync" disabled="@CloseDisabled"></button>
+            </div>
+            <div class="meterp-modal-body">
+                @ChildContent
+            </div>
+            @if (Footer != null)
+            {
+                <div class="meterp-modal-footer">
+                    @Footer
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
+    [Parameter] public bool CloseDisabled { get; set; }
+    [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public string TestId { get; set; } = "form-modal";
+    [Parameter] public string BackdropTestId { get; set; } = "form-modal-backdrop";
+
+    private string TitleId => $"{TestId}-title";
+    private string SizeClass => Size switch
+    {
+        "lg" => "meterp-modal-lg",
+        "sm" => "meterp-modal-sm",
+        _ => ""
+    };
+
+    private async Task CloseAsync() => await OnClose.InvokeAsync();
+
+    private async Task HandleBackdropClick()
+    {
+        if (CloseOnBackdrop)
+            await CloseAsync();
+    }
+}

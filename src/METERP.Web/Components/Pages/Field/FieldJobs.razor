@@ -1,0 +1,158 @@
+@page "/field/jobs"
+@layout Layout.FieldLayout
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Domain
+@attribute [Authorize(Policy = "Field.View")]
+@rendermode InteractiveServer
+@inject IJobService JobService
+@inject IFieldReportService FieldReportService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+
+<PageTitle>My Jobs — Field</PageTitle>
+
+<h1 class="h5 mb-3">My Jobs</h1>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="4" TestId="field-jobs-skeleton" />
+}
+else if (_jobs.Count == 0)
+{
+    <EmptyState Title="No jobs assigned"
+                Description="When you are assigned to jobs, they will appear here for field reporting."
+                Icon="🔧"
+                TestId="field-jobs-empty" />
+}
+else
+{
+    <div class="list-group" data-testid="field-jobs-list">
+        @foreach (var job in _jobs)
+        {
+            <div class="list-group-item" data-testid="field-job-row">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>@job.JobNumber</strong>
+                        <div class="small">@job.Title</div>
+                        <div class="small text-muted">@(job.Customer?.Name ?? "—")</div>
+                    </div>
+                    <span class="badge bg-secondary">@job.Status</span>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm mt-2 w-100"
+                        data-testid="field-submit-report"
+                        @onclick="() => ShowReportForm(job)">
+                    Submit field report
+                </button>
+            </div>
+        }
+    </div>
+}
+
+<FormModal IsOpen="_showModal"
+           Title="Field report"
+           TestId="field-report-modal"
+           OnClose="CloseModal">
+    <ChildContent>
+        @if (_reportJob != null)
+        {
+            <p class="small text-muted mb-3">Job: <strong>@_reportJob.JobNumber</strong> — @_reportJob.Title</p>
+            <div class="mb-3">
+                <label class="form-label">Work date</label>
+                <InputDate class="form-control" @bind-Value="_workDate" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Hours worked</label>
+                <InputNumber class="form-control" @bind-Value="_hoursWorked" step="0.5" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Travel cost (R)</label>
+                <InputNumber class="form-control" @bind-Value="_travelCost" step="0.01" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Materials used</label>
+                <InputTextArea class="form-control" @bind-Value="_materialsUsed" rows="2" />
+            </div>
+            <div class="mb-0">
+                <label class="form-label">Comments</label>
+                <InputTextArea class="form-control" @bind-Value="_comments" rows="2" />
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
+        <button type="button" class="btn btn-success" data-testid="field-report-modal-save" @onclick="SubmitReportAsync">Submit</button>
+    </Footer>
+</FormModal>
+
+@code {
+    private List<Job> _jobs = new();
+    private bool _loading = true;
+    private bool _showModal;
+    private Job? _reportJob;
+    private DateTime _workDate = DateTime.UtcNow.Date;
+    private decimal _hoursWorked = 8m;
+    private decimal _travelCost;
+    private string? _materialsUsed;
+    private string? _comments;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var all = await JobService.GetAllAsync(page: 1, pageSize: 50);
+            _jobs = all
+                .Where(j => j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold)
+                .OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue)
+                .ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ShowReportForm(Job job)
+    {
+        _reportJob = job;
+        _workDate = DateTime.UtcNow.Date;
+        _hoursWorked = 8m;
+        _travelCost = 0m;
+        _materialsUsed = null;
+        _comments = null;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _reportJob = null;
+    }
+
+    private async Task SubmitReportAsync()
+    {
+        if (_reportJob == null || CurrentUser.UserId is not { } userId) return;
+
+        try
+        {
+            await FieldReportService.SubmitAsync(new FieldReport
+            {
+                JobId = _reportJob.Id,
+                SubmittedByUserId = userId,
+                WorkDate = _workDate,
+                HoursWorked = _hoursWorked,
+                TravelCost = _travelCost,
+                MaterialsUsed = _materialsUsed,
+                Comments = _comments
+            });
+
+            Toast.ShowSuccess($"Field report submitted for {_reportJob.JobNumber} — awaiting manager approval.");
+            CloseModal();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+}

@@ -20,12 +20,15 @@
     <span data-testid="inventory-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Inventory</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Item</button>
-    }
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="mb-0">Inventory</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="inventory-export" OnExportCsv="ExportCsvAsync" />
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Item</button>
+        }
+    </div>
 </div>
 
 <div class="mb-3 d-flex gap-2" style="max-width: 520px;">
@@ -68,6 +71,8 @@ else
                     <th>Name</th>
                     <th>Category</th>
                     <th class="text-end">On Hand</th>
+                    <th class="text-end">Reserved</th>
+                    <th class="text-end">Available</th>
                     <th class="text-end">Unit Cost</th>
                     <th></th>
                 </tr>
@@ -87,6 +92,17 @@ else
                             <strong>@item.QuantityOnHand</strong> @item.Unit
                             @if (isLow) { <span class="badge bg-danger ms-1">Low</span> }
                         </td>
+                        <td class="text-end">
+                            @if (item.QuantityReserved > 0)
+                            {
+                                <span class="text-warning">@item.QuantityReserved</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-end">@item.QuantityAvailable @item.Unit</td>
                         <td class="text-end">R @item.UnitCost.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewItem(item)">View</button>
@@ -428,5 +444,20 @@ else
         // Prominent predictive prompt (low-stock items + scheduled jobs + travel/expediting cost impact) lives in the AI Copilot.
         // This CTA gives users direct access from the inventory screen where low-stock decisions are made.
         Navigation.NavigateTo("/ai-copilot");
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (items == null || !items.Any()) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Sku,Name,Category,OnHand,Reserved,Available,UnitCost,ReorderLevel");
+        foreach (var item in items)
+        {
+            sb.AppendLine($"{item.Sku},{item.Name},{item.Category},{item.QuantityOnHand},{item.QuantityReserved},{item.QuantityAvailable},{item.UnitCost},{item.ReorderLevel}");
+        }
+
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "inventory.csv", sb.ToString(), "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Inventory CSV downloaded.");
     }
 }

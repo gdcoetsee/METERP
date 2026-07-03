@@ -1,0 +1,60 @@
+@inject ConfirmService ConfirmService
+@implements IDisposable
+
+@code {
+    private ConfirmRequest? _request;
+
+    protected override void OnInitialized()
+    {
+        ConfirmService.OnShow += HandleShow;
+    }
+
+    private void HandleShow(ConfirmRequest request)
+    {
+        _request = request;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_request == null) return;
+        _request.Completion.TrySetResult(true);
+        _request = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CancelAsync()
+    {
+        if (_request == null) return;
+        _request.Completion.TrySetResult(false);
+        _request = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ConfirmService.OnShow -= HandleShow;
+    }
+}
+
+@if (_request != null)
+{
+    <div class="meterp-modal-backdrop" data-testid="confirm-dialog-backdrop" @onclick="CancelAsync">
+        <div class="meterp-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title"
+             data-testid="confirm-dialog" @onclick:stopPropagation="true">
+            <div class="meterp-modal-header">
+                <h5 class="meterp-modal-title" id="confirm-dialog-title">@_request.Title</h5>
+                <button type="button" class="btn-close" aria-label="Close" @onclick="CancelAsync"></button>
+            </div>
+            <div class="meterp-modal-body">
+                <p class="mb-0">@_request.Message</p>
+            </div>
+            <div class="meterp-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-testid="confirm-dialog-cancel"
+                        @onclick="CancelAsync">@_request.CancelLabel</button>
+                <button type="button" class="btn btn-@_request.ConfirmVariant" data-testid="confirm-dialog-confirm"
+                        @onclick="ConfirmAsync">@_request.ConfirmLabel</button>
+            </div>
+        </div>
+    </div>
+}

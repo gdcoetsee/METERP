@@ -19,6 +19,11 @@ public class InventoryItem : BaseEntity
     /// </summary>
     public decimal QuantityOnHand { get; set; }
 
+    /// <summary>Quantity reserved for approved requisitions not yet issued.</summary>
+    public decimal QuantityReserved { get; set; }
+
+    public decimal QuantityAvailable => StockAvailabilityCalculator.GetAvailableQuantity(QuantityOnHand, QuantityReserved);
+
     /// <summary>
     /// Reorder / minimum level alert threshold.
     /// </summary>

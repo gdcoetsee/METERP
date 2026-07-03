@@ -1,0 +1,235 @@
+@page "/requisitions"
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@attribute [Authorize(Policy = "Requisitions.View")]
+@rendermode InteractiveServer
+@inject IStockRequisitionService RequisitionService
+@inject IPurchaseOrderService PurchaseOrderService
+@inject ISupplierService SupplierService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>Stock Requisitions</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Stock Requisitions</h1>
+        <p class="text-muted small mb-0">Manager → executive approval, reserved stock, procurement PO → GRV → issue to job.</p>
+    </div>
+    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="requisitions-export" OnExportCsv="ExportCsvAsync" />
+</div>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="5" TestId="requisitions-skeleton" />
+}
+else if (_requisitions.Count == 0)
+{
+    <EmptyState Title="No requisitions"
+                Description="Technicians submit material requests from the Field Portal. Approved items can be issued here."
+                Icon="📦"
+                TestId="requisitions-empty" />
+}
+else
+{
+    <div class="table-responsive" data-testid="requisitions-table">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>REQ #</th>
+                    <th>Job</th>
+                    <th>Status</th>
+                    <th>Lines</th>
+                    <th>PPE</th>
+                    <th>PO</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var req in _requisitions)
+                {
+                    <tr data-testid="requisition-row">
+                        <td><strong>@req.RequisitionNumber</strong></td>
+                        <td>@(req.Job?.JobNumber ?? "—")</td>
+                        <td>@((MarkupString)GetStatusBadge(req.Status))</td>
+                        <td>@req.Lines.Count</td>
+                        <td>@(req.IsPpe ? "Yes" : "—")</td>
+                        <td>
+                            @if (req.PurchaseOrderId.HasValue)
+                            {
+                                <a href="purchase-orders" class="small">View PO</a>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (CanManage && req.Status == RequisitionStatus.AwaitingProcurement && !req.PurchaseOrderId.HasValue)
+                            {
+                                <button type="button" class="btn btn-sm btn-warning" data-testid="requisition-create-po-btn"
+                                        @onclick="() => ShowCreatePo(req)">Create PO</button>
+                            }
+                            @if (CanIssue && req.Status == RequisitionStatus.Approved)
+                            {
+                                <button type="button" class="btn btn-sm btn-success" data-testid="requisition-issue-btn"
+                                        @onclick="() => IssueAsync(req)">Issue to job</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_showPoModal && _poRequisition != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"Create PO — {_poRequisition.RequisitionNumber}")"
+               TestId="requisition-po-modal"
+               OnClose="ClosePoModal">
+        <div class="mb-3">
+            <label class="form-label">Supplier *</label>
+            <select class="form-select" @bind="_selectedSupplierId" data-testid="requisition-po-supplier">
+                <option value="">— Select supplier —</option>
+                @foreach (var s in _suppliers)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+            <p class="text-muted small mt-2 mb-0">Creates a draft PO for shortfall quantities not already reserved in stock.</p>
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="ClosePoModal">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="requisition-po-confirm"
+                    disabled="@(_selectedSupplierId == Guid.Empty)"
+                    @onclick="CreatePoAsync">Create PO</button>
+        </div>
+    </FormModal>
+}
+
+<ConfirmDialogHost />
+
+@code {
+    private List<StockRequisition> _requisitions = new();
+    private List<Supplier> _suppliers = new();
+    private bool _loading = true;
+    private bool _showPoModal;
+    private StockRequisition? _poRequisition;
+    private Guid _selectedSupplierId;
+
+    [Inject] private ConfirmService Confirm { get; set; } = default!;
+
+    private bool CanIssue => CurrentUser.Permissions.Contains(Permissions.RequisitionsManage);
+    private bool CanManage => CurrentUser.Permissions.Contains(Permissions.PurchaseOrdersManage)
+        || CurrentUser.Permissions.Contains(Permissions.RequisitionsManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _suppliers = (await SupplierService.GetAllAsync()).ToList();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _requisitions = (await RequisitionService.GetAllAsync(pageSize: 50)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ShowCreatePo(StockRequisition req)
+    {
+        _poRequisition = req;
+        _selectedSupplierId = _suppliers.FirstOrDefault()?.Id ?? Guid.Empty;
+        _showPoModal = true;
+    }
+
+    private void ClosePoModal()
+    {
+        _showPoModal = false;
+        _poRequisition = null;
+        _selectedSupplierId = Guid.Empty;
+    }
+
+    private async Task CreatePoAsync()
+    {
+        if (_poRequisition == null || _selectedSupplierId == Guid.Empty) return;
+
+        try
+        {
+            var poId = await PurchaseOrderService.CreateFromRequisitionAsync(_poRequisition.Id, _selectedSupplierId);
+            Toast.ShowSuccess($"PO created for {_poRequisition.RequisitionNumber} — mark sent then receive via GRV.");
+            ClosePoModal();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task IssueAsync(StockRequisition req)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Issue reserved stock for {req.RequisitionNumber} to job {req.Job?.JobNumber}?",
+            "Issue stock",
+            confirmLabel: "Issue",
+            confirmVariant: "success");
+        if (!ok) return;
+
+        try
+        {
+            if (!await RequisitionService.IssueAsync(req.Id, userId))
+            {
+                Toast.ShowError("Nothing to issue or requisition is not approved.");
+                return;
+            }
+
+            Toast.ShowSuccess($"{req.RequisitionNumber} issued — stock moved to job.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_requisitions.Count == 0) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("RequisitionNumber,Job,Status,Lines,IsPpe");
+        foreach (var r in _requisitions)
+        {
+            sb.AppendLine($"{r.RequisitionNumber},{r.Job?.JobNumber},{r.Status},{r.Lines.Count},{r.IsPpe}");
+        }
+
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "requisitions.csv", sb.ToString(), "text/csv;charset=utf-8");
+        Toast.ShowSuccess("Requisitions CSV downloaded.");
+    }
+
+    private static string GetStatusBadge(RequisitionStatus status) => status switch
+    {
+        RequisitionStatus.PendingManager => "<span class=\"badge bg-secondary\">Manager</span>",
+        RequisitionStatus.PendingExecutive => "<span class=\"badge bg-warning text-dark\">Executive</span>",
+        RequisitionStatus.Approved => "<span class=\"badge bg-success\">Approved</span>",
+        RequisitionStatus.Issued => "<span class=\"badge bg-primary\">Issued</span>",
+        RequisitionStatus.AwaitingProcurement => "<span class=\"badge bg-danger\">Procure</span>",
+        RequisitionStatus.ProcurementOrdered => "<span class=\"badge bg-info text-dark\">PO Ordered</span>",
+        RequisitionStatus.Rejected => "<span class=\"badge bg-dark\">Rejected</span>",
+        _ => $"<span class=\"badge bg-light text-dark\">{status}</span>"
+    };
+}

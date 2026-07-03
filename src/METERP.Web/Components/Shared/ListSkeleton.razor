@@ -1,0 +1,15 @@
+<div class="meterp-skeleton" data-testid="@TestId" aria-busy="true" aria-label="@AriaLabel">
+    @for (var i = 0; i < Rows; i++)
+    {
+        <div class="meterp-skeleton-row mb-2">
+            <div class="meterp-skeleton-line meterp-skeleton-line-title"></div>
+            <div class="meterp-skeleton-line meterp-skeleton-line-sub"></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Rows { get; set; } = 5;
+    [Parameter] public string TestId { get; set; } = "list-skeleton";
+    [Parameter] public string AriaLabel { get; set; } = "Loading";
+}

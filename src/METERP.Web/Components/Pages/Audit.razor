@@ -9,49 +9,77 @@
 
 <PageTitle>Audit Log</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <h1>Audit Log <span class="badge bg-dark">Compliance & Trail</span></h1>
-        <p class="text-muted mb-0">Tenant-isolated history of quotes, jobs, invoices, and CRM actions.</p>
+        <h1 class="h4 mb-1">Audit Log</h1>
+        <p class="text-muted small mb-0">Tenant-isolated history of quotes, jobs, invoices, compliance, and CRM actions.</p>
     </div>
-    <button class="btn btn-outline-secondary btn-sm" data-testid="audit-export-csv" @onclick="ExportLog">Export Log (CSV)</button>
+    <button class="btn btn-outline-secondary btn-sm" data-testid="audit-export-csv" @onclick="ExportLog">Export CSV</button>
+</div>
+
+<div class="row g-2 mb-3" data-testid="audit-filters">
+    <div class="col-md-3">
+        <input class="form-control form-control-sm" placeholder="Entity type (Quote, Job…)"
+               @bind="_entityType" @bind:event="oninput" data-testid="audit-filter-entity-type" />
+    </div>
+    <div class="col-md-3">
+        <input class="form-control form-control-sm" placeholder="Reference (Q-2026…)"
+               @bind="_entityReference" @bind:event="oninput" data-testid="audit-filter-reference" />
+    </div>
+    <div class="col-md-3">
+        <input class="form-control form-control-sm" placeholder="User email"
+               @bind="_userEmail" @bind:event="oninput" data-testid="audit-filter-user" />
+    </div>
+    <div class="col-md-3">
+        <button type="button" class="btn btn-sm btn-primary w-100" data-testid="audit-filter-apply" @onclick="ApplyFilters">Search</button>
+    </div>
 </div>
 
 <div class="table-responsive" data-testid="audit-ready">
     <div data-testid="audit-table">
-    <table class="table table-sm table-hover">
-        <thead>
-            <tr>
-                <th>Date (UTC)</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Entity</th>
-                <th>Details</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var log in logs)
-            {
-                <tr data-testid="audit-row">
-                    <td>@log.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
-                    <td>@log.UserEmail</td>
-                    <td><span class="badge bg-info">@log.Action</span></td>
-                    <td>@log.EntityType @log.EntityReference</td>
-                    <td>@log.Details</td>
+        <table class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th>Date (UTC)</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Entity</th>
+                    <th>Details</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var log in logs)
+                {
+                    <tr data-testid="audit-row">
+                        <td>@log.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@log.UserEmail</td>
+                        <td><span class="badge bg-info">@log.Action</span></td>
+                        <td>@log.EntityType @log.EntityReference</td>
+                        <td>@log.Details</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     </div>
 </div>
 
 @code {
     private List<AuditLogRow> logs = new();
+    private string _entityType = "";
+    private string _entityReference = "";
+    private string _userEmail = "";
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
     {
-        logs = (await AuditService.GetRecentAsync()).ToList();
+        logs = (await AuditService.SearchAsync(
+            string.IsNullOrWhiteSpace(_entityType) ? null : _entityType,
+            string.IsNullOrWhiteSpace(_entityReference) ? null : _entityReference,
+            string.IsNullOrWhiteSpace(_userEmail) ? null : _userEmail)).ToList();
     }
+
+    private async Task ApplyFilters() => await LoadAsync();
 
     private async Task ExportLog()
     {

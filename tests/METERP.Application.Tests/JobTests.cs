@@ -78,6 +78,25 @@ public class JobTests
     }
 
     [Fact]
+    public void Job_IsReadyToInvoice_RequiresSignOffAndNotInvoiced()
+    {
+        var ready = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Completed };
+        var notSigned = new Job { SignOffStatus = JobSignOffStatus.Pending, Status = JobStatus.Completed };
+        var invoiced = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Invoiced };
+
+        Assert.True(ready.IsReadyToInvoice());
+        Assert.False(notSigned.IsReadyToInvoice());
+        Assert.False(invoiced.IsReadyToInvoice());
+    }
+
+    [Fact]
+    public void Job_GetProgressPercent_MapsStatus()
+    {
+        Assert.Equal(50, new Job { Status = JobStatus.InProgress }.GetProgressPercent());
+        Assert.Equal(100, new Job { Status = JobStatus.Invoiced }.GetProgressPercent());
+    }
+
+    [Fact]
     public void Job_GetMarginPercent_ReturnsZero_WhenQuotedTotalZero()
     {
         var job = new Job
@@ -483,5 +502,91 @@ public class JobTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.SetCrewAssignmentsAsync(Guid.NewGuid(), new[] { Guid.NewGuid() }));
+    }
+
+    [Fact]
+    public void Job_GetProgressPercent_UsesMilestoneAverageWhenPresent()
+    {
+        var job = new Job
+        {
+            Status = JobStatus.Scheduled,
+            Milestones =
+            {
+                new JobMilestone { PercentComplete = 100, IsDeleted = false },
+                new JobMilestone { PercentComplete = 40, IsDeleted = false }
+            }
+        };
+
+        Assert.Equal(70, job.GetProgressPercent());
+    }
+
+    [Fact]
+    public async Task JobService_AddMilestoneAndSnag_PersistAndResolve()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-M1", Title = "Test" });
+        await db.SaveChangesAsync();
+
+        var milestoneId = await service.AddMilestoneAsync(new JobMilestone
+        {
+            JobId = jobId,
+            Title = "Commissioning",
+            PercentComplete = 0,
+            Status = JobMilestoneStatus.Pending
+        });
+
+        var snagId = await service.AddSnagAsync(new JobSnagItem
+        {
+            JobId = jobId,
+            Description = "Loose gland"
+        });
+
+        var milestones = await service.GetMilestonesAsync(jobId);
+        var snags = await service.GetSnagsAsync(jobId);
+
+        Assert.Single(milestones);
+        Assert.Equal("Commissioning", milestones[0].Title);
+        Assert.Single(snags);
+        Assert.False(snags[0].IsResolved);
+
+        await service.ResolveSnagAsync(snagId, Guid.NewGuid());
+        snags = await service.GetSnagsAsync(jobId);
+        Assert.True(snags[0].IsResolved);
+
+        await service.DeleteMilestoneAsync(milestoneId);
+        milestones = await service.GetMilestonesAsync(jobId);
+        Assert.Empty(milestones);
+    }
+
+    [Fact]
+    public async Task JobService_SafetyIncident_AddAndClose()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-SAF", Title = "Site" });
+        await db.SaveChangesAsync();
+
+        var incidentId = await service.AddSafetyIncidentAsync(new JobSafetyIncident
+        {
+            JobId = jobId,
+            Description = "Near miss — unsecured ladder",
+            Severity = SafetyIncidentSeverity.High
+        });
+
+        var incidents = await service.GetSafetyIncidentsAsync(jobId);
+        Assert.Single(incidents);
+        Assert.False(incidents[0].IsClosed);
+
+        await service.CloseSafetyIncidentAsync(incidentId, Guid.NewGuid(), "Ladder secured and toolbox talk held.");
+        incidents = await service.GetSafetyIncidentsAsync(jobId);
+        Assert.True(incidents[0].IsClosed);
+        Assert.Contains("toolbox talk", incidents[0].CorrectiveAction);
     }
 }

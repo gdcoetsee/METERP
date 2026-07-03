@@ -1,0 +1,81 @@
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+<div class="btn-group btn-group-sm meterp-export-toolbar" role="group" aria-label="Export options" data-testid="@TestId">
+    @if (ShowPrint)
+    {
+        <button type="button" class="btn btn-outline-secondary" title="Print" data-testid="@($"{TestId}-print")"
+                @onclick="PrintAsync" disabled="@Disabled">
+            <i class="bi bi-printer" aria-hidden="true"></i> Print
+        </button>
+    }
+    @if (ShowCsv)
+    {
+        <button type="button" class="btn btn-outline-secondary" title="Download CSV" data-testid="@($"{TestId}-csv")"
+                @onclick="ExportCsvAsync" disabled="@Disabled">
+            <i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV
+        </button>
+    }
+    @if (ShowExcel)
+    {
+        <button type="button" class="btn btn-outline-secondary" title="Download Excel" data-testid="@($"{TestId}-excel")"
+                @onclick="ExportExcelAsync" disabled="@Disabled">
+            <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Excel
+        </button>
+    }
+    @if (ShowPdf)
+    {
+        <button type="button" class="btn btn-outline-secondary" title="Download PDF" data-testid="@($"{TestId}-pdf")"
+                @onclick="ExportPdfAsync" disabled="@Disabled">
+            <i class="bi bi-filetype-pdf" aria-hidden="true"></i> PDF
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public bool ShowPrint { get; set; } = true;
+    [Parameter] public bool ShowCsv { get; set; } = true;
+    [Parameter] public bool ShowExcel { get; set; } = true;
+    [Parameter] public bool ShowPdf { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string TestId { get; set; } = "export-toolbar";
+    [Parameter] public EventCallback OnExportCsv { get; set; }
+    [Parameter] public EventCallback OnExportExcel { get; set; }
+    [Parameter] public EventCallback OnExportPdf { get; set; }
+
+    private async Task PrintAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.print");
+        }
+        catch
+        {
+            Toast.ShowInfo("Print is not available in this browser context.");
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (OnExportCsv.HasDelegate)
+            await OnExportCsv.InvokeAsync();
+        else
+            Toast.ShowInfo("CSV export will be available when this report is wired.");
+    }
+
+    private async Task ExportExcelAsync()
+    {
+        if (OnExportExcel.HasDelegate)
+            await OnExportExcel.InvokeAsync();
+        else
+            Toast.ShowInfo("Excel export will be available when this report is wired.");
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        if (OnExportPdf.HasDelegate)
+            await OnExportPdf.InvokeAsync();
+        else
+            Toast.ShowInfo("PDF export will be available when this document is wired.");
+    }
+}

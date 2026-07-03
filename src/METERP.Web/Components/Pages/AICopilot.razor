@@ -1,4 +1,5 @@
 @page "/ai-copilot"
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Domain
@@ -262,6 +263,8 @@ else if (_aiQuotaExhausted)
     private Guid? _pendingOpportunityId;
     private bool _autoOptimizeAfterRender;
 
+    private TenantBranding _branding = TenantBranding.Default;
+
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage) || CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
 
     protected override async Task OnInitializedAsync()
@@ -290,6 +293,7 @@ else if (_aiQuotaExhausted)
                 var tenant = await TenantService.GetByIdAsync(tenantId);
                 if (tenant != null)
                 {
+                    _branding = TenantBranding.From(tenant);
                     _aiFeatureEnabled = tenant.HasFeature("ai");
                     _periodAiCalls = tenant.PeriodAiCalls;
                     var limit = TenantQuotaDefaults.GetEffectiveLimit(tenant, QuotaType.AiCall);
@@ -546,7 +550,7 @@ else if (_aiQuotaExhausted)
 
         try
         {
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateSingleResponseReport(q, a);
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateSingleResponseReport(q, a, branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"METERP_AI_Response_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -572,7 +576,8 @@ else if (_aiQuotaExhausted)
             var bytes = METERP.Web.Reports.AiReportGenerator.GenerateCopilotSessionReport(
                 "Full AI Copilot Session",
                 chatHistory,
-                extraFooterNote: "This session may include Bid Optimizer results, variance analysis, travel cost recommendations, and project plan suggestions.");
+                extraFooterNote: "This session may include Bid Optimizer results, variance analysis, travel cost recommendations, and project plan suggestions.",
+                branding: _branding);
 
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
@@ -729,7 +734,7 @@ else if (_aiQuotaExhausted)
         if (string.IsNullOrWhiteSpace(response)) return;
         try
         {
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateSingleResponseReport(question, response);
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateSingleResponseReport(question, response, branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"METERP_AI_Response_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -758,7 +763,7 @@ else if (_aiQuotaExhausted)
                 Total = 9200m,
                 Notes = response
             };
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateQuotePdf(demo, aiNotes: response);
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateQuotePdf(demo, aiNotes: response, branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"METERP_HistoryQuote_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -787,7 +792,7 @@ else if (_aiQuotaExhausted)
             };
             demo.ActualCosts = new List<JobCost> { new JobCost { CostType = "Travel", Amount = 1850m, Description = "Travel from response context" } };
             demo.Labors = new List<JobLabor> { new JobLabor { Hours = 28, HourlyRate = 185, Technician = "AI Suggested", Description = "From history response" } };
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateJobCloseoutPdf(demo, aiNotes: response);
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateJobCloseoutPdf(demo, aiNotes: response, branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"METERP_HistoryJobCloseout_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -819,7 +824,7 @@ else if (_aiQuotaExhausted)
                 Notes = lastResponse
             };
 
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateQuotePdf(demoQuote, aiNotes: "AI-generated scope from Copilot response (demo). Real line items and customer added via Copilot creation flow.");
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateQuotePdf(demoQuote, aiNotes: "AI-generated scope from Copilot response (demo). Real line items and customer added via Copilot creation flow.", branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"METERP_QuoteDemo_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -858,7 +863,7 @@ else if (_aiQuotaExhausted)
                 new JobLabor { Hours = 42, HourlyRate = 185, Technician = "Demo Artisan", Description = "Installation & testing" }
             };
 
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateJobCloseoutPdf(demoJob, aiNotes: "AI variance analysis + margin recommendations from Copilot (demo). Real labor, Travel costs, and material issues are pulled from system records.");
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateJobCloseoutPdf(demoJob, aiNotes: "AI variance analysis + margin recommendations from Copilot (demo). Real labor, Travel costs, and material issues are pulled from system records.", branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"METERP_JobCloseoutDemo_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -876,7 +881,7 @@ else if (_aiQuotaExhausted)
         if (lastCreatedQuote == null) return;
         try
         {
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateQuotePdf(lastCreatedQuote, aiNotes: lastAiTextForPdf);
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateQuotePdf(lastCreatedQuote, aiNotes: lastAiTextForPdf, branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"{lastCreatedQuote.QuoteNumber}_AI_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";
@@ -894,7 +899,7 @@ else if (_aiQuotaExhausted)
         if (lastCreatedJob == null) return;
         try
         {
-            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateJobCloseoutPdf(lastCreatedJob, aiNotes: lastAiTextForPdf);
+            var bytes = METERP.Web.Reports.AiReportGenerator.GenerateJobCloseoutPdf(lastCreatedJob, aiNotes: lastAiTextForPdf, branding: _branding);
             var b64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:application/pdf;base64,{b64}";
             var fileName = $"{lastCreatedJob.JobNumber}_Closeout_AI_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf";

@@ -11,6 +11,14 @@ public interface IAuditService
 
     Task<IReadOnlyList<AuditLogRow>> GetRecentAsync(int page = 1, int pageSize = 50, CancellationToken ct = default);
 
+    Task<IReadOnlyList<AuditLogRow>> SearchAsync(
+        string? entityType = null,
+        string? entityReference = null,
+        string? userEmail = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken ct = default);
+
     Task<string> ExportCsvAsync(CancellationToken ct = default);
 }
 

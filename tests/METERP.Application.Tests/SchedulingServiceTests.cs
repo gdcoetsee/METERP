@@ -10,6 +10,70 @@ namespace METERP.Application.Tests;
 
 public class SchedulingServiceTests
 {
+    [Fact]
+    public async Task GetCalendarJobsAsync_ReturnsJobsInWeekWindow()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Cal Co" });
+            await db.SaveChangesAsync();
+
+            var weekStart = new DateTime(2026, 7, 7); // Monday
+            await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                JobNumber = "J-CAL-1",
+                Title = "In week",
+                ScheduledStart = weekStart.AddDays(2),
+                Status = JobStatus.Scheduled
+            });
+            await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                JobNumber = "J-CAL-2",
+                Title = "Outside week",
+                ScheduledStart = weekStart.AddDays(10),
+                Status = JobStatus.Scheduled
+            });
+
+            var calendar = await service.GetCalendarJobsAsync(weekStart);
+
+            Assert.Single(calendar);
+            Assert.Equal("J-CAL-1", calendar[0].JobNumber);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateScheduledStartAsync_PersistsDate()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Date Co" });
+            await db.SaveChangesAsync();
+
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                JobNumber = "J-DATE",
+                Title = "Reschedule me",
+                Status = JobStatus.Scheduled
+            });
+
+            var newDate = new DateTime(2026, 8, 1);
+            await service.UpdateScheduledStartAsync(jobId, newDate);
+
+            var loaded = await jobService.GetByIdAsync(jobId);
+            Assert.Equal(newDate.Date, loaded!.ScheduledStart?.Date);
+        }
+    }
+
     private (AppDbContext Db, SchedulingService Service, JobService Jobs, AssetService Assets, EmployeeService Employees, Guid TenantId) CreateHarness()
     {
         var tenantId = Guid.NewGuid();
@@ -27,7 +91,7 @@ public class SchedulingServiceTests
         var jobService = new JobService(db);
         var assetService = new AssetService(db);
         var employeeService = new EmployeeService(db);
-        var service = new SchedulingService(jobService, assetService, employeeService);
+        var service = new SchedulingService(jobService, assetService, employeeService, db);
 
         return (db, service, jobService, assetService, employeeService, tenantId);
     }

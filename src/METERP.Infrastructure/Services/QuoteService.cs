@@ -15,6 +15,7 @@ public class QuoteService : IQuoteService
     private readonly IQuotaService? _quotaService;
     private readonly ITenantCacheService? _cache;
     private readonly IAuditService? _auditService;
+    private readonly IDocumentSequenceService? _documentSequence;
 
     public QuoteService(
         AppDbContext dbContext,
@@ -22,7 +23,8 @@ public class QuoteService : IQuoteService
         ITenantProvider? tenantProvider = null,
         IQuotaService? quotaService = null,
         ITenantCacheService? cache = null,
-        IAuditService? auditService = null)
+        IAuditService? auditService = null,
+        IDocumentSequenceService? documentSequence = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -30,6 +32,7 @@ public class QuoteService : IQuoteService
         _quotaService = quotaService;
         _cache = cache;
         _auditService = auditService;
+        _documentSequence = documentSequence;
     }
 
     public async Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -90,7 +93,9 @@ public class QuoteService : IQuoteService
         // Generate a simple quote number if not provided
         if (string.IsNullOrWhiteSpace(quote.QuoteNumber))
         {
-            quote.QuoteNumber = $"Q-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
+            quote.QuoteNumber = _documentSequence != null
+                ? await _documentSequence.GetNextNumberAsync("Quote", "Q", ct)
+                : $"Q-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
 
         quote.RecalculateTotals();
@@ -116,10 +121,133 @@ public class QuoteService : IQuoteService
 
     public async Task UpdateAsync(Quote quote, CancellationToken ct = default)
     {
+        var existing = await _dbContext.Set<Quote>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(q => q.Id == quote.Id, ct);
+
+        if (existing != null)
+            EnforceSendGate(existing, quote);
+
         quote.RecalculateTotals();
         _dbContext.Set<Quote>().Update(quote);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "UPDATE",
+                "Quote",
+                quote.QuoteNumber,
+                $"Status {quote.Status}, approval {quote.ApprovalStatus}, total R {quote.Total:N2}",
+                ct);
+        }
+    }
+
+    public async Task SubmitForExecutiveApprovalAsync(Guid quoteId, Guid submittedByUserId, CancellationToken ct = default)
+    {
+        var quote = await _dbContext.Set<Quote>()
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == quoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        if (quote.Status != QuoteStatus.Draft)
+            throw new InvalidOperationException("Only draft quotes can be submitted for executive approval.");
+
+        if (!quote.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Add at least one line before submitting for approval.");
+
+        quote.ApprovalStatus = QuoteApprovalStatus.PendingExecutive;
+        quote.SubmittedForApprovalByUserId = submittedByUserId;
+        quote.SubmittedForApprovalAt = DateTime.UtcNow;
+        quote.ExecutiveRejectionReason = null;
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "SUBMIT_APPROVAL",
+                "Quote",
+                quote.QuoteNumber,
+                "Submitted for executive approval before client send",
+                ct);
+        }
+    }
+
+    public async Task ExecutiveApproveAsync(Guid quoteId, Guid approverUserId, CancellationToken ct = default)
+    {
+        var quote = await _dbContext.Set<Quote>().FirstOrDefaultAsync(q => q.Id == quoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        if (quote.ApprovalStatus != QuoteApprovalStatus.PendingExecutive)
+            throw new InvalidOperationException("Quote is not pending executive approval.");
+
+        quote.ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved;
+        quote.ExecutiveApprovedByUserId = approverUserId;
+        quote.ExecutiveApprovedAt = DateTime.UtcNow;
+        quote.ExecutiveRejectionReason = null;
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "APPROVE",
+                "Quote",
+                quote.QuoteNumber,
+                "Executive approved for client send",
+                ct);
+        }
+    }
+
+    public async Task ExecutiveRejectAsync(Guid quoteId, Guid approverUserId, string reason, CancellationToken ct = default)
+    {
+        var quote = await _dbContext.Set<Quote>().FirstOrDefaultAsync(q => q.Id == quoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        if (quote.ApprovalStatus != QuoteApprovalStatus.PendingExecutive)
+            throw new InvalidOperationException("Quote is not pending executive approval.");
+
+        quote.ApprovalStatus = QuoteApprovalStatus.Rejected;
+        quote.ExecutiveRejectionReason = reason;
+        quote.ExecutiveApprovedByUserId = approverUserId;
+        quote.ExecutiveApprovedAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "REJECT",
+                "Quote",
+                quote.QuoteNumber,
+                $"Executive rejected: {reason}",
+                ct);
+        }
+    }
+
+    public async Task<IReadOnlyList<Quote>> GetPendingExecutiveApprovalAsync(CancellationToken ct = default)
+    {
+        return await _dbContext.Set<Quote>()
+            .AsNoTracking()
+            .Include(q => q.Customer)
+            .Where(q => q.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
+            .OrderByDescending(q => q.SubmittedForApprovalAt)
+            .ToListAsync(ct);
+    }
+
+    private static void EnforceSendGate(Quote existing, Quote updated)
+    {
+        if (updated.Status == QuoteStatus.Sent && existing.Status != QuoteStatus.Sent
+            && updated.ApprovalStatus != QuoteApprovalStatus.ExecutiveApproved)
+        {
+            throw new InvalidOperationException(
+                "Executive approval is required before marking a quote as Sent. Submit for approval first.");
+        }
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -138,6 +266,9 @@ public class QuoteService : IQuoteService
 
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+
+        if (_auditService != null)
+            await _auditService.LogAsync("DELETE", "Quote", quote.QuoteNumber, "Soft deleted", ct);
     }
 
     public async Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default)

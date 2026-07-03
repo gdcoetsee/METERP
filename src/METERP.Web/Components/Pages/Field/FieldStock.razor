@@ -1,0 +1,191 @@
+@page "/field/stock"
+@layout Layout.FieldLayout
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Domain
+@attribute [Authorize(Policy = "Field.View")]
+@rendermode InteractiveServer
+@inject IStockRequisitionService RequisitionService
+@inject IInventoryService InventoryService
+@inject IJobService JobService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+
+<PageTitle>Request Stock — Field</PageTitle>
+
+<h1 class="h5 mb-3">Request Stock</h1>
+
+@if (_loading)
+{
+    <ListSkeleton Rows="3" TestId="field-stock-skeleton" />
+}
+else
+{
+    <button type="button" class="btn btn-primary w-100 mb-3" data-testid="field-stock-request-btn" @onclick="OpenForm">
+        New requisition
+    </button>
+
+    @if (_recent.Count > 0)
+    {
+        <h2 class="h6 text-muted">Recent requests</h2>
+        <div class="list-group" data-testid="field-stock-list">
+            @foreach (var req in _recent.Take(5))
+            {
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>@req.RequisitionNumber</strong>
+                        <span class="badge bg-secondary">@req.Status</span>
+                    </div>
+                    <div class="small text-muted">@(req.Job?.JobNumber ?? "—") · @req.Lines.Count line(s)</div>
+                </div>
+            }
+        </div>
+    }
+}
+
+<FormModal IsOpen="_open"
+           Title="Stock requisition"
+           TestId="field-stock-modal"
+           OnClose="CloseForm">
+    <ChildContent>
+        <div class="mb-3">
+            <label class="form-label" for="field-stock-job">Job</label>
+            <select id="field-stock-job" class="form-select form-control-lg" @bind="_jobId" data-testid="field-stock-job">
+                <option value="@Guid.Empty">Select job…</option>
+                @foreach (var job in _jobs)
+                {
+                    <option value="@job.Id">@job.JobNumber — @job.Title</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="field-stock-search">Stock item</label>
+            <input id="field-stock-search" class="form-control form-control-lg" placeholder="Search SKU or name…"
+                   value="@_search" @oninput="OnSearchInput" data-testid="field-stock-search" />
+            @if (_items.Count > 0)
+            {
+                <select class="form-select mt-2" @bind="_itemId" data-testid="field-stock-item">
+                    @foreach (var item in _items)
+                    {
+                        <option value="@item.Id">@item.Sku — @item.Name (avail: @item.QuantityAvailable.ToString("N0"))</option>
+                    }
+                </select>
+            }
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="field-stock-qty">Quantity</label>
+            <input id="field-stock-qty" type="number" min="0.01" step="0.01" class="form-control form-control-lg"
+                   @bind="_quantity" data-testid="field-stock-qty" />
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="field-stock-ppe" @bind="_isPpe" data-testid="field-stock-ppe" />
+            <label class="form-check-label" for="field-stock-ppe">PPE / safety equipment</label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="field-stock-notes">Notes</label>
+            <textarea id="field-stock-notes" class="form-control" rows="2" @bind="_notes" data-testid="field-stock-notes"></textarea>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseForm">Cancel</button>
+        <button type="button" class="btn btn-primary" data-testid="field-stock-submit" @onclick="SubmitAsync">Submit for approval</button>
+    </Footer>
+</FormModal>
+
+@code {
+    private bool _loading = true;
+    private bool _open;
+    private List<Job> _jobs = new();
+    private List<InventoryItem> _items = new();
+    private List<StockRequisition> _recent = new();
+    private Guid _jobId;
+    private Guid _itemId;
+    private string _search = "";
+    private decimal _quantity = 1;
+    private bool _isPpe;
+    private string _notes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _jobs = (await JobService.GetAllAsync(pageSize: 50)).ToList();
+            _recent = (await RequisitionService.GetAllAsync(pageSize: 10)).ToList();
+            await LoadItemsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        _items = (await InventoryService.GetAllItemsAsync(
+            string.IsNullOrWhiteSpace(_search) ? null : _search,
+            pageSize: 20)).ToList();
+        if (_items.Count > 0 && !_items.Any(i => i.Id == _itemId))
+            _itemId = _items[0].Id;
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        await LoadItemsAsync();
+    }
+
+    private void OpenForm()
+    {
+        _jobId = _jobs.FirstOrDefault()?.Id ?? Guid.Empty;
+        _quantity = 1;
+        _isPpe = false;
+        _notes = "";
+        _open = true;
+    }
+
+    private void CloseForm() => _open = false;
+
+    private async Task SubmitAsync()
+    {
+        if (CurrentUser.UserId is not { } userId)
+        {
+            Toast.ShowError("Not signed in.");
+            return;
+        }
+
+        if (_jobId == Guid.Empty || _itemId == Guid.Empty || _quantity <= 0)
+        {
+            Toast.ShowError("Select a job, item, and quantity.");
+            return;
+        }
+
+        try
+        {
+            var req = new StockRequisition
+            {
+                JobId = _jobId,
+                RequestedByUserId = userId,
+                IsPpe = _isPpe,
+                Notes = _notes,
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = _itemId,
+                        QuantityRequested = _quantity
+                    }
+                ]
+            };
+
+            await RequisitionService.SubmitAsync(req);
+            Toast.ShowSuccess("Requisition submitted — manager then executive approval.");
+            _recent = (await RequisitionService.GetAllAsync(pageSize: 10)).ToList();
+            CloseForm();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+}

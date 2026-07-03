@@ -44,6 +44,21 @@ public class AuditServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_FiltersByEntityType()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateContext(tenantId);
+        var service = new AuditService(db, new Mock<ICurrentUserService>().Object);
+
+        await service.LogAsync("CREATE", "Quote", "Q-1", "a");
+        await service.LogAsync("CREATE", "Job", "J-1", "b");
+
+        var quotes = await service.SearchAsync(entityType: "Quote");
+        Assert.Single(quotes);
+        Assert.Equal("Quote", quotes[0].EntityType);
+    }
+
+    [Fact]
     public async Task ExportCsvAsync_IncludesHeaderAndRows()
     {
         var tenantId = Guid.NewGuid();

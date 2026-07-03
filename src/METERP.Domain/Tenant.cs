@@ -64,6 +64,19 @@ public class Tenant : BaseEntity
     public string? AiModel { get; set; }
     public bool AiUseTenantKey { get; set; }
 
+    // === White-label branding (PDF exports + UI accent) ===
+    /// <summary>Display name on PDFs and branded UI; falls back to <see cref="Name"/>.</summary>
+    public string? BrandDisplayName { get; set; }
+
+    /// <summary>Primary brand colour hex (e.g. #0d6efd) for PDF headers and CSS accent.</summary>
+    public string? BrandColorHex { get; set; }
+
+    /// <summary>Optional logo URL for future PDF embedding.</summary>
+    public string? LogoUrl { get; set; }
+
+    /// <summary>Default max hours an approval may sit in queue before flagged overdue on executive dashboard.</summary>
+    public int DefaultApprovalSlaHours { get; set; } = 48;
+
     // === Simple feature flag stub for sellable / tiered features (per README) ===
     // Comma-separated for demo (e.g. "ai,usage-tracking,advanced-reports"). In prod: proper flags service.
     public string EnabledFeatures { get; set; } = "ai,usage-tracking";

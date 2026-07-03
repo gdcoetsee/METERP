@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
 using METERP.Domain;
@@ -5,12 +6,15 @@ using METERP.Domain;
 namespace METERP.Web.Reports;
 
 /// <summary>
-/// Generates professional, branded PDF reports for the AI Copilot.
+/// Generates professional, tenant-branded PDF reports for the AI Copilot.
 /// Emphasizes SA realities (Rands, 15% VAT, explicit travel costs).
 /// Uses QuestPDF community license (free for this use).
 /// </summary>
 public static class AiReportGenerator
 {
+    private const string FooterTagline =
+        "Currency: South African Rand (R)  •  VAT: 15%  •  Travel costs tracked explicitly on every Job via JobCost (type 'Travel')";
+
     static AiReportGenerator()
     {
         QuestPDF.Settings.License = LicenseType.Community;
@@ -20,25 +24,28 @@ public static class AiReportGenerator
         string title,
         List<(string Question, string Response)> history,
         string? tenantName = null,
-        string? extraFooterNote = null)
+        string? extraFooterNote = null,
+        TenantBranding? branding = null)
     {
+        branding ??= TenantBranding.Default;
+        var displayName = tenantName ?? branding.DisplayName;
+        var brandColor = branding.ColorHex;
         var generatedAt = DateTime.UtcNow;
 
         var doc = Document.Create(container =>
         {
             container.Page(page =>
             {
-                // A4 in points (QuestPDF version differences in PageSizes constant location across minor releases)
                 page.Size(595.28f, 841.89f);
                 page.Margin(35);
                 page.DefaultTextStyle(x => x.FontSize(10));
 
                 page.Header().Column(col =>
                 {
-                    col.Item().Text("METERP — AI Copilot Report").SemiBold().FontSize(16).FontColor("#1e3a8a");
+                    col.Item().Text($"{displayName} — AI Copilot Report").SemiBold().FontSize(16).FontColor(brandColor);
                     col.Item().Text(title).FontSize(12).FontColor("#334155");
-                    col.Item().Text($"Generated: {generatedAt:yyyy-MM-dd HH:mm} UTC  •  Tenant: {tenantName ?? "Current"}").FontSize(9).FontColor("#64748b");
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1e40af");
+                    col.Item().Text($"Generated: {generatedAt:yyyy-MM-dd HH:mm} UTC  •  Tenant: {displayName}").FontSize(9).FontColor("#64748b");
+                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor(brandColor);
                 });
 
                 page.Content().PaddingVertical(10).Column(col =>
@@ -55,8 +62,6 @@ public static class AiReportGenerator
 
                             col.Item().PaddingTop(i == 0 ? 0 : 8).Text($"Q{i + 1}: {q}").Bold().FontSize(10);
                             col.Item().PaddingTop(2).Text(a).FontSize(9.5f).LineHeight(1.35f);
-
-                            // subtle separator
                             col.Item().PaddingTop(6).LineHorizontal(0.5f).LineColor("#e2e8f0");
                         }
                     }
@@ -69,10 +74,9 @@ public static class AiReportGenerator
 
                 page.Footer().AlignCenter().Column(f =>
                 {
-                    f.Item().Text("METERP • South African Electrical & Mechanical Contracting ERP")
+                    f.Item().Text($"{displayName} • Contractor ERP")
                         .FontSize(8).FontColor("#64748b");
-                    f.Item().Text("Currency: South African Rand (R)  •  VAT: 15%  •  Travel costs tracked explicitly on every Job via JobCost (type 'Travel')")
-                        .FontSize(7).FontColor("#94a3b8");
+                    f.Item().Text(FooterTagline).FontSize(7).FontColor("#94a3b8");
                     f.Item().PaddingTop(2).Text("This report was produced by the AI-native co-pilot that thinks from your live ERP data (labor rates, travel history, inventory, variance).")
                         .FontSize(7).FontColor("#94a3b8");
                 });
@@ -82,34 +86,39 @@ public static class AiReportGenerator
         return doc.GeneratePdf();
     }
 
-    /// <summary>
-    /// Simple single-response report (used for quick "Export this answer").
-    /// </summary>
-    public static byte[] GenerateSingleResponseReport(string query, string response, string? tenantName = null)
+    public static byte[] GenerateSingleResponseReport(
+        string query,
+        string response,
+        string? tenantName = null,
+        TenantBranding? branding = null)
     {
         var hist = new List<(string, string)> { (query ?? "User query", response ?? "") };
-        return GenerateCopilotSessionReport("Single AI Response", hist, tenantName);
+        return GenerateCopilotSessionReport("Single AI Response", hist, tenantName, branding: branding);
     }
 
-    /// <summary>
-    /// Professional Quote PDF (for a real or draft Quote + optional AI-generated notes/scope).
-    /// Emphasizes totals (with 15% VAT), travel-aware scope, and clean client-ready formatting.
-    /// </summary>
-    public static byte[] GenerateQuotePdf(Quote quote, string? aiNotes = null, string? tenantName = null)
+    public static byte[] GenerateQuotePdf(
+        Quote quote,
+        string? aiNotes = null,
+        string? tenantName = null,
+        TenantBranding? branding = null)
     {
+        branding ??= TenantBranding.Default;
+        var displayName = tenantName ?? branding.DisplayName;
+        var brandColor = branding.ColorHex;
+
         var doc = Document.Create(container =>
         {
             container.Page(page =>
             {
-                page.Size(595.28f, 841.89f); // A4
+                page.Size(595.28f, 841.89f);
                 page.Margin(40);
                 page.DefaultTextStyle(x => x.FontSize(10));
 
                 page.Header().Column(col =>
                 {
-                    col.Item().Text("METERP — Professional Quote").SemiBold().FontSize(16).FontColor("#1e3a8a");
+                    col.Item().Text($"{displayName} — Professional Quote").SemiBold().FontSize(16).FontColor(brandColor);
                     col.Item().Text($"{quote.QuoteNumber}  •  {quote.QuoteDate:yyyy-MM-dd}  •  Valid to {quote.ValidUntil:yyyy-MM-dd}").FontSize(10);
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1e40af");
+                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor(brandColor);
                 });
 
                 page.Content().PaddingVertical(10).Column(col =>
@@ -136,8 +145,8 @@ public static class AiReportGenerator
 
                 page.Footer().AlignCenter().Column(f =>
                 {
-                    f.Item().Text("METERP • South African Electrical & Mechanical Contracting ERP").FontSize(8).FontColor("#64748b");
-                    f.Item().Text("Currency: South African Rand (R)  •  VAT: 15%  •  Travel costs tracked explicitly on every Job via JobCost (type 'Travel')").FontSize(7).FontColor("#94a3b8");
+                    f.Item().Text($"{displayName} • Contractor ERP").FontSize(8).FontColor("#64748b");
+                    f.Item().Text(FooterTagline).FontSize(7).FontColor("#94a3b8");
                 });
             });
         });
@@ -145,11 +154,16 @@ public static class AiReportGenerator
         return doc.GeneratePdf();
     }
 
-    /// <summary>
-    /// Professional Job Closeout PDF (real Job data + labor + all costs including explicit Travel + optional AI variance notes/recommendations).
-    /// </summary>
-    public static byte[] GenerateJobCloseoutPdf(Job job, string? aiNotes = null, string? tenantName = null)
+    public static byte[] GenerateJobCloseoutPdf(
+        Job job,
+        string? aiNotes = null,
+        string? tenantName = null,
+        TenantBranding? branding = null)
     {
+        branding ??= TenantBranding.Default;
+        var displayName = tenantName ?? branding.DisplayName;
+        var brandColor = branding.ColorHex;
+
         var laborTotal = (job.Labors?.Where(l => !l.IsDeleted).Sum(l => l.TotalCost) ?? 0m);
         var costs = job.ActualCosts?.Where(c => !c.IsDeleted).ToList() ?? new List<JobCost>();
         var travelTotal = costs.Where(c => c.CostType == "Travel").Sum(c => c.Amount);
@@ -161,15 +175,15 @@ public static class AiReportGenerator
         {
             container.Page(page =>
             {
-                page.Size(595.28f, 841.89f); // A4
+                page.Size(595.28f, 841.89f);
                 page.Margin(40);
                 page.DefaultTextStyle(x => x.FontSize(10));
 
                 page.Header().Column(col =>
                 {
-                    col.Item().Text("METERP — Job Closeout Report").SemiBold().FontSize(16).FontColor("#1e3a8a");
+                    col.Item().Text($"{displayName} — Job Closeout Report").SemiBold().FontSize(16).FontColor(brandColor);
                     col.Item().Text($"{job.JobNumber} — {job.Title}  •  Status: {job.Status}").FontSize(10);
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1e40af");
+                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor(brandColor);
                 });
 
                 page.Content().PaddingVertical(10).Column(col =>
@@ -205,8 +219,8 @@ public static class AiReportGenerator
 
                 page.Footer().AlignCenter().Column(f =>
                 {
-                    f.Item().Text("METERP • South African Electrical & Mechanical Contracting ERP").FontSize(8).FontColor("#64748b");
-                    f.Item().Text("Currency: South African Rand (R)  •  VAT: 15%  •  Travel costs tracked explicitly on every Job via JobCost (type 'Travel')").FontSize(7).FontColor("#94a3b8");
+                    f.Item().Text($"{displayName} • Contractor ERP").FontSize(8).FontColor("#64748b");
+                    f.Item().Text(FooterTagline).FontSize(7).FontColor("#94a3b8");
                 });
             });
         });

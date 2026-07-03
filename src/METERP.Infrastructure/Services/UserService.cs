@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
+using METERP.Common;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
 
@@ -190,6 +191,44 @@ public class UserService : IUserService
             .ToListAsync(ct);
 
         return roles;
+    }
+
+    public async Task<IReadOnlyList<string>> GetUserPermissionsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null) return Array.Empty<string>();
+
+        var claims = await _userManager.GetClaimsAsync(user);
+        return claims.Where(c => c.Type == "Permission").Select(c => c.Value).OrderBy(v => v).ToList();
+    }
+
+    public async Task<(bool Succeeded, string[] Errors)> SetUserPermissionsAsync(
+        Guid userId,
+        IReadOnlyList<string> permissions,
+        CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+            return (false, new[] { "User not found." });
+
+        var normalized = permissions
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var existingClaims = await _userManager.GetClaimsAsync(user);
+        foreach (var claim in existingClaims.Where(c => c.Type == "Permission"))
+        {
+            await _userManager.RemoveClaimAsync(user, claim);
+        }
+
+        foreach (var perm in normalized)
+        {
+            await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Permission", perm));
+        }
+
+        InvalidateListCaches();
+        return (true, Array.Empty<string>());
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory("users");

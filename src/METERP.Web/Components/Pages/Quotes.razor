@@ -1,8 +1,10 @@
 @page "/quotes"
 @rendermode InteractiveServer
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Domain
+@using METERP.Web.Reports
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.WebUtilities
@@ -10,6 +12,8 @@
 @attribute [Authorize(Policy = "Quotes.View")]
 @inject IQuoteService QuoteService
 @inject ICustomerService CustomerService
+@inject ITenantService TenantService
+@inject ITenantProvider TenantProvider
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
 @inject NavigationManager Nav
@@ -24,7 +28,8 @@
         <h1>Quotes</h1>
         <p class="text-muted mb-0">Create estimates with labor, materials, explicit travel. 15% SA VAT.</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center">
+        <ExportToolbar TestId="quotes-export" OnExportCsv="ExportQuotesCsv" OnExportExcel="ExportQuotesExcelAsync" OnExportPdf="ExportQuotesPdfAsync" Disabled="@_pageBusy" />
         @if (UserCanManage)
         {
             <button type="button" class="btn btn-primary" @onclick="ShowCreateEditor" disabled="@_pageBusy" data-testid="new-quote-button">+ New Quote</button>
@@ -54,8 +59,7 @@
     OnEdit="EditQuote"
     OnDelete="DeleteQuote"
     OnPrevious="PreviousPage"
-    OnNext="NextPage"
-    OnExportCsv="ExportQuotesCsv" />
+    OnNext="NextPage" />
 
 @if (editorQuote != null)
 {
@@ -120,9 +124,27 @@
                         <label class="form-label">Notes</label>
                         <InputTextArea class="form-control" @bind-Value="editorQuote.Notes" rows="2" />
                     </div>
-                    <button type="button" class="btn btn-success mb-3" disabled="@_pageBusy" data-testid="quote-save-button" @onclick="SaveQuoteHeader">
-                        @(editorIsNew ? "Save Quote" : "Save Header")
-                    </button>
+                    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+                        <button type="button" class="btn btn-success" disabled="@_pageBusy" data-testid="quote-save-button" @onclick="SaveQuoteHeader">
+                            @(editorIsNew ? "Save Quote" : "Save Header")
+                        </button>
+                        @if (!editorIsNew && editorQuote.Status == QuoteStatus.Draft && LineCount > 0
+                             && editorQuote.ApprovalStatus is QuoteApprovalStatus.None or QuoteApprovalStatus.Rejected)
+                        {
+                            <button type="button" class="btn btn-outline-primary" disabled="@_pageBusy"
+                                    data-testid="quote-submit-approval" @onclick="SubmitForExecutiveApproval">
+                                Submit for executive approval
+                            </button>
+                        }
+                        @if (!editorIsNew)
+                        {
+                            <span>@((MarkupString)GetApprovalBadge(editorQuote.ApprovalStatus))</span>
+                        }
+                    </div>
+                    @if (!editorIsNew && editorQuote.ApprovalStatus != QuoteApprovalStatus.ExecutiveApproved)
+                    {
+                        <p class="small text-muted mb-3">Marking status as <strong>Sent</strong> requires executive approval first.</p>
+                    }
                 </EditForm>
 
                 @if (showNewCustomer)
@@ -309,6 +331,7 @@
 
 @code {
     private List<Quote> quotes = new();
+    private TenantBranding _branding = TenantBranding.Default;
     private List<Customer> availableCustomers = new();
     private Quote? editorQuote;
     private bool editorIsNew;
@@ -373,6 +396,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var tenantId = TenantProvider.GetCurrentTenantId();
+        if (tenantId != Guid.Empty)
+        {
+            var tenant = await TenantService.GetByIdAsync(tenantId);
+            _branding = TenantBranding.From(tenant);
+        }
+
         await LoadCustomers();
         await LoadQuotes();
         HandleCreateQuery();
@@ -578,6 +608,26 @@
                 ToastService.ShowSuccess("Customer created and selected.");
             }
             catch (Exception ex) { ToastService.ShowError(ex.Message); }
+        });
+    }
+
+    private Task SubmitForExecutiveApproval()
+    {
+        if (editorQuote == null || CurrentUserService.UserId is not { } userId)
+            return Task.CompletedTask;
+
+        return RunGuardedAsync(async () =>
+        {
+            try
+            {
+                await QuoteService.SubmitForExecutiveApprovalAsync(editorQuote.Id, userId);
+                SetEditorQuote(await QuoteService.GetByIdAsync(editorQuote.Id));
+                ToastService.ShowSuccess("Submitted for executive approval — check Approvals hub.");
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError(ex.Message);
+            }
         });
     }
 
@@ -821,15 +871,47 @@
         catch (Exception ex) { ToastService.ShowError(ex.Message); }
     });
 
+    private IEnumerable<string[]> BuildQuoteExportRows() =>
+        quotes.Select(q => new[]
+        {
+            q.QuoteNumber,
+            q.Customer?.Name ?? "—",
+            q.QuoteDate.ToString("yyyy-MM-dd"),
+            q.Status.ToString(),
+            TabularExportHelper.FormatDecimal(q.Total),
+            (q.Lines?.Count(l => !l.IsDeleted) ?? 0).ToString()
+        });
+
     private async Task ExportQuotesCsv()
     {
         if (!quotes.Any()) return;
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("QuoteNumber,Customer,Status,Total,Lines");
-        foreach (var q in quotes)
-            sb.AppendLine($"{q.QuoteNumber},\"{q.Customer?.Name}\",{q.Status},{q.Total},{q.Lines?.Count(l => !l.IsDeleted) ?? 0}");
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
-        ToastService.ShowSuccess("Quotes CSV copied to clipboard.");
+        var csv = TabularExportHelper.BuildCsv(
+            "QuoteNumber,Customer,Date,Status,Total,Lines",
+            BuildQuoteExportRows());
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "quotes.csv", csv, "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Quotes CSV downloaded.");
+    }
+
+    private async Task ExportQuotesExcelAsync()
+    {
+        if (!quotes.Any()) return;
+        var tsv = TabularExportHelper.BuildExcelTsv(
+            "QuoteNumber\tCustomer\tDate\tStatus\tTotal\tLines",
+            BuildQuoteExportRows());
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "quotes.xls", tsv, "application/vnd.ms-excel");
+        ToastService.ShowSuccess("Quotes Excel file downloaded.");
+    }
+
+    private async Task ExportQuotesPdfAsync()
+    {
+        if (!quotes.Any()) return;
+        var pdf = TabularPdfGenerator.Generate(
+            "Quotes Export",
+            new[] { "Quote #", "Customer", "Date", "Status", "Total", "Lines" },
+            BuildQuoteExportRows(),
+            _branding);
+        await JS.InvokeVoidAsync("meterpUi.downloadBytes", "quotes.pdf", Convert.ToBase64String(pdf), "application/pdf");
+        ToastService.ShowSuccess("Quotes PDF downloaded.");
     }
 
     private Task ConvertToJob()
@@ -852,6 +934,15 @@
         try { return await JS.InvokeAsync<bool>("confirm", msg); }
         catch { return false; }
     }
+
+    private static string GetApprovalBadge(QuoteApprovalStatus s) => s switch
+    {
+        QuoteApprovalStatus.None => "<span class=\"badge bg-light text-dark\">Approval: not submitted</span>",
+        QuoteApprovalStatus.PendingExecutive => "<span class=\"badge bg-warning text-dark\">Awaiting executive approval</span>",
+        QuoteApprovalStatus.ExecutiveApproved => "<span class=\"badge bg-success\">Executive approved</span>",
+        QuoteApprovalStatus.Rejected => "<span class=\"badge bg-danger\">Executive rejected</span>",
+        _ => ""
+    };
 
     private static string GetStatusBadge(QuoteStatus s) => s switch
     {

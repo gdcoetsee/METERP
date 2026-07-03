@@ -1,0 +1,54 @@
+@page "/field"
+@layout Layout.FieldLayout
+@attribute [Authorize(Policy = "Field.View")]
+@rendermode InteractiveServer
+
+<PageTitle>Field Portal</PageTitle>
+
+<div data-testid="field-portal-ready">
+    <h1 class="h4 mb-1">Field Portal</h1>
+    <p class="text-muted small mb-4">Submit job reports, request stock, and apply for leave — paperless and accountable.</p>
+
+    <div class="row g-3">
+        <div class="col-6">
+            <a href="/field/jobs" class="card field-action-card text-decoration-none h-100" data-testid="field-card-jobs">
+                <div class="card-body text-center py-4">
+                    <div class="fs-2 mb-2" aria-hidden="true">🔧</div>
+                    <strong>My Jobs</strong>
+                    <div class="small text-muted">Reports &amp; updates</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6">
+            <a href="/field/stock" class="card field-action-card text-decoration-none h-100" data-testid="field-card-stock">
+                <div class="card-body text-center py-4">
+                    <div class="fs-2 mb-2" aria-hidden="true">📦</div>
+                    <strong>Request Stock</strong>
+                    <div class="small text-muted">Material requisitions</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6">
+            <a href="/field/leave" class="card field-action-card text-decoration-none h-100" data-testid="field-card-leave">
+                <div class="card-body text-center py-4">
+                    <div class="fs-2 mb-2" aria-hidden="true">🗓️</div>
+                    <strong>Request Leave</strong>
+                    <div class="small text-muted">Time off</div>
+                </div>
+            </a>
+        </div>
+        <AuthorizeView Policy="Approvals.View">
+            <Authorized>
+                <div class="col-6">
+                    <a href="/approvals" class="card field-action-card text-decoration-none h-100" data-testid="field-card-approvals">
+                        <div class="card-body text-center py-4">
+                            <div class="fs-2 mb-2" aria-hidden="true">✅</div>
+                            <strong>Approvals</strong>
+                            <div class="small text-muted">If you manage a team</div>
+                        </div>
+                    </a>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </div>
+</div>

@@ -184,9 +184,65 @@ else
                 </div>
             }
 
+            @if (UserCanManagePermissions)
+            {
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Custom permissions</h6>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-testid="users-edit-permissions"
+                                @onclick="OpenPermissionsPanel">Edit permissions</button>
+                    </div>
+                    @if (selectedUserPermissions.Any())
+                    {
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var perm in selectedUserPermissions.Take(12))
+                            {
+                                <span class="badge bg-light text-dark border">@perm</span>
+                            }
+                            @if (selectedUserPermissions.Count > 12)
+                            {
+                                <span class="badge bg-secondary">+@(selectedUserPermissions.Count - 12) more</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="text-muted small">No direct permission claims — role template only.</span>
+                    }
+                </div>
+            }
+
         </div>
     </div>
 }
+
+<SlideOverPanel IsOpen="_permissionsPanelOpen"
+                Title="User permissions"
+                TestId="user-permissions-panel"
+                OnClose="ClosePermissionsPanel">
+    <ChildContent>
+        <p class="small text-muted">Override the role template for this user. Changes apply on next login.</p>
+        <div class="row g-2" data-testid="user-permissions-list">
+            @foreach (var perm in Permissions.All)
+            {
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox"
+                               id="@($"perm-{perm}")"
+                               checked="@_editingPermissions.Contains(perm)"
+                               @onchange="e => TogglePermission(perm, e)" />
+                        <label class="form-check-label small" for="@($"perm-{perm}")">@perm</label>
+                    </div>
+                </div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" @onclick="ClosePermissionsPanel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-testid="user-permissions-save" @onclick="SavePermissionsAsync">Save permissions</button>
+    </Footer>
+</SlideOverPanel>
 
 @code {
     private List<UserSummary> users = new();
@@ -195,6 +251,9 @@ else
 
     private UserSummary? selectedUser;
     private List<string> selectedUserRoles = new();
+    private List<string> selectedUserPermissions = new();
+    private HashSet<string> _editingPermissions = new(StringComparer.OrdinalIgnoreCase);
+    private bool _permissionsPanelOpen;
     private string selectedNewRole = string.Empty;
 
     private bool showForm;
@@ -206,6 +265,9 @@ else
     private CreateUserModel newUserModel = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.UsersManage);
+
+    private bool UserCanManagePermissions =>
+        CurrentUserService.Permissions.Contains(Permissions.UsersManagePermissions);
 
     protected override async Task OnInitializedAsync()
     {
@@ -308,6 +370,7 @@ else
     {
         selectedUser = user;
         selectedUserRoles = (await UserService.GetUserRolesAsync(user.Id)).ToList();
+        selectedUserPermissions = (await UserService.GetUserPermissionsAsync(user.Id)).ToList();
         selectedNewRole = selectedUserRoles.FirstOrDefault() ?? (availableRoles.FirstOrDefault() ?? "");
         showForm = false;
     }
@@ -316,7 +379,46 @@ else
     {
         selectedUser = null;
         selectedUserRoles = new();
+        selectedUserPermissions = new();
         selectedNewRole = string.Empty;
+        ClosePermissionsPanel();
+    }
+
+    private void OpenPermissionsPanel()
+    {
+        _editingPermissions = selectedUserPermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _permissionsPanelOpen = true;
+    }
+
+    private void ClosePermissionsPanel() => _permissionsPanelOpen = false;
+
+    private void TogglePermission(string perm, ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool b && b;
+        if (enabled)
+            _editingPermissions.Add(perm);
+        else
+            _editingPermissions.Remove(perm);
+    }
+
+    private async Task SavePermissionsAsync()
+    {
+        if (selectedUser == null) return;
+
+        var (ok, errors) = await UserService.SetUserPermissionsAsync(
+            selectedUser.Id,
+            _editingPermissions.OrderBy(p => p).ToList());
+
+        if (ok)
+        {
+            ToastService.ShowSuccess("Permissions saved. User must log out and back in for changes to apply.");
+            selectedUserPermissions = (await UserService.GetUserPermissionsAsync(selectedUser.Id)).ToList();
+            ClosePermissionsPanel();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to save permissions: " + string.Join("; ", errors));
+        }
     }
 
     private async Task ChangeRole()

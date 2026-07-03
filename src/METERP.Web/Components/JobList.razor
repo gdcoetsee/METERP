@@ -2,6 +2,7 @@
    Parent provides data + handles loading/callbacks.
    Avoids putting heavy markup in gateway pages to prevent Razor parser issues.
 *@
+@using METERP.Application.Models
 @using METERP.Domain
 @using METERP.Infrastructure.Seeding
 @using Microsoft.AspNetCore.Components
@@ -32,7 +33,13 @@ else
                     <tr data-testid="@GetJobRowTestId(j)">
                         <td><strong>@j.JobNumber</strong></td>
                         <td><strong>@j.Title</strong><br /><small class="text-muted">@(j.Customer?.Name ?? "")</small></td>
-                        <td>@((MarkupString)GetJobStatusBadge(j.Status))</td>
+                        <td>
+                            @((MarkupString)GetJobStatusBadge(j.Status))
+                            @if (j.IsReadyToInvoice())
+                            {
+                                <span class="badge bg-success ms-1" data-testid="job-ready-to-invoice-badge">Ready to invoice</span>
+                            }
+                        </td>
                         <td class="text-end">R @j.QuotedTotal.ToString("N2")</td>
                         <td class="text-end">R @(GetActualTotal(j).ToString("N2"))</td>
                         <td class="text-end @(GetVariance(j) > 0 ? "text-danger" : GetVariance(j) < 0 ? "text-success" : "")">R @GetVariance(j).ToString("N2")</td>
@@ -62,7 +69,7 @@ else
 
 @if (SelectedJob != null)
 {
-    <div class="card mt-3 border-primary">
+    <div class="card mt-3 border-primary" data-testid="job-detail-panel">
         <div class="card-header bg-primary text-white d-flex justify-content-between">
             <h6 class="mb-0">@SelectedJob.JobNumber — @SelectedJob.Title</h6>
             <button class="btn btn-sm btn-light" @onclick="() => OnCloseView.InvokeAsync()">Close</button>
@@ -71,6 +78,54 @@ else
             <div>Quoted: <strong>R @SelectedJob.QuotedTotal.ToString("N2")</strong></div>
             <div>Actual (incl. labor + travel): <strong>R @(GetActualTotal(SelectedJob).ToString("N2"))</strong></div>
             <div class="mt-1">Variance: <strong>R @(GetVariance(SelectedJob).ToString("N2"))</strong></div>
+            <div class="mt-1">Sign-off: @((MarkupString)GetSignOffBadge(SelectedJob.SignOffStatus))</div>
+            @if (SelectedJob.IsReadyToInvoice())
+            {
+                <div class="mt-2">
+                    <span class="badge bg-success" data-testid="job-ready-to-invoice-badge">Ready to invoice</span>
+                    <span class="text-muted ms-2">Client sign-off complete — create invoice to recognise revenue.</span>
+                </div>
+            }
+
+            @if (CommandCenter != null)
+            {
+                <div class="mt-3">
+                    <strong>Command center</strong>
+                    <div class="progress mt-1" style="height: 8px;">
+                        <div class="progress-bar" role="progressbar" style="width: @(CommandCenter.ProgressPercent)%"
+                             aria-valuenow="@CommandCenter.ProgressPercent" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <small class="text-muted">@CommandCenter.ProgressPercent% complete (status-based)</small>
+                    <div class="row mt-2 g-2">
+                        <div class="col-md-3">Material: <strong>R @CommandCenter.MaterialCost.ToString("N2")</strong></div>
+                        <div class="col-md-3">Travel: <strong>R @CommandCenter.TravelCost.ToString("N2")</strong></div>
+                        <div class="col-md-3">Labor: <strong>R @CommandCenter.LaborCost.ToString("N2")</strong></div>
+                        <div class="col-md-3">Margin: <strong>@CommandCenter.MarginPercent%</strong></div>
+                    </div>
+                    @if (CommandCenter.Requisitions.Any())
+                    {
+                        <table class="table table-sm mt-2 mb-0">
+                            <thead><tr><th>REQ</th><th>Status</th><th>PO</th><th>GRV</th><th>Lines</th></tr></thead>
+                            <tbody>
+                                @foreach (var req in CommandCenter.Requisitions)
+                                {
+                                    <tr>
+                                        <td>@req.RequisitionNumber</td>
+                                        <td>@req.Status</td>
+                                        <td>@(req.PurchaseOrderNumber ?? "—")</td>
+                                        <td>@(req.GrvNumber ?? "—")</td>
+                                        <td>@req.LineCount</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-0 mt-1">No stock requisitions linked to this job yet.</p>
+                    }
+                </div>
+            }
 
             @if (!string.IsNullOrWhiteSpace(SelectedJob.Notes))
             {
@@ -82,22 +137,136 @@ else
                 @if (CanManage)
                 {
                     <button class="btn btn-sm btn-outline-primary ms-1" @onclick="() => OnAiAnalyze.InvokeAsync(SelectedJob)">AI Analyze Variance</button>
-                    <button class="btn btn-sm btn-success ms-1" @onclick="() => OnCreateInvoice.InvokeAsync(SelectedJob)" data-testid="create-invoice-from-job-detail">Create Invoice from Job</button>
+                    @if (SelectedJob.SignOffStatus != JobSignOffStatus.SignedOff)
+                    {
+                        <button class="btn btn-sm btn-warning ms-1" @onclick="() => OnSignOff.InvokeAsync(SelectedJob)" data-testid="job-sign-off-button">Record client sign-off</button>
+                    }
+                    <button class="btn btn-sm btn-success ms-1" @onclick="() => OnCreateInvoice.InvokeAsync(SelectedJob)" data-testid="create-invoice-from-job-detail"
+                            disabled="@(SelectedJob.SignOffStatus != JobSignOffStatus.SignedOff)"
+                            title="@(SelectedJob.SignOffStatus != JobSignOffStatus.SignedOff ? "Client sign-off required before invoicing" : null)">
+                        Create Invoice from Job
+                    </button>
                 }
             </div>
 
             <!-- Milestones and simple Gantt for advanced project mgmt (sellable feature) -->
-            <div class="mt-3">
-                <strong>Milestones & Gantt (table-based timeline)</strong>
-                <table class="table table-sm small" role="table" aria-label="Job milestones timeline">
-                    <thead><tr><th scope="col">Milestone</th><th scope="col">Due</th><th scope="col">%</th><th scope="col">Status</th></tr></thead>
-                    <tbody>
-                        <tr><td>Site survey</td><td>@((SelectedJob.ScheduledStart ?? DateTime.Today).AddDays(-7).ToString("MM/dd"))</td><td>100</td><td>Done</td></tr>
-                        <tr><td>Materials</td><td>@((SelectedJob.ScheduledStart ?? DateTime.Today).ToString("MM/dd"))</td><td>50</td><td>In Progress</td></tr>
-                        <tr><td>Install & test</td><td>@((SelectedJob.ScheduledStart ?? DateTime.Today).AddDays(5).ToString("MM/dd"))</td><td>0</td><td>Pending</td></tr>
-                    </tbody>
-                </table>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="AddMilestoneStub">+ Add Milestone</button>
+            <div class="mt-3" data-testid="job-milestones-panel">
+                <strong>Milestones &amp; timeline</strong>
+                @if (Milestones == null || !Milestones.Any())
+                {
+                    <p class="small text-muted mb-1">No milestones yet — add steps to track job progress.</p>
+                }
+                else
+                {
+                    <table class="table table-sm small" role="table" aria-label="Job milestones timeline">
+                        <thead><tr><th scope="col">Milestone</th><th scope="col">Due</th><th scope="col">%</th><th scope="col">Status</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in Milestones)
+                            {
+                                <tr>
+                                    <td>@m.Title</td>
+                                    <td>@(m.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                                    <td>@m.PercentComplete</td>
+                                    <td>@m.Status</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                @if (CanManage)
+                {
+                    <div class="d-flex flex-wrap gap-1 align-items-center">
+                        <input class="form-control form-control-sm" style="max-width:180px" placeholder="Milestone title"
+                               @bind="newMilestoneTitle" data-testid="job-milestone-title" />
+                        <input type="date" class="form-control form-control-sm" style="max-width:150px"
+                               @bind="newMilestoneDue" />
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="AddMilestoneAsync"
+                                disabled="@string.IsNullOrWhiteSpace(newMilestoneTitle)" data-testid="job-add-milestone">+ Add</button>
+                    </div>
+                }
+            </div>
+
+            <div class="mt-3" data-testid="job-snag-panel">
+                <strong>Snag list</strong>
+                @if (Snags == null || !Snags.Any())
+                {
+                    <p class="small text-muted mb-1">No open snags.</p>
+                }
+                else
+                {
+                    <ul class="list-group list-group-flush small">
+                        @foreach (var s in Snags)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-start px-0">
+                                <span class="@(s.IsResolved ? "text-muted text-decoration-line-through" : "")">@s.Description</span>
+                                @if (CanManage && !s.IsResolved)
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="() => ResolveSnagAsync(s)"
+                                            data-testid="job-resolve-snag">Resolve</button>
+                                }
+                                else if (s.IsResolved)
+                                {
+                                    <span class="badge bg-success">Resolved</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (CanManage)
+                {
+                    <div class="d-flex gap-1 mt-1">
+                        <input class="form-control form-control-sm" placeholder="Describe snag / punch item"
+                               @bind="newSnagDescription" data-testid="job-snag-description" />
+                        <button class="btn btn-sm btn-outline-warning" @onclick="AddSnagAsync"
+                                disabled="@string.IsNullOrWhiteSpace(newSnagDescription)" data-testid="job-add-snag">+ Snag</button>
+                    </div>
+                }
+            </div>
+
+            <div class="mt-3" data-testid="job-safety-panel">
+                <strong>Safety incidents</strong>
+                @if (SafetyIncidents == null || !SafetyIncidents.Any())
+                {
+                    <p class="small text-muted mb-1">No safety incidents recorded.</p>
+                }
+                else
+                {
+                    <ul class="list-group list-group-flush small">
+                        @foreach (var inc in SafetyIncidents)
+                        {
+                            <li class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <span class="@(inc.IsClosed ? "text-muted" : "")">@inc.Description</span>
+                                    <span class="badge @GetSeverityBadgeClass(inc.Severity)">@inc.Severity</span>
+                                </div>
+                                @if (CanManage && !inc.IsClosed)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger mt-1" @onclick="() => CloseSafetyIncidentAsync(inc)"
+                                            data-testid="job-close-safety-incident">Close incident</button>
+                                }
+                                else if (inc.IsClosed)
+                                {
+                                    <span class="badge bg-secondary mt-1">Closed</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (CanManage)
+                {
+                    <div class="d-flex flex-wrap gap-1 mt-1 align-items-center">
+                        <input class="form-control form-control-sm" style="max-width:220px" placeholder="Incident description"
+                               @bind="newSafetyDescription" data-testid="job-safety-description" />
+                        <select class="form-select form-select-sm" style="max-width:120px" @bind="newSafetySeverity">
+                            @foreach (SafetyIncidentSeverity sev in Enum.GetValues<SafetyIncidentSeverity>())
+                            {
+                                <option value="@sev">@sev</option>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="AddSafetyIncidentAsync"
+                                disabled="@string.IsNullOrWhiteSpace(newSafetyDescription)" data-testid="job-add-safety-incident">+ Report</button>
+                    </div>
+                }
             </div>
 
             <!-- Photo upload for field use -->
@@ -122,6 +291,7 @@ else
 @code {
     [Parameter] public List<Job> Jobs { get; set; } = new();
     [Parameter] public Job? SelectedJob { get; set; }
+    [Parameter] public JobCommandCenterSummary? CommandCenter { get; set; }
     [Parameter] public bool CanManage { get; set; }
     [Parameter] public int CurrentPage { get; set; } = 1;
     [Parameter] public bool ShowPagination { get; set; } = true;
@@ -135,7 +305,22 @@ else
     [Parameter] public EventCallback OnExportCsv { get; set; }
     [Parameter] public EventCallback<Job> OnAiAnalyze { get; set; }
     [Parameter] public EventCallback<Job> OnCreateInvoice { get; set; }
+    [Parameter] public EventCallback<Job> OnSignOff { get; set; }
     [Parameter] public EventCallback OnCloseView { get; set; }
+    [Parameter] public IReadOnlyList<JobMilestone> Milestones { get; set; } = Array.Empty<JobMilestone>();
+    [Parameter] public IReadOnlyList<JobSnagItem> Snags { get; set; } = Array.Empty<JobSnagItem>();
+    [Parameter] public IReadOnlyList<JobSafetyIncident> SafetyIncidents { get; set; } = Array.Empty<JobSafetyIncident>();
+    [Parameter] public EventCallback<(string Title, DateTime? DueDate)> OnAddMilestone { get; set; }
+    [Parameter] public EventCallback<string> OnAddSnag { get; set; }
+    [Parameter] public EventCallback<JobSnagItem> OnResolveSnag { get; set; }
+    [Parameter] public EventCallback<(string Description, SafetyIncidentSeverity Severity)> OnAddSafetyIncident { get; set; }
+    [Parameter] public EventCallback<JobSafetyIncident> OnCloseSafetyIncident { get; set; }
+
+    private string newMilestoneTitle = "";
+    private DateTime? newMilestoneDue;
+    private string newSnagDescription = "";
+    private string newSafetyDescription = "";
+    private SafetyIncidentSeverity newSafetySeverity = SafetyIncidentSeverity.Medium;
 
     private decimal GetActualTotal(Job j)
     {
@@ -155,6 +340,13 @@ else
         return hasTravel ? "job-row-with-travel" : "job-row";
     }
 
+    private static string GetSignOffBadge(JobSignOffStatus status) => status switch
+    {
+        JobSignOffStatus.SignedOff => "<span class=\"badge bg-success\">Signed off</span>",
+        JobSignOffStatus.Pending => "<span class=\"badge bg-warning text-dark\">Sign-off pending</span>",
+        _ => "<span class=\"badge bg-secondary\">Not signed off</span>"
+    };
+
     private static string GetJobStatusBadge(JobStatus s)
     {
         return s switch
@@ -171,11 +363,42 @@ else
     // For demo milestones and photos in selected view (field/mobile)
     private List<string> photos = new();
 
-    private void AddMilestoneStub()
+    private async Task AddMilestoneAsync()
     {
-        // Stub - in real would add to DB
-        // For now, just visual update or toast via parent if needed
+        if (string.IsNullOrWhiteSpace(newMilestoneTitle)) return;
+        await OnAddMilestone.InvokeAsync((newMilestoneTitle.Trim(), newMilestoneDue));
+        newMilestoneTitle = "";
+        newMilestoneDue = null;
     }
+
+    private async Task AddSnagAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newSnagDescription)) return;
+        await OnAddSnag.InvokeAsync(newSnagDescription.Trim());
+        newSnagDescription = "";
+    }
+
+    private async Task ResolveSnagAsync(JobSnagItem snag) => await OnResolveSnag.InvokeAsync(snag);
+
+    private async Task AddSafetyIncidentAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newSafetyDescription)) return;
+        await OnAddSafetyIncident.InvokeAsync((newSafetyDescription.Trim(), newSafetySeverity));
+        newSafetyDescription = "";
+        newSafetySeverity = SafetyIncidentSeverity.Medium;
+    }
+
+    private async Task CloseSafetyIncidentAsync(JobSafetyIncident incident) =>
+        await OnCloseSafetyIncident.InvokeAsync(incident);
+
+    private static string GetSeverityBadgeClass(SafetyIncidentSeverity severity) => severity switch
+    {
+        SafetyIncidentSeverity.Low => "bg-info",
+        SafetyIncidentSeverity.Medium => "bg-warning text-dark",
+        SafetyIncidentSeverity.High => "bg-danger",
+        SafetyIncidentSeverity.Critical => "bg-dark",
+        _ => "bg-secondary"
+    };
 
     private async Task UploadPhoto(InputFileChangeEventArgs e)
     {

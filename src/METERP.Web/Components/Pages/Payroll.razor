@@ -1,10 +1,16 @@
 @page "/payroll"
 @rendermode InteractiveServer
+@using METERP.Application.Models
 @using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Web.Reports
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inject IPayrollService PayrollService
+@inject ITenantService TenantService
+@inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <PageTitle>Payroll & HR</PageTitle>
 
@@ -77,7 +83,8 @@ else
             <p>Hours from JobLabor: @selectedEmp.Hours.ToString("N1") — Gross R @selectedEmp.GrossPay.ToString("N0")</p>
             <p>Deductions (stub): R 1,200 (UIF, etc.)</p>
             <p class="fs-5"><strong>Net Pay: R @((selectedEmp.GrossPay - 1200m) < 0 ? 0 : selectedEmp.GrossPay - 1200m).ToString("N0")</strong></p>
-            <button class="btn btn-success btn-sm" data-testid="payroll-download-payslip" @onclick="DownloadPayslip">Download PDF Payslip (Stub)</button>
+            <button class="btn btn-success btn-sm" data-testid="payroll-download-payslip" @onclick="DownloadPayslipCsv">Download Payslip CSV</button>
+            <button class="btn btn-outline-success btn-sm ms-1" data-testid="payroll-download-payslip-pdf" @onclick="DownloadPayslipPdf">Download Payslip PDF</button>
             <small class="text-muted d-block mt-2">@selectedEmp.LaborEntryCount JobLabor record(s) this month. Full SARS-compliant payroll in production.</small>
         </div>
     </div>
@@ -86,6 +93,7 @@ else
 @code {
     private List<PayrollEmployeeSummary> employees = new();
     private PayrollEmployeeSummary? selectedEmp;
+    private TenantBranding _branding = TenantBranding.Default;
     private bool _loading = true;
     private string _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
 
@@ -94,6 +102,12 @@ else
         _loading = true;
         try
         {
+            if (CurrentUserService.TenantId != Guid.Empty)
+            {
+                var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+                _branding = TenantBranding.From(tenant);
+            }
+
             employees = (await PayrollService.GetMonthlySummariesAsync()).ToList();
             _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
         }
@@ -111,8 +125,45 @@ else
         ToastService.ShowSuccess($"Payslips ready for {withLabor} employee(s) with JobLabor this month.");
     }
 
-    private void DownloadPayslip()
+    private const decimal StubDeductions = 1200m;
+
+    private async Task DownloadPayslipCsv()
     {
-        ToastService.ShowInfo("Payslip PDF stub — production uses the same template pattern as job closeout PDFs.");
+        if (selectedEmp == null) return;
+
+        var net = Math.Max(0m, selectedEmp.GrossPay - StubDeductions);
+        var csv = string.Join(Environment.NewLine, new[]
+        {
+            $"Employee,{selectedEmp.Name}",
+            $"Period,{_periodLabel}",
+            $"Hours,{selectedEmp.Hours:N2}",
+            $"Gross Pay,R {selectedEmp.GrossPay:N2}",
+            $"Deductions (UIF etc),R {StubDeductions:N2}",
+            $"Net Pay,R {net:N2}",
+            $"Labor Entries,{selectedEmp.LaborEntryCount}"
+        });
+
+        var safeName = selectedEmp.Name.Replace(' ', '-').ToLowerInvariant();
+        await JS.InvokeVoidAsync("meterpUi.downloadText", $"payslip-{safeName}-{_periodLabel.Replace(' ', '-')}.csv", csv, "text/csv;charset=utf-8");
+        ToastService.ShowSuccess($"Payslip CSV downloaded for {selectedEmp.Name}.");
+    }
+
+    private async Task DownloadPayslipPdf()
+    {
+        if (selectedEmp == null) return;
+
+        var pdf = PayslipPdfGenerator.Generate(
+            selectedEmp.Name,
+            _periodLabel,
+            selectedEmp.Hours,
+            selectedEmp.GrossPay,
+            StubDeductions,
+            selectedEmp.LaborEntryCount,
+            _branding);
+
+        var safeName = selectedEmp.Name.Replace(' ', '-').ToLowerInvariant();
+        await JS.InvokeVoidAsync("meterpUi.downloadBytes", $"payslip-{safeName}-{_periodLabel.Replace(' ', '-')}.pdf",
+            Convert.ToBase64String(pdf), "application/pdf");
+        ToastService.ShowSuccess($"Payslip PDF downloaded for {selectedEmp.Name}.");
     }
 }

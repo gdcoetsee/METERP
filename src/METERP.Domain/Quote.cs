@@ -20,6 +20,18 @@ public class Quote : BaseEntity
 
     public QuoteStatus Status { get; set; } = QuoteStatus.Draft;
 
+    public QuoteApprovalStatus ApprovalStatus { get; set; } = QuoteApprovalStatus.None;
+
+    public Guid? SubmittedForApprovalByUserId { get; set; }
+
+    public DateTime? SubmittedForApprovalAt { get; set; }
+
+    public Guid? ExecutiveApprovedByUserId { get; set; }
+
+    public DateTime? ExecutiveApprovedAt { get; set; }
+
+    public string? ExecutiveRejectionReason { get; set; }
+
     public string? Notes { get; set; }
 
     /// <summary>

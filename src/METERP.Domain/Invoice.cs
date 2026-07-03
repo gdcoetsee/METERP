@@ -20,6 +20,19 @@ public class Invoice : BaseEntity
 
     public InvoiceStatus Status { get; set; } = InvoiceStatus.Draft;
 
+    public InvoiceDocumentType DocumentType { get; set; } = InvoiceDocumentType.Standard;
+
+    /// <summary>Source invoice when this document is a credit note.</summary>
+    public Guid? CreditNoteForInvoiceId { get; set; }
+    public Invoice? CreditNoteForInvoice { get; set; }
+
+    /// <summary>Retention withheld (typically % of subtotal) until practical completion.</summary>
+    public decimal RetentionPercent { get; set; }
+
+    public decimal RetentionAmount { get; set; }
+
+    public decimal AmountPaid { get; set; }
+
     public string? Notes { get; set; }
 
     public decimal Subtotal { get; set; }
@@ -32,6 +45,12 @@ public class Invoice : BaseEntity
 
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 
+    public ICollection<InvoicePayment> Payments { get; set; } = new List<InvoicePayment>();
+
+    public decimal BalanceDue => InvoiceBillingCalculator.CalculateBalanceDue(Total, AmountPaid);
+
+    public decimal NetCollectable => InvoiceBillingCalculator.CalculateNetCollectable(Total, RetentionAmount, AmountPaid);
+
     /// <summary>
     /// Recalculates Subtotal, Tax and Total from non-deleted lines.
     /// This is the source of truth for invoice pricing (moved to Domain for testability and correctness).
@@ -41,5 +60,6 @@ public class Invoice : BaseEntity
         Subtotal = Lines.Where(l => !l.IsDeleted).Sum(l => l.LineTotal);
         Tax = Math.Round(Subtotal * TaxRate, 2);
         Total = Subtotal + Tax;
+        RetentionAmount = InvoiceBillingCalculator.CalculateRetentionAmount(Subtotal, RetentionPercent);
     }
 }

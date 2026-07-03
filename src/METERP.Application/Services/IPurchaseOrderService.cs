@@ -25,5 +25,7 @@ public interface IPurchaseOrderService
     /// Receive the PO (or partial) — updates inventory via StockTransaction (Receipt) and sets status.
     /// For MVP this is a full receive helper; partial can be added later.
     /// </summary>
-    Task ReceiveAsync(Guid poId, CancellationToken ct = default);
+    Task<Guid> CreateFromRequisitionAsync(Guid requisitionId, Guid supplierId, CancellationToken ct = default);
+
+    Task<GoodsReceiptVoucher?> ReceiveAsync(Guid poId, Guid receivedByUserId, CancellationToken ct = default);
 }

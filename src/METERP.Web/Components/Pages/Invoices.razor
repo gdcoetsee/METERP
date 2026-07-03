@@ -1,32 +1,52 @@
 @page "/invoices"
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Domain
 @using METERP.Common
+@using METERP.Web.Reports
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.JSInterop
 @attribute [Authorize(Policy = "Invoices.View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IInvoiceService InvoiceService
 @inject IJobService JobService
+@inject ITenantService TenantService
 @inject ICurrentUserService CurrentUserService
 @inject IJSRuntime JS
 @inject ToastService ToastService
 
 <PageTitle>Invoices</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+@if (_agedDebtors.Count > 0)
+{
+    <div class="card mb-3 border-warning" data-testid="aged-debtors-summary">
+        <div class="card-body py-2">
+            <strong>Aged debtors:</strong>
+            <span class="ms-2">@_agedDebtors.Count open invoice(s)</span>
+            <span class="ms-2 text-danger">R @_agedDebtors.Sum(d => d.BalanceDue).ToString("N2") outstanding</span>
+            <span class="ms-2 small text-muted">Buckets: @string.Join(", ", _agedDebtors.GroupBy(d => d.AgingBucket).Select(g => $"{g.Key} ({g.Count()})"))</span>
+        </div>
+    </div>
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h1>Invoices</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-invoice-button">+ New Invoice</button>
-    }
+    <div class="d-flex gap-2 align-items-center">
+        <ExportToolbar TestId="invoices-export" OnExportCsv="ExportInvoicesCsvAsync" OnExportExcel="ExportInvoicesExcelAsync" OnExportPdf="ExportInvoicesPdfAsync" Disabled="@_loading" />
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-invoice-button">+ New Invoice</button>
+        }
+    </div>
 </div>
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search invoice #, customer or job..."
-               value="@searchTerm" @oninput="OnSearchInput" />
+        <input type="search" class="form-control" data-testid="invoices-search" placeholder="Search invoice #, customer or job..."
+               @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
             <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
@@ -58,8 +78,10 @@ else
                     <th>Invoice #</th>
                     <th>Customer / Job</th>
                     <th>Date / Due</th>
+                    <th>Type</th>
                     <th>Status</th>
                     <th class="text-end">Total</th>
+                    <th class="text-end">Balance</th>
                     <th></th>
                 </tr>
             </thead>
@@ -73,8 +95,10 @@ else
                             <small class="text-muted">@(inv.Job?.JobNumber ?? "")</small>
                         </td>
                         <td>@inv.InvoiceDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Due @inv.DueDate.ToString("yyyy-MM-dd")</small></td>
+                        <td>@((MarkupString)GetDocumentTypeBadge(inv.DocumentType))</td>
                         <td>@((MarkupString)GetStatusBadge(inv.Status))</td>
                         <td class="text-end">R @inv.Total.ToString("N2")</td>
+                        <td class="text-end">R @inv.BalanceDue.ToString("N2")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewInvoice(inv)" data-testid="view-invoice">View</button>
                             @if (UserCanManage)
@@ -152,13 +176,23 @@ else
         <div class="card-body">
             <div class="row mb-3">
                 <div class="col-md-6">
+                    <strong>Type:</strong> @((MarkupString)GetDocumentTypeBadge(selectedInvoice.DocumentType))<br />
                     <strong>Status:</strong> @((MarkupString)GetStatusBadge(selectedInvoice.Status))<br />
                     <strong>Due:</strong> @selectedInvoice.DueDate.ToString("yyyy-MM-dd")
+                    @if (selectedInvoice.RetentionAmount > 0)
+                    {
+                        <br /><strong>Retention held:</strong> @($"R {selectedInvoice.RetentionAmount:N2} ({selectedInvoice.RetentionPercent:N0}%)")
+                    }
                 </div>
                 <div class="col-md-6 text-md-end">
                     <div>Subtotal: <strong>R @selectedInvoice.Subtotal.ToString("N2")</strong></div>
                     <div>Tax: R @selectedInvoice.Tax.ToString("N2")</div>
                     <div class="fs-5">Total: <strong>R @selectedInvoice.Total.ToString("N2")</strong></div>
+                    <div>Paid: R @selectedInvoice.AmountPaid.ToString("N2") · Balance: <strong>R @selectedInvoice.BalanceDue.ToString("N2")</strong></div>
+                    @if (selectedInvoice.RetentionAmount > 0)
+                    {
+                        <div class="small text-muted">Net collectable (excl. retention): R @selectedInvoice.NetCollectable.ToString("N2")</div>
+                    }
                 </div>
             </div>
 
@@ -244,8 +278,67 @@ else
                 </div>
             }
 
+            @if (selectedInvoice.DocumentType != InvoiceDocumentType.Proforma && selectedInvoice.DocumentType != InvoiceDocumentType.CreditNote)
+            {
+                <h6 class="mt-4" data-testid="invoice-payments-header">Payments (@_payments.Count)</h6>
+                @if (_payments.Any())
+                {
+                    <table class="table table-sm">
+                        <thead><tr><th>Date</th><th>Amount</th><th>Reference</th><th>POP</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in _payments)
+                            {
+                                <tr data-testid="invoice-payment-row">
+                                    <td>@p.PaymentDate.ToString("yyyy-MM-dd")</td>
+                                    <td>R @p.Amount.ToString("N2")</td>
+                                    <td>@(p.Reference ?? "—")</td>
+                                    <td>@(p.PopFileName ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="text-muted small">No payments recorded yet.</p>
+                }
+
+                @if (UserCanManage && selectedInvoice.BalanceDue > 0)
+                {
+                    <div class="border rounded p-3 bg-light" data-testid="invoice-record-payment">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-2">
+                                <label class="form-label small">Amount</label>
+                                <InputNumber class="form-control form-control-sm" @bind-Value="_paymentAmount" step="0.01" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Date</label>
+                                <InputDate class="form-control form-control-sm" @bind-Value="_paymentDate" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Reference</label>
+                                <InputText class="form-control form-control-sm" @bind-Value="_paymentReference" placeholder="EFT ref" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">POP attachment</label>
+                                <InputFile class="form-control form-control-sm" OnChange="OnPopSelected" accept=".pdf,.png,.jpg,.jpeg" data-testid="invoice-pop-upload" />
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-sm btn-success w-100" @onclick="RecordPaymentAsync" data-testid="invoice-record-payment-btn">Record payment</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
             @if (UserCanManage)
             {
+                <div class="mt-3 d-flex gap-2 flex-wrap">
+                    @if (selectedInvoice.DocumentType != InvoiceDocumentType.CreditNote && selectedInvoice.DocumentType != InvoiceDocumentType.Proforma)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-warning" @onclick="CreateCreditNoteAsync" data-testid="invoice-create-credit-note">Create credit note</button>
+                    }
+                </div>
                 <div class="mt-4">
                     <strong>Update Status:</strong>
                     <div class="btn-group mt-1" role="group">
@@ -265,6 +358,12 @@ else
 
 @code {
     private List<Invoice> invoices = new();
+    private List<AgedDebtorRow> _agedDebtors = new();
+    private List<InvoicePayment> _payments = new();
+    private decimal _paymentAmount;
+    private DateTime _paymentDate = DateTime.UtcNow.Date;
+    private string _paymentReference = "";
+    private IBrowserFile? _popFile;
     private Invoice currentInvoice = new();
     private Invoice? selectedInvoice;
     private bool showForm;
@@ -273,18 +372,36 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private TenantBranding _branding = TenantBranding.Default;
 
     private bool showLineForm;
     private InvoiceLine? editingLine;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
 
+    [SupplyParameterFromQuery(Name = "open")]
+    public Guid? OpenInvoiceId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
         try
         {
+            if (CurrentUserService.TenantId != Guid.Empty)
+            {
+                var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+                _branding = TenantBranding.From(tenant);
+            }
+
             await LoadInvoices();
+            _agedDebtors = (await InvoiceService.GetAgedDebtorsAsync()).ToList();
+
+            if (OpenInvoiceId is { } openId && openId != Guid.Empty)
+            {
+                var opened = await InvoiceService.GetByIdAsync(openId);
+                if (opened != null)
+                    await ViewInvoice(opened);
+            }
         }
         finally
         {
@@ -296,11 +413,11 @@ else
     {
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
         invoices = (await InvoiceService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        _agedDebtors = (await InvoiceService.GetAgedDebtorsAsync()).ToList();
     }
 
-    private async Task OnSearchInput(ChangeEventArgs e)
+    private async Task OnSearchChangedAsync()
     {
-        searchTerm = e.Value?.ToString() ?? string.Empty;
         currentPage = 1;
         await LoadInvoices();
     }
@@ -394,6 +511,13 @@ else
     private async Task ViewInvoice(Invoice inv)
     {
         selectedInvoice = await InvoiceService.GetByIdAsync(inv.Id);
+        _payments = selectedInvoice != null
+            ? (await InvoiceService.GetPaymentsAsync(selectedInvoice.Id)).ToList()
+            : new();
+        _paymentAmount = selectedInvoice?.BalanceDue ?? 0;
+        _paymentDate = DateTime.UtcNow.Date;
+        _paymentReference = "";
+        _popFile = null;
         showForm = false;
         showLineForm = false;
         editingLine = null;
@@ -410,7 +534,9 @@ else
     {
         // Demo helper: find a job without invoice and create one
         var jobs = await JobService.GetAllAsync();
-        var job = jobs.FirstOrDefault(j => j.Status == JobStatus.Completed || j.Status == JobStatus.InProgress);
+        var job = jobs.FirstOrDefault(j =>
+            (j.Status == JobStatus.Completed || j.Status == JobStatus.InProgress)
+            && j.SignOffStatus == JobSignOffStatus.SignedOff);
         if (job != null)
         {
             try
@@ -508,6 +634,74 @@ else
         catch { return false; }
     }
 
+    private void OnPopSelected(InputFileChangeEventArgs e) => _popFile = e.File;
+
+    private async Task RecordPaymentAsync()
+    {
+        if (selectedInvoice == null || _paymentAmount <= 0) return;
+        try
+        {
+            if (_popFile != null)
+            {
+                await using var stream = _popFile.OpenReadStream(5 * 1024 * 1024);
+                await InvoiceService.RecordPaymentWithPopAsync(
+                    selectedInvoice.Id,
+                    _paymentAmount,
+                    _paymentDate.ToUniversalTime(),
+                    string.IsNullOrWhiteSpace(_paymentReference) ? null : _paymentReference,
+                    _popFile.Name,
+                    stream,
+                    _popFile.ContentType,
+                    CurrentUserService.UserId,
+                    null);
+            }
+            else
+            {
+                await InvoiceService.RecordPaymentAsync(
+                    selectedInvoice.Id,
+                    _paymentAmount,
+                    _paymentDate.ToUniversalTime(),
+                    string.IsNullOrWhiteSpace(_paymentReference) ? null : _paymentReference,
+                    CurrentUserService.UserId,
+                    null);
+            }
+
+            ToastService.ShowSuccess("Payment recorded.");
+            await ViewInvoice(selectedInvoice);
+            await LoadInvoices();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task CreateCreditNoteAsync()
+    {
+        if (selectedInvoice == null) return;
+        try
+        {
+            var cn = await InvoiceService.CreateCreditNoteAsync(selectedInvoice.Id, "Credit note via Invoices UI");
+            ToastService.ShowSuccess($"Credit note {cn.InvoiceNumber} created.");
+            await LoadInvoices();
+            await ViewInvoice(cn);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private static string GetDocumentTypeBadge(InvoiceDocumentType type) => type switch
+    {
+        InvoiceDocumentType.Proforma => "<span class=\"badge bg-info\">Proforma</span>",
+        InvoiceDocumentType.Deposit => "<span class=\"badge bg-primary\">Deposit</span>",
+        InvoiceDocumentType.Partial => "<span class=\"badge bg-warning text-dark\">Partial</span>",
+        InvoiceDocumentType.Final => "<span class=\"badge bg-success\">Final</span>",
+        InvoiceDocumentType.CreditNote => "<span class=\"badge bg-danger\">Credit note</span>",
+        _ => "<span class=\"badge bg-light text-dark\">Standard</span>"
+    };
+
     private static string GetStatusBadge(InvoiceStatus status)
     {
         return status switch
@@ -520,5 +714,56 @@ else
             InvoiceStatus.Cancelled => "<span class=\"badge bg-dark\">Cancelled</span>",
             _ => status.ToString()
         };
+    }
+
+    private IEnumerable<string[]> BuildInvoiceExportRows()
+    {
+        foreach (var inv in invoices)
+        {
+            yield return new[]
+            {
+                inv.InvoiceNumber,
+                inv.Customer?.Name ?? "",
+                inv.Job?.JobNumber ?? "",
+                inv.InvoiceDate.ToString("yyyy-MM-dd"),
+                inv.DueDate.ToString("yyyy-MM-dd"),
+                inv.DocumentType.ToString(),
+                inv.Status.ToString(),
+                TabularExportHelper.FormatDecimal(inv.Total),
+                TabularExportHelper.FormatDecimal(inv.BalanceDue)
+            };
+        }
+    }
+
+    private async Task ExportInvoicesCsvAsync()
+    {
+        if (!invoices.Any()) return;
+        var csv = TabularExportHelper.BuildCsv(
+            "InvoiceNumber,Customer,Job,InvoiceDate,DueDate,Type,Status,Total,BalanceDue",
+            BuildInvoiceExportRows().Select(r => r.AsEnumerable()));
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "invoices.csv", csv, "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Invoices CSV downloaded.");
+    }
+
+    private async Task ExportInvoicesExcelAsync()
+    {
+        if (!invoices.Any()) return;
+        var tsv = TabularExportHelper.BuildExcelTsv(
+            "InvoiceNumber\tCustomer\tJob\tInvoiceDate\tDueDate\tType\tStatus\tTotal\tBalanceDue",
+            BuildInvoiceExportRows().Select(r => r.AsEnumerable()));
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "invoices.xls", tsv, "application/vnd.ms-excel");
+        ToastService.ShowSuccess("Invoices Excel file downloaded.");
+    }
+
+    private async Task ExportInvoicesPdfAsync()
+    {
+        if (!invoices.Any()) return;
+        var pdf = TabularPdfGenerator.Generate(
+            "Invoices Export",
+            new[] { "Invoice #", "Customer", "Job", "Date", "Due", "Type", "Status", "Total", "Balance" },
+            BuildInvoiceExportRows(),
+            _branding);
+        await JS.InvokeVoidAsync("meterpUi.downloadBytes", "invoices.pdf", Convert.ToBase64String(pdf), "application/pdf");
+        ToastService.ShowSuccess("Invoices PDF downloaded.");
     }
 }

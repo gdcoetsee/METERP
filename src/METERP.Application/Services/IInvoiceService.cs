@@ -25,4 +25,37 @@ public interface IInvoiceService
     Task<Invoice> CreateFromJobAsync(Guid jobId, CancellationToken ct = default);
 
     Task UpdateStatusAsync(Guid invoiceId, InvoiceStatus newStatus, CancellationToken ct = default);
+
+    Task<IReadOnlyList<InvoicePayment>> GetPaymentsAsync(Guid invoiceId, CancellationToken ct = default);
+
+    Task<Guid> RecordPaymentAsync(
+        Guid invoiceId,
+        decimal amount,
+        DateTime paymentDate,
+        string? reference,
+        Guid? recordedByUserId,
+        string? notes,
+        CancellationToken ct = default);
+
+    Task<Guid> RecordPaymentWithPopAsync(
+        Guid invoiceId,
+        decimal amount,
+        DateTime paymentDate,
+        string? reference,
+        string fileName,
+        Stream popContent,
+        string contentType,
+        Guid? recordedByUserId,
+        string? notes,
+        CancellationToken ct = default);
+
+    Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default);
+
+    Task<Invoice> CreateBillingDocumentAsync(
+        Guid jobId,
+        InvoiceDocumentType documentType,
+        decimal? percentOfQuotedTotal = null,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default);
 }

@@ -5,18 +5,83 @@
 @using METERP.Common
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
+@inject IJSRuntime JS
 @attribute [Authorize(Policy = "Jobs.View")]
 @inject ISchedulingService SchedulingService
+@inject IRecurringJobService RecurringJobService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
 @inject ToastService ToastService
 
 <PageTitle>Scheduling</PageTitle>
 
-<h1>Job Scheduling</h1>
-<p class="text-muted">Basic view of upcoming and scheduled jobs. Assign employees and assets for next-level operations.</p>
-<button class="btn btn-primary btn-sm mb-3" data-testid="scheduling-ai-suggest" @onclick="SuggestAssignmentsWithAI">✨ AI Suggest Best Assignments</button>
-<button class="btn btn-outline-primary btn-sm mb-3 ms-2" data-testid="scheduling-ai-risk" @onclick="RunLowStockRiskForScheduled">🔮 AI: Low-stock + travel risk for these scheduled jobs</button>
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <div>
+        <h1 class="mb-0">Job Scheduling</h1>
+        <p class="text-muted mb-0">Calendar and crew assignments for upcoming work.</p>
+    </div>
+    <ExportToolbar TestId="scheduling-export" ShowPdf="false" ShowExcel="false" OnExportCsv="ExportScheduleCsvAsync" Disabled="@_loading" />
+</div>
+<div class="mb-3">
+    <button class="btn btn-primary btn-sm" data-testid="scheduling-ai-suggest" @onclick="SuggestAssignmentsWithAI">✨ AI Suggest Best Assignments</button>
+    <button class="btn btn-outline-primary btn-sm ms-2" data-testid="scheduling-ai-risk" @onclick="RunLowStockRiskForScheduled">🔮 AI: Low-stock + travel risk</button>
+    <button class="btn btn-outline-secondary btn-sm ms-2" @onclick="PreviousWeek">← Prev week</button>
+    <button class="btn btn-outline-secondary btn-sm ms-1" @onclick="NextWeek">Next week →</button>
+</div>
+
+@if (!_loading && _recurringSchedules.Count > 0)
+{
+    <div class="card mb-3" data-testid="scheduling-recurring">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <span>Recurring jobs</span>
+            <button class="btn btn-sm btn-outline-primary" @onclick="ProcessRecurringAsync" data-testid="scheduling-process-recurring">Spawn due jobs</button>
+        </div>
+        <ul class="list-group list-group-flush small">
+            @foreach (var s in _recurringSchedules)
+            {
+                <li class="list-group-item d-flex justify-content-between">
+                    <span><strong>@s.Title</strong> — @(s.Customer?.Name ?? "Customer") every @s.IntervalDays d</span>
+                    <span class="text-muted">Next: @s.NextRunDate.ToString("yyyy-MM-dd")</span>
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@if (!_loading)
+{
+    <div class="card mb-3" data-testid="scheduling-calendar">
+        <div class="card-header py-2">Week of @_weekStart.ToString("yyyy-MM-dd")</div>
+        <div class="card-body p-2">
+            <div class="row g-2">
+                @for (var day = 0; day < 7; day++)
+                {
+                    var date = _weekStart.AddDays(day);
+                    var dayJobs = _calendarJobs.Where(j => j.ScheduledStart?.Date == date.Date).ToList();
+                    <div class="col">
+                        <div class="border rounded p-2 h-100 bg-light">
+                            <div class="small fw-bold">@date.ToString("ddd dd")</div>
+                            @if (!dayJobs.Any())
+                            {
+                                <div class="small text-muted">—</div>
+                            }
+                            else
+                            {
+                                @foreach (var cj in dayJobs)
+                                {
+                                    <div class="small mt-1">
+                                        <button class="btn btn-link btn-sm p-0 text-start" @onclick="() => ViewJob(cj)">@cj.JobNumber</button>
+                                        <div class="text-muted">@cj.Title</div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 @if (_loading)
 {
@@ -113,6 +178,12 @@ else
                     }
                 </div>
             </div>
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <label class="form-label">Scheduled start</label>
+                    <input type="date" class="form-control" data-testid="scheduling-date-input" @bind="assignScheduledDate" />
+                </div>
+            </div>
             <button class="btn btn-success mt-2" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save Assignments</button>
             <button class="btn btn-secondary mt-2 ms-1" data-testid="scheduling-close-assign" @onclick="CloseAssign">Close</button>
 
@@ -171,8 +242,24 @@ else
     private DateTime laborWorkDate = DateTime.UtcNow.Date;
     private HashSet<Guid> laborCrewEmployeeIds = new();
     private bool _loading = true;
+    private DateTime _weekStart;
+    private List<Job> _calendarJobs = new();
+    private List<RecurringJobSchedule> _recurringSchedules = new();
+    private DateTime? assignScheduledDate;
 
     protected override async Task OnInitializedAsync()
+    {
+        _weekStart = StartOfWeek(DateTime.UtcNow.Date);
+        await LoadBoardAsync();
+    }
+
+    private static DateTime StartOfWeek(DateTime date)
+    {
+        var diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+        return date.AddDays(-diff);
+    }
+
+    private async Task LoadBoardAsync()
     {
         _loading = true;
         try
@@ -181,11 +268,25 @@ else
             jobs = board.Jobs.ToList();
             availableAssets = board.Assets.ToList();
             availableEmployees = board.Employees.ToList();
+            _calendarJobs = (await SchedulingService.GetCalendarJobsAsync(_weekStart)).ToList();
+            _recurringSchedules = (await RecurringJobService.GetAllAsync()).ToList();
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private async Task PreviousWeek()
+    {
+        _weekStart = _weekStart.AddDays(-7);
+        await LoadBoardAsync();
+    }
+
+    private async Task NextWeek()
+    {
+        _weekStart = _weekStart.AddDays(7);
+        await LoadBoardAsync();
     }
 
     private void ViewJob(Job job)
@@ -197,6 +298,7 @@ else
             .Where(e => e.Id != job.AssignedEmployeeId)
             .Select(e => e.Id)
             .ToHashSet();
+        assignScheduledDate = job.ScheduledStart?.Date;
         laborWorkDate = DateTime.UtcNow.Date;
         laborCrewEmployeeIds = GetCrewForQuickLabor().Select(e => e.Id).ToHashSet();
     }
@@ -238,8 +340,9 @@ else
             assignAssetId,
             assignEmployeeId,
             assignCrewEmployeeIds.ToList());
+        await SchedulingService.UpdateScheduledStartAsync(selectedJob.Id, assignScheduledDate);
         ToastService.ShowSuccess("Assignment saved for job.");
-        jobs = (await SchedulingService.GetBoardAsync()).Jobs.ToList();
+        await LoadBoardAsync();
         selectedJob = null;
     }
 
@@ -273,7 +376,7 @@ else
                 laborCrewEmployeeIds.ToList());
 
             ToastService.ShowSuccess($"Logged {result.EntriesAdded} crew labor entr{(result.EntriesAdded == 1 ? "y" : "ies")} for job.");
-            jobs = (await SchedulingService.GetBoardAsync()).Jobs.ToList();
+            await LoadBoardAsync();
             selectedJob = jobs.FirstOrDefault(j => j.Id == selectedJob.Id);
             if (selectedJob != null)
                 laborCrewEmployeeIds = GetCrewForQuickLabor().Select(e => e.Id).ToHashSet();
@@ -311,6 +414,36 @@ else
         {
             ToastService.ShowError("AI suggest failed: " + ex.Message);
         }
+    }
+
+    private async Task ProcessRecurringAsync()
+    {
+        var spawned = await RecurringJobService.ProcessDueAsync();
+        if (spawned > 0)
+        {
+            ToastService.ShowSuccess($"Spawned {spawned} recurring job(s).");
+            await LoadBoardAsync();
+        }
+        else
+            ToastService.ShowInfo("No recurring schedules are due today.");
+    }
+
+    private async Task ExportScheduleCsvAsync()
+    {
+        if (!jobs.Any()) return;
+        var csv = TabularExportHelper.BuildCsv(
+            "JobNumber,Title,Customer,ScheduledStart,Status,LeadEmployee",
+            jobs.OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue).Select(j => new[]
+            {
+                j.JobNumber,
+                j.Title,
+                j.Customer?.Name,
+                j.ScheduledStart?.ToString("yyyy-MM-dd") ?? "",
+                j.Status.ToString(),
+                j.AssignedEmployee != null ? $"{j.AssignedEmployee.FirstName} {j.AssignedEmployee.LastName}" : ""
+            }));
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "schedule.csv", csv, "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Schedule CSV downloaded.");
     }
 
     private async Task RunLowStockRiskForScheduled()

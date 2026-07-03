@@ -26,6 +26,10 @@ public interface ISchedulingService
         IReadOnlyList<Guid>? crewEmployeeIds = null,
         string? description = null,
         CancellationToken ct = default);
+
+    Task UpdateScheduledStartAsync(Guid jobId, DateTime? scheduledStart, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Job>> GetCalendarJobsAsync(DateTime weekStart, int dayCount = 7, CancellationToken ct = default);
 }
 
 public sealed record CrewLaborAddResult(int EntriesAdded, IReadOnlyList<Guid> LaborIds);
