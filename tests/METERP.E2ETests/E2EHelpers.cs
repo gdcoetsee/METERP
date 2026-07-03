@@ -18,6 +18,14 @@ public static class E2EHelpers
     {
         var url = baseUrl ?? BaseUrl;
         var loginEmail = email ?? AcmeEmail;
+
+        // Beta 2FA tests can leave authenticator enabled — reset via dev API before UI login.
+        if (string.Equals(loginEmail, BetaEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            try { await DisableBetaTwoFactorAsync(url); }
+            catch { /* endpoint may be unavailable on older images */ }
+        }
+
         Exception? lastError = null;
 
         for (var attempt = 0; attempt < 3; attempt++)
@@ -119,8 +127,15 @@ public static class E2EHelpers
     {
         var url = baseUrl ?? BaseUrl;
         var cleanPath = relativePath.TrimStart('/');
-        await page.GotoAsync($"{url}/{cleanPath}");
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await page.GotoAsync($"{url}/{cleanPath}", new() { WaitUntil = WaitUntil.DOMContentLoaded, Timeout = 60000 });
+        try
+        {
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 5000 });
+        }
+        catch (TimeoutException)
+        {
+            // Blazor Server keeps sockets open — DOM ready is enough for test-id waits.
+        }
     }
 
     public static async Task<string> TakeScreenshotAsync(this IPage page, string testName, bool isFailure = false)
