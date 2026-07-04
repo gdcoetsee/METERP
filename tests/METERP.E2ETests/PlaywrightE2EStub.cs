@@ -735,6 +735,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task AccountBilling_Page_Shows_Plan_And_Manage_Billing()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
@@ -774,6 +775,7 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
@@ -812,6 +814,8 @@ public class E2EFlowTests : IAsyncLifetime
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(resetDemoState: true);
+        await page.GotoRelativeAsync("/account");
+        await page.WaitForTestIdAsync("account-hub-ready", 30000);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
         await page.WaitForTestIdAsync("account-tab-billing", 15000);
         await page.WaitForTestIdAsync("account-tab-security", 15000);
@@ -830,6 +834,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task AccountBilling_Reflects_Webhook_Tier_Update()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var payload = """
             {
               "type": "customer.subscription.updated",
@@ -1198,6 +1203,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Inventory_Page_Loads_Stock_Table()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
@@ -1234,9 +1240,11 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Inventory_Search_FiltersBySku()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
+        await page.WaitForTestIdAsync("inventory-ready", 30000);
 
         var contentBefore = await page.ContentAsync();
         Assert.Contains("DB-12W-001", contentBefore);
@@ -1251,6 +1259,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Suppliers_Page_Loads_Demo_Vendor()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");

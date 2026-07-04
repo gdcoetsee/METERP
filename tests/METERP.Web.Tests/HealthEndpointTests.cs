@@ -38,6 +38,18 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task HealthReady_ReturnsHealthyStatusJson()
+    {
+        var response = await _client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        Assert.Equal("Healthy", doc.RootElement.GetProperty("status").GetString(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task HealthReady_ReturnsOk_WithStructuredJson()
     {
         var response = await _client.GetAsync("/health/ready");
