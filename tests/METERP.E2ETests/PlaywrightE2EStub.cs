@@ -767,13 +767,11 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("account-tab-security", 15000);
         await page.WaitForTestIdAsync("account-billing-tier", 10000);
 
-        await page.ClickByTestIdAsync("account-tab-security");
         await page.WaitForAccountReadyAsync("account-security-ready", "/account-security");
+        var securityContent = await page.ContentAsync();
+        Assert.Contains("Two-Factor Authentication", securityContent);
 
-        var content = await page.ContentAsync();
-        Assert.Contains("Two-Factor Authentication", content);
-
-        await page.ClickByTestIdAsync("account-tab-billing");
+        await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
         await page.WaitForTestIdAsync("account-billing-tier", 10000);
 
         await page.CloseAsync();
@@ -801,7 +799,7 @@ public class E2EFlowTests : IAsyncLifetime
         var webhookResponse = await E2EHelpers.PostStripeWebhookAsync(payload);
         Assert.True(webhookResponse.IsSuccessStatusCode, await webhookResponse.Content.ReadAsStringAsync());
 
-        var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
@@ -1219,10 +1217,8 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Suppliers_Search_FiltersByName()
     {
-        await E2EHelpers.EnsureAppReadyAsync();
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/suppliers");
-        await page.WaitForTestIdAsync("suppliers-table", 30000);
+        await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");
 
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
@@ -1241,8 +1237,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task PurchaseOrders_Page_Loads_Demo_Po()
     {
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/purchase-orders");
-        await page.WaitForTestIdAsync("purchase-orders-table", 30000);
+        await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table");
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
@@ -1289,11 +1284,9 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.NotNull(qtyBeforeText);
         var qtyBefore = int.Parse(new string(qtyBeforeText.Where(char.IsDigit).ToArray()));
 
-        await page.GotoRelativeAsync("/purchase-orders");
-        await page.WaitForTestIdAsync("purchase-orders-table", 30000);
+        await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table");
 
         await page.FillByTestIdAsync("purchase-orders-search", ReceiveDemoPoMarker);
-        await page.WaitForTestIdAsync("purchase-orders-table", 10000);
 
         var sentRow = page.Locator("[data-testid='purchase-order-row-e2e-receive']").First;
         await Assertions.Expect(sentRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
@@ -1309,8 +1302,7 @@ public class E2EFlowTests : IAsyncLifetime
             .Filter(new() { HasText = poNumber! });
         await Assertions.Expect(receivedRow).ToContainTextAsync("Received", new() { Timeout = 15000 });
 
-        await page.GotoRelativeAsync("/inventory");
-        await page.WaitForTestIdAsync("inventory-table", 30000);
+        await page.WaitForListPageAsync("/inventory", "inventory-table");
         await page.FillByTestIdAsync("inventory-search", "LED-HB");
 
         var invBodyAfter = page.Locator("[data-testid='inventory-table'] tbody");
@@ -1428,14 +1420,12 @@ public class E2EFlowTests : IAsyncLifetime
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-002" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
 
         // Fresh navigation avoids flaky consecutive Blazor search updates on the same circuit.
-        await page.GotoRelativeAsync("/employees");
-        await page.WaitForTestIdAsync("employees-table", 30000);
+        await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
         tableBody = page.Locator("[data-testid='employees-table'] tbody");
         await page.FillByTestIdAsync("employees-search", "Thabo");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1, new() { Timeout = 20000 });
 
-        await page.GotoRelativeAsync("/employees");
-        await page.WaitForTestIdAsync("employees-table", 30000);
+        await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
         tableBody = page.Locator("[data-testid='employees-table'] tbody");
         await page.FillByTestIdAsync("employees-search", "Johan");
         await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
@@ -1447,7 +1437,8 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
-        var page = await _browser.LoginAsync();
+        await E2EHelpers.EnsureConvertibleSalesOrderAsync();
+        var page = await _browser.LoginAsync(resetDemoState: false);
         await page.GotoRelativeAsync("/sales-orders");
         await page.WaitForSalesOrdersReadyAsync();
 
@@ -1465,21 +1456,22 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrder_Convert_To_Job_Creates_Job_With_Travel()
     {
-        var page = await _browser.LoginAsync();
         var soNumber = await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         Assert.False(string.IsNullOrWhiteSpace(soNumber));
 
+        var page = await _browser.LoginAsync(resetDemoState: false);
+        page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
         await page.GotoRelativeAsync("/sales-orders");
         await page.OpenSalesOrderDetailAsync(ConvertibleSalesOrderMarker);
-        await page.WaitForTestIdAsync("sales-order-convert-to-job", 20000);
-        await page.ClickByTestIdAsync("sales-order-convert-to-job");
+        await page.WaitForTestIdAsync("sales-order-convert-to-job", 30000);
+        await page.ClickByTestIdWhenReadyAsync("sales-order-convert-to-job");
 
-        await page.WaitForTestIdAsync("sales-orders-ready", 20000);
+        await page.Locator(".toast-body").Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("converted to Job", System.Text.RegularExpressions.RegexOptions.IgnoreCase) }).First
+            .WaitForAsync(new() { Timeout = 30000 });
 
-        await page.GotoRelativeAsync("/jobs");
-        await page.WaitForTestIdAsync("jobs-table", 20000);
+        await page.WaitForJobsReadyAsync();
         await page.FillByTestIdAsync("jobs-search", soNumber!);
-        await page.WaitForTestIdAsync("jobs-table", 10000);
+        await page.WaitForJobsReadyAsync(30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);

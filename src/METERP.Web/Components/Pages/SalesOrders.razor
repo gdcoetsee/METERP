@@ -199,6 +199,7 @@ else
     {
         selectedSO = null;
         selectedSO = await SalesOrderService.GetByIdAsync(so.Id);
+        await InvokeAsync(StateHasChanged);
     }
 
     private void CloseSOView()

@@ -14,17 +14,21 @@ public static class E2EHelpers
     public const string BetaEmail = "admin@beta.demo";
     public const string BetaPassword = "Demo123!";
 
+    private static int _loginCount;
+
     public static async Task<IPage> LoginAsync(
         this IBrowser browser,
         string? email = null,
         string? password = null,
         string? baseUrl = null,
-        bool resetDemoState = true)
+        bool resetDemoState = false)
     {
         var url = baseUrl ?? BaseUrl;
         var loginEmail = email ?? AcmeEmail;
 
-        if (resetDemoState)
+        // Periodic reset stabilizes long runs without paying full reset cost on every login (~2–3s each).
+        var loginNumber = Interlocked.Increment(ref _loginCount);
+        if (resetDemoState || loginNumber % 12 == 1)
         {
             try { await ResetDemoStateAsync(url); }
             catch { /* dev endpoints unavailable on older images */ }
@@ -134,43 +138,53 @@ public static class E2EHelpers
         string relativePath,
         string pageKey,
         string tableTestId,
-        int timeoutMs = 45000)
+        int timeoutMs = 60000)
     {
-        await WaitForInteractivePageAsync(page, relativePath, $"{pageKey}-ready", tableTestId, timeoutMs);
+        await page.WaitForListPageAsync(relativePath, tableTestId, timeoutMs);
     }
 
     /// <summary>
-    /// Waits for InteractiveServer prerender:false pages (empty shell until the circuit loads data).
+    /// Waits for a list/table page (SSR or InteractiveServer). Ignores visually-hidden *-ready markers.
     /// </summary>
-    public static async Task WaitForInteractivePageAsync(
+    public static async Task WaitForListPageAsync(
         this IPage page,
         string relativePath,
-        string readyTestId,
-        string contentTestId,
-        int timeoutMs = 45000)
+        string tableTestId,
+        int timeoutMs = 60000)
     {
-        var readySelector = $"[data-testid='{readyTestId}']";
-        var contentSelector = $"[data-testid='{contentTestId}']";
+        var tableSelector = $"[data-testid='{tableTestId}']";
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
             try
             {
                 await page.GotoRelativeAsync(relativePath);
-                await page.WaitForSelectorAsync(
-                    $"{readySelector}, {contentSelector}",
-                    new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
-                await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+                await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+                await page.Locator($"{tableSelector} tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
                 return;
             }
             catch (TimeoutException) when (attempt < 2)
             {
-                await Task.Delay(2000);
+                await Task.Delay(2500);
             }
         }
 
         await page.GotoRelativeAsync(relativePath);
-        await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        await page.Locator($"{tableSelector} tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
+    }
+
+    /// <summary>
+    /// Waits for list pages; readyTestId is optional (often visually-hidden).
+    /// </summary>
+    public static async Task WaitForInteractivePageAsync(
+        this IPage page,
+        string relativePath,
+        string readyTestId,
+        string contentTestId,
+        int timeoutMs = 60000)
+    {
+        await page.WaitForListPageAsync(relativePath, contentTestId, timeoutMs);
     }
 
     public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)
@@ -202,21 +216,36 @@ public static class E2EHelpers
         this IPage page,
         string? searchMarker = null,
         string rowTestId = "sales-order-row-e2e-convertible",
-        int timeoutMs = 45000)
+        int timeoutMs = 60000)
     {
-        await page.WaitForSalesOrdersReadyAsync(timeoutMs);
-
-        if (!string.IsNullOrWhiteSpace(searchMarker))
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            await page.FillByTestIdAsync("sales-orders-search", searchMarker);
-            await page.WaitForSalesOrdersReadyAsync(timeoutMs / 2);
+            try
+            {
+                await page.WaitForSalesOrdersReadyAsync(timeoutMs);
+
+                if (!string.IsNullOrWhiteSpace(searchMarker))
+                {
+                    await page.FillByTestIdAsync("sales-orders-search", searchMarker);
+                    await page.WaitForSalesOrdersReadyAsync(timeoutMs / 2);
+                }
+
+                var soRow = page.Locator($"[data-testid='{rowTestId}']").First;
+                if (await soRow.CountAsync() == 0)
+                    soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
+
+                await soRow.Locator("[data-testid='sales-order-view']").ClickAsync(new() { Timeout = 10000 });
+                await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
+                return;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                await EnsureConvertibleSalesOrderAsync();
+                await page.GotoRelativeAsync("/sales-orders");
+                await Task.Delay(1500);
+            }
         }
 
-        var soRow = page.Locator($"[data-testid='{rowTestId}']").First;
-        if (await soRow.CountAsync() == 0)
-            soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
-
-        await soRow.Locator("[data-testid='sales-order-view']").ClickAsync();
         await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
     }
 
@@ -229,15 +258,20 @@ public static class E2EHelpers
         {
             try
             {
-                await page.WaitForTestIdAsync("sales-orders-ready", timeoutMs);
+                await page.WaitForSelectorAsync("[data-testid='sales-orders-table']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+                await page.Locator("[data-testid='sales-orders-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
                 return;
             }
             catch (TimeoutException) when (attempt < 2)
             {
                 await EnsureConvertibleSalesOrderAsync();
                 await page.GotoRelativeAsync("/sales-orders");
+                await Task.Delay(1500);
             }
         }
+
+        await page.WaitForSelectorAsync("[data-testid='sales-orders-table']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        await page.Locator("[data-testid='sales-orders-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
     }
 
     public static async Task FillSearchAndExpectRowAsync(

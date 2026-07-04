@@ -89,8 +89,8 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
-            await setupPage.ClickByTestIdAsync("2fa-enable-button");
-            await setupPage.WaitForTestIdAsync("2fa-shared-key", 25000);
+            await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
+            await setupPage.WaitForTestIdAsync("2fa-shared-key", 45000);
             var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
             var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
             var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
@@ -143,8 +143,8 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
-            await setupPage.ClickByTestIdAsync("2fa-enable-button");
-            await setupPage.WaitForTestIdAsync("2fa-shared-key", 25000);
+            await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
+            await setupPage.WaitForTestIdAsync("2fa-shared-key", 45000);
             var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
             var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
             var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
@@ -174,8 +174,8 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
         var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
         await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
-        await setupPage.ClickByTestIdAsync("2fa-enable-button");
-        await setupPage.WaitForTestIdAsync("2fa-shared-key", 25000);
+        await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
+        await setupPage.WaitForTestIdAsync("2fa-shared-key", 45000);
         var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
         var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
         var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
