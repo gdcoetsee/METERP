@@ -65,6 +65,19 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task HealthReady_IncludesTotalDuration()
+    {
+        var response = await _client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        Assert.True(doc.RootElement.TryGetProperty("totalDuration", out var duration));
+        Assert.False(string.IsNullOrWhiteSpace(duration.GetString()));
+    }
+
+    [Fact]
     public async Task HealthReady_IncludesDatabaseProbe()
     {
         var response = await _client.GetAsync("/health/ready");

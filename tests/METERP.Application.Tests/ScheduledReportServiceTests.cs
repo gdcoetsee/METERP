@@ -163,6 +163,57 @@ public class ScheduledReportServiceTests
     }
 
     [Fact]
+    public async Task SendExecutiveSummaryEmailAsync_ShowsNone_WhenNoOverdueApprovals()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, tenantProvider) = CreateDb(tenantId);
+        using (db)
+        {
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                TenantId = tenantId,
+                Name = "Acme",
+                Subdomain = "acme"
+            });
+            await db.SaveChangesAsync();
+
+            var dashboard = new Mock<IExecutiveDashboardService>();
+            dashboard.Setup(d => d.GetSummaryAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ExecutiveDashboardSummary());
+
+            var accountability = new Mock<IAccountabilityReportService>();
+            accountability.Setup(a => a.GetDivisionScorecardsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<DivisionScorecardRow>());
+            accountability.Setup(a => a.GetUserActivityAsync(30, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<UserActivityRow>());
+            accountability.Setup(a => a.GetOverdueApprovalsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<OverdueApprovalRow>());
+
+            string? capturedHtml = null;
+            var email = new Mock<IEmailSender>();
+            email.Setup(e => e.IsConfigured).Returns(true);
+            email.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, string, string, CancellationToken>((_, _, html, _) => capturedHtml = html)
+                .Returns(Task.CompletedTask);
+
+            var service = new ScheduledReportService(
+                dashboard.Object,
+                accountability.Object,
+                email.Object,
+                Mock.Of<ICurrentUserService>(),
+                Microsoft.Extensions.Options.Options.Create(new EmailOptions { SmtpHost = "mailpit" }),
+                tenantProvider.Object,
+                db);
+
+            await service.SendExecutiveSummaryEmailAsync("exec@test.com");
+
+            Assert.NotNull(capturedHtml);
+            Assert.Contains("None — all queues within SLA.", capturedHtml);
+        }
+    }
+
+    [Fact]
     public async Task SendScheduledExecutiveReportsAsync_SendsToTenantsWithNotificationEmail()
     {
         var tenantId = Guid.NewGuid();

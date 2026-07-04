@@ -797,6 +797,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Account_Hub_Shows_Billing_And_Security_Tabs()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
         await page.WaitForTestIdAsync("account-tab-billing", 15000);
@@ -1426,8 +1427,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Employees_Page_Loads_Demo_Staff()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
+        await page.WaitForTestIdAsync("employees-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='employees-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1);
@@ -1465,6 +1468,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         await page.WaitForSalesOrdersReadyAsync(60000);
@@ -1483,6 +1487,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrder_Convert_To_Job_Creates_Job_With_Travel()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var soNumber = await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         Assert.False(string.IsNullOrWhiteSpace(soNumber));
 
@@ -1560,6 +1565,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Approvals_Page_Loads_Hub_Tabs()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/approvals");
         await page.WaitForTestIdAsync("approvals-ready", 30000);
@@ -1579,6 +1585,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Requisitions_Page_Loads_List_Or_Empty_State()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/requisitions");
         await page.WaitForTestIdAsync("requisitions-ready", 30000);
