@@ -144,6 +144,8 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _sosLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.SalesOrdersManage);
 
@@ -160,11 +162,15 @@ else
         }
     }
 
-    private async Task LoadSOs()
+    private Task LoadSOs() => _dataGate.RunAsync(async () =>
     {
+        var generation = ++_sosLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        sos = (await SalesOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
-    }
+        var loaded = (await SalesOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _sosLoadGeneration)
+            return;
+        sos = loaded;
+    });
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
@@ -195,19 +201,19 @@ else
         await LoadSOs();
     }
 
-    private async Task ViewSO(SalesOrder so)
+    private Task ViewSO(SalesOrder so) => _dataGate.RunAsync(async () =>
     {
         selectedSO = null;
         selectedSO = await SalesOrderService.GetByIdAsync(so.Id);
         await InvokeAsync(StateHasChanged);
-    }
+    });
 
     private void CloseSOView()
     {
         selectedSO = null;
     }
 
-    private async Task ConvertToJob(SalesOrder so)
+    private Task ConvertToJob(SalesOrder so) => _dataGate.RunAsync(async () =>
     {
         if (!await ConfirmDelete("Convert this Sales Order to a Job?")) return;
 
@@ -222,7 +228,7 @@ else
         {
             ToastService.ShowError($"Conversion failed: {ex.Message}");
         }
-    }
+    });
 
     private async Task<bool> ConfirmDelete(string message)
     {

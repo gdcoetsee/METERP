@@ -28,7 +28,7 @@ public static class E2EHelpers
 
         // Periodic reset stabilizes long runs without paying full reset cost on every login (~2–3s each).
         var loginNumber = Interlocked.Increment(ref _loginCount);
-        if (resetDemoState || loginNumber % 6 == 1)
+        if (resetDemoState || loginNumber % 4 == 1)
         {
             try { await ResetDemoStateAsync(url); }
             catch { /* dev endpoints unavailable on older images */ }
@@ -110,9 +110,17 @@ public static class E2EHelpers
     {
         var locator = page.Locator($"[data-testid='{testId}']");
         await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
-        await locator.FillAsync(value);
-        // Blazor @oninput handlers need an explicit input event after FillAsync (Playwright can miss it on SSR).
-        await locator.DispatchEventAsync("input");
+        await locator.ClickAsync();
+        await locator.ClearAsync();
+        if (string.IsNullOrEmpty(value))
+        {
+            await locator.DispatchEventAsync("input");
+            await locator.BlurAsync();
+            return;
+        }
+
+        // PressSequentially triggers Blazor @oninput / @bind:after reliably on InteractiveServer circuits.
+        await locator.PressSequentiallyAsync(value, new() { Delay = 40 });
         await locator.DispatchEventAsync("change");
         await locator.BlurAsync();
     }
@@ -261,7 +269,14 @@ public static class E2EHelpers
 
     public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)
     {
-        await WaitForInteractivePageAsync(page, "/jobs", "jobs-ready", "jobs-table", timeoutMs);
+        if (!page.Url.Contains("/jobs", StringComparison.OrdinalIgnoreCase))
+            await page.GotoRelativeAsync("/jobs");
+
+        await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
+        await WaitForLoadingGoneAsync(page, "jobs-loading", timeoutMs / 2);
+        await page.WaitForSelectorAsync("[data-testid='jobs-ready']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        await page.WaitForSelectorAsync("[data-testid='jobs-table']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        await page.Locator("[data-testid='jobs-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
     }
 
     public static async Task OpenJobDetailAsync(
@@ -324,32 +339,8 @@ public static class E2EHelpers
     /// <summary>
     /// Fills a search box and waits until a matching table row is visible (Blazor debounce-safe).
     /// </summary>
-    public static async Task WaitForSalesOrdersReadyAsync(this IPage page, int timeoutMs = 45000)
-    {
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                if (!page.Url.Contains("sales-orders", StringComparison.OrdinalIgnoreCase))
-                    await page.GotoRelativeAsync("/sales-orders");
-
-                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
-                await WaitForLoadingGoneAsync(page, "sales-orders-loading", timeoutMs / 2);
-                await page.WaitForSelectorAsync("[data-testid='sales-orders-table']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
-                await page.Locator("[data-testid='sales-orders-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
-                return;
-            }
-            catch (TimeoutException) when (attempt < 2)
-            {
-                await EnsureConvertibleSalesOrderAsync();
-                await page.GotoRelativeAsync("/sales-orders");
-                await Task.Delay(1500);
-            }
-        }
-
-        await page.WaitForSelectorAsync("[data-testid='sales-orders-table']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
-        await page.Locator("[data-testid='sales-orders-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
-    }
+    public static Task WaitForSalesOrdersReadyAsync(this IPage page, int timeoutMs = 45000) =>
+        page.WaitForListPageAsync("/sales-orders", "sales-orders-table", timeoutMs);
 
     public static async Task FillSearchAndExpectRowAsync(
         this IPage page,
@@ -375,17 +366,14 @@ public static class E2EHelpers
         var url = baseUrl ?? BaseUrl;
         var cleanPath = relativePath.TrimStart('/');
         await page.GotoAsync($"{url}/{cleanPath}", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
-        await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 30000 });
         try
         {
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 8000 });
+            await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 15000 });
         }
         catch (TimeoutException)
         {
-            // Blazor Server keeps sockets open — load + test-id waits are enough.
+            // Blazor Server may not fire a second Load event on in-app navigation.
         }
-
-        await page.WaitForBlazorReadyAsync(12000);
     }
 
     public static async Task<string> TakeScreenshotAsync(this IPage page, string testName, bool isFailure = false)
@@ -589,7 +577,8 @@ public static class E2EHelpers
         {
             try
             {
-                await page.GotoRelativeAsync(relativePath);
+                var url = $"{BaseUrl}/{relativePath.TrimStart('/')}";
+                await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.Commit, Timeout = 60000 });
                 await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
                 await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs);
                 await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
@@ -597,11 +586,14 @@ public static class E2EHelpers
             }
             catch (TimeoutException) when (attempt < 2)
             {
+                try { await ResetDemoStateAsync(); }
+                catch { /* dev endpoints unavailable */ }
                 await Task.Delay(2000);
             }
         }
 
-        await page.GotoRelativeAsync(relativePath);
+        var finalUrl = $"{BaseUrl}/{relativePath.TrimStart('/')}";
+        await page.GotoAsync(finalUrl, new() { WaitUntil = WaitUntilState.Commit, Timeout = 60000 });
         await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
     }
 

@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
 @attribute [Authorize(Policy = "Inventory.View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IInventoryService InventoryService
 @inject ICurrentUserService CurrentUserService
 @inject IJSRuntime JS
@@ -55,7 +56,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading inventory...</em></p>
+    <p data-testid="inventory-loading"><em>Loading inventory...</em></p>
 }
 else if (items == null || !items.Any())
 {
@@ -291,6 +292,7 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private int _itemsLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool showAdjustForm;
     private InventoryItem? adjustItem;
@@ -313,7 +315,7 @@ else
         }
     }
 
-    private async Task LoadItems()
+    private Task LoadItems() => _dataGate.RunAsync(async () =>
     {
         var generation = ++_itemsLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
@@ -321,7 +323,7 @@ else
         if (generation != _itemsLoadGeneration)
             return;
         items = loaded;
-    }
+    });
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {

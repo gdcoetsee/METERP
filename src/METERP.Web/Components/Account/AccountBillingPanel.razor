@@ -3,8 +3,7 @@
 @using METERP.Domain
 @using METERP.Common
 @inject ICurrentUserService CurrentUserService
-@inject ITenantBillingViewService TenantBillingViewService
-@inject IBillingPortalService BillingPortalService
+@inject IServiceScopeFactory ScopeFactory
 @inject IJSRuntime JS
 @inject ToastService ToastService
 
@@ -96,11 +95,14 @@ else
     private Tenant? currentTenant;
     private bool hasAiFeature;
     private string? billingPortalUrl;
+    private int _loadGeneration;
+    private readonly ComponentAsyncGate _loadGate = new();
 
-    protected override async Task OnInitializedAsync() => await LoadBillingAsync(showLoading: true);
+    protected override async Task OnInitializedAsync() => await _loadGate.RunAsync(() => LoadBillingAsync(showLoading: true));
 
     private async Task LoadBillingAsync(bool showLoading)
     {
+        var generation = ++_loadGeneration;
         if (showLoading)
             _loading = true;
 
@@ -109,11 +111,19 @@ else
             var tenantId = CurrentUserService.TenantId;
             if (tenantId == Guid.Empty)
             {
-                currentTenant = null;
+                if (generation == _loadGeneration)
+                    currentTenant = null;
                 return;
             }
 
-            var view = await TenantBillingViewService.GetAsync(tenantId);
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var billingViewService = scope.ServiceProvider.GetRequiredService<ITenantBillingViewService>();
+            var portalService = scope.ServiceProvider.GetRequiredService<IBillingPortalService>();
+
+            var view = await billingViewService.GetAsync(tenantId);
+            if (generation != _loadGeneration)
+                return;
+
             if (view == null)
             {
                 currentTenant = null;
@@ -122,11 +132,11 @@ else
 
             currentTenant = view.Tenant;
             hasAiFeature = view.HasAiFeature;
-            billingPortalUrl = await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+            billingPortalUrl = await portalService.ResolveCustomerPortalUrlAsync(currentTenant);
         }
         finally
         {
-            if (showLoading)
+            if (showLoading && generation == _loadGeneration)
                 _loading = false;
         }
     }
@@ -136,7 +146,7 @@ else
         _refreshing = true;
         try
         {
-            await LoadBillingAsync(showLoading: false);
+            await _loadGate.RunAsync(() => LoadBillingAsync(showLoading: false));
             ToastService.ShowSuccess("Plan and usage refreshed from billing records.");
         }
         finally
@@ -150,7 +160,13 @@ else
         if (currentTenant == null)
             return;
 
-        var url = billingPortalUrl ?? await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+        string? url = billingPortalUrl;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var portalService = scope.ServiceProvider.GetRequiredService<IBillingPortalService>();
+            url = await portalService.ResolveCustomerPortalUrlAsync(currentTenant);
+        }
         if (string.IsNullOrWhiteSpace(url))
         {
             ToastService.ShowInfo("Billing portal is not available. Contact your administrator.");

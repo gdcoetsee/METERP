@@ -1,7 +1,8 @@
 @using METERP.Application.Interfaces
 @using METERP.Application.Services
+@using METERP.Common
 @inject ICurrentUserService CurrentUserService
-@inject ITwoFactorAuthService TwoFactorAuthService
+@inject IServiceScopeFactory ScopeFactory
 @inject ToastService ToastService
 
 <div data-testid="account-security-ready">
@@ -65,20 +66,36 @@ else
     private bool _twoFactorEnabled;
     private TwoFactorSetupInfo? _setupInfo;
     private string _confirmCode = string.Empty;
+    private int _loadGeneration;
+    private readonly ComponentAsyncGate _loadGate = new();
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await _loadGate.RunAsync(async () =>
     {
-        await RefreshStatusAsync();
-        _loading = false;
-    }
+        _loading = true;
+        try
+        {
+            await RefreshStatusAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    });
 
     private void OnConfirmCodeInput(ChangeEventArgs e) => _confirmCode = e.Value?.ToString() ?? string.Empty;
 
     private async Task RefreshStatusAsync()
     {
+        var generation = ++_loadGeneration;
         var userId = CurrentUserService.UserId;
         if (userId == null) return;
-        _twoFactorEnabled = await TwoFactorAuthService.IsEnabledAsync(userId.Value);
+
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
+        var enabled = await twoFactor.IsEnabledAsync(userId.Value);
+        if (generation != _loadGeneration)
+            return;
+        _twoFactorEnabled = enabled;
     }
 
     private async Task BeginSetup()
@@ -89,7 +106,9 @@ else
         _busy = true;
         try
         {
-            _setupInfo = await TwoFactorAuthService.BeginSetupAsync(userId.Value);
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
+            _setupInfo = await twoFactor.BeginSetupAsync(userId.Value);
             if (_setupInfo == null)
                 ToastService.ShowError("Could not start 2FA setup.");
         }
@@ -113,7 +132,9 @@ else
         _busy = true;
         try
         {
-            var (ok, errors) = await TwoFactorAuthService.ConfirmSetupAsync(userId.Value, _confirmCode.Trim());
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
+            var (ok, errors) = await twoFactor.ConfirmSetupAsync(userId.Value, _confirmCode.Trim());
             if (ok)
             {
                 _setupInfo = null;
@@ -140,7 +161,9 @@ else
         _busy = true;
         try
         {
-            var (ok, errors) = await TwoFactorAuthService.DisableAsync(userId.Value);
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
+            var (ok, errors) = await twoFactor.DisableAsync(userId.Value);
             if (ok)
             {
                 _setupInfo = null;

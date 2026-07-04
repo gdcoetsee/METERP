@@ -51,6 +51,12 @@
 }
 
 <h6>Recent / Live Jobs (powered by services)</h6>
+@if (!_initialLoadComplete)
+{
+    <p data-testid="jobs-loading"><em>Loading jobs...</em></p>
+}
+else
+{
 <JobList
     Jobs="demoJobs"
     SelectedJob="selectedJob"
@@ -76,6 +82,7 @@
     OnAddSafetyIncident="AddSafetyIncidentAsync"
     OnCloseSafetyIncident="CloseSafetyIncidentAsync"
     OnCloseView="CloseJobView" />
+}
 
 <div class="card mt-3">
     <div class="card-body small">
@@ -97,13 +104,14 @@
     private string searchTerm = string.Empty;
     private int currentPage = 1;
     private const int PageSize = 10;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage);
 
     [SupplyParameterFromQuery(Name = "job")]
     public Guid? OpenJobId { get; set; }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => _dataGate.RunAsync(async () =>
     {
         if (CurrentUserService.TenantId != Guid.Empty)
         {
@@ -111,45 +119,49 @@
             _branding = TenantBranding.From(tenant);
         }
 
-        await LoadJobs();
+        await LoadJobsCore();
         _initialLoadComplete = true;
 
         if (OpenJobId is { } jobId && jobId != Guid.Empty)
-            await OpenJobAsync(jobId);
-    }
+            await OpenJobCore(jobId);
+    });
 
-    private async Task LoadJobs()
+    private async Task LoadJobs() => await LoadJobsCore();
+
+    private async Task LoadJobsCore()
     {
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
         demoJobs = (await JobService.GetAllAsync(term, currentPage, PageSize)).ToList();
     }
 
-    private async Task OnSearchChangedAsync()
+    private Task OnSearchChangedAsync() => _dataGate.RunAsync(async () =>
     {
         currentPage = 1;
-        await LoadJobs();
-    }
+        await LoadJobsCore();
+    });
 
-    private async Task ClearSearch()
+    private Task ClearSearch() => _dataGate.RunAsync(async () =>
     {
         searchTerm = string.Empty;
         currentPage = 1;
-        await LoadJobs();
-    }
+        await LoadJobsCore();
+    });
 
-    private async Task PreviousPage()
+    private Task PreviousPage() => _dataGate.RunAsync(async () =>
     {
-        if (currentPage > 1) { currentPage--; await LoadJobs(); }
-    }
+        if (currentPage > 1) { currentPage--; await LoadJobsCore(); }
+    });
 
-    private async Task NextPage()
+    private Task NextPage() => _dataGate.RunAsync(async () =>
     {
-        currentPage++; await LoadJobs();
-    }
+        currentPage++; await LoadJobsCore();
+    });
 
-    private async Task ViewJob(Job j) => await OpenJobAsync(j.Id);
+    private Task ViewJob(Job j) => OpenJobAsync(j.Id);
 
-    private async Task OpenJobAsync(Guid jobId)
+    private Task OpenJobAsync(Guid jobId) => _dataGate.RunAsync(() => OpenJobCore(jobId));
+
+    private async Task OpenJobCore(Guid jobId)
     {
         selectedJob = await JobService.GetByIdAsync(jobId);
         commandCenter = selectedJob != null
@@ -178,15 +190,15 @@
         jobSafetyIncidents.Clear();
     }
 
-    private async Task DeleteJob(Job j)
+    private Task DeleteJob(Job j) => _dataGate.RunAsync(async () =>
     {
         bool ok;
         try { ok = await JS.InvokeAsync<bool>("confirm", $"Delete job {j.JobNumber}?"); } catch { ok = false; }
         if (!ok) return;
         await JobService.DeleteAsync(j.Id);
         if (selectedJob?.Id == j.Id) selectedJob = null;
-        await LoadJobs();
-    }
+        await LoadJobsCore();
+    });
 
     private IEnumerable<string[]> BuildJobExportRows()
     {
@@ -363,7 +375,7 @@
 
     private void ShowTravelNote() => ToastService.ShowInfo("Travel is recorded as JobCost records with CostType 'Travel' (daily allowance or km rate). It is included in every variance calculation and in the AI prompts so recommendations are realistic for Gauteng/mining site work.");
 
-    private async Task SignOffJobAsync(Job j)
+    private Task SignOffJobAsync(Job j) => _dataGate.RunAsync(async () =>
     {
         if (CurrentUserService.UserId is not { } userId) return;
         try
@@ -375,14 +387,14 @@
             }
 
             ToastService.ShowSuccess($"{j.JobNumber} signed off — ready for final invoicing.");
-            await LoadJobs();
+            await LoadJobsCore();
             selectedJob = demoJobs.FirstOrDefault(x => x.Id == j.Id);
         }
         catch (Exception ex)
         {
             ToastService.ShowError(ex.Message);
         }
-    }
+    });
 
     private async Task CreateInvoiceFromJob(Job j)
     {

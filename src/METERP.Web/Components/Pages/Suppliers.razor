@@ -41,7 +41,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading suppliers...</em></p>
+    <p data-testid="suppliers-loading"><em>Loading suppliers...</em></p>
 }
 else if (suppliers == null || !suppliers.Any())
 {
@@ -198,6 +198,7 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private int _suppliersLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.SuppliersManage);
 
@@ -214,7 +215,7 @@ else
         }
     }
 
-    private async Task LoadSuppliers()
+    private Task LoadSuppliers() => _dataGate.RunAsync(async () =>
     {
         var generation = ++_suppliersLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
@@ -222,7 +223,7 @@ else
         if (generation != _suppliersLoadGeneration)
             return;
         suppliers = loaded;
-    }
+    });
 
     private async Task OnSearchChangedAsync()
     {

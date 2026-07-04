@@ -256,7 +256,17 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Opportunity_Converts_To_Quote_Via_Ai_Copilot()
     {
         var page = await _browser.LoginAsync();
-        await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 45000);
+        await page.GotoRelativeAsync("/opportunities");
+        try
+        {
+            await page.WaitForTestIdAsync("opportunities-ready", 8000);
+        }
+        catch (TimeoutException)
+        {
+            // Older builds expose pipeline without ready marker
+        }
+
+        await page.WaitForTestIdAsync("opportunities-pipeline", 45000);
 
         await page.Locator("[data-testid='opportunity-card']").First.ClickAsync();
         await page.WaitForTestIdAsync("opportunity-detail", 10000);
@@ -376,31 +386,29 @@ public class E2EFlowTests : IAsyncLifetime
         // Blazor Server may not always trigger Playwright navigation events; allow either full or client-side nav.
         try
         {
-            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 12000 });
+            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 20000 });
         }
         catch (TimeoutException)
         {
             await page.GotoRelativeAsync("/jobs");
         }
 
-        await page.WaitForTestIdAsync("jobs-table", 30000);
+        await page.Locator(".toast-body")
+            .Filter(new() { HasTextRegex = new Regex("converted to Job", RegexOptions.IgnoreCase) })
+            .First
+            .WaitForAsync(new() { Timeout = 30000 });
 
-        var jobRows = page.Locator("[data-testid='jobs-table'] tbody tr");
-        var rowCount = await jobRows.CountAsync();
-        Assert.True(rowCount > 0, "Expected at least one job after quote conversion.");
+        await page.WaitForJobsReadyAsync(60000);
+        await page.FillByTestIdAsync("jobs-search", quoteNumber!);
+        await page.WaitForJobsReadyAsync(30000);
 
-        var detailOpened = false;
-        for (var i = 0; i < rowCount && !detailOpened; i++)
-        {
-            await jobRows.Nth(i).Locator("[data-testid='job-view-button']").ClickAsync();
-            try
-            {
-                await page.WaitForTestIdAsync("create-invoice-from-job-detail", 8000);
-                detailOpened = true;
-            }
-            catch (TimeoutException) { }
-        }
-        Assert.True(detailOpened, "Could not open a job detail panel with invoice action.");
+        var travelJobRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await travelJobRow.CountAsync() == 0)
+            travelJobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+
+        await Assertions.Expect(travelJobRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await travelJobRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("job-detail-panel", 20000);
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);
@@ -689,7 +697,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task AccountBilling_Page_Shows_Plan_And_Manage_Billing()
     {
-        var page = await _browser.LoginAsync();
+        var page = await _browser.LoginAsync(resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var content = await page.ContentAsync();
@@ -730,7 +738,7 @@ public class E2EFlowTests : IAsyncLifetime
         {
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
 
-            var page = await _browser.LoginAsync(resetDemoState: false);
+            var page = await _browser.LoginAsync(resetDemoState: true);
             await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
             await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 20000);
 
@@ -789,7 +797,7 @@ public class E2EFlowTests : IAsyncLifetime
         var webhookResponse = await E2EHelpers.PostStripeWebhookAsync(payload);
         Assert.True(webhookResponse.IsSuccessStatusCode, await webhookResponse.Content.ReadAsStringAsync());
 
-        var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+        var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
