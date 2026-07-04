@@ -46,7 +46,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading purchase orders...</em></p>
+    <p data-testid="purchase-orders-loading"><em>Loading purchase orders...</em></p>
 }
 else if (pos == null || !pos.Any())
 {
@@ -266,6 +266,7 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private int _posLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool showLineForm;
     private PurchaseOrderLine? editingLine;
@@ -277,8 +278,11 @@ else
         _loading = true;
         try
         {
-            await LoadSuppliersForPicker();
-            await LoadPOs();
+            await _dataGate.RunAsync(async () =>
+            {
+                await LoadSuppliersForPickerCore();
+                await LoadPOsCore();
+            });
         }
         finally
         {
@@ -286,12 +290,14 @@ else
         }
     }
 
-    private async Task LoadSuppliersForPicker()
+    private async Task LoadSuppliersForPickerCore()
     {
         availableSuppliers = (await SupplierService.GetAllAsync()).ToList();
     }
 
-    private async Task LoadPOs()
+    private Task LoadPOs() => _dataGate.RunAsync(LoadPOsCore);
+
+    private async Task LoadPOsCore()
     {
         var generation = ++_posLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();

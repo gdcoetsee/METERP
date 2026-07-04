@@ -28,7 +28,7 @@ public static class E2EHelpers
 
         // Periodic reset stabilizes long runs without paying full reset cost on every login (~2–3s each).
         var loginNumber = Interlocked.Increment(ref _loginCount);
-        if (resetDemoState || loginNumber % 4 == 1)
+        if (resetDemoState || loginNumber % 6 == 1)
         {
             try { await ResetDemoStateAsync(url); }
             catch { /* dev endpoints unavailable on older images */ }
@@ -269,13 +269,8 @@ public static class E2EHelpers
 
     public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)
     {
-        if (!page.Url.Contains("/jobs", StringComparison.OrdinalIgnoreCase))
-            await page.GotoRelativeAsync("/jobs");
-
-        await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
+        await WaitForInteractivePageAsync(page, "/jobs", "jobs-ready", "jobs-table", timeoutMs);
         await WaitForLoadingGoneAsync(page, "jobs-loading", timeoutMs / 2);
-        await page.WaitForSelectorAsync("[data-testid='jobs-ready']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
-        await page.WaitForSelectorAsync("[data-testid='jobs-table']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
         await page.Locator("[data-testid='jobs-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
     }
 
@@ -374,6 +369,8 @@ public static class E2EHelpers
         {
             // Blazor Server may not fire a second Load event on in-app navigation.
         }
+
+        await page.WaitForBlazorReadyAsync(12000);
     }
 
     public static async Task<string> TakeScreenshotAsync(this IPage page, string testName, bool isFailure = false)

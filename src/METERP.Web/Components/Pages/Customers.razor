@@ -40,7 +40,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading customers...</em></p>
+    <p data-testid="customers-loading"><em>Loading customers...</em></p>
 }
 else if (customers == null)
 {
@@ -278,6 +278,7 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private int _customersLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.CustomersManage);
 
@@ -294,7 +295,7 @@ else
         }
     }
 
-    private async Task LoadCustomers()
+    private Task LoadCustomers() => _dataGate.RunAsync(async () =>
     {
         var generation = ++_customersLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
@@ -302,7 +303,7 @@ else
         if (generation != _customersLoadGeneration)
             return;
         customers = loaded;
-    }
+    });
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {

@@ -41,7 +41,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading employees...</em></p>
+    <p data-testid="employees-loading"><em>Loading employees...</em></p>
 }
 else if (employees == null || !employees.Any())
 {
@@ -178,6 +178,7 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private int _employeesLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.EmployeesManage);
 
@@ -194,7 +195,7 @@ else
         }
     }
 
-    private async Task LoadEmployees()
+    private Task LoadEmployees() => _dataGate.RunAsync(async () =>
     {
         var generation = ++_employeesLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
@@ -202,7 +203,7 @@ else
         if (generation != _employeesLoadGeneration)
             return;
         employees = loaded;
-    }
+    });
 
     private async Task OnSearchChangedAsync()
     {

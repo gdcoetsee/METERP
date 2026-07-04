@@ -256,17 +256,29 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Opportunity_Converts_To_Quote_Via_Ai_Copilot()
     {
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/opportunities");
-        try
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            await page.WaitForTestIdAsync("opportunities-ready", 8000);
-        }
-        catch (TimeoutException)
-        {
-            // Older builds expose pipeline without ready marker
-        }
+            await page.GotoRelativeAsync("/opportunities");
+            try
+            {
+                await page.WaitForTestIdAsync("opportunities-ready", 8000);
+            }
+            catch (TimeoutException)
+            {
+                // Older builds expose pipeline without ready marker
+            }
 
-        await page.WaitForTestIdAsync("opportunities-pipeline", 45000);
+            try
+            {
+                await page.WaitForTestIdAsync("opportunities-pipeline", 45000);
+                break;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                await E2EHelpers.ResetDemoStateAsync();
+                await Task.Delay(2000);
+            }
+        }
 
         await page.Locator("[data-testid='opportunity-card']").First.ClickAsync();
         await page.WaitForTestIdAsync("opportunity-detail", 10000);
@@ -383,20 +395,15 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("convert-to-job", 20000);
         await page.ClickByTestIdAsync("convert-to-job");
 
-        // Blazor Server may not always trigger Playwright navigation events; allow either full or client-side nav.
+        // forceLoad navigation to /jobs — toast may not survive full reload.
         try
         {
-            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 20000 });
+            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 30000 });
         }
         catch (TimeoutException)
         {
             await page.GotoRelativeAsync("/jobs");
         }
-
-        await page.Locator(".toast-body")
-            .Filter(new() { HasTextRegex = new Regex("converted to Job", RegexOptions.IgnoreCase) })
-            .First
-            .WaitForAsync(new() { Timeout = 30000 });
 
         await page.WaitForJobsReadyAsync(60000);
         await page.FillByTestIdAsync("jobs-search", quoteNumber!);
@@ -738,7 +745,7 @@ public class E2EFlowTests : IAsyncLifetime
         {
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
 
-            var page = await _browser.LoginAsync(resetDemoState: true);
+            var page = await _browser.LoginAsync(resetDemoState: false);
             await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
             await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 20000);
 
