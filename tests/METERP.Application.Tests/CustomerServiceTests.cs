@@ -113,4 +113,46 @@ public class CustomerServiceTests
         Assert.False(contacts.First(c => c.Id == firstId).IsPrimary);
         Assert.True(contacts.First(c => c.Id == secondId).IsPrimary);
     }
+
+    [Fact]
+    public async Task UpdateAsync_PersistsCustomerChanges()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var id = await service.CreateAsync(new Customer { Name = "Before Update", Email = "old@test.com" });
+
+        var customer = await service.GetByIdAsync(id);
+        Assert.NotNull(customer);
+        customer!.Name = "After Update";
+        customer.Email = "new@test.com";
+        await service.UpdateAsync(customer);
+
+        var reloaded = await service.GetByIdAsync(id);
+        Assert.Equal("After Update", reloaded!.Name);
+        Assert.Equal("new@test.com", reloaded.Email);
+    }
+
+    [Fact]
+    public async Task DeleteContactAsync_SoftDeletesContact()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Contact Delete Co" });
+        var contactId = await service.AddContactAsync(new Contact
+        {
+            CustomerId = customerId,
+            FirstName = "Temp",
+            LastName = "Contact"
+        });
+
+        await service.DeleteContactAsync(contactId);
+
+        var contacts = await service.GetContactsAsync(customerId);
+        Assert.Empty(contacts);
+
+        var deleted = await db.Set<Contact>().IgnoreQueryFilters().FirstAsync(c => c.Id == contactId);
+        Assert.True(deleted.IsDeleted);
+    }
 }

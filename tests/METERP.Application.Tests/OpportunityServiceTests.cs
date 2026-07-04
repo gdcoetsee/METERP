@@ -182,4 +182,42 @@ public class OpportunityServiceTests
         var deleted = await db.Set<Opportunity>().IgnoreQueryFilters().FirstAsync(o => o.Id == id);
         Assert.True(deleted.IsDeleted);
     }
+
+    [Fact]
+    public async Task GetAllAsync_FiltersByStage()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        await service.CreateAsync(new Opportunity { Title = "Lead opp", CustomerName = "A", Value = 1000m, Stage = OpportunityStage.Lead });
+        await service.CreateAsync(new Opportunity { Title = "Proposal opp", CustomerName = "B", Value = 2000m, Stage = OpportunityStage.Proposal });
+
+        var proposals = await service.GetAllAsync(stage: OpportunityStage.Proposal);
+
+        Assert.Single(proposals);
+        Assert.Equal("Proposal opp", proposals[0].Title);
+    }
+
+    [Fact]
+    public async Task CreateAsync_LogsAuditEntry_WhenAuditServiceProvided()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new OpportunityService(db, auditService);
+
+        await service.CreateAsync(new Opportunity
+        {
+            Title = "Audited create",
+            CustomerName = "Audit Co",
+            Value = 15000m,
+            Stage = OpportunityStage.Lead
+        });
+
+        var entries = await auditService.GetRecentAsync();
+        var createEntry = entries.First(e => e.Action == "CREATE" && e.EntityType == "Opportunity");
+        Assert.Equal("Audited create", createEntry.EntityReference);
+    }
 }
