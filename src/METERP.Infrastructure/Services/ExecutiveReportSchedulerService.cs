@@ -15,15 +15,18 @@ public sealed class ExecutiveReportSchedulerService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ScheduledReportOptions _options;
     private readonly ILogger<ExecutiveReportSchedulerService> _logger;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
 
     public ExecutiveReportSchedulerService(
         IServiceScopeFactory scopeFactory,
         IOptions<ScheduledReportOptions> options,
-        ILogger<ExecutiveReportSchedulerService> logger)
+        ILogger<ExecutiveReportSchedulerService> logger,
+        Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _logger = logger;
+        _delayAsync = delayAsync ?? ((delay, ct) => Task.Delay(delay, ct));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,7 +44,7 @@ public sealed class ExecutiveReportSchedulerService : BackgroundService
         {
             try
             {
-                await Task.Delay(interval, stoppingToken);
+                await _delayAsync(interval, stoppingToken);
                 await RunOnceAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

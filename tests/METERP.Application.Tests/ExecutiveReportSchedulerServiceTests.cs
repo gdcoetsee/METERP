@@ -90,4 +90,71 @@ public class ExecutiveReportSchedulerServiceTests
             s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenEnabled_SendsAfterIntervalCompletes()
+    {
+        var scheduledReports = new Mock<IScheduledReportService>();
+        scheduledReports
+            .Setup(s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var delayCalls = 0;
+        var service = new ExecutiveReportSchedulerService(
+            CreateScopeFactory(scheduledReports.Object),
+            Microsoft.Extensions.Options.Options.Create(new ScheduledReportOptions { Enabled = true, IntervalHours = 1 }),
+            Mock.Of<ILogger<ExecutiveReportSchedulerService>>(),
+            delayAsync: (_, ct) =>
+            {
+                if (Interlocked.Increment(ref delayCalls) == 1)
+                    return Task.CompletedTask;
+
+                return Task.Delay(Timeout.Infinite, ct);
+            });
+
+        await service.StartAsync(CancellationToken.None);
+        await Task.Delay(200);
+        await service.StopAsync(CancellationToken.None);
+
+        scheduledReports.Verify(
+            s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenSendFails_ContinuesAndRetriesOnNextInterval()
+    {
+        var scheduledReports = new Mock<IScheduledReportService>();
+        var attempts = 0;
+        scheduledReports
+            .Setup(s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                if (Interlocked.Increment(ref attempts) == 1)
+                    throw new InvalidOperationException("transient scheduler failure");
+
+                return Task.FromResult(1);
+            });
+
+        var delayCalls = 0;
+        var service = new ExecutiveReportSchedulerService(
+            CreateScopeFactory(scheduledReports.Object),
+            Microsoft.Extensions.Options.Options.Create(new ScheduledReportOptions { Enabled = true, IntervalHours = 1 }),
+            Mock.Of<ILogger<ExecutiveReportSchedulerService>>(),
+            delayAsync: (_, ct) =>
+            {
+                if (Interlocked.Increment(ref delayCalls) <= 2)
+                    return Task.CompletedTask;
+
+                return Task.Delay(Timeout.Infinite, ct);
+            });
+
+        await service.StartAsync(CancellationToken.None);
+        await Task.Delay(300);
+        await service.StopAsync(CancellationToken.None);
+
+        scheduledReports.Verify(
+            s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
 }

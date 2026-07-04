@@ -169,6 +169,32 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsChanges()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Before update",
+            CustomerName = "Client",
+            Value = 4000m,
+            Stage = OpportunityStage.Lead
+        });
+
+        var opp = await service.GetByIdAsync(id);
+        Assert.NotNull(opp);
+        opp!.Title = "After update";
+        opp.Value = 5500m;
+        await service.UpdateAsync(opp);
+
+        var loaded = await service.GetByIdAsync(id);
+        Assert.NotNull(loaded);
+        Assert.Equal("After update", loaded!.Title);
+        Assert.Equal(5500m, loaded.Value);
+    }
+
+    [Fact]
     public async Task DeleteAsync_SoftDeletesOpportunity()
     {
         var tenantId = Guid.NewGuid();
