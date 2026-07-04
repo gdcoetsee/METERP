@@ -855,6 +855,8 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.True(webhookResponse.IsSuccessStatusCode, await webhookResponse.Content.ReadAsStringAsync());
 
         var page = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: true);
+        await page.GotoRelativeAsync("/account");
+        await page.WaitForTestIdAsync("account-hub-ready", 30000);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
@@ -862,6 +864,7 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.ClickByTestIdAsync("account-billing-refresh-button");
         await page.Locator(".toast-body").Filter(new() { HasText = "refreshed" }).First.WaitForAsync(new() { Timeout = 15000 });
+        await page.WaitForTestIdAsync("account-billing-ready", 30000);
 
         tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
         Assert.Contains("Professional", tierText, StringComparison.OrdinalIgnoreCase);

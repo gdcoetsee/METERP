@@ -208,6 +208,66 @@ public class BillingWebhookServiceTests
     }
 
     [Fact]
+    public async Task SubscriptionUpdated_UnknownTenant_ReturnsIgnored()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId);
+        await using (db)
+        {
+            var payload = """
+                {
+                  "id": "evt_unknown_tenant",
+                  "type": "customer.subscription.updated",
+                  "data": {
+                    "object": {
+                      "customer": "cus_missing",
+                      "status": "active",
+                      "metadata": {
+                        "tenant_subdomain": "missing-tenant",
+                        "tier": "professional"
+                      }
+                    }
+                  }
+                }
+                """;
+
+            var signature = StripeWebhookSignatureValidator.BuildSignatureHeader(WebhookSecret, payload);
+            var result = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
+
+            Assert.Equal(BillingWebhookOutcome.Ignored, result.Outcome);
+            Assert.Contains("tenant_not_found", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CheckoutCompleted_MissingSubdomain_ReturnsIgnored()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId);
+        await using (db)
+        {
+            var payload = """
+                {
+                  "id": "evt_missing_subdomain",
+                  "type": "checkout.session.completed",
+                  "data": {
+                    "object": {
+                      "customer": "cus_no_meta",
+                      "metadata": {}
+                    }
+                  }
+                }
+                """;
+
+            var signature = StripeWebhookSignatureValidator.BuildSignatureHeader(WebhookSecret, payload);
+            var result = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
+
+            Assert.Equal(BillingWebhookOutcome.Ignored, result.Outcome);
+            Assert.Contains("missing_tenant_subdomain", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task DuplicateEventId_ReturnsDuplicateWithoutReprocessing()
     {
         var tenantId = Guid.NewGuid();
