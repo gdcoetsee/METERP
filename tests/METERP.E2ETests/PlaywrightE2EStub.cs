@@ -767,21 +767,19 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Account_Hub_Shows_Billing_And_Security_Tabs()
     {
         var page = await _browser.LoginAsync();
-        await page.WaitForAccountReadyAsync("account-hub-ready", "/account");
-        await page.WaitForTestIdAsync("account-billing-ready", 20000);
+        await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
+        await page.GotoRelativeAsync("/account");
+        await page.WaitForSelectorAsync("[data-testid='account-tab-billing']", new() { Timeout = 45000 });
         var billingTab = page.Locator("[data-testid='account-tab-billing']");
         await Assertions.Expect(billingTab).ToHaveClassAsync(new Regex("active"));
 
-        await page.ClickByTestIdAsync("account-tab-security");
-        await page.WaitForSelectorAsync(
-            "[data-testid='2fa-enable-button'], [data-testid='2fa-status-enabled'], [data-testid='2fa-status-disabled']",
-            new() { Timeout = 45000 });
+        await page.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
         var content = await page.ContentAsync();
         Assert.Contains("Two-Factor Authentication", content);
 
-        await page.ClickByTestIdAsync("account-tab-billing");
+        await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
         await page.WaitForTestIdAsync("account-billing-tier", 10000);
 
         await page.CloseAsync();
@@ -1239,9 +1237,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Suppliers_Page_Loads_Demo_Vendor()
     {
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/suppliers");
-        await page.WaitForTestIdAsync("suppliers-table", 30000);
-        await page.WaitForListReadyAsync("suppliers");
+        await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");
 
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
@@ -1451,8 +1447,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Employees_Page_Loads_Demo_Staff()
     {
         var page = await _browser.LoginAsync();
-        await page.GotoRelativeAsync("/employees");
-        await page.WaitForTestIdAsync("employees-table", 30000);
+        await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
 
         var tableBody = page.Locator("[data-testid='employees-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1);

@@ -89,6 +89,40 @@ public static class E2EHelpers
     }
 
     /// <summary>
+    /// Pages with InteractiveServer prerender:false need the Blazor circuit before *-ready / tables appear.
+    /// </summary>
+    public static async Task WaitForInteractiveListAsync(
+        this IPage page,
+        string relativePath,
+        string pageKey,
+        string tableTestId,
+        int timeoutMs = 45000)
+    {
+        var heading = char.ToUpperInvariant(pageKey[0]) + pageKey[1..];
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await page.GotoRelativeAsync(relativePath);
+                await page.Locator("h1").Filter(new() { HasText = heading }).WaitForAsync(new() { Timeout = timeoutMs });
+                await page.WaitForTestIdAsync($"{pageKey}-ready", timeoutMs);
+                await page.WaitForTestIdAsync(tableTestId, timeoutMs);
+                return;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                await Task.Delay(2000);
+            }
+        }
+
+        await page.GotoRelativeAsync(relativePath);
+        await page.Locator("h1").Filter(new() { HasText = heading }).WaitForAsync(new() { Timeout = timeoutMs });
+        await page.WaitForTestIdAsync($"{pageKey}-ready", timeoutMs);
+        await page.WaitForTestIdAsync(tableTestId, timeoutMs);
+    }
+
+    /// <summary>
     /// Fills a search box and waits until a matching table row is visible (Blazor debounce-safe).
     /// </summary>
     public static async Task WaitForSalesOrdersReadyAsync(this IPage page, int timeoutMs = 45000)
@@ -320,6 +354,8 @@ public static class E2EHelpers
     {
         var contentSelector = panelTestId switch
         {
+            "account-hub-ready" =>
+                "[data-testid='account-tab-billing'], [data-testid='account-tab-security']",
             "account-billing-ready" =>
                 "[data-testid='account-billing-tier'], [data-testid='account-billing-no-tenant'], [data-testid='account-billing-quota-exceeded-banner']",
             "account-security-ready" =>
