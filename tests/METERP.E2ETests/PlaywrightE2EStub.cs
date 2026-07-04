@@ -1636,6 +1636,31 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Jobs_Submits_Field_Report()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/field/jobs");
+        await page.WaitForTestIdAsync("field-jobs-ready", 30000);
+
+        var jobRows = page.Locator("[data-testid='field-job-row']");
+        if (await jobRows.CountAsync() == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.Locator("[data-testid='field-submit-report']").First.ClickAsync();
+        await page.WaitForTestIdAsync("field-report-modal", 15000);
+        await page.ClickByTestIdWhenEnabledAsync("field-report-modal-save");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Field report submitted" });
+        await toast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Field_Portal_Loads_Hub_And_Navigates_As_Technician()
     {
         await E2EHelpers.EnsureAppReadyAsync();

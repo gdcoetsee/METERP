@@ -79,6 +79,125 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_SetsPendingApproval()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 7m,
+                TravelCost = 120m
+            });
+
+            var saved = await db.Set<FieldReport>().FirstAsync(r => r.Id == reportId);
+            Assert.Equal(FieldReportStatus.PendingApproval, saved.Status);
+            Assert.True(saved.SubmittedAt > DateTime.UtcNow.AddMinutes(-1));
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenJobMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = Guid.NewGuid(),
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m
+            }));
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenNegativeValues()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = -1m
+            }));
+        }
+    }
+
+    [Fact]
+    public async Task GetPendingAsync_ReturnsOnlyPendingReports()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var pendingId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 5m
+            });
+
+            db.Set<FieldReport>().Add(new FieldReport
+            {
+                TenantId = tenantId,
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 3m,
+                Status = FieldReportStatus.Approved,
+                SubmittedAt = DateTime.UtcNow.AddDays(-1)
+            });
+            await db.SaveChangesAsync();
+
+            var pending = await service.GetPendingAsync();
+            Assert.Single(pending);
+            Assert.Equal(pendingId, pending[0].Id);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ReturnsFalse_WhenAlreadyApproved()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m
+            });
+
+            Assert.True(await service.ApproveAsync(reportId, TestUserId));
+            Assert.False(await service.ApproveAsync(reportId, TestUserId));
+        }
+    }
+
+    [Fact]
     public async Task RejectAsync_SetsRejectedStatus_AndDoesNotPostCosts()
     {
         var tenantId = Guid.NewGuid();

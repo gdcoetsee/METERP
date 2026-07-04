@@ -103,6 +103,38 @@ public class FieldEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         Assert.Contains("field-jobs-ready", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task FieldStock_ReturnsOk_WhenAuthenticated()
+    {
+        const string email = "fieldstock@acme.demo";
+        await EnsureFieldUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/field/stock");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("field-stock-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FieldLeave_ReturnsOk_WhenAuthenticated()
+    {
+        const string email = "fieldleave@acme.demo";
+        await EnsureFieldUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/field/leave");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("field-leave-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task EnsureFieldUserAsync(string email)
     {
         using var scope = _factory.Services.CreateScope();
