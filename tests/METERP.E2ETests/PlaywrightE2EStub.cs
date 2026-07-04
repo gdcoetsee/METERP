@@ -121,8 +121,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Quotes_Manual_Create_Customer_And_Lines()
     {
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         await page.ClickByTestIdAsync("new-quote-button");
         await page.WaitForTestIdAsync("quote-editor", 10000);
@@ -130,13 +129,15 @@ public class E2EFlowTests : IAsyncLifetime
         await page.ClickByTestIdAsync("quote-new-customer-toggle");
         await page.WaitForTestIdAsync("quote-new-customer-form", 10000);
         var uniqueName = $"E2E Customer {Guid.NewGuid():N}".Substring(0, 24);
-        await page.FillAsync("[data-testid='quote-new-customer-name']", uniqueName);
-        await page.ClickByTestIdAsync("quote-new-customer-save");
+        await page.FillByTestIdAsync("quote-new-customer-name", uniqueName);
+        await page.ClickByTestIdWhenEnabledAsync("quote-new-customer-save", 30000);
 
         await page.ClickByTestIdAsync("quote-add-line-button");
-        await page.FillAsync("[data-testid='quote-line-description']", "E2E travel allowance");
-        await page.ClickByTestIdAsync("quote-line-save-button");
-        await page.ClickByTestIdAsync("quote-save-button");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
+        await page.FillByTestIdAsync("quote-line-description", "E2E travel allowance");
+        await page.ClickByTestIdWhenEnabledAsync("quote-line-save-button", 30000);
+        await page.WaitForTestIdAsync("quote-lines-table", 15000);
+        await page.ClickByTestIdWhenEnabledAsync("quote-save-button", 30000);
         await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
 
         var content = await page.ContentAsync();

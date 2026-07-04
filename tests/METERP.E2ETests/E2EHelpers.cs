@@ -116,6 +116,14 @@ public static class E2EHelpers
         await ClickByTestIdWhenReadyAsync(page, testId);
     }
 
+    public static async Task ClickByTestIdWhenEnabledAsync(this IPage page, string testId, int timeoutMs = 30000)
+    {
+        var locator = page.Locator($"[data-testid='{testId}']").First;
+        await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+        await Microsoft.Playwright.Assertions.Expect(locator).ToBeEnabledAsync(new() { Timeout = timeoutMs });
+        await ClickByTestIdWhenReadyAsync(page, testId, timeoutMs);
+    }
+
     /// <summary>
     /// Clicks a test-id after it is visible and scrolls into view (Blazor circuit-safe).
     /// </summary>
