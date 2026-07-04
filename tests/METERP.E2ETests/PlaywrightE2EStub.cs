@@ -852,9 +852,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Reports_Page_Shows_Technician_Utilization()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 20000);
+        await page.WaitForTestIdAsync("reports-ready", 30000);
         await page.WaitForTestIdAsync("reports-utilization-card", 10000);
 
         var content = await page.ContentAsync();
@@ -1037,16 +1038,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Scheduling_Quick_Adds_Labor_From_Assigned_Crew()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
-        try
-        {
-            await page.WaitForTestIdAsync("scheduling-ready", 8000);
-        }
-        catch (TimeoutException)
-        {
-            await page.WaitForSelectorAsync("table.table tbody tr", new() { Timeout = 30000 });
-        }
+        await page.WaitForTestIdAsync("scheduling-ready", 30000);
 
         await page.Locator("[data-testid='scheduling-view-assign']").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30000 });
         await page.Locator("[data-testid='scheduling-view-assign']").First.ClickAsync();
@@ -1083,18 +1078,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Page_Loads_Compliance_Trail()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/audit");
-
-        try
-        {
-            await page.WaitForTestIdAsync("audit-ready", 15000);
-        }
-        catch (TimeoutException)
-        {
-            await page.WaitForTestIdAsync("audit-table", 15000);
-        }
-
+        await page.WaitForTestIdAsync("audit-ready", 30000);
         await page.WaitForTestIdAsync("audit-export-csv", 10000);
 
         var content = await page.ContentAsync();

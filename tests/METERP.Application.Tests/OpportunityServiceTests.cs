@@ -69,6 +69,21 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_FiltersByCustomerName()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        await service.CreateAsync(new Opportunity { Title = "Deal A", CustomerName = "Mining Co", Value = 50000m });
+        await service.CreateAsync(new Opportunity { Title = "Deal B", CustomerName = "Retail Plaza", Value = 12000m });
+
+        var results = await service.GetAllAsync("mining");
+
+        Assert.Single(results);
+        Assert.Equal("Mining Co", results[0].CustomerName);
+    }
+
+    [Fact]
     public async Task GetAllAsync_FiltersBySearchTerm()
     {
         var tenantId = Guid.NewGuid();
