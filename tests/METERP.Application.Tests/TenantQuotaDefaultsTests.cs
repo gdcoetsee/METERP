@@ -168,4 +168,33 @@ public class TenantQuotaDefaultsTests
     {
         Assert.Equal(expected, TenantQuotaDefaults.GetQuotaTestId(prefix, type));
     }
+
+    [Theory]
+    [InlineData("home", "home-quota-exceeded-banner")]
+    [InlineData("account-billing", "account-billing-quota-exceeded-banner")]
+    [InlineData("tenants-edit", "tenants-edit-quota-exceeded-banner")]
+    public void GetQuotaExceededBannerTestId_ReturnsStableIds(string prefix, string expected)
+    {
+        Assert.Equal(expected, TenantQuotaDefaults.GetQuotaExceededBannerTestId(prefix));
+    }
+
+    [Fact]
+    public void FormatExceededQuotaSummary_CardFooterMonthly_IncludesLimitSuffix()
+    {
+        var summary = TenantQuotaDefaults.FormatExceededQuotaSummary(
+            ["Quotes", "Jobs"],
+            QuotaExceededBannerStyle.CardFooterMonthly);
+
+        Assert.Equal("Quotes, Jobs limits exceeded.", summary);
+    }
+
+    [Fact]
+    public void FormatExceededQuotaSummary_AdminInline_OmitsLimitSuffix()
+    {
+        var summary = TenantQuotaDefaults.FormatExceededQuotaSummary(
+            ["Quotes"],
+            QuotaExceededBannerStyle.AdminInline);
+
+        Assert.Equal("Quotes", summary);
+    }
 }

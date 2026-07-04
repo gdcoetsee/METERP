@@ -265,14 +265,7 @@ else
                         <div class="d-flex flex-wrap gap-2 small" data-testid="tenant-edit-quota-badges">
                             <QuotaUsageBadgeGroup Tenant="currentTenant" TestIdPrefix="tenants-edit" />
                         </div>
-                        @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
-                        {
-                            var exceededLabels = TenantQuotaDefaults.GetExceededQuotaLabels(currentTenant);
-                            <div class="alert alert-danger py-2 mt-2 mb-0 small" data-testid="tenant-edit-quota-exceeded-banner" role="alert">
-                                <strong>Quota exceeded:</strong>
-                                <span data-testid="tenant-edit-quota-exceeded-summary">@string.Join(", ", exceededLabels)</span>
-                            </div>
-                        }
+                        <QuotaExceededBanner Tenant="currentTenant" TestIdPrefix="tenants-edit" Style="QuotaExceededBannerStyle.AdminInline" />
                         <div class="form-text mt-1">Period started: @(currentTenant.UsagePeriodStartUtc?.ToString("yyyy-MM-dd") ?? "n/a"). Last activity: @(currentTenant.LastActivityUtc?.ToString("yyyy-MM-dd HH:mm") ?? "n/a")</div>
                     </div>
                 }

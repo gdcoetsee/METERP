@@ -63,14 +63,7 @@ else
             {
                 <div class="card-footer small text-warning">AI Copilot is not included on your current plan.</div>
             }
-            @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
-            {
-                var exceededLabels = TenantQuotaDefaults.GetExceededQuotaLabels(currentTenant);
-                <div class="card-footer alert alert-danger mb-0 py-2" data-testid="account-billing-quota-exceeded-banner" role="alert">
-                    <strong>Monthly quota reached.</strong>
-                    <span data-testid="account-billing-quota-exceeded-summary">@string.Join(", ", exceededLabels) limit@(exceededLabels.Count == 1 ? "" : "s") exceeded.</span>
-                </div>
-            }
+            <QuotaExceededBanner Tenant="currentTenant" TestIdPrefix="account-billing" />
         </div>
 
         <div class="card" data-testid="account-billing-lifetime-card">

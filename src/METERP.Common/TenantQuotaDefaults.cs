@@ -141,6 +141,19 @@ public static class TenantQuotaDefaults
             _ => $"{prefix}-quota-other"
         };
 
+    public static string GetQuotaExceededBannerTestId(string prefix) => $"{prefix}-quota-exceeded-banner";
+
+    public static string GetQuotaExceededSummaryTestId(string prefix) => $"{prefix}-quota-exceeded-summary";
+
+    public static string GetQuotaUpgradeButtonTestId(string prefix) => $"{prefix}-quota-upgrade-button";
+
+    public static string FormatExceededQuotaSummary(IReadOnlyList<string> exceededLabels, QuotaExceededBannerStyle style) =>
+        style switch
+        {
+            QuotaExceededBannerStyle.AdminInline => string.Join(", ", exceededLabels),
+            _ => $"{string.Join(", ", exceededLabels)} limit{(exceededLabels.Count == 1 ? "" : "s")} exceeded."
+        };
+
     private static readonly (string Label, QuotaType Type)[] QuotaDisplayNames =
     [
         ("Quotes", QuotaType.Quote),
@@ -156,4 +169,10 @@ public enum QuotaUsageStatus
     Ok,
     Warning,
     Exceeded
+}
+
+public enum QuotaExceededBannerStyle
+{
+    CardFooterMonthly,
+    AdminInline
 }

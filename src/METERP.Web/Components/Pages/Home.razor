@@ -48,23 +48,12 @@
         {
             <div class="card-footer small text-warning">AI Copilot is disabled for this tenant (feature flag). Upgrade tier or enable <code>ai</code> in tenant settings.</div>
         }
-        @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
-        {
-            var exceededLabels = TenantQuotaDefaults.GetExceededQuotaLabels(currentTenant);
-            <div class="card-footer alert alert-danger mb-0 py-2" data-testid="home-quota-exceeded-banner" role="alert">
-                <strong>Monthly quota reached.</strong>
-                <span data-testid="home-quota-exceeded-summary">@string.Join(", ", exceededLabels) limit@(exceededLabels.Count == 1 ? "" : "s") exceeded.</span>
-                New actions in those areas may be blocked until you upgrade or the period resets.
-                @if (!string.IsNullOrWhiteSpace(billingPortalUrl))
-                {
-                    <button type="button" class="btn btn-sm btn-danger ms-2" data-testid="home-quota-upgrade-button" @onclick="OpenBillingPortal">Upgrade plan</button>
-                }
-                else
-                {
-                    <a href="/account-billing" class="btn btn-sm btn-danger ms-2" data-testid="home-quota-upgrade-button">View plan</a>
-                }
-            </div>
-        }
+        <QuotaExceededBanner Tenant="currentTenant"
+                             TestIdPrefix="home"
+                             ShowBlockedActionsHint="true"
+                             ShowUpgradeAction="true"
+                             BillingPortalUrl="billingPortalUrl"
+                             OnUpgradeClick="OpenBillingPortal" />
     </div>
 
     @if (currentTenant.SubscriptionStatus is "past_due" or "unpaid")

@@ -1,0 +1,61 @@
+@using METERP.Common
+@using METERP.Domain
+
+@if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(Tenant))
+{
+    var exceededLabels = TenantQuotaDefaults.GetExceededQuotaLabels(Tenant);
+    var summary = TenantQuotaDefaults.FormatExceededQuotaSummary(exceededLabels, Style);
+
+    @if (Style == QuotaExceededBannerStyle.CardFooterMonthly)
+    {
+        <div class="card-footer alert alert-danger mb-0 py-2" data-testid="@TenantQuotaDefaults.GetQuotaExceededBannerTestId(TestIdPrefix)" role="alert">
+            <strong>Monthly quota reached.</strong>
+            <span data-testid="@TenantQuotaDefaults.GetQuotaExceededSummaryTestId(TestIdPrefix)">@summary</span>
+            @if (ShowBlockedActionsHint)
+            {
+                <text> New actions in those areas may be blocked until you upgrade or the period resets.</text>
+            }
+            @if (ShowUpgradeAction)
+            {
+                @if (!string.IsNullOrWhiteSpace(BillingPortalUrl))
+                {
+                    <button type="button" class="btn btn-sm btn-danger ms-2" data-testid="@TenantQuotaDefaults.GetQuotaUpgradeButtonTestId(TestIdPrefix)" @onclick="OnUpgradeClick">Upgrade plan</button>
+                }
+                else
+                {
+                    <a href="/account-billing" class="btn btn-sm btn-danger ms-2" data-testid="@TenantQuotaDefaults.GetQuotaUpgradeButtonTestId(TestIdPrefix)">View plan</a>
+                }
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger py-2 mt-2 mb-0 small" data-testid="@TenantQuotaDefaults.GetQuotaExceededBannerTestId(TestIdPrefix)" role="alert">
+            <strong>Quota exceeded:</strong>
+            <span data-testid="@TenantQuotaDefaults.GetQuotaExceededSummaryTestId(TestIdPrefix)">@summary</span>
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public Tenant Tenant { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string TestIdPrefix { get; set; } = "";
+
+    [Parameter]
+    public QuotaExceededBannerStyle Style { get; set; } = QuotaExceededBannerStyle.CardFooterMonthly;
+
+    [Parameter]
+    public bool ShowBlockedActionsHint { get; set; }
+
+    [Parameter]
+    public bool ShowUpgradeAction { get; set; }
+
+    [Parameter]
+    public string? BillingPortalUrl { get; set; }
+
+    [Parameter]
+    public EventCallback OnUpgradeClick { get; set; }
+}
