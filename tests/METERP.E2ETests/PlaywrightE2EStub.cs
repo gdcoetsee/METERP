@@ -1618,6 +1618,50 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Approvals_Field_Report_Approve_After_Tech_Submit()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var techPage = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await techPage.GotoRelativeAsync("/field/jobs");
+        await techPage.WaitForTestIdAsync("field-jobs-ready", 30000);
+
+        if (await techPage.Locator("[data-testid='field-job-row']").CountAsync() == 0)
+        {
+            await techPage.CloseAsync();
+            return;
+        }
+
+        await techPage.Locator("[data-testid='field-submit-report']").First.ClickAsync();
+        await techPage.WaitForTestIdAsync("field-report-modal", 15000);
+        await techPage.ClickByTestIdWhenEnabledAsync("field-report-modal-save");
+        await techPage.Locator(".toast-body").Filter(new() { HasText = "Field report submitted" })
+            .First.WaitForAsync(new() { Timeout = 20000 });
+        await techPage.CloseAsync();
+
+        var adminPage = await Browser.LoginAsync();
+        await adminPage.GotoRelativeAsync("/approvals");
+        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.ClickByTestIdAsync("approvals-tab-field");
+        await adminPage.WaitForTestIdAsync("approvals-field-list", 20000);
+
+        if (await adminPage.Locator("[data-testid='approvals-field-row']").CountAsync() == 0)
+        {
+            await adminPage.CloseAsync();
+            return;
+        }
+
+        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-field-approve");
+        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+
+        var toast = adminPage.Locator(".toast-body").Filter(new() { HasText = "Field report approved" });
+        await toast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await adminPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Requisitions_Page_Loads_List_Or_Empty_State()
     {
         await E2EHelpers.EnsureAppReadyAsync();

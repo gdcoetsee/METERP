@@ -198,6 +198,66 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task GetByJobIdAsync_ReturnsReportsForJob()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+            var otherJobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Other", QuotedTotal = 1000m });
+
+            await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 3m
+            });
+            await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 2m
+            });
+            await service.SubmitAsync(new FieldReport
+            {
+                JobId = otherJobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 1m
+            });
+
+            var reports = await service.GetByJobIdAsync(jobId);
+            Assert.Equal(2, reports.Count);
+            Assert.All(reports, r => Assert.Equal(jobId, r.JobId));
+        }
+    }
+
+    [Fact]
+    public async Task RejectAsync_ReturnsFalse_WhenNotPending()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m
+            });
+
+            Assert.True(await service.RejectAsync(reportId, TestUserId, "No"));
+            Assert.False(await service.RejectAsync(reportId, TestUserId, "Again"));
+        }
+    }
+
+    [Fact]
     public async Task RejectAsync_SetsRejectedStatus_AndDoesNotPostCosts()
     {
         var tenantId = Guid.NewGuid();
