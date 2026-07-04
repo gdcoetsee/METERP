@@ -53,6 +53,20 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task HealthReady_IncludesDatabaseProbe()
+    {
+        var response = await _client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        var entries = doc.RootElement.GetProperty("entries");
+        Assert.True(entries.TryGetProperty("database", out var databaseEntry));
+        Assert.Equal("Healthy", databaseEntry.GetProperty("status").GetString(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Health_Liveness_IsNotRateLimited_UnderBurst()
     {
         for (var i = 0; i < 35; i++)

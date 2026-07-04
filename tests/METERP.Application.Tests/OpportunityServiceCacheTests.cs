@@ -54,7 +54,7 @@ public class OpportunityServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal("Original Deal", (await service.GetAllAsync())[0].Title);
 
-            cache.InvalidateCategory("opportunities");
+            cache.InvalidateCategory(TenantCacheCategories.Opportunities);
             Assert.Equal("Mutated Deal", (await service.GetAllAsync())[0].Title);
         }
     }
@@ -165,6 +165,36 @@ public class OpportunityServiceCacheTests
 
             cache.InvalidateCategory(TenantCacheCategories.Opportunities);
             Assert.Empty(await service.GetAllAsync(stage: OpportunityStage.Lead, pageSize: 50));
+        }
+    }
+
+    [Fact]
+    public async Task UpdateAsync_InvalidatesOpportunityListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, _, service) = CreateHarness(tenantId);
+        using (db)
+        {
+            await service.CreateAsync(new Opportunity { TenantId = tenantId, Title = "Before", Value = 9000m });
+            await service.GetAllAsync();
+            var opp = await db.Set<Opportunity>().FirstAsync();
+            opp.Title = "After";
+            await service.UpdateAsync(opp);
+            Assert.Equal("After", (await service.GetAllAsync())[0].Title);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteAsync_InvalidatesOpportunityListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, _, service) = CreateHarness(tenantId);
+        using (db)
+        {
+            var id = await service.CreateAsync(new Opportunity { TenantId = tenantId, Title = "Remove Me", Value = 3000m });
+            Assert.Single(await service.GetAllAsync());
+            await service.DeleteAsync(id);
+            Assert.Empty(await service.GetAllAsync());
         }
     }
 
