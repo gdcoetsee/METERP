@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using METERP.Application.Interfaces;
+using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -159,6 +160,31 @@ public class TenantServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsTenantAiSettingsFields()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var tenant = await SeedTenantAsync(db, "Acme", "acme");
+
+        tenant.AiProvider = AiProviderProfiles.Groq;
+        tenant.AiBaseUrl = "https://api.groq.com/openai/v1/";
+        tenant.AiModel = "llama-3.3-70b-versatile";
+        tenant.AiUseTenantKey = true;
+        tenant.AiApiKeyEncrypted = "encrypted-key-blob";
+
+        await service.UpdateAsync(tenant);
+
+        var updated = await service.GetByIdAsync(tenant.Id);
+        Assert.NotNull(updated);
+        Assert.Equal(AiProviderProfiles.Groq, updated.AiProvider);
+        Assert.Equal("https://api.groq.com/openai/v1", updated.AiBaseUrl);
+        Assert.Equal("llama-3.3-70b-versatile", updated.AiModel);
+        Assert.True(updated.AiUseTenantKey);
+        Assert.Equal("encrypted-key-blob", updated.AiApiKeyEncrypted);
+    }
+
+    [Fact]
     public async Task IncrementQuoteCountAsync_NoOpForEmptyTenantId()
     {
         var dbName = Guid.NewGuid().ToString();
@@ -171,6 +197,60 @@ public class TenantServiceTests
         var updated = await service.GetByIdAsync(tenant.Id);
         Assert.NotNull(updated);
         Assert.Equal(0, updated.TotalQuotesCreated);
+    }
+
+    [Theory]
+    [InlineData(nameof(TenantService.IncrementJobCountAsync))]
+    [InlineData(nameof(TenantService.IncrementInvoiceCountAsync))]
+    [InlineData(nameof(TenantService.IncrementAiCallCountAsync))]
+    public async Task IncrementCounters_UpdateLastActivityUtc(string methodName)
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var tenant = await SeedTenantAsync(db, "Acme", "acme");
+        var before = DateTime.UtcNow.AddSeconds(-1);
+
+        switch (methodName)
+        {
+            case nameof(TenantService.IncrementJobCountAsync):
+                await service.IncrementJobCountAsync(tenant.Id);
+                break;
+            case nameof(TenantService.IncrementInvoiceCountAsync):
+                await service.IncrementInvoiceCountAsync(tenant.Id, 100m);
+                break;
+            case nameof(TenantService.IncrementAiCallCountAsync):
+                await service.IncrementAiCallCountAsync(tenant.Id);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(methodName));
+        }
+
+        var updated = await service.GetByIdAsync(tenant.Id);
+        Assert.NotNull(updated);
+        Assert.NotNull(updated.LastActivityUtc);
+        Assert.True(updated.LastActivityUtc >= before);
+    }
+
+    [Fact]
+    public async Task IncrementQuoteCountAsync_ResetsStalePeriodCounters_BeforeIncrementing()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var tenant = await SeedTenantAsync(db, "Acme", "acme");
+        tenant.UsagePeriodStartUtc = QuotaService.GetCurrentPeriodStartUtc().AddMonths(-2);
+        tenant.PeriodQuotesCreated = 20;
+        tenant.TotalQuotesCreated = 50;
+        await db.SaveChangesAsync();
+
+        await service.IncrementQuoteCountAsync(tenant.Id);
+
+        var updated = await service.GetByIdAsync(tenant.Id);
+        Assert.NotNull(updated);
+        Assert.Equal(51, updated.TotalQuotesCreated);
+        Assert.Equal(1, updated.PeriodQuotesCreated);
+        Assert.Equal(QuotaService.GetCurrentPeriodStartUtc(), updated.UsagePeriodStartUtc);
     }
 
     [Fact]

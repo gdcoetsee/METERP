@@ -173,4 +173,38 @@ public class SpineQuotaEnforcementTests
         var ex = await Assert.ThrowsAsync<QuotaExceededException>(() => service.ConvertToJobAsync(quote.Id));
         Assert.Equal(QuotaType.Job, ex.QuotaType);
     }
+
+    [Fact]
+    public async Task InvoiceService_CreateFromJobAsync_ThrowsQuotaExceeded_WhenInvoiceQuotaFull()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new QuotaHarness(tenantId);
+        await harness.SeedTenantAsync(periodInvoices: 10);
+
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Acme" };
+        harness.Db.Set<Customer>().Add(customer);
+
+        var job = new Job
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-QUOTA-001",
+            Title = "Signed-off job",
+            Status = JobStatus.Completed,
+            SignOffStatus = JobSignOffStatus.SignedOff,
+            SignedOffAt = DateTime.UtcNow,
+            QuotedTotal = 5000m
+        };
+        harness.Db.Set<Job>().Add(job);
+        await harness.Db.SaveChangesAsync();
+
+        var service = new InvoiceService(
+            harness.Db,
+            tenantProvider: harness.TenantProvider.Object,
+            quotaService: harness.QuotaService);
+
+        var ex = await Assert.ThrowsAsync<QuotaExceededException>(() => service.CreateFromJobAsync(job.Id));
+        Assert.Equal(QuotaType.Invoice, ex.QuotaType);
+    }
 }

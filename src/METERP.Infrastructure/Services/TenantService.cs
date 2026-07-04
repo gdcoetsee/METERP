@@ -111,6 +111,13 @@ public class TenantService : ITenantService
         existing.SubscriptionStatus = string.IsNullOrWhiteSpace(tenant.SubscriptionStatus)
             ? null
             : tenant.SubscriptionStatus.Trim();
+        existing.AiProvider = string.IsNullOrWhiteSpace(tenant.AiProvider) ? null : tenant.AiProvider.Trim();
+        existing.AiApiKeyEncrypted = string.IsNullOrWhiteSpace(tenant.AiApiKeyEncrypted)
+            ? null
+            : tenant.AiApiKeyEncrypted;
+        existing.AiBaseUrl = string.IsNullOrWhiteSpace(tenant.AiBaseUrl) ? null : tenant.AiBaseUrl.TrimEnd('/');
+        existing.AiModel = string.IsNullOrWhiteSpace(tenant.AiModel) ? null : tenant.AiModel.Trim();
+        existing.AiUseTenantKey = tenant.AiUseTenantKey;
 
         await _dbContext.SaveChangesAsync(ct);
     }
