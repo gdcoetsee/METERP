@@ -40,4 +40,17 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task BlazorCircuit_Endpoints_AreNotRateLimited()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var negotiate = await _client.PostAsync("/_blazor/negotiate?negotiateVersion=1", null);
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, negotiate.StatusCode);
+
+            var circuit = await _client.GetAsync("/_blazor");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, circuit.StatusCode);
+        }
+    }
 }

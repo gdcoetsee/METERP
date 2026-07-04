@@ -200,9 +200,15 @@ builder.Services.AddRateLimiter(options =>
 
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
+        // Blazor Server circuits generate many short-lived requests per page; do not count them
+        // against the per-user global limit (E2E and normal UI navigation would otherwise 429).
         if (httpContext.Request.Path.StartsWithSegments("/health")
-            || httpContext.Request.Path.StartsWithSegments("/webhooks"))
-            return RateLimitPartition.GetNoLimiter("health");
+            || httpContext.Request.Path.StartsWithSegments("/webhooks")
+            || httpContext.Request.Path.StartsWithSegments("/_blazor")
+            || httpContext.Request.Path.StartsWithSegments("/_framework")
+            || httpContext.Request.Path.StartsWithSegments("/e2e")
+            || httpContext.Request.Path.StartsWithSegments("/login-complete"))
+            return RateLimitPartition.GetNoLimiter("infra");
 
         // Tighter limit on AI Copilot page loads (complements in-service AI throttle).
         if (httpContext.Request.Path.StartsWithSegments("/ai-copilot"))
