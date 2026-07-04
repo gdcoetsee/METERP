@@ -75,4 +75,14 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task HealthReady_IsNotRateLimited_UnderBurst()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.GetAsync("/health/ready");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
 }

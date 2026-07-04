@@ -146,6 +146,55 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task MarkConvertedToQuoteAsync_LogsAuditEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new OpportunityService(db, auditService);
+        var oppId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Convert audit opp",
+            CustomerName = "Audit Co",
+            Value = 42000m,
+            Stage = OpportunityStage.Qualified
+        });
+        var quoteId = Guid.NewGuid();
+
+        await service.MarkConvertedToQuoteAsync(oppId, quoteId);
+
+        var convertEntry = (await auditService.GetRecentAsync()).First(e => e.Action == "CONVERT");
+        Assert.Equal("Opportunity", convertEntry.EntityType);
+        Assert.Equal("Convert audit opp", convertEntry.EntityReference);
+        Assert.Contains(quoteId.ToString(), convertEntry.Details);
+    }
+
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_DoesNotChangeClosedWonStage()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var oppId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Won deal",
+            CustomerName = "Winner",
+            Value = 99000m,
+            Stage = OpportunityStage.ClosedWon
+        });
+        var quoteId = Guid.NewGuid();
+
+        await service.MarkConvertedToQuoteAsync(oppId, quoteId);
+
+        var loaded = await service.GetByIdAsync(oppId);
+        Assert.NotNull(loaded);
+        Assert.Equal(quoteId, loaded!.QuoteId);
+        Assert.Equal(OpportunityStage.ClosedWon, loaded.Stage);
+    }
+
+    [Fact]
     public async Task MarkConvertedToQuoteAsync_LinksQuoteAndAdvancesStage()
     {
         var tenantId = Guid.NewGuid();
