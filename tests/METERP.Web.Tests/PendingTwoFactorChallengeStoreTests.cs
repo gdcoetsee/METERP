@@ -54,6 +54,20 @@ public class PendingTwoFactorChallengeStoreTests
     }
 
     [Fact]
+    public void CreateChallenge_ReturnsUniqueTokens()
+    {
+        var store = new PendingTwoFactorChallengeStore(new MemoryCache(new MemoryCacheOptions()));
+        var userId = Guid.NewGuid();
+
+        var tokenA = store.CreateChallenge(userId);
+        var tokenB = store.CreateChallenge(userId);
+
+        Assert.NotEqual(tokenA, tokenB);
+        Assert.Equal(userId, store.GetChallenge(tokenA));
+        Assert.Equal(userId, store.GetChallenge(tokenB));
+    }
+
+    [Fact]
     public async Task CreateChallenge_WithShortLifetime_Expires()
     {
         var store = new PendingTwoFactorChallengeStore(new MemoryCache(new MemoryCacheOptions()));

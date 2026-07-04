@@ -7,6 +7,11 @@
 
 <PageTitle>Two-Factor Authentication - METERP</PageTitle>
 
+@if (_userId != null)
+{
+    <span data-testid="login-2fa-ready" class="visually-hidden">ready</span>
+}
+
 <h3>Two-Factor Authentication</h3>
 <p class="text-muted">Enter the 6-digit code from your authenticator app.</p>
 

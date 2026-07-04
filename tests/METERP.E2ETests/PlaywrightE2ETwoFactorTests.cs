@@ -35,6 +35,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             var secretMaterial = await EnableTwoFactorForBetaAsync();
 
             var loginPage = await Browser.NewPageAsync();
@@ -44,6 +45,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             await loginPage.Locator("[data-testid='login-password']").PressSequentiallyAsync(E2EHelpers.BetaPassword);
             await loginPage.ClickByTestIdAsync("login-submit");
             await loginPage.WaitForURLAsync("**/login-2fa**", new() { Timeout = 30000 });
+            await loginPage.WaitForTestIdAsync("login-2fa-ready", 30000);
 
             var loggedIn = false;
             foreach (var candidate in TotpHelper.GetCandidateCodes(secretMaterial))
@@ -58,6 +60,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
                         u => !u.Contains("login-2fa", StringComparison.OrdinalIgnoreCase),
                         new() { Timeout = 15000 });
                     await loginPage.WaitForURLAsync("**/", new() { Timeout = 45000 });
+                    await loginPage.WaitForTestIdAsync("home-ready", 30000);
                     loggedIn = true;
                     break;
                 }
@@ -84,10 +87,13 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             await E2EHelpers.BeginEmailCaptureAsync();
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+            await setupPage.GotoRelativeAsync("/account");
+            await setupPage.WaitForTestIdAsync("account-hub-ready", 30000);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
@@ -125,6 +131,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     [Fact]
     public async Task AccountSecurity_EnableTwoFactor_Delivers_To_Mailpit_When_Smtp_Configured()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         if (!await E2EHelpers.IsMailpitAvailableAsync())
         {
             if (E2EHelpers.RequireMailpit)
@@ -138,6 +145,8 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+            await setupPage.GotoRelativeAsync("/account");
+            await setupPage.WaitForTestIdAsync("account-hub-ready", 30000);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
@@ -165,6 +174,8 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     {
         await E2EHelpers.DisableBetaTwoFactorAsync();
         var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+        await setupPage.GotoRelativeAsync("/account");
+        await setupPage.WaitForTestIdAsync("account-hub-ready", 30000);
         await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
         var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
