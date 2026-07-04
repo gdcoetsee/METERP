@@ -153,4 +153,114 @@ public class ScheduledReportServiceTests
             email.Verify(e => e.SendEmailAsync("ops@acme.demo", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
+
+    [Fact]
+    public async Task SendScheduledExecutiveReportsAsync_ReturnsZero_WhenSmtpNotConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, tenantProvider) = CreateDb(tenantId);
+        using (db)
+        {
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                TenantId = tenantId,
+                Name = "Acme",
+                Subdomain = "acme",
+                IsActive = true,
+                NotificationEmail = "ops@acme.demo"
+            });
+            await db.SaveChangesAsync();
+
+            var email = new Mock<IEmailSender>();
+            email.Setup(e => e.IsConfigured).Returns(false);
+
+            var service = new ScheduledReportService(
+                Mock.Of<IExecutiveDashboardService>(),
+                Mock.Of<IAccountabilityReportService>(),
+                email.Object,
+                Mock.Of<ICurrentUserService>(),
+                Microsoft.Extensions.Options.Options.Create(new EmailOptions()),
+                tenantProvider.Object,
+                db);
+
+            var sent = await service.SendScheduledExecutiveReportsAsync();
+
+            Assert.Equal(0, sent);
+            email.Verify(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Fact]
+    public async Task SendScheduledExecutiveReportsAsync_SkipsInactiveTenantsAndTenantsWithoutNotificationEmail()
+    {
+        var activeTenantId = Guid.NewGuid();
+        var inactiveTenantId = Guid.NewGuid();
+        var missingEmailTenantId = Guid.NewGuid();
+        var (db, tenantProvider) = CreateDb(activeTenantId);
+        using (db)
+        {
+            db.Tenants.AddRange(
+                new Tenant
+                {
+                    Id = activeTenantId,
+                    TenantId = activeTenantId,
+                    Name = "Active",
+                    Subdomain = "active",
+                    IsActive = true,
+                    NotificationEmail = "ops@active.demo"
+                },
+                new Tenant
+                {
+                    Id = inactiveTenantId,
+                    TenantId = inactiveTenantId,
+                    Name = "Inactive",
+                    Subdomain = "inactive",
+                    IsActive = false,
+                    NotificationEmail = "ops@inactive.demo"
+                },
+                new Tenant
+                {
+                    Id = missingEmailTenantId,
+                    TenantId = missingEmailTenantId,
+                    Name = "No Email",
+                    Subdomain = "noemail",
+                    IsActive = true,
+                    NotificationEmail = null
+                });
+            await db.SaveChangesAsync();
+
+            var dashboard = new Mock<IExecutiveDashboardService>();
+            dashboard.Setup(d => d.GetSummaryAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ExecutiveDashboardSummary());
+
+            var accountability = new Mock<IAccountabilityReportService>();
+            accountability.Setup(a => a.GetDivisionScorecardsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<DivisionScorecardRow>());
+            accountability.Setup(a => a.GetUserActivityAsync(30, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<UserActivityRow>());
+            accountability.Setup(a => a.GetOverdueApprovalsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<OverdueApprovalRow>());
+
+            var email = new Mock<IEmailSender>();
+            email.Setup(e => e.IsConfigured).Returns(true);
+            email.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
+            var service = new ScheduledReportService(
+                dashboard.Object,
+                accountability.Object,
+                email.Object,
+                Mock.Of<ICurrentUserService>(),
+                Microsoft.Extensions.Options.Options.Create(new EmailOptions { SmtpHost = "mailpit", FromName = "METERP" }),
+                tenantProvider.Object,
+                db);
+
+            var sent = await service.SendScheduledExecutiveReportsAsync();
+
+            Assert.Equal(1, sent);
+            email.Verify(e => e.SendEmailAsync("ops@active.demo", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            email.Verify(e => e.SendEmailAsync(It.Is<string>(r => r != "ops@active.demo"), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
 }

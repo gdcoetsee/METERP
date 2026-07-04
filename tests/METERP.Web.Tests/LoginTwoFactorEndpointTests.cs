@@ -33,4 +33,14 @@ public class LoginTwoFactorEndpointTests : IClassFixture<MeterpWebApplicationFac
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/login", response.Headers.Location?.ToString(), StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task LoginTwoFactor_IsNotRateLimited_UnderBurst()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.GetAsync("/login-2fa?token=invalid-challenge-token");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
 }

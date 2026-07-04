@@ -62,4 +62,32 @@ public class ExecutiveReportSchedulerServiceTests
             s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenEnabled_SubHourInterval_ClampsToOneHourBeforeFirstSend()
+    {
+        var scheduledReports = new Mock<IScheduledReportService>();
+        var service = new ExecutiveReportSchedulerService(
+            CreateScopeFactory(scheduledReports.Object),
+            Microsoft.Extensions.Options.Options.Create(new ScheduledReportOptions { Enabled = true, IntervalHours = 0 }),
+            Mock.Of<ILogger<ExecutiveReportSchedulerService>>());
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        await service.StartAsync(cts.Token);
+
+        try
+        {
+            await Task.Delay(250, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // expected when stopping
+        }
+
+        await service.StopAsync(CancellationToken.None);
+
+        scheduledReports.Verify(
+            s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
 }
