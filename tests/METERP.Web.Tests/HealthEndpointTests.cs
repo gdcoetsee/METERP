@@ -34,6 +34,17 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("database", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ai", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Healthy", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HealthReady_IncludesAiConfigurationProbe()
+    {
+        var response = await _client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"name\": \"ai\"", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

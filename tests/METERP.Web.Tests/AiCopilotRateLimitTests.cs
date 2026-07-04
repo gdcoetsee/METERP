@@ -75,4 +75,24 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
             Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task Framework_Static_Assets_AreNotRateLimited()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.GetAsync("/_framework/blazor.boot.json");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task LoginComplete_Path_IsNotRateLimited()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.GetAsync("/login-complete");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
 }

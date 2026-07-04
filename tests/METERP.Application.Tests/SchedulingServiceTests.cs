@@ -1,6 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using METERP.Application.Interfaces;
+using METERP.Application.Options;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
 using Moq;
@@ -94,6 +99,58 @@ public class SchedulingServiceTests
         var service = new SchedulingService(jobService, assetService, employeeService, db);
 
         return (db, service, jobService, assetService, employeeService, tenantId);
+    }
+
+    [Fact]
+    public async Task GetBoardAsync_ReflectsCustomerRename_AfterCrossModuleCacheInvalidation()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(Guid.NewGuid());
+        currentUser.Setup(u => u.TenantId).Returns(tenantId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+
+        var services = new ServiceCollection();
+        services.AddDistributedMemoryCache();
+        services.Configure<CacheOptions>(o => o.DefaultTtlSeconds = 120);
+        var provider = services.BuildServiceProvider();
+        var cache = new TenantDistributedCacheService(
+            provider.GetRequiredService<IDistributedCache>(),
+            tenantProvider.Object,
+            provider.GetRequiredService<IOptions<CacheOptions>>());
+
+        var customerService = new CustomerService(db, cache);
+        var jobService = new JobService(db, cache: cache);
+        var assetService = new AssetService(db, cache);
+        var employeeService = new EmployeeService(db, cache);
+        var schedulingService = new SchedulingService(jobService, assetService, employeeService, db);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Old Sched Customer" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+
+        await jobService.CreateAsync(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-SCHED-CACHE",
+            Title = "Cached board job",
+            QuotedTotal = 5000m
+        });
+
+        Assert.Equal("Old Sched Customer", (await schedulingService.GetBoardAsync()).Jobs[0].Customer!.Name);
+
+        customer.Name = "Renamed Sched Customer";
+        await customerService.UpdateAsync(customer);
+
+        Assert.Equal("Renamed Sched Customer", (await schedulingService.GetBoardAsync()).Jobs[0].Customer!.Name);
     }
 
     [Fact]

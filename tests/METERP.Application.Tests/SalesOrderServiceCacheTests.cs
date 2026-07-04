@@ -226,7 +226,7 @@ public class SalesOrderServiceCacheTests
     }
 
     [Fact]
-    public async Task ConvertToJobAsync_InvalidatesSalesOrderAndJobListCaches()
+    public async Task ConvertToJobAsync_InvalidatesSalesOrderJobAndInvoiceListCaches()
     {
         var tenantId = Guid.NewGuid();
         var (db, cache) = CreateHarness(tenantId);
@@ -240,15 +240,31 @@ public class SalesOrderServiceCacheTests
             await db.SaveChangesAsync();
 
             var jobService = new JobService(db, cache: cache);
+            var invoiceService = new InvoiceService(db, cache: cache);
             var service = new SalesOrderService(db, jobService, cache: cache);
 
             Assert.Equal(SalesOrderStatus.Confirmed, (await service.GetAllAsync())[0].Status);
             Assert.Empty(await jobService.GetAllAsync());
+            Assert.Empty(await invoiceService.GetAllAsync());
+            Assert.Empty(await invoiceService.GetAllAsync());
 
             await service.ConvertToJobAsync(soId);
 
+            var job = (await jobService.GetAllAsync()).Single();
+            db.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                JobId = job.Id,
+                InvoiceNumber = "INV-SO-CONVERT",
+                TaxRate = 0.15m,
+                Notes = "Created after convert cache bust"
+            });
+            await db.SaveChangesAsync();
+
             Assert.Equal(SalesOrderStatus.InProgress, (await service.GetAllAsync())[0].Status);
             Assert.Single(await jobService.GetAllAsync());
+            Assert.Equal("Created after convert cache bust", (await invoiceService.GetAllAsync())[0].Notes);
         }
     }
 }
