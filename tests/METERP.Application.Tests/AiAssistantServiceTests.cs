@@ -1,8 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
 using Moq;
 using Xunit;
@@ -184,5 +187,149 @@ public class AiAssistantServiceTests
         var service = CreateService(config);
 
         Assert.True(service.IsConfigured);
+    }
+
+    private sealed class QuotaBlockedHarness : IDisposable
+    {
+        public Guid TenantId { get; }
+        public TenantService TenantService { get; }
+        public QuotaService QuotaService { get; }
+        public Mock<ITenantProvider> TenantProvider { get; }
+
+        public QuotaBlockedHarness(Guid tenantId)
+        {
+            TenantId = tenantId;
+            var dbName = Guid.NewGuid().ToString();
+
+            TenantProvider = new Mock<ITenantProvider>();
+            TenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+            var currentUser = new Mock<ICurrentUserService>();
+            currentUser.Setup(u => u.UserId).Returns(Guid.NewGuid());
+            currentUser.Setup(u => u.UserName).Returns("ai-quota-test");
+
+            var services = new ServiceCollection();
+            services.AddScoped(_ => TenantProvider.Object);
+            services.AddScoped(_ => currentUser.Object);
+            services.AddDbContext<AppDbContext>(o => o.UseInMemoryDatabase(dbName));
+
+            var provider = services.BuildServiceProvider();
+            var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+            var db = provider.GetRequiredService<AppDbContext>();
+
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                TenantId = tenantId,
+                Name = "Quota Blocked",
+                Subdomain = $"aiq-{tenantId:N}".Substring(0, 12),
+                Tier = SubscriptionTier.Starter,
+                EnabledFeatures = "ai,usage-tracking",
+                UsagePeriodStartUtc = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc),
+                PeriodAiCalls = 30
+            });
+            db.SaveChanges();
+
+            TenantService = new TenantService(db, scopeFactory);
+            QuotaService = new QuotaService(scopeFactory);
+        }
+
+        public AiAssistantService CreateAiService()
+        {
+            var config = CreateConfig();
+            return CreateService(
+                config,
+                TenantService,
+                TenantProvider.Object,
+                QuotaService);
+        }
+
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public async Task SuggestQuoteLinesAsync_ReturnsNull_When_AiQuotaExceeded()
+    {
+        AiAssistantService.ClearThrottleStateForTesting();
+        var tenantId = Guid.NewGuid();
+        using var harness = new QuotaBlockedHarness(tenantId);
+        var service = harness.CreateAiService();
+
+        var result = await service.SuggestQuoteLinesAsync("Install 3-phase panel with site travel", 0.15m);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task AnalyzeJobVarianceAsync_ReturnsNull_When_AiQuotaExceeded()
+    {
+        AiAssistantService.ClearThrottleStateForTesting();
+        var tenantId = Guid.NewGuid();
+        using var harness = new QuotaBlockedHarness(tenantId);
+        var service = harness.CreateAiService();
+
+        var job = new Job
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            QuotedTotal = 10000m,
+            ActualCost = 12000m
+        };
+
+        var result = await service.AnalyzeJobVarianceAsync(job);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task AskCopilotAsync_ReturnsQuotaMessage_When_AiQuotaExceeded()
+    {
+        AiAssistantService.ClearThrottleStateForTesting();
+        var tenantId = Guid.NewGuid();
+        using var harness = new QuotaBlockedHarness(tenantId);
+        var service = harness.CreateAiService();
+
+        var result = await service.AskCopilotAsync("What are my top travel cost risks?");
+
+        Assert.NotNull(result);
+        Assert.Contains("AiCall", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quota exceeded", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SuggestQuoteLinesAsync_DoesNotIncrementCounter_When_AiQuotaExceeded()
+    {
+        AiAssistantService.ClearThrottleStateForTesting();
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        var tenant = new Tenant
+        {
+            Id = tenantId,
+            EnabledFeatures = "ai",
+            PeriodAiCalls = 30,
+            MaxAiCallsPerMonth = 30,
+            Tier = SubscriptionTier.Starter,
+            UsagePeriodStartUtc = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+        };
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+
+        var quotaService = new Mock<IQuotaService>();
+        quotaService.Setup(q => q.EnsureAllowedAsync(tenantId, QuotaType.AiCall, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new QuotaExceededException(QuotaType.AiCall, 30, 30));
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var service = CreateService(
+            CreateConfig(),
+            tenantService.Object,
+            tenantProvider.Object,
+            quotaService.Object);
+
+        await service.SuggestQuoteLinesAsync("scope", 0.15m);
+
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
