@@ -26,6 +26,11 @@
 
 <PageTitle>METERP</PageTitle>
 
+@if (_initialized)
+{
+    <span data-testid="home-ready" class="visually-hidden">ready</span>
+}
+
 <h1 class="mb-4">METERP Dashboard @if (AiAssistantService.IsConfigured) { <span class="badge bg-primary align-middle" style="font-size:0.6rem;">AI Enabled</span> }</h1>
 
 @if (currentTenant != null)
@@ -478,6 +483,7 @@
     private int _supplierCount;
     private Tenant? currentTenant;
     private string? billingPortalUrl;
+    private bool _initialized;
 
     protected override async Task OnInitializedAsync()
     {
@@ -530,6 +536,10 @@
         catch
         {
             // ignore on initial load if DB not ready
+        }
+        finally
+        {
+            _initialized = true;
         }
     }
 

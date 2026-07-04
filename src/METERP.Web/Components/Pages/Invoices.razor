@@ -20,6 +20,11 @@
 
 <PageTitle>Invoices</PageTitle>
 
+@if (!_loading)
+{
+    <span data-testid="invoices-ready" class="visually-hidden">ready</span>
+}
+
 @if (_agedDebtors.Count > 0)
 {
     <div class="card mb-3 border-warning" data-testid="aged-debtors-summary">

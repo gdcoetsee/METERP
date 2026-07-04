@@ -92,6 +92,23 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task HealthReady_EntryProbes_IncludeDuration()
+    {
+        var response = await _client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        var entries = doc.RootElement.GetProperty("entries");
+        foreach (var entry in entries.EnumerateObject())
+        {
+            Assert.True(entry.Value.TryGetProperty("duration", out var duration), $"Entry '{entry.Name}' missing duration.");
+            Assert.False(string.IsNullOrWhiteSpace(duration.GetString()));
+        }
+    }
+
+    [Fact]
     public async Task Health_Liveness_IsNotRateLimited_UnderBurst()
     {
         for (var i = 0; i < 35; i++)

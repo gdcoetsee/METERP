@@ -57,6 +57,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task AI_Copilot_Creates_Quote_With_Travel_And_Downloads_PDF()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
@@ -94,6 +95,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Manual_Create_With_Line()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
@@ -121,6 +123,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Manual_Create_Customer_And_Lines()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
@@ -151,9 +154,9 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Edit_Opens_Lines_Not_Just_Notes()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         // New quote opens the line editor (prior E2E runs may consume all Draft rows).
         await page.ClickByTestIdAsync("new-quote-button");
@@ -169,9 +172,9 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Line_UnitCost_AutoCalculates_SellPrice_And_SaveAddAnother()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         await page.ClickByTestIdAsync("new-quote-button");
         await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
@@ -210,9 +213,9 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Edit_Line_Updates_Total()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         await page.ClickByTestIdAsync("new-quote-button");
         await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
@@ -242,8 +245,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Ai_Settings_Page_Loads_Free_Providers()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/settings/ai");
+        await page.WaitForTestIdAsync("ai-settings-ready", 30000);
         await page.WaitForTestIdAsync("ai-provider-select", 15000);
 
         var options = await page.Locator("[data-testid='ai-provider-select'] option").AllTextContentsAsync();
@@ -257,6 +262,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Opportunity_Converts_To_Quote_Via_Ai_Copilot()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
@@ -429,6 +435,7 @@ public class E2EFlowTests : IAsyncLifetime
         await createInvoiceBtn.ClickAsync();
 
         await page.WaitForURLAsync("**/invoices**", new() { Timeout = 45000 });
+        await page.WaitForTestIdAsync("invoices-ready", 30000);
         await page.WaitForTestIdAsync("invoices-table", 30000);
         await page.WaitForTestIdAsync("invoice-line-items-header", 30000);
         var content = await page.ContentAsync();
@@ -441,17 +448,16 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task MultiTenant_Isolation_Basic_Check()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
-        await acmePage.GotoRelativeAsync("/quotes");
-        await acmePage.WaitForTestIdAsync("quotes-table");
+        await acmePage.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Q-", acmeContent);
         Assert.DoesNotContain("Beta-only travel", acmeContent);
         await acmePage.CloseAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await betaPage.GotoRelativeAsync("/quotes");
-        await betaPage.WaitForTestIdAsync("quotes-table");
+        await betaPage.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
         var betaContent = await betaPage.ContentAsync();
         Assert.Contains("Beta Mining", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Johannesburg General Hospital", betaContent);
@@ -483,9 +489,9 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Tenants_Edit_Form_Shows_Quota_Badges()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/tenants");
-        await page.WaitForTestIdAsync("tenants-table", 20000);
+        await page.WaitForTenantsReadyAsync(45000);
 
         await page.Locator("tr", new() { HasText = "Acme" }).Locator("button", new() { HasText = "Edit" }).ClickAsync();
         await page.WaitForTestIdAsync("tenant-edit-form", 15000);
@@ -507,10 +513,10 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-            await page.GotoRelativeAsync("/tenants");
-            await page.WaitForTestIdAsync("tenants-table", 20000);
+            await page.WaitForTenantsReadyAsync(45000);
 
             await page.Locator("tr", new() { HasText = "Acme" }).Locator("button", new() { HasText = "Edit" }).ClickAsync();
             await page.WaitForTestIdAsync("tenant-edit-form", 15000);
@@ -535,10 +541,10 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-            await page.GotoRelativeAsync("/quotes");
-            await page.WaitForTestIdAsync("quotes-table", 30000);
+            await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
             await page.ClickByTestIdAsync("new-quote-button");
             await page.WaitForTestIdAsync("quote-editor", 15000);
@@ -567,11 +573,11 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureJobQuotaExceededAsync();
             await E2EHelpers.EnsureConvertibleQuoteAsync();
-            await page.GotoRelativeAsync("/quotes");
-            await page.WaitForTestIdAsync("quotes-table", 30000);
+            await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
             var convertible = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
             await Assertions.Expect(convertible).ToHaveCountAsync(1, new() { Timeout = 20000 });
@@ -599,6 +605,7 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureInvoiceQuotaExceededAsync();
             await E2EHelpers.EnsureDemoInvoiceJobAsync();
@@ -622,8 +629,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Home_Quota_Usage_Card_Shows_Monthly_Usage()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
         await page.WaitForTestIdAsync("home-quota-usage-card", 15000);
 
         var content = await page.ContentAsync();
@@ -647,6 +656,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
         await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
 
         var content = await page.ContentAsync();
@@ -676,6 +686,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
         await page.WaitForTestIdAsync("home-division-scorecards", 30000);
 
         var content = await page.ContentAsync();
@@ -690,9 +701,11 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureAppReadyAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             await page.GotoRelativeAsync("/");
+            await page.WaitForTestIdAsync("home-ready", 30000);
             await page.WaitForTestIdAsync("home-quota-usage-card", 15000);
             await page.WaitForTestIdAsync("home-quota-exceeded-banner", 15000);
 
@@ -1109,10 +1122,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Shows_Convert_After_Quote_To_Job()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.EnsureConvertibleQuoteAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         var convertible = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
         await Assertions.Expect(convertible).ToHaveCountAsync(1, new() { Timeout = 20000 });
@@ -1143,9 +1156,10 @@ public class E2EFlowTests : IAsyncLifetime
             await page.GotoRelativeAsync("/jobs");
         }
 
-        await page.WaitForTestIdAsync("jobs-table", 30000);
+        await page.WaitForJobsReadyAsync(60000);
 
         await page.GotoRelativeAsync("/audit");
+        await page.WaitForTestIdAsync("audit-ready", 30000);
         await page.WaitForTestIdAsync("audit-table", 15000);
 
         var content = await page.ContentAsync();
@@ -1158,6 +1172,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Shows_Invoice_Create_After_Job_Invoice()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.EnsureDemoInvoiceJobAsync();
 
         var page = await Browser.LoginAsync();
@@ -1166,9 +1181,11 @@ public class E2EFlowTests : IAsyncLifetime
         await page.ClickByTestIdAsync("create-invoice-from-job-detail");
 
         await page.WaitForURLAsync("**/invoices**", new() { Timeout = 30000 });
+        await page.WaitForTestIdAsync("invoices-ready", 30000);
         await page.WaitForTestIdAsync("invoices-table", 30000);
 
         await page.GotoRelativeAsync("/audit");
+        await page.WaitForTestIdAsync("audit-ready", 30000);
         await page.WaitForTestIdAsync("audit-table", 15000);
 
         var content = await page.ContentAsync();
@@ -1196,9 +1213,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Inventory_LowStock_Filter_ShowsLowItemsOnly()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/inventory");
-        await page.WaitForTestIdAsync("inventory-table", 30000);
+        await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
+        await page.WaitForTestIdAsync("inventory-ready", 30000);
 
         var contentBefore = await page.ContentAsync();
         Assert.Contains("DB-12W-001", contentBefore);
@@ -1351,8 +1369,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Customers_Page_Loads_Demo_Customer()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/customers");
+        await page.WaitForTestIdAsync("customers-ready", 30000);
         await page.WaitForTestIdAsync("customers-table", 30000);
         await page.WaitForListReadyAsync("customers");
 
@@ -1442,9 +1462,11 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Employees_Search_FiltersByName()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
+        await page.WaitForTestIdAsync("employees-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='employees-table'] tbody");
         await page.FillByTestIdAsync("employees-search", "Johan");
