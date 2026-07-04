@@ -1,8 +1,9 @@
 @page "/tenants"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using METERP.Application.Services
+@using METERP.Common
 @using METERP.Application.Interfaces
 @using METERP.Domain
-@using METERP.Common
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
@@ -14,6 +15,11 @@
 @inject ToastService ToastService
 
 <PageTitle>Tenants</PageTitle>
+
+@if (!_loading)
+{
+    <span data-testid="tenants-ready" class="visually-hidden">ready</span>
+}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Tenants</h1>
@@ -36,7 +42,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading tenants...</em></p>
+    <p data-testid="tenants-loading"><em>Loading tenants...</em></p>
 }
 else if (tenants == null || !tenants.Any())
 {
@@ -293,6 +299,8 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private int _tenantsLoadGeneration;
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.TenantsManage);
 
@@ -309,13 +317,16 @@ else
         }
     }
 
-    private async Task LoadTenants()
+    private Task LoadTenants() => _dataGate.RunAsync(async () =>
     {
+        var generation = ++_tenantsLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        var result = await TenantService.GetAllAsync(term, currentPage, PageSize);
-        tenants = result.ToList();
+        var result = (await TenantService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        if (generation != _tenantsLoadGeneration)
+            return;
+        tenants = result;
         await RefreshPortalUrlsAsync();
-    }
+    });
 
     private async Task RefreshPortalUrlsAsync()
     {

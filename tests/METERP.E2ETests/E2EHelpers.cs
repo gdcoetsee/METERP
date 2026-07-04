@@ -389,6 +389,12 @@ public static class E2EHelpers
     public static Task WaitForSalesOrdersReadyAsync(this IPage page, int timeoutMs = 45000) =>
         page.WaitForListPageAsync("/sales-orders", "sales-orders-table", timeoutMs);
 
+    public static Task WaitForQuotesReadyAsync(this IPage page, int timeoutMs = 45000) =>
+        page.WaitForListPageAsync("/quotes", "quotes-table", timeoutMs);
+
+    public static Task WaitForTenantsReadyAsync(this IPage page, int timeoutMs = 45000) =>
+        page.WaitForListPageAsync("/tenants", "tenants-table", timeoutMs);
+
     public static async Task FillSearchAndExpectRowAsync(
         this IPage page,
         string searchTestId,

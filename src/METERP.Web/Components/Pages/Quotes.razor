@@ -1,5 +1,5 @@
 @page "/quotes"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
@@ -22,6 +22,11 @@
 @using System.Globalization
 
 <PageTitle>Quotes</PageTitle>
+
+@if (!_loading)
+{
+    <span data-testid="quotes-ready" class="visually-hidden">ready</span>
+}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -49,17 +54,24 @@
     </div>
 </div>
 
-<QuoteList
-    Quotes="quotes"
-    CanManage="UserCanManage"
-    CurrentPage="currentPage"
-    DisablePrevious="@(currentPage <= 1 || _pageBusy)"
-    DisableNext="@(quotes != null && quotes.Count < PageSize || _pageBusy)"
-    OnView="ViewQuote"
-    OnEdit="EditQuote"
-    OnDelete="DeleteQuote"
-    OnPrevious="PreviousPage"
-    OnNext="NextPage" />
+@if (_loading)
+{
+    <p data-testid="quotes-loading"><em>Loading quotes...</em></p>
+}
+else
+{
+    <QuoteList
+        Quotes="quotes"
+        CanManage="UserCanManage"
+        CurrentPage="currentPage"
+        DisablePrevious="@(currentPage <= 1 || _pageBusy)"
+        DisableNext="@(quotes != null && quotes.Count < PageSize || _pageBusy)"
+        OnView="ViewQuote"
+        OnEdit="EditQuote"
+        OnDelete="DeleteQuote"
+        OnPrevious="PreviousPage"
+        OnNext="NextPage" />
+}
 
 @if (editorQuote != null)
 {
@@ -341,9 +353,11 @@
     private int currentPage = 1;
     private const int PageSize = 10;
     private int _quotesLoadGeneration;
+    private bool _loading = true;
     private bool _pageBusy;
     private bool _lineSaving;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ComponentAsyncGate _dataGate = new();
 
     private bool showLineForm;
     private int lineFormKey;
@@ -394,19 +408,27 @@
     private decimal DisplayTax => Math.Round(DisplaySubtotal * (editorQuote?.TaxRate ?? 0.15m), 2);
     private decimal DisplayTotal => DisplaySubtotal + DisplayTax;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await _dataGate.RunAsync(async () =>
     {
-        var tenantId = TenantProvider.GetCurrentTenantId();
-        if (tenantId != Guid.Empty)
+        _loading = true;
+        try
         {
-            var tenant = await TenantService.GetByIdAsync(tenantId);
-            _branding = TenantBranding.From(tenant);
-        }
+            var tenantId = TenantProvider.GetCurrentTenantId();
+            if (tenantId != Guid.Empty)
+            {
+                var tenant = await TenantService.GetByIdAsync(tenantId);
+                _branding = TenantBranding.From(tenant);
+            }
 
-        await LoadCustomers();
-        await LoadQuotes();
-        HandleCreateQuery();
-    }
+            await LoadCustomers();
+            await LoadQuotes();
+            HandleCreateQuery();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    });
 
     private void OnLineGrossProfitChanged(ChangeEventArgs e)
     {

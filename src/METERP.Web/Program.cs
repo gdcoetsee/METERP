@@ -236,16 +236,21 @@ builder.Services.AddRateLimiter(options =>
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
                        ?? "Host=localhost;Database=METERP;Username=postgres;Password=CHANGE_ME;Port=5432";
 
+builder.Services.AddScoped<CircuitDbContextGate>();
+builder.Services.AddScoped<CircuitDbCommandGateInterceptor>();
+
 if (builder.Environment.IsEnvironment("Testing"))
 {
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseInMemoryDatabase("meterp-integration-tests"));
+    builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+        options.UseInMemoryDatabase("meterp-integration-tests")
+            .AddInterceptors(sp.GetRequiredService<CircuitDbCommandGateInterceptor>()));
 }
 else
 {
-    builder.Services.AddDbContext<AppDbContext>(options =>
+    builder.Services.AddDbContext<AppDbContext>((sp, options) =>
         options.UseNpgsql(connectionString)
-               .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning)));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
+               .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning))
+               .AddInterceptors(sp.GetRequiredService<CircuitDbCommandGateInterceptor>()));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
 }
 
 // === ASP.NET Core Identity + Multi-tenancy ===

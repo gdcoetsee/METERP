@@ -464,8 +464,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/tenants");
-        await page.WaitForTestIdAsync("tenants-table", 20000);
+        await page.WaitForTenantsReadyAsync(45000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
@@ -719,16 +718,15 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
 
             for (var attempt = 0; attempt < 3; attempt++)
             {
-                await page.GotoRelativeAsync("/account-billing", waitForCommit: true);
-                await page.WaitForBlazorReadyAsync(20000);
                 try
                 {
-                    await page.WaitForTestIdAsync("account-billing-tier", 30000);
+                    await page.WaitForAccountReadyAsync("account-billing-ready", "account-billing", 45000, resetDemoOnRetry: false);
                     await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 30000);
                     break;
                 }
