@@ -16,6 +16,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await E2EHelpers.EnsureAppReadyAsync();
+        await E2EHelpers.ResetDemoStateAsync();
         await E2EHelpers.DisableBetaTwoFactorAsync();
         _playwright = await Playwright.CreateAsync();
         _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
