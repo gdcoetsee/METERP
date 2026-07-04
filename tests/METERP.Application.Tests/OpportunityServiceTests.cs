@@ -25,6 +25,26 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task GetByIdAsync_ReturnsNull_WhenNotFound()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new OpportunityService(db);
+
+        Assert.Null(await service.GetByIdAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_IsNoOp_WhenOpportunityMissing()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new OpportunityService(db);
+
+        await service.MarkConvertedToQuoteAsync(Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.Empty(await service.GetAllAsync());
+    }
+
+    [Fact]
     public async Task CreateAsync_PersistsOpportunity_WithCustomerNameFromLinkedCustomer()
     {
         var tenantId = Guid.NewGuid();

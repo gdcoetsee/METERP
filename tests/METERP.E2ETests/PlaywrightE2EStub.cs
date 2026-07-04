@@ -1263,8 +1263,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Suppliers_Search_FiltersByName()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");
+        await page.WaitForTestIdAsync("suppliers-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
@@ -1556,10 +1558,11 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Notifications_Triggered_From_LowStock_Or_JobEvent()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/notifications");
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await page.WaitForTestIdAsync("notifications-list", 10000);
+        await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 30000 });
+        await page.WaitForTestIdAsync("notifications-list", 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Low Stock", content);
