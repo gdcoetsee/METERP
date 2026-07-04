@@ -4,6 +4,7 @@ using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
 using METERP.Infrastructure.Identity;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -246,7 +247,7 @@ public class UserService : IUserService
 
     private void InvalidateListCaches()
     {
-        _cache?.InvalidateCategory("users");
-        _cache?.InvalidateCategory("roles");
+        if (_cache != null)
+            TenantCacheInvalidation.OnIdentityMutated(_cache);
     }
 }

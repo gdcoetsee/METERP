@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -82,11 +83,7 @@ public class EmployeeService : IEmployeeService
 
     private void InvalidateListCaches()
     {
-        if (_cache == null)
-            return;
-
-        _cache.InvalidateCategory("employees");
-        // Job lists embed AssignedEmployee and crew navigation in cached JSON.
-        _cache.InvalidateCategory("jobs");
+        if (_cache != null)
+            TenantCacheInvalidation.OnEmployeeMasterDataChanged(_cache);
     }
 }

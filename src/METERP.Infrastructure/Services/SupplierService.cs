@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -87,11 +88,7 @@ public class SupplierService : ISupplierService
 
     private void InvalidateListCaches()
     {
-        if (_cache == null)
-            return;
-
-        _cache.InvalidateCategory("suppliers");
-        // PO lists embed Supplier navigation in cached JSON — bust when master data changes.
-        _cache.InvalidateCategory("purchase-orders");
+        if (_cache != null)
+            TenantCacheInvalidation.OnSupplierMasterDataChanged(_cache);
     }
 }

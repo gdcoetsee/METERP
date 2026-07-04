@@ -4,6 +4,7 @@ using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -362,15 +363,10 @@ public class JobService : IJobService
         await InvalidateListCachesAsync(ct);
     }
 
-    private async Task InvalidateListCachesAsync(CancellationToken ct)
-    {
-        if (_cache == null)
-            return;
-
-        await _cache.InvalidateCategoryAsync("jobs", ct);
-        // Invoice lists embed Job navigation in cached JSON.
-        await _cache.InvalidateCategoryAsync("invoices", ct);
-    }
+    private Task InvalidateListCachesAsync(CancellationToken ct) =>
+        _cache == null
+            ? Task.CompletedTask
+            : TenantCacheInvalidation.OnJobMutatedAsync(_cache, ct);
 
     private async Task ApplyEmployeeDefaultsAsync(JobLabor labor, CancellationToken ct)
     {

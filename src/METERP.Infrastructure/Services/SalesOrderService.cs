@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -228,7 +229,7 @@ public class SalesOrderService : ISalesOrderService
 
         InvalidateListCaches();
         if (_cache != null)
-            await _cache.InvalidateCategoryAsync("jobs", ct);
+            await TenantCacheInvalidation.OnJobMutatedAsync(_cache, ct);
 
         await TryIncrementJobCountAsync(so.TenantId, ct);
 

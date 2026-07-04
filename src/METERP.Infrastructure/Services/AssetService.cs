@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -119,11 +120,7 @@ public class AssetService : IAssetService
 
     private void InvalidateListCaches()
     {
-        if (_cache == null)
-            return;
-
-        _cache.InvalidateCategory("assets");
-        // Job lists embed Asset navigation in cached JSON.
-        _cache.InvalidateCategory("jobs");
+        if (_cache != null)
+            TenantCacheInvalidation.OnAssetMasterDataChanged(_cache);
     }
 }

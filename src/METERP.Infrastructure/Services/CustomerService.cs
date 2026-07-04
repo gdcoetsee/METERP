@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -152,16 +153,7 @@ public class CustomerService : ICustomerService
 
     private void InvalidateListCaches()
     {
-        if (_cache == null)
-            return;
-
-        _cache.InvalidateCategory("customers");
-        // CRM/spine lists embed Customer navigation in cached JSON — bust when master data changes.
-        _cache.InvalidateCategory("opportunities");
-        _cache.InvalidateCategory("quotes");
-        _cache.InvalidateCategory("jobs");
-        _cache.InvalidateCategory("invoices");
-        _cache.InvalidateCategory("sales-orders");
-        _cache.InvalidateCategory("assets");
+        if (_cache != null)
+            TenantCacheInvalidation.OnCustomerMasterDataChanged(_cache);
     }
 }

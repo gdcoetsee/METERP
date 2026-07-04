@@ -3,6 +3,7 @@ using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -416,15 +417,10 @@ public class QuoteService : IQuoteService
         return (await GetByIdForJobAsync(job.Id, ct))!;
     }
 
-    private async Task InvalidateListCachesAsync(CancellationToken ct)
-    {
-        if (_cache == null)
-            return;
-
-        await _cache.InvalidateCategoryAsync("quotes", ct);
-        // Job lists embed Quote navigation in cached JSON.
-        await _cache.InvalidateCategoryAsync("jobs", ct);
-    }
+    private Task InvalidateListCachesAsync(CancellationToken ct) =>
+        _cache == null
+            ? Task.CompletedTask
+            : TenantCacheInvalidation.OnQuoteMutatedAsync(_cache, ct);
 
     private async Task TryIncrementQuoteCountAsync(Guid tenantId, CancellationToken ct)
     {
