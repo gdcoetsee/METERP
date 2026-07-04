@@ -658,6 +658,24 @@ public class E2EFlowTests : IAsyncLifetime
         var label = (await emailButton.TextContentAsync()) ?? string.Empty;
         Assert.Contains("Email summary", label, StringComparison.OrdinalIgnoreCase);
 
+        var overdueCount = page.Locator("[data-testid='home-overdue-sla-count']");
+        await overdueCount.WaitForAsync(new() { Timeout = 10000 });
+        Assert.True(int.TryParse((await overdueCount.TextContentAsync())?.Trim(), out _));
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Home_Division_Scorecards_Show_For_Executive_User()
+    {
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-division-scorecards", 30000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Division scorecards", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Johannesburg Operations", content, StringComparison.OrdinalIgnoreCase);
+
         await page.CloseAsync();
     }
 
