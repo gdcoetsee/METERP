@@ -647,6 +647,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Home_Executive_Dashboard_Shows_Accountability_Summary()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/");
         await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
@@ -675,6 +676,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Home_Division_Scorecards_Show_For_Executive_User()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/");
         await page.WaitForTestIdAsync("home-division-scorecards", 30000);
@@ -1403,8 +1405,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Assets_Page_Loads_Demo_Transformer()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/assets", "assets-table", 45000);
+        await page.WaitForTestIdAsync("assets-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='assets-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "11kV/400V Transformer" })).ToHaveCountAsync(1);
@@ -1562,6 +1566,7 @@ public class E2EFlowTests : IAsyncLifetime
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/notifications");
         await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 30000 });
+        await page.WaitForTestIdAsync("notifications-ready", 30000);
         await page.WaitForTestIdAsync("notifications-list", 30000);
 
         var content = await page.ContentAsync();

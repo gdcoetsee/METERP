@@ -130,6 +130,28 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task AdvanceStageAsync_IsNoOp_WhenOpportunityMissing()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new OpportunityService(db);
+
+        await service.AdvanceStageAsync(Guid.NewGuid());
+
+        Assert.Empty(await service.GetAllAsync());
+    }
+
+    [Fact]
+    public async Task DeleteAsync_IsNoOp_WhenOpportunityMissing()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new OpportunityService(db);
+
+        await service.DeleteAsync(Guid.NewGuid());
+
+        Assert.Empty(await service.GetAllAsync());
+    }
+
+    [Fact]
     public async Task AdvanceStageAsync_DoesNotAdvanceFromClosedLost()
     {
         var tenantId = Guid.NewGuid();

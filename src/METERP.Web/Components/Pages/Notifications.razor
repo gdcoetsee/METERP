@@ -16,6 +16,7 @@
     <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllRead" data-testid="notifications-mark-all">Mark all read</button>
 </div>
 
+<span data-testid="notifications-ready" class="visually-hidden">ready</span>
 <div class="list-group" data-testid="notifications-list">
     @foreach (var n in notifications)
     {
