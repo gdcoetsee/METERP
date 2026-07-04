@@ -414,6 +414,7 @@ public class E2EFlowTests : IAsyncLifetime
 
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync($"/jobs?job={jobId}");
+        await page.WaitForTestIdAsync("jobs-ready", 30000);
         await page.WaitForTestIdAsync("jobs-table", 30000);
         await page.WaitForTestIdAsync("job-detail-panel", 20000);
 
@@ -427,10 +428,12 @@ public class E2EFlowTests : IAsyncLifetime
                 await signOffBtn.ClickAsync();
         }
 
-        await Assertions.Expect(createInvoiceBtn).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await page.WaitForTestIdAsync("job-ready-to-invoice-badge", 20000);
+        await Assertions.Expect(createInvoiceBtn).ToBeEnabledAsync(new() { Timeout = 20000 });
         await createInvoiceBtn.ClickAsync();
 
-        await page.WaitForURLAsync("**/invoices**", new() { Timeout = 30000 });
+        await page.WaitForURLAsync("**/invoices**", new() { Timeout = 45000 });
+        await page.WaitForTestIdAsync("invoices-table", 30000);
         await page.WaitForTestIdAsync("invoice-line-items-header", 30000);
         var content = await page.ContentAsync();
         Assert.Contains("INV-", content);

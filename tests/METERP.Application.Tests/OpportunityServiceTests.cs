@@ -244,6 +244,55 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_LogsAuditEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new OpportunityService(db, auditService);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Update audit opp",
+            CustomerName = "Audit Co",
+            Value = 7000m,
+            Stage = OpportunityStage.Lead
+        });
+        var opp = await service.GetByIdAsync(id);
+        Assert.NotNull(opp);
+        opp!.Title = "Updated title";
+        await service.UpdateAsync(opp);
+
+        var updateEntry = (await auditService.GetRecentAsync()).First(e => e.Action == "UPDATE" && e.EntityReference == "Updated title");
+        Assert.Equal("Opportunity", updateEntry.EntityType);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_LogsAuditEntry()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditService = new AuditService(db, currentUser.Object);
+        var service = new OpportunityService(db, auditService);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Delete audit opp",
+            CustomerName = "Audit Co",
+            Value = 2000m
+        });
+
+        await service.DeleteAsync(id);
+
+        var deleteEntry = (await auditService.GetRecentAsync()).First(e => e.Action == "DELETE");
+        Assert.Equal("Opportunity", deleteEntry.EntityType);
+        Assert.Equal("Delete audit opp", deleteEntry.EntityReference);
+        Assert.Contains("Soft deleted", deleteEntry.Details);
+    }
+
+    [Fact]
     public async Task DeleteAsync_SoftDeletesOpportunity()
     {
         var tenantId = Guid.NewGuid();
