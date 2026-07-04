@@ -175,6 +175,43 @@ public class SpineQuotaEnforcementTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateBillingDocumentAsync_AllowsProforma_WhenInvoiceQuotaFull()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new QuotaHarness(tenantId);
+        await harness.SeedTenantAsync(periodInvoices: 10);
+
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Acme" };
+        harness.Db.Set<Customer>().Add(customer);
+
+        var job = new Job
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-PROFORMA-001",
+            Title = "Quoted work",
+            Status = JobStatus.Completed,
+            SignOffStatus = JobSignOffStatus.SignedOff,
+            SignedOffAt = DateTime.UtcNow,
+            QuotedTotal = 8000m
+        };
+        harness.Db.Set<Job>().Add(job);
+        await harness.Db.SaveChangesAsync();
+
+        var service = new InvoiceService(
+            harness.Db,
+            tenantProvider: harness.TenantProvider.Object,
+            quotaService: harness.QuotaService);
+
+        var proforma = await service.CreateBillingDocumentAsync(job.Id, InvoiceDocumentType.Proforma);
+        Assert.Equal(InvoiceDocumentType.Proforma, proforma.DocumentType);
+
+        await Assert.ThrowsAsync<QuotaExceededException>(
+            () => service.CreateBillingDocumentAsync(job.Id, InvoiceDocumentType.Final));
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateFromJobAsync_ThrowsQuotaExceeded_WhenInvoiceQuotaFull()
     {
         var tenantId = Guid.NewGuid();
