@@ -18,28 +18,29 @@ public class E2EFlowTests : IAsyncLifetime
     private const string ReceiveDemoPoMarker = "E2E receive demo";
 
     private IPlaywright _playwright = null!;
-    private IBrowser _browser = null!;
+    private IBrowser Browser => E2EHelpers.GetBrowser();
 
     public async Task InitializeAsync()
     {
         await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         _playwright = await Playwright.CreateAsync();
-        _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+        E2EHelpers.TrackBrowser(_playwright, await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true }));
     }
 
     public async Task DisposeAsync()
     {
         await E2EHelpers.DisableBetaTwoFactorAsync();
-        if (_browser != null) await _browser.DisposeAsync();
-        if (_playwright != null) _playwright.Dispose();
+        try { await E2EHelpers.GetBrowser().DisposeAsync(); }
+        catch (InvalidOperationException) { /* already disposed */ }
+        _playwright?.Dispose();
     }
 
     [Fact]
     public async Task Login_Succeeds_With_Demo_Credentials()
     {
         // Exercise the interactive login form (login-complete is used by other tests for speed).
-        var page = await _browser.NewPageAsync();
+        var page = await Browser.NewPageAsync();
         await page.GotoAsync($"{E2EHelpers.BaseUrl}/login");
         await page.WaitForSelectorAsync("[data-testid='login-email']");
         await page.Locator("[data-testid='login-email']").PressSequentiallyAsync(E2EHelpers.AcmeEmail);
@@ -55,7 +56,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task AI_Copilot_Creates_Quote_With_Travel_And_Downloads_PDF()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
@@ -92,7 +93,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Manual_Create_With_Line()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -120,7 +121,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Manual_Create_Customer_And_Lines()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -149,7 +150,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Edit_Opens_Lines_Not_Just_Notes()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -167,7 +168,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Line_UnitCost_AutoCalculates_SellPrice_And_SaveAddAnother()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -208,7 +209,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Quotes_Edit_Line_Updates_Total()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -240,7 +241,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Ai_Settings_Page_Loads_Free_Providers()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/settings/ai");
         await page.WaitForTestIdAsync("ai-provider-select", 15000);
 
@@ -256,7 +257,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Opportunity_Converts_To_Quote_Via_Ai_Copilot()
     {
         await E2EHelpers.ResetDemoStateAsync();
-        var page = await _browser.LoginAsync(resetDemoState: false);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
 
         await page.Locator("[data-testid='opportunity-card']").First.ClickAsync();
@@ -300,7 +301,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Opportunity_Advances_Stage_On_Advance_Button()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/opportunities");
         try
         {
@@ -350,7 +351,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.ResetDemoStateAsync();
         var quoteNumber = await E2EHelpers.EnsureConvertibleQuoteAsync();
         Assert.False(string.IsNullOrWhiteSpace(quoteNumber));
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -412,7 +413,7 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.NotNull(demoJob);
         var (jobNumber, jobId) = demoJob.Value;
 
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync($"/jobs?job={jobId}");
         await page.WaitForTestIdAsync("jobs-table", 30000);
         await page.WaitForTestIdAsync("job-detail-panel", 20000);
@@ -442,7 +443,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task MultiTenant_Isolation_Basic_Check()
     {
-        var acmePage = await _browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
         await acmePage.GotoRelativeAsync("/quotes");
         await acmePage.WaitForTestIdAsync("quotes-table");
         var acmeContent = await acmePage.ContentAsync();
@@ -450,7 +451,7 @@ public class E2EFlowTests : IAsyncLifetime
         Assert.DoesNotContain("Beta-only travel", acmeContent);
         await acmePage.CloseAsync();
 
-        var betaPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/quotes");
         await betaPage.WaitForTestIdAsync("quotes-table");
         var betaContent = await betaPage.ContentAsync();
@@ -462,7 +463,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/tenants");
         await page.WaitForTestIdAsync("tenants-table", 20000);
 
@@ -484,7 +485,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Tenants_Edit_Form_Shows_Quota_Badges()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/tenants");
         await page.WaitForTestIdAsync("tenants-table", 20000);
 
@@ -508,9 +509,8 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-
-            var page = await _browser.LoginAsync(resetDemoState: false);
             await page.GotoRelativeAsync("/tenants");
             await page.WaitForTestIdAsync("tenants-table", 20000);
 
@@ -537,8 +537,8 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-            var page = await _browser.LoginAsync(resetDemoState: false);
             await page.GotoRelativeAsync("/quotes");
             await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -569,10 +569,9 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureJobQuotaExceededAsync();
             await E2EHelpers.EnsureConvertibleQuoteAsync();
-
-            var page = await _browser.LoginAsync(resetDemoState: false);
             await page.GotoRelativeAsync("/quotes");
             await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -602,10 +601,9 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureInvoiceQuotaExceededAsync();
             await E2EHelpers.EnsureDemoInvoiceJobAsync();
-
-            var page = await _browser.LoginAsync(resetDemoState: false);
             await page.OpenJobDetailAsync(DemoInvoiceJobMarker);
             await page.WaitForTestIdAsync("create-invoice-from-job-detail", 30000);
             await page.ClickByTestIdAsync("create-invoice-from-job-detail");
@@ -626,7 +624,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Home_Quota_Usage_Card_Shows_Monthly_Usage()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/");
         await page.WaitForTestIdAsync("home-quota-usage-card", 15000);
 
@@ -650,9 +648,8 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
+            var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-
-            var page = await _browser.LoginAsync(resetDemoState: false);
             await page.GotoRelativeAsync("/");
             await page.WaitForTestIdAsync("home-quota-usage-card", 15000);
             await page.WaitForTestIdAsync("home-quota-exceeded-banner", 15000);
@@ -683,7 +680,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task AccountBilling_Page_Shows_Plan_And_Manage_Billing()
     {
-        var page = await _browser.LoginAsync(resetDemoState: true);
+        var page = await Browser.LoginAsync(resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var content = await page.ContentAsync();
@@ -722,11 +719,24 @@ public class E2EFlowTests : IAsyncLifetime
     {
         try
         {
-            var page = await _browser.LoginAsync(resetDemoState: false);
+            var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing", resetDemoOnRetry: false);
-            await page.ClickByTestIdAsync("account-billing-refresh-button");
-            await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 20000);
+
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                await page.ClickByTestIdAsync("account-billing-refresh-button");
+                try
+                {
+                    await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 15000);
+                    break;
+                }
+                catch (TimeoutException) when (attempt < 2)
+                {
+                    await E2EHelpers.EnsureQuoteQuotaExceededAsync();
+                    await Task.Delay(1000);
+                }
+            }
 
             var quotesBadge = page.Locator("[data-testid='account-billing-quota-quotes']");
             Assert.Equal("exceeded", await quotesBadge.GetAttributeAsync("data-quota-status"));
@@ -745,7 +755,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Account_Hub_Shows_Billing_And_Security_Tabs()
     {
-        var page = await _browser.LoginAsync(resetDemoState: true);
+        var page = await Browser.LoginAsync(resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
         await page.WaitForTestIdAsync("account-tab-billing", 15000);
         await page.WaitForTestIdAsync("account-tab-security", 15000);
@@ -783,7 +793,7 @@ public class E2EFlowTests : IAsyncLifetime
         var webhookResponse = await E2EHelpers.PostStripeWebhookAsync(payload);
         Assert.True(webhookResponse.IsSuccessStatusCode, await webhookResponse.Content.ReadAsStringAsync());
 
-        var page = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: true);
+        var page = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
 
         var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
@@ -801,7 +811,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Reports_Page_Shows_Technician_Utilization()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
         await page.WaitForTestIdAsync("reports-ready", 20000);
         await page.WaitForTestIdAsync("reports-utilization-card", 10000);
@@ -826,7 +836,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Reports_Page_Shows_Job_Profitability_From_Variance()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
         await page.WaitForTestIdAsync("reports-ready", 20000);
         await page.WaitForTestIdAsync("reports-profitability-card", 10000);
@@ -856,7 +866,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Reports_Page_Shows_Cashflow_Forecast_From_Receivables()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
         await page.WaitForTestIdAsync("reports-ready", 20000);
         await page.WaitForTestIdAsync("reports-cashflow-card", 10000);
@@ -884,7 +894,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Payroll_Page_Shows_JobLabor_Summaries()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/payroll");
         await page.WaitForTestIdAsync("payroll-ready", 15000);
 
@@ -907,7 +917,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Scheduling_Page_Loads_Jobs_And_Assignment_Panel()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
 
         try
@@ -994,7 +1004,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Scheduling_Quick_Adds_Labor_From_Assigned_Crew()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
         try
         {
@@ -1040,7 +1050,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Audit_Page_Loads_Compliance_Trail()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/audit");
 
         try
@@ -1075,7 +1085,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Audit_Shows_Convert_After_Quote_To_Job()
     {
         await E2EHelpers.EnsureConvertibleQuoteAsync();
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
@@ -1125,7 +1135,7 @@ public class E2EFlowTests : IAsyncLifetime
     {
         await E2EHelpers.EnsureDemoInvoiceJobAsync();
 
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.OpenJobDetailAsync(DemoInvoiceJobMarker);
         await page.WaitForTestIdAsync("create-invoice-from-job-detail", 30000);
         await page.ClickByTestIdAsync("create-invoice-from-job-detail");
@@ -1147,7 +1157,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Inventory_Page_Loads_Stock_Table()
     {
         await E2EHelpers.ResetDemoStateAsync();
-        var page = await _browser.LoginAsync(resetDemoState: false);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
 
         var content = await page.ContentAsync();
@@ -1160,7 +1170,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Inventory_LowStock_Filter_ShowsLowItemsOnly()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/inventory");
         await page.WaitForTestIdAsync("inventory-table", 30000);
 
@@ -1181,7 +1191,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Inventory_Search_FiltersBySku()
     {
         await E2EHelpers.ResetDemoStateAsync();
-        var page = await _browser.LoginAsync(resetDemoState: false);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
 
         var contentBefore = await page.ContentAsync();
@@ -1198,7 +1208,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Suppliers_Page_Loads_Demo_Vendor()
     {
         await E2EHelpers.ResetDemoStateAsync();
-        var page = await _browser.LoginAsync(resetDemoState: false);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");
 
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
@@ -1210,7 +1220,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Suppliers_Search_FiltersByName()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");
 
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
@@ -1226,7 +1236,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task PurchaseOrders_Page_Loads_Demo_Po()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table");
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
@@ -1244,7 +1254,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task PurchaseOrders_Search_FiltersBySupplier()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table", 45000);
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
@@ -1261,7 +1271,7 @@ public class E2EFlowTests : IAsyncLifetime
     {
         await E2EHelpers.ResetDemoStateAsync();
         await E2EHelpers.EnsureReceiveDemoPoAsync();
-        var page = await _browser.LoginAsync(resetDemoState: false);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
         await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
 
@@ -1306,7 +1316,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Customers_Page_Loads_Demo_Customer()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/customers");
         await page.WaitForTestIdAsync("customers-table", 30000);
         await page.WaitForListReadyAsync("customers");
@@ -1320,7 +1330,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Customers_Search_FiltersByName()
     {
         await E2EHelpers.EnsureAppReadyAsync();
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/customers");
         await page.WaitForTestIdAsync("customers-table", 30000);
         await page.WaitForListReadyAsync("customers");
@@ -1346,7 +1356,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Assets_Page_Loads_Demo_Transformer()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/assets", "assets-table", 45000);
 
         var tableBody = page.Locator("[data-testid='assets-table'] tbody");
@@ -1360,7 +1370,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Assets_Search_FiltersByName()
     {
         await E2EHelpers.EnsureAppReadyAsync();
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/assets", "assets-table", 45000);
 
         await page.FillSearchAndExpectRowAsync("assets-search", "assets-table", "Transformer", "11kV/400V Transformer");
@@ -1380,7 +1390,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Employees_Page_Loads_Demo_Staff()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
 
         var tableBody = page.Locator("[data-testid='employees-table'] tbody");
@@ -1394,7 +1404,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Employees_Search_FiltersByName()
     {
         await E2EHelpers.ResetDemoStateAsync();
-        var page = await _browser.LoginAsync(resetDemoState: false);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractiveListAsync("/employees", "employees", "employees-table");
 
         var tableBody = page.Locator("[data-testid='employees-table'] tbody");
@@ -1419,7 +1429,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
-        var page = await _browser.LoginAsync(resetDemoState: true);
+        var page = await Browser.LoginAsync(resetDemoState: true);
         await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         await page.WaitForSalesOrdersReadyAsync(60000);
 
@@ -1440,7 +1450,7 @@ public class E2EFlowTests : IAsyncLifetime
         var soNumber = await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         Assert.False(string.IsNullOrWhiteSpace(soNumber));
 
-        var page = await _browser.LoginAsync(resetDemoState: true);
+        var page = await Browser.LoginAsync(resetDemoState: true);
         page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
         await page.OpenSalesOrderDetailAsync(ConvertibleSalesOrderMarker);
         await page.WaitForTestIdAsync("sales-order-convert-to-job", 30000);
@@ -1464,7 +1474,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Finance_Page_Loads_Chart_Of_Accounts_And_Export()
     {
-        var page = await _browser.NewPageAsync();
+        var page = await Browser.NewPageAsync();
         await page.GotoAsync($"{E2EHelpers.BaseUrl}/login-complete?email={Uri.EscapeDataString(E2EHelpers.AcmeEmail)}");
         await page.WaitForURLAsync(
             u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
@@ -1501,7 +1511,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Notifications_Triggered_From_LowStock_Or_JobEvent()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/notifications");
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await page.WaitForTestIdAsync("notifications-list", 10000);
@@ -1519,7 +1529,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Approvals_Page_Loads_Hub_Tabs()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/approvals");
         await page.WaitForTestIdAsync("approvals-ready", 30000);
         await page.WaitForTestIdAsync("approvals-tabs", 10000);
@@ -1538,7 +1548,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Requisitions_Page_Loads_List_Or_Empty_State()
     {
-        var page = await _browser.LoginAsync();
+        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/requisitions");
         await page.WaitForTestIdAsync("requisitions-ready", 30000);
 

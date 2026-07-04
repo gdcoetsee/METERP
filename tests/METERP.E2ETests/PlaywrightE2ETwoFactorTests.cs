@@ -11,7 +11,7 @@ namespace METERP.E2ETests;
 public class E2ETwoFactorFlowTests : IAsyncLifetime
 {
     private IPlaywright _playwright = null!;
-    private IBrowser _browser = null!;
+    private IBrowser Browser => E2EHelpers.GetBrowser();
 
     public async Task InitializeAsync()
     {
@@ -19,14 +19,15 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
         await E2EHelpers.ResetDemoStateAsync();
         await E2EHelpers.DisableBetaTwoFactorAsync();
         _playwright = await Playwright.CreateAsync();
-        _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+        E2EHelpers.TrackBrowser(_playwright, await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true }));
     }
 
     public async Task DisposeAsync()
     {
         await E2EHelpers.DisableBetaTwoFactorAsync();
-        if (_browser != null) await _browser.DisposeAsync();
-        if (_playwright != null) _playwright.Dispose();
+        try { await E2EHelpers.GetBrowser().DisposeAsync(); }
+        catch (InvalidOperationException) { /* already disposed */ }
+        _playwright?.Dispose();
     }
 
     [Fact]
@@ -36,7 +37,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
         {
             var secretMaterial = await EnableTwoFactorForBetaAsync();
 
-            var loginPage = await _browser.NewPageAsync();
+            var loginPage = await Browser.NewPageAsync();
             await loginPage.GotoAsync($"{E2EHelpers.BaseUrl}/login");
             await loginPage.WaitForTestIdAsync("login-email");
             await loginPage.Locator("[data-testid='login-email']").PressSequentiallyAsync(E2EHelpers.BetaEmail);
@@ -86,7 +87,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             await E2EHelpers.BeginEmailCaptureAsync();
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
-            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+            var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
@@ -140,7 +141,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             await E2EHelpers.DeleteAllMailpitMessagesAsync();
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
-            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+            var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
@@ -171,7 +172,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     private async Task<string> EnableTwoFactorForBetaAsync()
     {
         await E2EHelpers.DisableBetaTwoFactorAsync();
-        var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
+        var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
         await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
         await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");

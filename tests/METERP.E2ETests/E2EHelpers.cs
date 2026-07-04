@@ -15,6 +15,24 @@ public static class E2EHelpers
     public const string BetaPassword = "Demo123!";
 
     private static int _loginCount;
+    private static IPlaywright? _trackedPlaywright;
+    private static IBrowser? _trackedBrowser;
+
+    /// <summary>
+    /// Enables periodic Chromium recycle during long sequential E2E runs (reduces stale Blazor circuit pressure).
+    /// </summary>
+    public static void TrackBrowser(IPlaywright playwright, IBrowser browser)
+    {
+        _trackedPlaywright = playwright;
+        _trackedBrowser = browser;
+    }
+
+    public static IBrowser GetBrowser()
+    {
+        if (_trackedBrowser == null)
+            throw new InvalidOperationException("E2E browser not initialized — call TrackBrowser during test fixture setup.");
+        return _trackedBrowser;
+    }
 
     public static async Task<IPage> LoginAsync(
         this IBrowser browser,
@@ -28,6 +46,9 @@ public static class E2EHelpers
 
         // Periodic reset stabilizes long runs without paying full reset cost on every login (~2–3s each).
         var loginNumber = Interlocked.Increment(ref _loginCount);
+        if (loginNumber % 12 == 0)
+            browser = await MaybeRecycleBrowserAsync(browser);
+
         if (resetDemoState || loginNumber % 6 == 1)
         {
             try { await ResetDemoStateAsync(url); }
@@ -69,6 +90,20 @@ public static class E2EHelpers
         }
 
         throw new InvalidOperationException($"Login failed for {loginEmail} after 3 attempts.", lastError);
+    }
+
+    private static async Task<IBrowser> MaybeRecycleBrowserAsync(IBrowser browser)
+    {
+        if (_trackedPlaywright == null || _trackedBrowser == null || !ReferenceEquals(browser, _trackedBrowser))
+            return browser;
+
+        await _trackedBrowser.DisposeAsync();
+        await Task.Delay(750);
+        _trackedBrowser = await _trackedPlaywright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+        try { await ResetDemoStateAsync(); }
+        catch { /* dev endpoints unavailable on older images */ }
+
+        return _trackedBrowser;
     }
 
     public static async Task WaitForTestIdAsync(this IPage page, string testId, int timeoutMs = 10000)
@@ -211,7 +246,7 @@ public static class E2EHelpers
         {
             try
             {
-                await page.GotoRelativeAsync(relativePath);
+                await page.GotoRelativeAsync(relativePath, waitForCommit: true);
                 await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
                 await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
                 await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
@@ -226,7 +261,7 @@ public static class E2EHelpers
             }
         }
 
-        await page.GotoRelativeAsync(relativePath);
+        await page.GotoRelativeAsync(relativePath, waitForCommit: true);
         await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
         await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
         await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
@@ -252,7 +287,7 @@ public static class E2EHelpers
         {
             try
             {
-                await page.GotoRelativeAsync(relativePath);
+                await page.GotoRelativeAsync(relativePath, waitForCommit: true);
                 await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
                 await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
                 await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
@@ -266,7 +301,7 @@ public static class E2EHelpers
             }
         }
 
-        await page.GotoRelativeAsync(relativePath);
+        await page.GotoRelativeAsync(relativePath, waitForCommit: true);
         await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
         await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
     }
@@ -360,11 +395,15 @@ public static class E2EHelpers
             .ToHaveCountAsync(1, new() { Timeout = timeoutMs });
     }
 
-    public static async Task GotoRelativeAsync(this IPage page, string relativePath, string? baseUrl = null)
+    public static async Task GotoRelativeAsync(this IPage page, string relativePath, string? baseUrl = null, bool waitForCommit = false)
     {
         var url = baseUrl ?? BaseUrl;
         var cleanPath = relativePath.TrimStart('/');
-        await page.GotoAsync($"{url}/{cleanPath}", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
+        await page.GotoAsync($"{url}/{cleanPath}", new()
+        {
+            WaitUntil = waitForCommit ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded,
+            Timeout = 60000
+        });
         try
         {
             await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 15000 });
