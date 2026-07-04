@@ -77,4 +77,35 @@ public class FieldReportServiceTests
             Assert.Equal(450m, travel.Amount);
         }
     }
+
+    [Fact]
+    public async Task RejectAsync_SetsRejectedStatus_AndDoesNotPostCosts()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 8m,
+                TravelCost = 200m
+            });
+
+            Assert.True(await service.RejectAsync(reportId, TestUserId, "Incorrect hours"));
+
+            var report = await db.Set<FieldReport>().FirstAsync(r => r.Id == reportId);
+            Assert.Equal(FieldReportStatus.Rejected, report.Status);
+            Assert.Equal("Incorrect hours", report.RejectionReason);
+
+            var job = await jobs.GetByIdAsync(jobId);
+            Assert.Empty(job!.Labors);
+            Assert.Empty(job.ActualCosts);
+        }
+    }
 }

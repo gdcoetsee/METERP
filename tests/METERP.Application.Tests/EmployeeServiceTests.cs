@@ -77,6 +77,34 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsRateAndContactFields()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var id = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-UPD",
+            FirstName = "Lerato",
+            LastName = "Dlamini",
+            DefaultHourlyRate = 175m,
+            Email = "old@test.com"
+        });
+
+        var employee = await service.GetByIdAsync(id);
+        Assert.NotNull(employee);
+        employee!.DefaultHourlyRate = 210m;
+        employee.Email = "lerato@field.demo";
+        employee.JobTitle = "Senior Technician";
+        await service.UpdateAsync(employee);
+
+        var reloaded = await service.GetByIdAsync(id);
+        Assert.Equal(210m, reloaded!.DefaultHourlyRate);
+        Assert.Equal("lerato@field.demo", reloaded.Email);
+        Assert.Equal("Senior Technician", reloaded.JobTitle);
+    }
+
+    [Fact]
     public async Task DeleteAsync_SoftDeletesEmployee()
     {
         var tenantId = Guid.NewGuid();

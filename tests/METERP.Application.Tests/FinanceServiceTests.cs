@@ -212,4 +212,43 @@ public class FinanceServiceTests
 
         Assert.Equal(200m, balance);
     }
+
+    [Fact]
+    public async Task GetAccountsAsync_ExcludesInactiveAccounts()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        db.Set<Account>().AddRange(
+            new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset, IsActive = true },
+            new Account { TenantId = tenantId, AccountCode = "9999", Name = "Legacy", Type = AccountType.Asset, IsActive = false });
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var accounts = await service.GetAccountsAsync();
+
+        Assert.Single(accounts);
+        Assert.Equal("1000", accounts[0].AccountCode);
+    }
+
+    [Fact]
+    public async Task CreateAccountAsync_PersistsActiveAccount()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var service = new FinanceService(db);
+
+        var id = await service.CreateAccountAsync(new Account
+        {
+            TenantId = tenantId,
+            AccountCode = "2100",
+            Name = "Accounts Payable",
+            Type = AccountType.Liability
+        });
+
+        var accounts = await service.GetAccountsAsync();
+        var created = Assert.Single(accounts);
+        Assert.Equal(id, created.Id);
+        Assert.Equal("2100", created.AccountCode);
+        Assert.Equal(AccountType.Liability, created.Type);
+    }
 }
