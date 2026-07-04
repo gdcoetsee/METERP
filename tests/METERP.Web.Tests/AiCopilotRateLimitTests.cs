@@ -119,7 +119,8 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
             "/invoices",
             "/opportunities",
             "/customers",
-            "/reports"
+            "/reports",
+            "/field"
         ];
 
         for (var i = 0; i < 15; i++)

@@ -7,10 +7,16 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using METERP.Domain;
+using METERP.Infrastructure.Integrations;
 using METERP.Infrastructure.Persistence;
 using Xunit;
 
 namespace METERP.Web.Tests;
+
+internal static class BillingWebhookTestSecrets
+{
+    public const string EndpointSecret = "whsec_endpoint_signature_required";
+}
 
 public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFactory>
 {
@@ -309,6 +315,22 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
     }
 
     [Fact]
+    public async Task StripeWebhook_InvalidPayload_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = """{ "id": "evt_missing_type", "data": { "object": {} } }""";
+
+        var response = await client.PostAsync(
+            "/webhooks/stripe",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("missing_type", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task StripeWebhook_UnsignedRejected_WhenSecretConfigured()
     {
         await using var factory = new SignedWebhookWebApplicationFactory();
@@ -320,6 +342,60 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
             new StringContent(payload, Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task StripeWebhook_SignedPayload_UpdatesTenantTier()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var factory = new SignedWebhookWebApplicationFactory();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                TenantId = tenantId,
+                Name = "Signed Webhook Co",
+                Subdomain = "signedwebhook",
+                Tier = SubscriptionTier.Starter
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = """
+            {
+              "id": "evt_signed_upgrade",
+              "type": "customer.subscription.updated",
+              "data": {
+                "object": {
+                  "customer": "cus_signed",
+                  "status": "active",
+                  "metadata": {
+                    "tenant_subdomain": "signedwebhook",
+                    "tier": "professional"
+                  }
+                }
+              }
+            }
+            """;
+
+        var signature = StripeWebhookSignatureValidator.BuildSignatureHeader(BillingWebhookTestSecrets.EndpointSecret, payload);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/webhooks/stripe")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Stripe-Signature", signature);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var tenant = await verifyDb.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+        Assert.Equal(SubscriptionTier.Professional, tenant.Tier);
     }
 
     [Fact]
@@ -353,7 +429,7 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Billing:WebhookSecret"] = "whsec_endpoint_signature_required"
+                    ["Billing:WebhookSecret"] = BillingWebhookTestSecrets.EndpointSecret
                 });
             });
         }

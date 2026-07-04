@@ -152,6 +152,21 @@ public class BillingWebhookServiceTests
     }
 
     [Fact]
+    public async Task MissingDataObject_ReturnsInvalidPayload()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId, webhookSecret: string.Empty);
+        await using (db)
+        {
+            var payload = """{ "id": "evt_no_data", "type": "customer.subscription.updated" }""";
+            var result = await service.ProcessStripeEventAsync(payload, null, allowUnsignedForDev: true);
+
+            Assert.Equal(BillingWebhookOutcome.InvalidPayload, result.Outcome);
+            Assert.Contains("missing_data_object", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task MissingEventType_ReturnsInvalidPayload()
     {
         var tenantId = Guid.NewGuid();

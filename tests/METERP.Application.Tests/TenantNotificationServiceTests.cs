@@ -125,6 +125,28 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_PersistsNotification()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Low Stock",
+                Message = "Transformer oil below reorder.",
+                TargetRoles = "StoresClerk",
+                Category = "inventory"
+            });
+
+            var saved = await harness.Db.Set<TenantNotification>().ToListAsync();
+            Assert.Single(saved);
+            Assert.Equal("Low Stock", saved[0].Title);
+            Assert.Equal("inventory", saved[0].Category);
+        }
+    }
+
+    [Fact]
     public async Task MarkAllReadAsync_MarksOnlyVisibleNotifications()
     {
         using var harness = new Harness("Executive");

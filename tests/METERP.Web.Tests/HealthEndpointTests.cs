@@ -26,6 +26,16 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Health_Liveness_ReturnsJsonContentType()
+    {
+        var response = await _client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(response.Content.Headers.ContentType);
+        Assert.Contains("json", response.Content.Headers.ContentType.MediaType, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Health_Liveness_ReturnsHealthyStatusJson()
     {
         var response = await _client.GetAsync("/health");

@@ -11,6 +11,21 @@ namespace METERP.Application.Tests;
 public class StripeCustomerPortalClientTests
 {
     [Fact]
+    public async Task CreateSessionUrlAsync_ReturnsNull_WhenCustomerIdEmpty()
+    {
+        var handler = new StripePortalHandler(HttpStatusCode.OK, """{"url":"https://billing.stripe.com/session/test"}""");
+        var client = CreateClient(handler, new BillingOptions
+        {
+            StripeSecretKey = "sk_test_secret",
+            CustomerPortalReturnUrl = "https://app.example/tenants"
+        });
+
+        Assert.Null(await client.CreateSessionUrlAsync("", "https://app.example/tenants"));
+        Assert.Null(await client.CreateSessionUrlAsync("   ", "https://app.example/tenants"));
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task CreateSessionUrlAsync_ReturnsNull_WhenApiNotConfigured()
     {
         var handler = new StripePortalHandler(HttpStatusCode.OK, """{"url":"https://billing.stripe.com/session/test"}""");
