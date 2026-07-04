@@ -110,6 +110,23 @@ public class OpenTelemetryExtensionsTests
         Assert.True(response.IsSuccessStatusCode);
     }
 
+    [Fact]
+    public async Task Host_WithOtlpConfiguration_StartsAndServesHealthReady()
+    {
+        await using var factory = new OtlpConfiguredWebApplicationFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode);
+        Assert.Contains("Healthy", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("database", body, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class OtlpConfiguredWebApplicationFactory : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

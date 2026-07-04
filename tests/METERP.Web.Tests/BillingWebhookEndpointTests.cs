@@ -199,6 +199,56 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
     }
 
     [Fact]
+    public async Task StripeWebhook_SubscriptionDeleted_DowngradesToStarter()
+    {
+        var tenantId = Guid.NewGuid();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Tenants.Add(new Tenant
+        {
+            Id = tenantId,
+            TenantId = tenantId,
+            Name = "Canceled Co",
+            Subdomain = "canceledco",
+            Tier = SubscriptionTier.Enterprise,
+            SubscriptionStatus = "active",
+            EnabledFeatures = "ai,usage-tracking,advanced-reports",
+            StripeCustomerId = "cus_cancel_test"
+        });
+        await db.SaveChangesAsync();
+
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = """
+            {
+              "id": "evt_subscription_deleted_endpoint",
+              "type": "customer.subscription.deleted",
+              "data": {
+                "object": {
+                  "customer": "cus_cancel_test",
+                  "status": "canceled",
+                  "metadata": { "tenant_subdomain": "canceledco" }
+                }
+              }
+            }
+            """;
+
+        var response = await client.PostAsync(
+            "/webhooks/stripe",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("SubscriptionCanceled", body, StringComparison.OrdinalIgnoreCase);
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var tenant = await verifyDb.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+        Assert.Equal(SubscriptionTier.Starter, tenant.Tier);
+        Assert.Equal("canceled", tenant.SubscriptionStatus);
+    }
+
+    [Fact]
     public async Task StripeWebhook_InvalidJson_ReturnsBadRequest()
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

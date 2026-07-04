@@ -22,6 +22,31 @@ public class E2EEmailCaptureStoreTests
     }
 
     [Fact]
+    public void BeginCapture_SetsIsCapturingTrue()
+    {
+        var store = new E2EEmailCaptureStore();
+        Assert.False(store.IsCapturing);
+
+        store.BeginCapture();
+
+        Assert.True(store.IsCapturing);
+    }
+
+    [Fact]
+    public void GetAll_ReturnsSnapshot_NotLiveBackingList()
+    {
+        var store = new E2EEmailCaptureStore();
+        store.BeginCapture();
+        store.Record("user@test.demo", "Subject", "<p>body</p>");
+
+        var first = store.GetAll();
+        store.Record("other@test.demo", "Second", "<p>two</p>");
+
+        Assert.Single(first);
+        Assert.Equal(2, store.GetAll().Count);
+    }
+
+    [Fact]
     public void Clear_StopsCapture_AndEmptiesMessages()
     {
         var store = new E2EEmailCaptureStore();

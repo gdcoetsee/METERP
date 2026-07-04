@@ -54,6 +54,43 @@ public class TenantBillingViewServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_ReturnsNull_WhenTenantIdEmpty()
+    {
+        var (db, service, _) = CreateHarness();
+        using (db)
+        {
+            var view = await service.GetAsync(Guid.Empty);
+            Assert.Null(view);
+        }
+    }
+
+    [Fact]
+    public async Task GetAsync_ReflectsUnpaidStatus()
+    {
+        var (db, service, tenantId) = CreateHarness();
+        using (db)
+        {
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                TenantId = tenantId,
+                Name = "Unpaid Co",
+                Subdomain = "unpaid",
+                Tier = SubscriptionTier.Professional,
+                SubscriptionStatus = "unpaid",
+                EnabledFeatures = "ai,usage-tracking"
+            });
+            await db.SaveChangesAsync();
+
+            var view = await service.GetAsync(tenantId);
+
+            Assert.NotNull(view);
+            Assert.True(view!.IsPastDue);
+            Assert.Equal("unpaid", view.Tenant.SubscriptionStatus);
+        }
+    }
+
+    [Fact]
     public async Task GetAsync_ReflectsWebhookPastDueStatus()
     {
         var (db, service, tenantId) = CreateHarness();

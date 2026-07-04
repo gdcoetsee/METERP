@@ -43,6 +43,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.NewPageAsync();
         await page.GotoAsync($"{E2EHelpers.BaseUrl}/login");
+        await page.WaitForTestIdAsync("login-ready", 30000);
         await page.WaitForSelectorAsync("[data-testid='login-email']");
         await page.Locator("[data-testid='login-email']").PressSequentiallyAsync(E2EHelpers.AcmeEmail);
         await page.Locator("[data-testid='login-password']").PressSequentiallyAsync(E2EHelpers.AcmePassword);

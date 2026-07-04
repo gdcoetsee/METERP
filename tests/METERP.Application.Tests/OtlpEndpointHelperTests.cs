@@ -9,6 +9,8 @@ public class OtlpEndpointHelperTests
     [InlineData("http://collector:4318", "traces", "http://collector:4318/v1/traces")]
     [InlineData("http://collector:4318/", "metrics", "http://collector:4318/v1/metrics")]
     [InlineData("http://collector:4318/v1/traces", "traces", "http://collector:4318/v1/traces")]
+    [InlineData("http://collector:4318", "logs", "http://collector:4318/v1/logs")]
+    [InlineData("http://collector:4318/v1/metrics", "metrics", "http://collector:4318/v1/metrics")]
     public void BuildHttpProtobufEndpoint_AppendsSignalPath_WhenMissing(string endpoint, string signal, string expected)
     {
         var uri = OtlpEndpointHelper.BuildHttpProtobufEndpoint(endpoint, signal);
