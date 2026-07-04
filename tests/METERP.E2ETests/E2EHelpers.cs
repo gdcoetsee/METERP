@@ -696,6 +696,43 @@ public static class E2EHelpers
         await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
     }
 
+    /// <summary>
+    /// Clicks Enable 2FA and waits for the setup panel (retries click when Blazor circuit is slow).
+    /// Returns shared-key material (URI preferred) for TOTP entry.
+    /// </summary>
+    public static async Task<string> BeginTwoFactorSetupAsync(this IPage page, int timeoutMs = 60000)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            await page.ClickByTestIdWhenEnabledAsync("2fa-enable-button", timeoutMs / 4);
+            await page.WaitForBlazorReadyAsync(8000);
+
+            try
+            {
+                await page.WaitForTestIdAsync("2fa-setup-panel", timeoutMs / 4);
+                await page.WaitForTestIdAsync("2fa-shared-key", timeoutMs / 4);
+                return await ReadTwoFactorSecretMaterialAsync(page);
+            }
+            catch (TimeoutException) when (attempt < 3)
+            {
+                if (await page.Locator("[data-testid='2fa-enable-button']").IsVisibleAsync())
+                    await Task.Delay(750 + attempt * 500);
+            }
+        }
+
+        await page.WaitForTestIdAsync("2fa-shared-key", timeoutMs);
+        return await ReadTwoFactorSecretMaterialAsync(page);
+    }
+
+    public static async Task<string> ReadTwoFactorSecretMaterialAsync(this IPage page)
+    {
+        var uriText = await page.Locator("[data-testid='2fa-setup-uri']").InnerTextAsync() ?? string.Empty;
+        if (uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase))
+            return uriText;
+
+        return await page.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
+    }
+
     public static async Task BeginEmailCaptureAsync(string? baseUrl = null)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

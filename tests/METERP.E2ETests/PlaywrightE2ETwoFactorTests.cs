@@ -90,11 +90,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
-            await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
-            await setupPage.WaitForTestIdAsync("2fa-shared-key", 45000);
-            var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
-            var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
-            var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
+            var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
 
             var setupCode = TotpHelper.ComputeCurrentCode(secretMaterial);
             await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
@@ -144,11 +140,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
-            await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
-            await setupPage.WaitForTestIdAsync("2fa-shared-key", 45000);
-            var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
-            var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
-            var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
+            var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
 
             var setupCode = TotpHelper.ComputeCurrentCode(secretMaterial);
             await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
@@ -175,11 +167,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
         var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
         await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
-        await setupPage.ClickByTestIdWhenReadyAsync("2fa-enable-button");
-        await setupPage.WaitForTestIdAsync("2fa-shared-key", 45000);
-        var keyText = await setupPage.Locator("[data-testid='2fa-shared-key']").InnerTextAsync() ?? string.Empty;
-        var uriText = await setupPage.Locator("[data-testid='account-security-card'] .text-break").InnerTextAsync() ?? string.Empty;
-        var secretMaterial = uriText.Contains("secret=", StringComparison.OrdinalIgnoreCase) ? uriText : keyText;
+        var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
 
         var setupCode = TotpHelper.ComputeCurrentCode(secretMaterial);
         await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });

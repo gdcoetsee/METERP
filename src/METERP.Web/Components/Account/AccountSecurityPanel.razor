@@ -1,8 +1,12 @@
+@using System.Security.Claims
 @using METERP.Application.Interfaces
 @using METERP.Application.Services
 @using METERP.Common
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.DependencyInjection
 @inject ICurrentUserService CurrentUserService
 @inject IServiceScopeFactory ScopeFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ToastService ToastService
 
 <div data-testid="account-security-ready">
@@ -34,10 +38,11 @@ else
                 }
                 else if (_setupInfo != null)
                 {
+                    <div data-testid="2fa-setup-panel">
                     <p class="mb-2">Scan this key in your authenticator app, or enter it manually:</p>
                     <div class="p-2 bg-light border rounded font-monospace mb-2 user-select-all" data-testid="2fa-shared-key">@_setupInfo.SharedKey</div>
                     <p class="small text-muted mb-2">Setup URI (advanced):</p>
-                    <div class="p-2 bg-light border rounded small text-break mb-3">@_setupInfo.AuthenticatorUri</div>
+                    <div class="p-2 bg-light border rounded small text-break mb-3" data-testid="2fa-setup-uri">@_setupInfo.AuthenticatorUri</div>
 
                     <div class="mb-3" style="max-width: 220px;">
                         <label class="form-label">Verification code</label>
@@ -46,6 +51,7 @@ else
                     <div class="d-flex gap-2">
                         <button class="btn btn-success" @onclick="ConfirmSetup" disabled="@_busy" data-testid="2fa-confirm-button">Confirm &amp; Enable</button>
                         <button class="btn btn-secondary" @onclick="CancelSetup" disabled="@_busy">Cancel</button>
+                    </div>
                     </div>
                 }
                 else
@@ -87,10 +93,10 @@ else
     private async Task RefreshStatusAsync()
     {
         var generation = ++_loadGeneration;
-        var userId = CurrentUserService.UserId;
+        var userId = await ResolveUserIdAsync();
         if (userId == null) return;
 
-        await using var scope = ScopeFactory.CreateAsyncScope();
+        await using var scope = await CreateUserScopeAsync();
         var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
         var enabled = await twoFactor.IsEnabledAsync(userId.Value);
         if (generation != _loadGeneration)
@@ -100,13 +106,13 @@ else
 
     private async Task BeginSetup()
     {
-        var userId = CurrentUserService.UserId;
+        var userId = await ResolveUserIdAsync();
         if (userId == null) return;
 
         _busy = true;
         try
         {
-            await using var scope = ScopeFactory.CreateAsyncScope();
+            await using var scope = await CreateUserScopeAsync();
             var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
             _setupInfo = await twoFactor.BeginSetupAsync(userId.Value);
             if (_setupInfo == null)
@@ -126,13 +132,13 @@ else
 
     private async Task ConfirmSetup()
     {
-        var userId = CurrentUserService.UserId;
+        var userId = await ResolveUserIdAsync();
         if (userId == null || string.IsNullOrWhiteSpace(_confirmCode)) return;
 
         _busy = true;
         try
         {
-            await using var scope = ScopeFactory.CreateAsyncScope();
+            await using var scope = await CreateUserScopeAsync();
             var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
             var (ok, errors) = await twoFactor.ConfirmSetupAsync(userId.Value, _confirmCode.Trim());
             if (ok)
@@ -155,13 +161,13 @@ else
 
     private async Task DisableTwoFactor()
     {
-        var userId = CurrentUserService.UserId;
+        var userId = await ResolveUserIdAsync();
         if (userId == null) return;
 
         _busy = true;
         try
         {
-            await using var scope = ScopeFactory.CreateAsyncScope();
+            await using var scope = await CreateUserScopeAsync();
             var twoFactor = scope.ServiceProvider.GetRequiredService<ITwoFactorAuthService>();
             var (ok, errors) = await twoFactor.DisableAsync(userId.Value);
             if (ok)
@@ -180,5 +186,36 @@ else
         {
             _busy = false;
         }
+    }
+
+    /// <summary>
+    /// HttpContext is often unavailable on Blazor Server circuit events; fall back to AuthenticationState.
+    /// </summary>
+    private async Task<Guid?> ResolveUserIdAsync()
+    {
+        if (CurrentUserService.UserId is { } fromHttp)
+            return fromHttp;
+
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var idClaim = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(idClaim, out var id) ? id : null;
+    }
+
+    private async Task<AsyncServiceScope> CreateUserScopeAsync()
+    {
+        var scope = ScopeFactory.CreateAsyncScope();
+        var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
+        var tenantId = CurrentUserService.TenantId;
+        if (tenantId == Guid.Empty)
+        {
+            var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var tenantClaim = auth.User.FindFirst("TenantId")?.Value;
+            if (Guid.TryParse(tenantClaim, out var parsed))
+                tenantId = parsed;
+        }
+
+        if (tenantId != Guid.Empty)
+            tenantProvider.SetTenantId(tenantId);
+        return scope;
     }
 }
