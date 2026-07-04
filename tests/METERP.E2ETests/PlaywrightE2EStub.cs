@@ -642,6 +642,26 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Home_Executive_Dashboard_Shows_Accountability_Summary()
+    {
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Executive accountability", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Pending approvals", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Ready to invoice", content, StringComparison.OrdinalIgnoreCase);
+
+        var emailButton = page.Locator("[data-testid='home-email-executive-report']");
+        await emailButton.WaitForAsync(new() { Timeout = 10000 });
+        var label = (await emailButton.TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Email summary", label, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Home_Quota_Exceeded_Shows_Upgrade_Banner()
     {
         try
