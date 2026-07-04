@@ -3,6 +3,7 @@ using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -23,7 +24,7 @@ public class FinanceService : IFinanceService
         if (_cache == null)
             return LoadAccountsAsync(ct);
 
-        return _cache.GetOrCreateAsync("finance", "accounts", () => LoadAccountsAsync(ct), ct: ct);
+        return _cache.GetOrCreateAsync(TenantCacheCategories.Finance, "accounts", () => LoadAccountsAsync(ct), ct: ct);
     }
 
     private async Task<IReadOnlyList<Account>> LoadAccountsAsync(CancellationToken ct)
@@ -39,7 +40,7 @@ public class FinanceService : IFinanceService
     {
         if (_cache != null)
         {
-            return await _cache.GetOrCreateAsync("finance", "accounts-with-balances",
+            return await _cache.GetOrCreateAsync(TenantCacheCategories.Finance, "accounts-with-balances",
                 () => LoadAccountsWithBalancesAsync(ct), ct: ct);
         }
 
@@ -85,7 +86,7 @@ public class FinanceService : IFinanceService
     {
         _dbContext.Set<Account>().Add(account);
         await _dbContext.SaveChangesAsync(ct);
-        _cache?.InvalidateCategory("finance");
+        _cache?.InvalidateCategory(TenantCacheCategories.Finance);
         return account.Id;
     }
 
@@ -105,7 +106,7 @@ public class FinanceService : IFinanceService
 
         _dbContext.Set<JournalEntry>().Add(entry);
         await _dbContext.SaveChangesAsync(ct);
-        _cache?.InvalidateCategory("finance");
+        _cache?.InvalidateCategory(TenantCacheCategories.Finance);
         return entry.Id;
     }
 

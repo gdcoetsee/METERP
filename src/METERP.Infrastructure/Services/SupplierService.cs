@@ -29,7 +29,7 @@ public class SupplierService : ISupplierService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "suppliers",
+                TenantCacheCategories.Suppliers,
                 $"p{page}:s{pageSize}",
                 () => LoadSuppliersAsync(search, page, pageSize, ct),
                 ct: ct);

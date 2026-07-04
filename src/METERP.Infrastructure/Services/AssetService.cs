@@ -30,7 +30,7 @@ public class AssetService : IAssetService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "assets",
+                TenantCacheCategories.Assets,
                 $"p{page}:s{pageSize}",
                 () => LoadAssetsAsync(search, page, pageSize, ct),
                 ct: ct);

@@ -3,7 +3,6 @@ using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
-using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -49,7 +48,7 @@ public class QuoteService : IQuoteService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "quotes",
+                TenantCacheCategories.Quotes,
                 $"p{page}:s{pageSize}",
                 () => LoadQuotesAsync(search, page, pageSize, ct),
                 ct: ct);

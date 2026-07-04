@@ -28,7 +28,7 @@ public class EmployeeService : IEmployeeService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "employees",
+                TenantCacheCategories.Employees,
                 $"p{page}:s{pageSize}",
                 () => LoadEmployeesAsync(search, page, pageSize, ct),
                 ct: ct);

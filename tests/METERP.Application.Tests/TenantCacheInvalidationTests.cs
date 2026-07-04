@@ -7,6 +7,15 @@ namespace METERP.Application.Tests;
 
 public class TenantCacheInvalidationTests
 {
+    [Theory]
+    [InlineData(TenantCacheCategories.Customers, "customers")]
+    [InlineData(TenantCacheCategories.Jobs, "jobs")]
+    [InlineData(TenantCacheCategories.PurchaseOrders, "purchase-orders")]
+    [InlineData(TenantCacheCategories.SalesOrders, "sales-orders")]
+    public void TenantCacheCategories_UseStableSerializedNames(string constant, string expected)
+    {
+        Assert.Equal(expected, constant);
+    }
     [Fact]
     public void OnCustomerMasterDataChanged_InvalidatesAllEmbeddedNavigationCategories()
     {

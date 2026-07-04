@@ -39,7 +39,7 @@ public class UserService : IUserService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "users",
+                TenantCacheCategories.Users,
                 $"p{page}:s{pageSize}",
                 () => LoadUsersAsync(search, page, pageSize, ct),
                 ct: ct);
@@ -188,7 +188,7 @@ public class UserService : IUserService
         if (_cache != null)
         {
             return await _cache.GetOrCreateAsync(
-                "roles",
+                TenantCacheCategories.Roles,
                 "all",
                 () => LoadAvailableRolesAsync(ct),
                 ct: ct);

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -55,7 +56,7 @@ public class InvoiceService : IInvoiceService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "invoices",
+                TenantCacheCategories.Invoices,
                 $"p{page}:s{pageSize}",
                 () => LoadInvoicesAsync(search, page, pageSize, ct),
                 ct: ct);
@@ -593,7 +594,7 @@ public class InvoiceService : IInvoiceService
         return payment.Id;
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("invoices");
+    private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Invoices);
 
     private async Task TryNotifyInvoiceCreatedAsync(Guid invoiceId, CancellationToken ct)
     {

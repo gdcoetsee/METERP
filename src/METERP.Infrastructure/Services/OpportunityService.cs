@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -46,7 +47,7 @@ public class OpportunityService : IOpportunityService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "opportunities",
+                TenantCacheCategories.Opportunities,
                 $"p{page}:s{pageSize}:st{(stage.HasValue ? (int)stage.Value : -1)}",
                 () => LoadOpportunitiesAsync(search, stage, page, pageSize, ct),
                 ct: ct);
@@ -199,5 +200,5 @@ public class OpportunityService : IOpportunityService
         }
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("opportunities");
+    private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Opportunities);
 }

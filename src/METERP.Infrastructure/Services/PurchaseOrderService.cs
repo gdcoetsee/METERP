@@ -3,6 +3,7 @@ using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -51,7 +52,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "purchase-orders",
+                TenantCacheCategories.PurchaseOrders,
                 $"p{page}:s{pageSize}",
                 () => LoadPurchaseOrdersAsync(search, page, pageSize, ct),
                 ct: ct);
@@ -393,7 +394,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         return grv;
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("purchase-orders");
+    private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.PurchaseOrders);
 
     private static void RecalculateTotals(PurchaseOrder po)
     {

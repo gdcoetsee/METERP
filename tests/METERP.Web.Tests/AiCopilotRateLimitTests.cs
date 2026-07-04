@@ -53,4 +53,26 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
             Assert.NotEqual(HttpStatusCode.TooManyRequests, circuit.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task E2e_Endpoints_AreNotRateLimited()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.PostAsync("/e2e/rate-limit-probe", null);
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Webhook_Endpoints_AreNotRateLimited()
+    {
+        using var content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
+
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.PostAsync("/webhooks/stripe", content);
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
 }

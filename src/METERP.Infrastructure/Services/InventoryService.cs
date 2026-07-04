@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -28,7 +29,7 @@ public class InventoryService : IInventoryService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "inventory",
+                TenantCacheCategories.Inventory,
                 $"p{page}:s{pageSize}:low{(lowStockOnly ? 1 : 0)}",
                 () => LoadItemsAsync(search, lowStockOnly, page, pageSize, ct),
                 ct: ct);
@@ -129,5 +130,5 @@ public class InventoryService : IInventoryService
             .ToListAsync(ct);
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("inventory");
+    private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Inventory);
 }

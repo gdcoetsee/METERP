@@ -4,7 +4,6 @@ using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
-using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
 
 namespace METERP.Infrastructure.Services;
@@ -112,7 +111,7 @@ public class JobService : IJobService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "jobs",
+                TenantCacheCategories.Jobs,
                 $"p{page}:s{pageSize}",
                 () => LoadJobsAsync(search, page, pageSize, ct),
                 ct: ct);

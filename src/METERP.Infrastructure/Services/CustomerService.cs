@@ -30,7 +30,7 @@ public class CustomerService : ICustomerService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "customers",
+                TenantCacheCategories.Customers,
                 $"p{page}:s{pageSize}",
                 () => LoadCustomersAsync(search, page, pageSize, ct),
                 ct: ct);

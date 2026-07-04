@@ -40,7 +40,7 @@ public class SalesOrderService : ISalesOrderService
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
-                "sales-orders",
+                TenantCacheCategories.SalesOrders,
                 $"p{page}:s{pageSize}",
                 () => LoadSalesOrdersAsync(search, page, pageSize, ct),
                 ct: ct);
@@ -237,7 +237,7 @@ public class SalesOrderService : ISalesOrderService
         return (await _jobService.GetByIdAsync(job.Id, ct))!;
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("sales-orders");
+    private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.SalesOrders);
 
     private async Task TryIncrementJobCountAsync(Guid tenantId, CancellationToken ct)
     {
