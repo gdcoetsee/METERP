@@ -87,6 +87,16 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
     }
 
     [Fact]
+    public async Task LoginTwoFactor_Path_IsNotRateLimited()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var response = await _client.GetAsync("/login-2fa?token=burst-probe");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
+
+    [Fact]
     public async Task LoginComplete_Path_IsNotRateLimited()
     {
         for (var i = 0; i < 35; i++)

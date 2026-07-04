@@ -129,6 +129,20 @@ public class BillingWebhookServiceTests
     }
 
     [Fact]
+    public async Task EmptyBody_ReturnsInvalidPayload()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId);
+        await using (db)
+        {
+            var result = await service.ProcessStripeEventAsync("   ", null, allowUnsignedForDev: true);
+
+            Assert.Equal(BillingWebhookOutcome.InvalidPayload, result.Outcome);
+            Assert.Contains("empty_body", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task InvalidSignature_RejectedWhenSecretConfigured()
     {
         var tenantId = Guid.NewGuid();

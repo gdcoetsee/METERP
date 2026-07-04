@@ -249,6 +249,51 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
     }
 
     [Fact]
+    public async Task StripeWebhook_CheckoutCompleted_LinksStripeCustomer()
+    {
+        var tenantId = Guid.NewGuid();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Tenants.Add(new Tenant
+        {
+            Id = tenantId,
+            TenantId = tenantId,
+            Name = "Checkout Co",
+            Subdomain = "checkoutco",
+            Tier = SubscriptionTier.Starter
+        });
+        await db.SaveChangesAsync();
+
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = """
+            {
+              "id": "evt_checkout_completed",
+              "type": "checkout.session.completed",
+              "data": {
+                "object": {
+                  "customer": "cus_checkout_linked",
+                  "metadata": { "tenant_subdomain": "checkoutco" }
+                }
+              }
+            }
+            """;
+
+        var response = await client.PostAsync(
+            "/webhooks/stripe",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("CustomerLinked", body, StringComparison.OrdinalIgnoreCase);
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var tenant = await verifyDb.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+        Assert.Equal("cus_checkout_linked", tenant.StripeCustomerId);
+    }
+
+    [Fact]
     public async Task StripeWebhook_InvalidJson_ReturnsBadRequest()
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

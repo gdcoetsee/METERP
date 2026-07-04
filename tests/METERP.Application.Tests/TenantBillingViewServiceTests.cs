@@ -54,6 +54,17 @@ public class TenantBillingViewServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_ReturnsNull_WhenTenantNotFound()
+    {
+        var (db, service, _) = CreateHarness();
+        using (db)
+        {
+            var view = await service.GetAsync(Guid.NewGuid());
+            Assert.Null(view);
+        }
+    }
+
+    [Fact]
     public async Task GetAsync_ReturnsNull_WhenTenantIdEmpty()
     {
         var (db, service, _) = CreateHarness();
