@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -44,7 +45,11 @@ public class HealthEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("\"name\": \"ai\"", body, StringComparison.OrdinalIgnoreCase);
+
+        using var doc = JsonDocument.Parse(body);
+        var entries = doc.RootElement.GetProperty("entries");
+        Assert.True(entries.TryGetProperty("ai", out var aiEntry));
+        Assert.Equal("Healthy", aiEntry.GetProperty("status").GetString(), StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

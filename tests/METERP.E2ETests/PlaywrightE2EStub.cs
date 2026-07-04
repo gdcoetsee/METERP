@@ -662,6 +662,10 @@ public class E2EFlowTests : IAsyncLifetime
         await overdueCount.WaitForAsync(new() { Timeout = 10000 });
         Assert.True(int.TryParse((await overdueCount.TextContentAsync())?.Trim(), out _));
 
+        await page.Locator("[data-testid='home-executive-dashboard'] a[href='/approvals']").ClickAsync();
+        await page.WaitForTestIdAsync("approvals-ready", 30000);
+        Assert.Contains("Approvals Hub", await page.ContentAsync(), StringComparison.OrdinalIgnoreCase);
+
         await page.CloseAsync();
     }
 

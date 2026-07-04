@@ -163,8 +163,35 @@ public class OpportunityServiceCacheTests
             Assert.Equal(2, (await service.GetAllAsync(pageSize: 50)).Count);
             Assert.Single(await service.GetAllAsync(stage: OpportunityStage.Lead, pageSize: 50));
 
-            cache.InvalidateCategory("opportunities");
+            cache.InvalidateCategory(TenantCacheCategories.Opportunities);
             Assert.Empty(await service.GetAllAsync(stage: OpportunityStage.Lead, pageSize: 50));
+        }
+    }
+
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_InvalidatesOpportunityListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, _, service) = CreateHarness(tenantId);
+        using (db)
+        {
+            var opp = new Opportunity
+            {
+                TenantId = tenantId,
+                Title = "Convertible Deal",
+                Value = 42000m,
+                Stage = OpportunityStage.Qualified
+            };
+            db.Set<Opportunity>().Add(opp);
+            await db.SaveChangesAsync();
+
+            Assert.Null((await service.GetAllAsync())[0].QuoteId);
+
+            await service.MarkConvertedToQuoteAsync(opp.Id, Guid.NewGuid());
+
+            var refreshed = await service.GetAllAsync();
+            Assert.NotNull(refreshed[0].QuoteId);
+            Assert.Equal(OpportunityStage.Proposal, refreshed[0].Stage);
         }
     }
 }
