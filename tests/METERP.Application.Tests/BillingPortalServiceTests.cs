@@ -53,6 +53,25 @@ public class BillingPortalServiceTests
     }
 
     [Fact]
+    public async Task ResolveCustomerPortalUrlAsync_ReturnsNull_WhenCustomerIdMissing()
+    {
+        var portalClient = new Mock<IStripeCustomerPortalClient>();
+        var service = CreateService(new BillingOptions
+        {
+            StripeSecretKey = "sk_test_key",
+            CustomerPortalReturnUrl = "https://app.example/tenants",
+            CustomerPortalBaseUrl = "https://billing.stripe.com/p/login/demo"
+        }, portalClient.Object);
+
+        var url = await service.ResolveCustomerPortalUrlAsync(new Tenant { StripeCustomerId = null });
+
+        Assert.Null(url);
+        portalClient.Verify(
+            c => c.CreateSessionUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task ResolveCustomerPortalUrlAsync_UsesApiSession_WhenConfigured()
     {
         var portalClient = new Mock<IStripeCustomerPortalClient>();

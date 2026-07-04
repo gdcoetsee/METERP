@@ -33,6 +33,24 @@ public class TenantLoggingMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_CallsNextMiddleware()
+    {
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(Guid.Empty);
+
+        var nextCalled = false;
+        var middleware = new TenantLoggingMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(new DefaultHttpContext(), tenantProvider.Object);
+
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
     public async Task InvokeAsync_UsesNone_WhenTenantIdEmpty()
     {
         var tenantProvider = new Mock<ITenantProvider>();

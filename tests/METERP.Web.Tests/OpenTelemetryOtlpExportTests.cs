@@ -48,6 +48,22 @@ public class OpenTelemetryOtlpExportTests
     }
 
     [Fact]
+    public async Task HealthReadyRequest_ExportsMetricsToLoopbackOtlpCollector()
+    {
+        await using var collector = new LoopbackOtlpCollector();
+        await using var factory = new OtlpExportWebApplicationFactory(collector.Endpoint, "METERP-Otlp-Ready-Metrics");
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health/ready");
+        Assert.True(response.IsSuccessStatusCode);
+
+        await FlushTelemetryAsync(factory);
+        await collector.WaitForMetricExportAsync(TimeSpan.FromSeconds(15));
+
+        Assert.True(collector.MetricExportCount >= 1);
+    }
+
+    [Fact]
     public async Task HealthRequest_ExportsMetricsToLoopbackOtlpCollector()
     {
         await using var collector = new LoopbackOtlpCollector();

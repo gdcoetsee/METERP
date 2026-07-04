@@ -125,6 +125,40 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task MarkReadAsync_MarksSingleNotification()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var notification = new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Unread exec",
+                Message = "Needs review",
+                TargetRoles = "Executive",
+                IsRead = false
+            };
+            harness.Db.Set<TenantNotification>().Add(notification);
+            await harness.Db.SaveChangesAsync();
+
+            await harness.Service.MarkReadAsync(notification.Id);
+
+            var saved = await harness.Db.Set<TenantNotification>().FirstAsync(n => n.Id == notification.Id);
+            Assert.True(saved.IsRead);
+        }
+    }
+
+    [Fact]
+    public async Task MarkReadAsync_NoOp_WhenNotificationMissing()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            await harness.Service.MarkReadAsync(Guid.NewGuid());
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_PersistsNotification()
     {
         using var harness = new Harness("Executive");

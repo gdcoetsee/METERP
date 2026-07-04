@@ -182,6 +182,20 @@ public class BillingWebhookServiceTests
     }
 
     [Fact]
+    public async Task InvalidJson_ReturnsInvalidPayload()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId, webhookSecret: string.Empty);
+        await using (db)
+        {
+            var result = await service.ProcessStripeEventAsync("not-json", null, allowUnsignedForDev: true);
+
+            Assert.Equal(BillingWebhookOutcome.InvalidPayload, result.Outcome);
+            Assert.Contains("json_parse_failed", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task EmptyBody_ReturnsInvalidPayload()
     {
         var tenantId = Guid.NewGuid();

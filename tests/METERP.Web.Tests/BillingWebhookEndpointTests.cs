@@ -345,6 +345,24 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
     }
 
     [Fact]
+    public async Task StripeWebhook_SignedWithInvalidSignature_ReturnsUnauthorized()
+    {
+        await using var factory = new SignedWebhookWebApplicationFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = """{ "id": "evt_bad_sig", "type": "ping", "data": { "object": {} } }""";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/webhooks/stripe")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Stripe-Signature", "t=1,v1=deadbeef");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task StripeWebhook_SignedPayload_UpdatesTenantTier()
     {
         var tenantId = Guid.NewGuid();

@@ -25,6 +25,20 @@ public class NotificationServiceTests
     }
 
     [Fact]
+    public async Task MarkReadAsync_NoOp_WhenIdMissing()
+    {
+        var js = new InMemoryJsRuntime();
+        var service = new NotificationService(js);
+        await service.AddAsync("Unread alert", "Needs attention");
+
+        await service.MarkReadAsync(999);
+
+        var items = await service.GetAllAsync();
+        Assert.Single(items);
+        Assert.False(items[0].IsRead);
+    }
+
+    [Fact]
     public async Task MarkReadAsync_MarksSingleItemRead()
     {
         var js = new InMemoryJsRuntime();
