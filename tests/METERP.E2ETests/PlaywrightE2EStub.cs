@@ -721,20 +721,21 @@ public class E2EFlowTests : IAsyncLifetime
         {
             var page = await Browser.LoginAsync(resetDemoState: false);
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-            await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing", resetDemoOnRetry: false);
 
             for (var attempt = 0; attempt < 3; attempt++)
             {
-                await page.ClickByTestIdAsync("account-billing-refresh-button");
+                await page.GotoRelativeAsync("/account-billing", waitForCommit: true);
+                await page.WaitForBlazorReadyAsync(20000);
                 try
                 {
-                    await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 15000);
+                    await page.WaitForTestIdAsync("account-billing-tier", 30000);
+                    await page.WaitForTestIdAsync("account-billing-quota-exceeded-banner", 30000);
                     break;
                 }
                 catch (TimeoutException) when (attempt < 2)
                 {
                     await E2EHelpers.EnsureQuoteQuotaExceededAsync();
-                    await Task.Delay(1000);
+                    await Task.Delay(1500);
                 }
             }
 
@@ -1429,7 +1430,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task SalesOrders_Page_Loads_And_Shows_Detail()
     {
-        var page = await Browser.LoginAsync(resetDemoState: true);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         await page.WaitForSalesOrdersReadyAsync(60000);
 

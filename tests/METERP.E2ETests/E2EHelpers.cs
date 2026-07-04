@@ -46,10 +46,10 @@ public static class E2EHelpers
 
         // Periodic reset stabilizes long runs without paying full reset cost on every login (~2–3s each).
         var loginNumber = Interlocked.Increment(ref _loginCount);
-        if (loginNumber % 12 == 0)
+        if (loginNumber % 8 == 0)
             browser = await MaybeRecycleBrowserAsync(browser);
 
-        if (resetDemoState || loginNumber % 6 == 1)
+        if (resetDemoState || loginNumber % 4 == 1)
         {
             try { await ResetDemoStateAsync(url); }
             catch { /* dev endpoints unavailable on older images */ }
@@ -255,9 +255,7 @@ public static class E2EHelpers
             }
             catch (TimeoutException) when (attempt < 2)
             {
-                try { await ResetDemoStateAsync(); }
-                catch { /* dev endpoints unavailable */ }
-                await Task.Delay(2000);
+                await RetryListPageRecoveryAsync(page, relativePath);
             }
         }
 
@@ -266,6 +264,23 @@ public static class E2EHelpers
         await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
         await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
         await page.Locator($"{tableSelector} tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
+    }
+
+    private static async Task RetryListPageRecoveryAsync(IPage page, string relativePath)
+    {
+        try { await ResetDemoStateAsync(); }
+        catch { /* dev endpoints unavailable */ }
+
+        try
+        {
+            await page.ReloadAsync(new() { WaitUntil = WaitUntilState.Commit, Timeout = 60000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync(relativePath, waitForCommit: true);
+        }
+
+        await Task.Delay(2000);
     }
 
     /// <summary>
@@ -295,9 +310,7 @@ public static class E2EHelpers
             }
             catch (TimeoutException) when (attempt < 2)
             {
-                try { await ResetDemoStateAsync(); }
-                catch { /* dev endpoints unavailable */ }
-                await Task.Delay(2000);
+                await RetryListPageRecoveryAsync(page, relativePath);
             }
         }
 

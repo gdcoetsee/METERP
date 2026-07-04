@@ -1,7 +1,7 @@
 @page "/account"
 @page "/account-billing"
 @page "/account-security"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @attribute [Authorize]
