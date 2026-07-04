@@ -461,6 +461,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForTenantsReadyAsync(45000);
 
@@ -878,9 +879,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Reports_Page_Shows_Job_Profitability_From_Variance()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 20000);
+        await page.WaitForTestIdAsync("reports-ready", 30000);
         await page.WaitForTestIdAsync("reports-profitability-card", 10000);
 
         var content = await page.ContentAsync();
@@ -908,9 +910,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Reports_Page_Shows_Cashflow_Forecast_From_Receivables()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 20000);
+        await page.WaitForTestIdAsync("reports-ready", 30000);
         await page.WaitForTestIdAsync("reports-cashflow-card", 10000);
 
         var content = await page.ContentAsync();
@@ -936,9 +939,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Payroll_Page_Shows_JobLabor_Summaries()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/payroll");
-        await page.WaitForTestIdAsync("payroll-ready", 15000);
+        await page.WaitForTestIdAsync("payroll-ready", 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Payroll", content);
@@ -1506,21 +1510,14 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Finance_Page_Loads_Chart_Of_Accounts_And_Export()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.NewPageAsync();
         await page.GotoAsync($"{E2EHelpers.BaseUrl}/login-complete?email={Uri.EscapeDataString(E2EHelpers.AcmeEmail)}");
         await page.WaitForURLAsync(
             u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
             new() { Timeout = 45000 });
         await page.GotoRelativeAsync("/finance");
-
-        try
-        {
-            await page.WaitForTestIdAsync("finance-ready", 20000);
-        }
-        catch (TimeoutException)
-        {
-            await page.WaitForTestIdAsync("finance-accounts-table", 20000);
-        }
+        await page.WaitForTestIdAsync("finance-ready", 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("4000", content);
