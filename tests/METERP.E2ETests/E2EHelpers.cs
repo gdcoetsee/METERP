@@ -220,6 +220,8 @@ public static class E2EHelpers
             }
             catch (TimeoutException) when (attempt < 2)
             {
+                try { await ResetDemoStateAsync(); }
+                catch { /* dev endpoints unavailable */ }
                 await Task.Delay(2000);
             }
         }
@@ -258,6 +260,8 @@ public static class E2EHelpers
             }
             catch (TimeoutException) when (attempt < 2)
             {
+                try { await ResetDemoStateAsync(); }
+                catch { /* dev endpoints unavailable */ }
                 await Task.Delay(2000);
             }
         }
@@ -550,7 +554,12 @@ public static class E2EHelpers
         response.EnsureSuccessStatusCode();
     }
 
-    public static async Task WaitForAccountReadyAsync(this IPage page, string panelTestId, string relativePath, int timeoutMs = 45000)
+    public static async Task WaitForAccountReadyAsync(
+        this IPage page,
+        string panelTestId,
+        string relativePath,
+        int timeoutMs = 45000,
+        bool resetDemoOnRetry = true)
     {
         var loadedSelector = panelTestId switch
         {
@@ -583,8 +592,12 @@ public static class E2EHelpers
             }
             catch (TimeoutException) when (attempt < 2)
             {
-                try { await ResetDemoStateAsync(); }
-                catch { /* dev endpoints unavailable */ }
+                if (resetDemoOnRetry)
+                {
+                    try { await ResetDemoStateAsync(); }
+                    catch { /* dev endpoints unavailable */ }
+                }
+
                 await Task.Delay(2000);
             }
         }

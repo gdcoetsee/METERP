@@ -11,6 +11,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @attribute [Authorize(Policy = "Opportunities.View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 <PageTitle>Opportunities (CRM)</PageTitle>
 
@@ -41,6 +42,12 @@
     </div>
 </div>
 
+@if (_loading)
+{
+    <p data-testid="opportunities-loading"><em>Loading opportunities...</em></p>
+}
+else
+{
 <div class="row g-3 mb-4" data-testid="opportunities-pipeline">
     @foreach (var stage in stages)
     {
@@ -67,6 +74,7 @@
         </div>
     }
 </div>
+}
 
 @if (showCreate && CanManage)
 {
@@ -156,6 +164,8 @@
     private Guid selectedCustomerId = Guid.Empty;
 
     private bool _ready;
+    private bool _loading = true;
+    private readonly ComponentAsyncGate _dataGate = new();
     private bool CanManage => CurrentUserService.Permissions.Contains(Permissions.OpportunitiesManage);
 
     private static readonly OpportunityStage[] stages =
@@ -168,13 +178,21 @@
         OpportunityStage.ClosedLost
     };
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await _dataGate.RunAsync(async () =>
     {
-        opportunities = (await OpportunityService.GetAllAsync()).ToList();
-        customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
-        filtered = opportunities;
-        _ready = true;
-    }
+        _loading = true;
+        try
+        {
+            opportunities = (await OpportunityService.GetAllAsync()).ToList();
+            customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
+            filtered = opportunities;
+            _ready = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    });
 
     private static string StageLabel(OpportunityStage stage) => stage switch
     {
@@ -236,8 +254,11 @@
             newOpp.CustomerId = selectedCustomerId;
 
         await OpportunityService.CreateAsync(newOpp);
-        opportunities = (await OpportunityService.GetAllAsync()).ToList();
-        Filter();
+        await _dataGate.RunAsync(async () =>
+        {
+            opportunities = (await OpportunityService.GetAllAsync()).ToList();
+            Filter();
+        });
         showCreate = false;
         ToastService.ShowSuccess("Opportunity created.");
     }
