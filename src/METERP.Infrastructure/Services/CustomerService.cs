@@ -150,5 +150,17 @@ public class CustomerService : ICustomerService
         InvalidateListCaches();
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("customers");
+    private void InvalidateListCaches()
+    {
+        if (_cache == null)
+            return;
+
+        _cache.InvalidateCategory("customers");
+        // CRM/spine lists embed Customer navigation in cached JSON — bust when master data changes.
+        _cache.InvalidateCategory("opportunities");
+        _cache.InvalidateCategory("quotes");
+        _cache.InvalidateCategory("jobs");
+        _cache.InvalidateCategory("invoices");
+        _cache.InvalidateCategory("sales-orders");
+    }
 }
