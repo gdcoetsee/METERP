@@ -41,6 +41,21 @@ public class NotificationServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_RestoresFromLocalStorage_WhenCacheEmpty()
+    {
+        var js = new InMemoryJsRuntime();
+        var existing = """[{"Id":1,"Title":"Stored alert","Message":"From disk","Date":"2026-07-01T10:00:00","IsRead":false}]""";
+        await js.InvokeAsync<string>("localStorage.setItem", "notifications", existing);
+
+        var service = new NotificationService(js);
+        var items = await service.GetAllAsync();
+
+        Assert.Single(items);
+        Assert.Equal("Stored alert", items[0].Title);
+        Assert.Equal("From disk", items[0].Message);
+    }
+
+    [Fact]
     public async Task MarkAllReadAsync_MarksEveryItemRead()
     {
         var js = new InMemoryJsRuntime();

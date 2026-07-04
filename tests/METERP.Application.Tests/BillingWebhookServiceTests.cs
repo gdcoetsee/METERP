@@ -129,6 +129,44 @@ public class BillingWebhookServiceTests
     }
 
     [Fact]
+    public async Task UnknownEventType_ReturnsIgnored()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId);
+        await using (db)
+        {
+            var payload = """
+                {
+                  "id": "evt_unknown_type",
+                  "type": "invoice.payment_failed",
+                  "data": { "object": { "customer": "cus_x" } }
+                }
+                """;
+
+            var signature = StripeWebhookSignatureValidator.BuildSignatureHeader(WebhookSecret, payload);
+            var result = await service.ProcessStripeEventAsync(payload, signature, allowUnsignedForDev: false);
+
+            Assert.Equal(BillingWebhookOutcome.Ignored, result.Outcome);
+            Assert.Contains("invoice.payment_failed", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task MissingEventType_ReturnsInvalidPayload()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateService(tenantId, webhookSecret: string.Empty);
+        await using (db)
+        {
+            var payload = """{ "id": "evt_no_type", "data": { "object": {} } }""";
+            var result = await service.ProcessStripeEventAsync(payload, null, allowUnsignedForDev: true);
+
+            Assert.Equal(BillingWebhookOutcome.InvalidPayload, result.Outcome);
+            Assert.Contains("missing_type", result.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task EmptyBody_ReturnsInvalidPayload()
     {
         var tenantId = Guid.NewGuid();

@@ -26,6 +26,24 @@ public class FieldEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task FieldStock_RedirectsToLogin_WhenUnauthenticated()
+    {
+        var response = await _client.GetAsync("/field/stock");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("/login", response.Headers.Location?.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FieldLeave_RedirectsToLogin_WhenUnauthenticated()
+    {
+        var response = await _client.GetAsync("/field/leave");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("/login", response.Headers.Location?.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task FieldJobs_RedirectsToLogin_WhenUnauthenticated()
     {
         var response = await _client.GetAsync("/field/jobs");

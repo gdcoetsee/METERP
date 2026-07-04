@@ -17,6 +17,16 @@ public class StripeWebhookSignatureValidatorTests
     }
 
     [Fact]
+    public void IsValid_ReturnsFalse_WhenPayloadTamperedAfterSigning()
+    {
+        const string payload = """{ "id": "evt_sig_ok", "type": "ping" }""";
+        var header = StripeWebhookSignatureValidator.BuildSignatureHeader(Secret, payload);
+        const string tampered = """{ "id": "evt_sig_ok", "type": "pong" }""";
+
+        Assert.False(StripeWebhookSignatureValidator.IsValid(tampered, header, Secret));
+    }
+
+    [Fact]
     public void IsValid_ReturnsFalse_WhenSignatureTampered()
     {
         const string payload = """{ "id": "evt_sig_bad", "type": "ping" }""";

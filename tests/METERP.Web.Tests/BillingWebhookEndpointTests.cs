@@ -1,8 +1,11 @@
 using System.Net;
 using System.Text;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using Xunit;
@@ -306,6 +309,20 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
     }
 
     [Fact]
+    public async Task StripeWebhook_UnsignedRejected_WhenSecretConfigured()
+    {
+        await using var factory = new SignedWebhookWebApplicationFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = """{ "id": "evt_unsigned", "type": "ping", "data": { "object": {} } }""";
+
+        var response = await client.PostAsync(
+            "/webhooks/stripe",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task StripeWebhook_IsNotRateLimited()
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -324,6 +341,30 @@ public class BillingWebhookEndpointTests : IClassFixture<MeterpWebApplicationFac
                 new StringContent(payload, Encoding.UTF8, "application/json"));
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
+
+    private sealed class SignedWebhookWebApplicationFactory : WebApplicationFactory<Program>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Billing:WebhookSecret"] = "whsec_endpoint_signature_required"
+                });
+            });
+        }
+
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            var host = base.CreateHost(builder);
+            using var scope = host.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
+            return host;
         }
     }
 }
