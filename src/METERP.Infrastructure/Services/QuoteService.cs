@@ -412,6 +412,9 @@ public class QuoteService : IQuoteService
                 ct);
         }
 
+        var counterTenantId = tenantId != Guid.Empty ? tenantId : quote.TenantId;
+        await TryIncrementJobCountAsync(counterTenantId, ct);
+
         return (await GetByIdForJobAsync(job.Id, ct))!;
     }
 
@@ -427,6 +430,19 @@ public class QuoteService : IQuoteService
         try
         {
             await _tenantService.IncrementQuoteCountAsync(tenantId, ct);
+        }
+        catch
+        {
+            // Best-effort commercial tracking — must not break business operations.
+        }
+    }
+
+    private async Task TryIncrementJobCountAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty || _tenantService == null) return;
+        try
+        {
+            await _tenantService.IncrementJobCountAsync(tenantId, ct);
         }
         catch
         {

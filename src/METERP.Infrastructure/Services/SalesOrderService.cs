@@ -10,12 +10,18 @@ public class SalesOrderService : ISalesOrderService
 {
     private readonly AppDbContext _dbContext;
     private readonly IJobService _jobService;
+    private readonly ITenantService? _tenantService;
     private readonly ITenantCacheService? _cache;
 
-    public SalesOrderService(AppDbContext dbContext, IJobService jobService, ITenantCacheService? cache = null)
+    public SalesOrderService(
+        AppDbContext dbContext,
+        IJobService jobService,
+        ITenantService? tenantService = null,
+        ITenantCacheService? cache = null)
     {
         _dbContext = dbContext;
         _jobService = jobService;
+        _tenantService = tenantService;
         _cache = cache;
     }
 
@@ -224,11 +230,26 @@ public class SalesOrderService : ISalesOrderService
         if (_cache != null)
             await _cache.InvalidateCategoryAsync("jobs", ct);
 
+        await TryIncrementJobCountAsync(so.TenantId, ct);
+
         // Return loaded job (reuse from JobService or simple)
         return (await _jobService.GetByIdAsync(job.Id, ct))!;
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory("sales-orders");
+
+    private async Task TryIncrementJobCountAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty || _tenantService == null) return;
+        try
+        {
+            await _tenantService.IncrementJobCountAsync(tenantId, ct);
+        }
+        catch
+        {
+            // Best-effort commercial tracking — must not break business operations.
+        }
+    }
 
     private static void RecalculateTotals(SalesOrder so)
     {
