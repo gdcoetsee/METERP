@@ -1,0 +1,15 @@
+@using METERP.Common
+@using METERP.Domain
+
+<QuotaUsageBadge Tenant="Tenant" Label="Quotes" Used="Tenant.PeriodQuotesCreated" Type="QuotaType.Quote" TestId="@TenantQuotaDefaults.GetQuotaTestId(TestIdPrefix, QuotaType.Quote)" />
+<QuotaUsageBadge Tenant="Tenant" Label="Jobs" Used="Tenant.PeriodJobsCreated" Type="QuotaType.Job" TestId="@TenantQuotaDefaults.GetQuotaTestId(TestIdPrefix, QuotaType.Job)" />
+<QuotaUsageBadge Tenant="Tenant" Label="Invoices" Used="Tenant.PeriodInvoicesIssued" Type="QuotaType.Invoice" TestId="@TenantQuotaDefaults.GetQuotaTestId(TestIdPrefix, QuotaType.Invoice)" />
+<QuotaUsageBadge Tenant="Tenant" Label="AI calls" Used="Tenant.PeriodAiCalls" Type="QuotaType.AiCall" TestId="@TenantQuotaDefaults.GetQuotaTestId(TestIdPrefix, QuotaType.AiCall)" />
+
+@code {
+    [Parameter, EditorRequired]
+    public Tenant Tenant { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string TestIdPrefix { get; set; } = "";
+}

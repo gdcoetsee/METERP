@@ -85,5 +85,13 @@ public class SupplierService : ISupplierService
         InvalidateListCaches();
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("suppliers");
+    private void InvalidateListCaches()
+    {
+        if (_cache == null)
+            return;
+
+        _cache.InvalidateCategory("suppliers");
+        // PO lists embed Supplier navigation in cached JSON — bust when master data changes.
+        _cache.InvalidateCategory("purchase-orders");
+    }
 }

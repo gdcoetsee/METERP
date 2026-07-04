@@ -42,10 +42,7 @@
             </div>
         </div>
         <div class="card-body d-flex flex-wrap gap-2">
-            <QuotaUsageBadge Tenant="currentTenant" Label="Quotes" Used="currentTenant.PeriodQuotesCreated" Type="QuotaType.Quote" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.Quote)" />
-            <QuotaUsageBadge Tenant="currentTenant" Label="Jobs" Used="currentTenant.PeriodJobsCreated" Type="QuotaType.Job" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.Job)" />
-            <QuotaUsageBadge Tenant="currentTenant" Label="Invoices" Used="currentTenant.PeriodInvoicesIssued" Type="QuotaType.Invoice" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.Invoice)" />
-            <QuotaUsageBadge Tenant="currentTenant" Label="AI calls" Used="currentTenant.PeriodAiCalls" Type="QuotaType.AiCall" TestId="@TenantQuotaDefaults.GetQuotaTestId("home", QuotaType.AiCall)" />
+            <QuotaUsageBadgeGroup Tenant="currentTenant" TestIdPrefix="home" />
         </div>
         @if (!currentTenant.HasFeature("ai"))
         {

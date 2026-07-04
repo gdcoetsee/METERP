@@ -57,10 +57,7 @@ else
         <div class="card mb-4" data-testid="account-billing-usage-card">
             <div class="card-header">Monthly usage</div>
             <div class="card-body d-flex flex-wrap gap-2">
-                <QuotaUsageBadge Tenant="currentTenant" Label="Quotes" Used="currentTenant.PeriodQuotesCreated" Type="QuotaType.Quote" TestId="@TenantQuotaDefaults.GetQuotaTestId("account-billing", QuotaType.Quote)" />
-                <QuotaUsageBadge Tenant="currentTenant" Label="Jobs" Used="currentTenant.PeriodJobsCreated" Type="QuotaType.Job" TestId="@TenantQuotaDefaults.GetQuotaTestId("account-billing", QuotaType.Job)" />
-                <QuotaUsageBadge Tenant="currentTenant" Label="Invoices" Used="currentTenant.PeriodInvoicesIssued" Type="QuotaType.Invoice" TestId="@TenantQuotaDefaults.GetQuotaTestId("account-billing", QuotaType.Invoice)" />
-                <QuotaUsageBadge Tenant="currentTenant" Label="AI calls" Used="currentTenant.PeriodAiCalls" Type="QuotaType.AiCall" TestId="@TenantQuotaDefaults.GetQuotaTestId("account-billing", QuotaType.AiCall)" />
+                <QuotaUsageBadgeGroup Tenant="currentTenant" TestIdPrefix="account-billing" />
             </div>
             @if (!hasAiFeature)
             {

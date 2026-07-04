@@ -162,4 +162,103 @@ public class CrossModuleCacheInvalidationTests
 
         Assert.Equal("Opp title after customer delete", (await harness.Opportunities.GetAllAsync())[0].Title);
     }
+
+    private sealed class SupplierHarness : IDisposable
+    {
+        public Guid TenantId { get; }
+        public AppDbContext Db { get; }
+        public TenantDistributedCacheService Cache { get; }
+        public SupplierService Suppliers { get; }
+        public PurchaseOrderService PurchaseOrders { get; }
+
+        public SupplierHarness(Guid tenantId)
+        {
+            TenantId = tenantId;
+            var tenantProvider = new Mock<ITenantProvider>();
+            tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+            var currentUser = new Mock<ICurrentUserService>();
+            currentUser.Setup(s => s.TenantId).Returns(tenantId);
+
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            Db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+
+            var services = new ServiceCollection();
+            services.AddDistributedMemoryCache();
+            services.Configure<CacheOptions>(o => o.DefaultTtlSeconds = 120);
+            var provider = services.BuildServiceProvider();
+            Cache = new TenantDistributedCacheService(
+                provider.GetRequiredService<IDistributedCache>(),
+                tenantProvider.Object,
+                provider.GetRequiredService<IOptions<CacheOptions>>());
+
+            Suppliers = new SupplierService(Db, Cache);
+            PurchaseOrders = new PurchaseOrderService(Db, new InventoryService(Db), cache: Cache);
+        }
+
+        public void Dispose() => Db.Dispose();
+    }
+
+    private static async Task<Supplier> SeedSupplierWithPurchaseOrderAsync(SupplierHarness harness, string supplierName)
+    {
+        var supplier = new Supplier
+        {
+            TenantId = harness.TenantId,
+            Name = supplierName
+        };
+        harness.Db.Set<Supplier>().Add(supplier);
+
+        harness.Db.Set<PurchaseOrder>().Add(new PurchaseOrder
+        {
+            TenantId = harness.TenantId,
+            SupplierId = supplier.Id,
+            PoNumber = "PO-CROSS-001",
+            PoDate = DateTime.UtcNow,
+            TaxRate = 0.15m
+        });
+
+        await harness.Db.SaveChangesAsync();
+        return supplier;
+    }
+
+    [Fact]
+    public async Task SupplierUpdate_InvalidatesPurchaseOrderListCache_WithFreshSupplierName()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new SupplierHarness(tenantId);
+        var supplier = await SeedSupplierWithPurchaseOrderAsync(harness, "Old Supplier Co");
+
+        Assert.Equal("Old Supplier Co", (await harness.PurchaseOrders.GetAllAsync())[0].Supplier!.Name);
+
+        supplier.Name = "Renamed Supplier Co";
+        await harness.Suppliers.UpdateAsync(supplier);
+
+        var refreshed = await harness.PurchaseOrders.GetAllAsync();
+        Assert.Equal("Renamed Supplier Co", refreshed[0].Supplier!.Name);
+    }
+
+    [Fact]
+    public async Task SupplierCreate_InvalidatesPurchaseOrderListCache()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new SupplierHarness(tenantId);
+        await SeedSupplierWithPurchaseOrderAsync(harness, "Existing Supplier");
+
+        Assert.Null((await harness.PurchaseOrders.GetAllAsync())[0].Notes);
+
+        var po = await harness.Db.Set<PurchaseOrder>().FirstAsync();
+        po.Notes = "Mutated after cache warm";
+        await harness.Db.SaveChangesAsync();
+
+        Assert.Null((await harness.PurchaseOrders.GetAllAsync())[0].Notes);
+
+        await harness.Suppliers.CreateAsync(new Supplier
+        {
+            TenantId = harness.TenantId,
+            Name = "New Supplier"
+        });
+
+        Assert.Equal("Mutated after cache warm", (await harness.PurchaseOrders.GetAllAsync())[0].Notes);
+    }
 }

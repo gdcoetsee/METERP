@@ -263,10 +263,7 @@ else
                         </div>
                         <label class="form-label text-muted small mt-2">Current monthly period usage</label>
                         <div class="d-flex flex-wrap gap-2 small" data-testid="tenant-edit-quota-badges">
-                            <QuotaUsageBadge Tenant="currentTenant" Label="Quotes" Used="currentTenant.PeriodQuotesCreated" Type="QuotaType.Quote" TestId="@TenantQuotaDefaults.GetQuotaTestId("tenants-edit", QuotaType.Quote)" />
-                            <QuotaUsageBadge Tenant="currentTenant" Label="Jobs" Used="currentTenant.PeriodJobsCreated" Type="QuotaType.Job" TestId="@TenantQuotaDefaults.GetQuotaTestId("tenants-edit", QuotaType.Job)" />
-                            <QuotaUsageBadge Tenant="currentTenant" Label="Invoices" Used="currentTenant.PeriodInvoicesIssued" Type="QuotaType.Invoice" TestId="@TenantQuotaDefaults.GetQuotaTestId("tenants-edit", QuotaType.Invoice)" />
-                            <QuotaUsageBadge Tenant="currentTenant" Label="AI calls" Used="currentTenant.PeriodAiCalls" Type="QuotaType.AiCall" TestId="@TenantQuotaDefaults.GetQuotaTestId("tenants-edit", QuotaType.AiCall)" />
+                            <QuotaUsageBadgeGroup Tenant="currentTenant" TestIdPrefix="tenants-edit" />
                         </div>
                         @if (TenantQuotaDefaults.HasAnyQuotaAtOrOverLimit(currentTenant))
                         {
