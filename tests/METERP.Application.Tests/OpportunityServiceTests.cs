@@ -366,6 +366,30 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_RespectsPagination()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        for (var i = 0; i < 5; i++)
+        {
+            await service.CreateAsync(new Opportunity
+            {
+                Title = $"Opp {i}",
+                CustomerName = "Pager",
+                Value = 1000m + i
+            });
+        }
+
+        var page1 = await service.GetAllAsync(page: 1, pageSize: 2);
+        var page2 = await service.GetAllAsync(page: 2, pageSize: 2);
+
+        Assert.Equal(2, page1.Count);
+        Assert.Equal(2, page2.Count);
+        Assert.NotEqual(page1[0].Id, page2[0].Id);
+    }
+
+    [Fact]
     public async Task GetAllAsync_FiltersByStage()
     {
         var tenantId = Guid.NewGuid();

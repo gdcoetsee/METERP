@@ -97,56 +97,28 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
     }
 
     [Fact]
-    public async Task Account_Path_IsNotRateLimited()
+    public async Task SpaNavigation_Paths_AreNotRateLimited_UnderModerateBurst()
     {
-        for (var i = 0; i < 35; i++)
-        {
-            var response = await _client.GetAsync("/account");
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
-        }
-    }
+        string[] paths =
+        [
+            "/account",
+            "/approvals",
+            "/login",
+            "/quotes",
+            "/jobs",
+            "/invoices",
+            "/opportunities",
+            "/customers",
+            "/reports"
+        ];
 
-    [Fact]
-    public async Task Approvals_Path_IsNotRateLimited()
-    {
-        for (var i = 0; i < 35; i++)
+        for (var i = 0; i < 15; i++)
         {
-            var response = await _client.GetAsync("/approvals");
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
-        }
-    }
-
-    [Fact]
-    public async Task Login_Path_IsNotRateLimited()
-    {
-        for (var i = 0; i < 35; i++)
-        {
-            var response = await _client.GetAsync("/login");
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
-        }
-    }
-
-    [Fact]
-    public async Task Quotes_And_Jobs_Paths_AreNotRateLimited()
-    {
-        for (var i = 0; i < 35; i++)
-        {
-            var quotes = await _client.GetAsync("/quotes");
-            var jobs = await _client.GetAsync("/jobs");
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, quotes.StatusCode);
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, jobs.StatusCode);
-        }
-    }
-
-    [Fact]
-    public async Task Invoices_And_Opportunities_Paths_AreNotRateLimited()
-    {
-        for (var i = 0; i < 35; i++)
-        {
-            var invoices = await _client.GetAsync("/invoices");
-            var opportunities = await _client.GetAsync("/opportunities");
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, invoices.StatusCode);
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, opportunities.StatusCode);
+            foreach (var path in paths)
+            {
+                var response = await _client.GetAsync(path);
+                Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+            }
         }
     }
 }

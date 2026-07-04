@@ -40,6 +40,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Login_Succeeds_With_Demo_Credentials()
     {
         // Exercise the interactive login form (login-complete is used by other tests for speed).
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.NewPageAsync();
         await page.GotoAsync($"{E2EHelpers.BaseUrl}/login");
         await page.WaitForSelectorAsync("[data-testid='login-email']");
@@ -340,11 +341,13 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         var quoteNumber = await E2EHelpers.EnsureConvertibleQuoteAsync();
         Assert.False(string.IsNullOrWhiteSpace(quoteNumber));
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/quotes");
+        await page.WaitForTestIdAsync("quotes-ready", 30000);
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
         var travelRow = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
@@ -955,18 +958,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Scheduling_Page_Loads_Jobs_And_Assignment_Panel()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
-
-        try
-        {
-            await page.WaitForTestIdAsync("scheduling-ready", 8000);
-        }
-        catch (TimeoutException)
-        {
-            // Older builds expose the table without the ready marker
-            await page.WaitForSelectorAsync("table.table tbody tr", new() { Timeout = 30000 });
-        }
+        await page.WaitForTestIdAsync("scheduling-ready", 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);
