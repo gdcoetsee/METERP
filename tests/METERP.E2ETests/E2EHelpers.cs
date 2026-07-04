@@ -11,6 +11,8 @@ public static class E2EHelpers
 
     public const string AcmeEmail = "admin@acme.demo";
     public const string AcmePassword = "Demo123!";
+    public const string TechEmail = "tech@acme.demo";
+    public const string TechPassword = "Demo123!";
     public const string BetaEmail = "admin@beta.demo";
     public const string BetaPassword = "Demo123!";
 

@@ -1709,6 +1709,46 @@ public class DatabaseSeeder : IHostedService
             }
         }
 
+        // 6b. Field technician demo user (Field Portal E2E + sellable role template showcase)
+        var techEmail = "tech@acme.demo";
+        var existingTech = await userManager.FindByEmailAsync(techEmail);
+        ApplicationUser? techUser = existingTech;
+        if (existingTech == null)
+        {
+            techUser = new ApplicationUser
+            {
+                UserName = techEmail,
+                Email = techEmail,
+                EmailConfirmed = true,
+                TenantId = defaultTenantId
+            };
+
+            var techResult = await userManager.CreateAsync(techUser, "Demo123!");
+            if (!techResult.Succeeded)
+                techUser = null;
+        }
+
+        if (techUser != null)
+        {
+            var techClaims = await userManager.GetClaimsAsync(techUser);
+            if (!techClaims.Any(c => c.Type == "TenantId" && c.Value == defaultTenantId.ToString()))
+                await userManager.AddClaimAsync(techUser, new System.Security.Claims.Claim("TenantId", defaultTenantId.ToString()));
+
+            if (!await IsInGlobalRoleAsync(userManager, tenantProvider, techUser, "Technician"))
+                await AddUserToGlobalRoleAsync(userManager, tenantProvider, techUser, "Technician");
+
+            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, techUser, "Technician", cancellationToken);
+
+            tenantProvider.SetTenantId(defaultTenantId);
+            var johan = (await employeeService.GetAllAsync(ct: cancellationToken))
+                .FirstOrDefault(e => e.FirstName == "Johan" && e.LastName.Contains("Berg", StringComparison.OrdinalIgnoreCase));
+            if (johan != null && johan.LinkedUserId != techUser.Id)
+            {
+                johan.LinkedUserId = techUser.Id;
+                await employeeService.UpdateAsync(johan, cancellationToken);
+            }
+        }
+
         // === Beta tenant for multi-tenant E2E isolation (safe: only creates when missing) ===
         tenantProvider.SetTenantId(Guid.Empty);
         var betaTenant = await tenantService.GetBySubdomainAsync("beta", cancellationToken);

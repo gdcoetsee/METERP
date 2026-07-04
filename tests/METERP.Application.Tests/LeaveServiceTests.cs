@@ -112,6 +112,44 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task GetEmployeeForUserAsync_ReturnsLinkedEmployee()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var userId = Guid.NewGuid();
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E4",
+                FirstName = "Linked",
+                LastName = "Tech",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 15,
+                LinkedUserId = userId,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var found = await service.GetEmployeeForUserAsync(userId);
+            Assert.NotNull(found);
+            Assert.Equal(employee.Id, found!.Id);
+        }
+    }
+
+    [Fact]
+    public async Task GetEmployeeForUserAsync_ReturnsNull_WhenNotLinked()
+    {
+        var (service, db, _) = Create();
+        await using (db)
+        {
+            var found = await service.GetEmployeeForUserAsync(Guid.NewGuid());
+            Assert.Null(found);
+        }
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_RejectsWhenInsufficientBalance()
     {
         var (service, db, tenantId) = Create();

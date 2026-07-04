@@ -1634,4 +1634,33 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.CloseAsync();
     }
+
+    [Fact]
+    public async Task Field_Portal_Loads_Hub_And_Navigates_As_Technician()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/field");
+        await page.WaitForTestIdAsync("field-portal-ready", 30000);
+
+        var hub = await page.ContentAsync();
+        Assert.Contains("Field Portal", hub);
+        Assert.Contains("My Jobs", hub);
+
+        await page.ClickByTestIdAsync("field-card-jobs");
+        await page.WaitForTestIdAsync("field-jobs-ready", 30000);
+
+        await page.ClickByTestIdAsync("field-nav-stock");
+        await page.WaitForTestIdAsync("field-stock-ready", 30000);
+        await page.WaitForSelectorAsync("[data-testid='field-stock-request-btn']", new() { Timeout = 15000 });
+
+        await page.ClickByTestIdAsync("field-nav-leave");
+        await page.WaitForTestIdAsync("field-leave-ready", 30000);
+
+        var hasBalance = await page.Locator("[data-testid='field-leave-balance']").CountAsync() > 0;
+        var hasNoEmployee = await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0;
+        Assert.True(hasBalance || hasNoEmployee, "Expected leave balance card or no-employee empty state.");
+
+        await page.CloseAsync();
+    }
 }
