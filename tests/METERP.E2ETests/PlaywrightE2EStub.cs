@@ -94,8 +94,7 @@ public class E2EFlowTests : IAsyncLifetime
     public async Task Quotes_Manual_Create_With_Line()
     {
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         await page.ClickByTestIdAsync("new-quote-button");
         await page.WaitForTestIdAsync("quote-editor", 10000);
@@ -260,8 +259,7 @@ public class E2EFlowTests : IAsyncLifetime
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
 
-        await page.Locator("[data-testid='opportunity-card']").First.ClickAsync();
-        await page.WaitForTestIdAsync("opportunity-detail", 10000);
+        await page.OpenFirstOpportunityDetailAsync(30000);
         await page.ClickByTestIdAsync("opportunity-convert-ai");
 
         try

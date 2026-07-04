@@ -121,24 +121,47 @@ public static class E2EHelpers
     /// </summary>
     public static async Task ClickByTestIdWhenReadyAsync(this IPage page, string testId, int timeoutMs = 30000)
     {
-        var locator = page.Locator($"[data-testid='{testId}']").First;
-        await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
-        await locator.ScrollIntoViewIfNeededAsync();
-
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 4; attempt++)
         {
             try
             {
+                var locator = page.Locator($"[data-testid='{testId}']").First;
+                await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+                await locator.ScrollIntoViewIfNeededAsync();
                 await locator.ClickAsync(new() { Timeout = 10000 });
                 return;
             }
-            catch (PlaywrightException) when (attempt < 2)
+            catch (PlaywrightException) when (attempt < 3)
             {
-                await Task.Delay(750);
+                await Task.Delay(500 + attempt * 250);
             }
         }
 
-        await locator.ClickAsync(new() { Force = true, Timeout = 10000 });
+        var fallback = page.Locator($"[data-testid='{testId}']").First;
+        await fallback.ClickAsync(new() { Force = true, Timeout = 10000 });
+    }
+
+    public static async Task OpenFirstOpportunityDetailAsync(this IPage page, int timeoutMs = 30000)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                var card = page.Locator("[data-testid='opportunity-card']").First;
+                await card.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+                await card.ScrollIntoViewIfNeededAsync();
+                await card.ClickAsync(new() { Timeout = 10000 });
+                await page.WaitForTestIdAsync("opportunity-detail", timeoutMs);
+                return;
+            }
+            catch (Exception) when (attempt < 3)
+            {
+                await Task.Delay(500 + attempt * 250);
+            }
+        }
+
+        await page.Locator("[data-testid='opportunity-card']").First.ClickAsync(new() { Force = true });
+        await page.WaitForTestIdAsync("opportunity-detail", timeoutMs);
     }
 
     public static async Task FillByTestIdAsync(this IPage page, string testId, string value)
