@@ -162,5 +162,6 @@ public class CustomerService : ICustomerService
         _cache.InvalidateCategory("jobs");
         _cache.InvalidateCategory("invoices");
         _cache.InvalidateCategory("sales-orders");
+        _cache.InvalidateCategory("assets");
     }
 }

@@ -117,5 +117,13 @@ public class AssetService : IAssetService
         InvalidateListCaches();
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("assets");
+    private void InvalidateListCaches()
+    {
+        if (_cache == null)
+            return;
+
+        _cache.InvalidateCategory("assets");
+        // Job lists embed Asset navigation in cached JSON.
+        _cache.InvalidateCategory("jobs");
+    }
 }

@@ -14,7 +14,7 @@ using Xunit;
 namespace METERP.Application.Tests;
 
 /// <summary>
-/// Customer master-data mutations must refresh CRM/spine list caches that embed Customer navigation.
+/// Master-data mutations must refresh list caches that embed related navigation properties.
 /// </summary>
 public class CrossModuleCacheInvalidationTests
 {
@@ -27,6 +27,7 @@ public class CrossModuleCacheInvalidationTests
         public OpportunityService Opportunities { get; }
         public QuoteService Quotes { get; }
         public JobService Jobs { get; }
+        public AssetService Assets { get; }
 
         public Harness(Guid tenantId)
         {
@@ -53,6 +54,46 @@ public class CrossModuleCacheInvalidationTests
             Customers = new CustomerService(Db, Cache);
             Opportunities = new OpportunityService(Db, cache: Cache);
             Quotes = new QuoteService(Db, cache: Cache);
+            Jobs = new JobService(Db, cache: Cache);
+            Assets = new AssetService(Db, Cache);
+        }
+
+        public void Dispose() => Db.Dispose();
+    }
+
+    private sealed class WorkforceHarness : IDisposable
+    {
+        public Guid TenantId { get; }
+        public AppDbContext Db { get; }
+        public TenantDistributedCacheService Cache { get; }
+        public EmployeeService Employees { get; }
+        public AssetService Assets { get; }
+        public JobService Jobs { get; }
+
+        public WorkforceHarness(Guid tenantId)
+        {
+            TenantId = tenantId;
+            var tenantProvider = new Mock<ITenantProvider>();
+            tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+            var currentUser = new Mock<ICurrentUserService>();
+            currentUser.Setup(s => s.TenantId).Returns(tenantId);
+
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            Db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+
+            var services = new ServiceCollection();
+            services.AddDistributedMemoryCache();
+            services.Configure<CacheOptions>(o => o.DefaultTtlSeconds = 120);
+            var provider = services.BuildServiceProvider();
+            Cache = new TenantDistributedCacheService(
+                provider.GetRequiredService<IDistributedCache>(),
+                tenantProvider.Object,
+                provider.GetRequiredService<IOptions<CacheOptions>>());
+
+            Employees = new EmployeeService(Db, Cache);
+            Assets = new AssetService(Db, Cache);
             Jobs = new JobService(Db, cache: Cache);
         }
 
@@ -95,6 +136,88 @@ public class CrossModuleCacheInvalidationTests
 
         await harness.Db.SaveChangesAsync();
         return customer;
+    }
+
+    private static async Task SeedCustomerAssetAsync(Harness harness, string customerName)
+    {
+        var customer = new Customer
+        {
+            TenantId = harness.TenantId,
+            Name = customerName
+        };
+        harness.Db.Set<Customer>().Add(customer);
+        harness.Db.Set<Asset>().Add(new Asset
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            AssetNumber = "AST-CROSS-001",
+            Name = "Main transformer"
+        });
+        await harness.Db.SaveChangesAsync();
+    }
+
+    private static async Task<(Customer Customer, Employee Employee, Asset Asset)> SeedWorkforceJobAsync(
+        WorkforceHarness harness,
+        string customerName,
+        string employeeLastName,
+        string assetName)
+    {
+        var customer = new Customer
+        {
+            TenantId = harness.TenantId,
+            Name = customerName
+        };
+        harness.Db.Set<Customer>().Add(customer);
+
+        var employee = new Employee
+        {
+            TenantId = harness.TenantId,
+            EmployeeNumber = "EMP-CROSS-001",
+            FirstName = "Alex",
+            LastName = employeeLastName,
+            DefaultHourlyRate = 250m
+        };
+        harness.Db.Set<Employee>().Add(employee);
+
+        var asset = new Asset
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            AssetNumber = "AST-CROSS-002",
+            Name = assetName
+        };
+        harness.Db.Set<Asset>().Add(asset);
+
+        harness.Db.Set<Job>().Add(new Job
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            AssignedEmployeeId = employee.Id,
+            AssetId = asset.Id,
+            JobNumber = "J-WORKFORCE-001",
+            Title = "Service call",
+            QuotedTotal = 4500m
+        });
+
+        await harness.Db.SaveChangesAsync();
+        return (customer, employee, asset);
+    }
+
+    [Fact]
+    public async Task CustomerUpdate_InvalidatesAssetListCache_WithFreshCustomerName()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new Harness(tenantId);
+        await SeedCustomerAssetAsync(harness, "Old Customer Co");
+
+        Assert.Equal("Old Customer Co", (await harness.Assets.GetAllAsync())[0].Customer!.Name);
+
+        var customer = await harness.Db.Set<Customer>().FirstAsync();
+        customer.Name = "Renamed Customer Co";
+        await harness.Customers.UpdateAsync(customer);
+
+        var refreshed = await harness.Assets.GetAllAsync();
+        Assert.Equal("Renamed Customer Co", refreshed[0].Customer!.Name);
     }
 
     [Fact]
@@ -260,5 +383,37 @@ public class CrossModuleCacheInvalidationTests
         });
 
         Assert.Equal("Mutated after cache warm", (await harness.PurchaseOrders.GetAllAsync())[0].Notes);
+    }
+
+    [Fact]
+    public async Task EmployeeUpdate_InvalidatesJobListCache_WithFreshEmployeeName()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new WorkforceHarness(tenantId);
+        var (_, employee, _) = await SeedWorkforceJobAsync(harness, "Acme Site", "Oldson", "Panel A");
+
+        Assert.Equal("Oldson", (await harness.Jobs.GetAllAsync())[0].AssignedEmployee!.LastName);
+
+        employee.LastName = "Newson";
+        await harness.Employees.UpdateAsync(employee);
+
+        var refreshed = await harness.Jobs.GetAllAsync();
+        Assert.Equal("Newson", refreshed[0].AssignedEmployee!.LastName);
+    }
+
+    [Fact]
+    public async Task AssetUpdate_InvalidatesJobListCache_WithFreshAssetName()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new WorkforceHarness(tenantId);
+        var (_, _, asset) = await SeedWorkforceJobAsync(harness, "Acme Site", "Crew", "Old Asset Name");
+
+        Assert.Equal("Old Asset Name", (await harness.Jobs.GetAllAsync())[0].Asset!.Name);
+
+        asset.Name = "Renamed Asset";
+        await harness.Assets.UpdateAsync(asset);
+
+        var refreshed = await harness.Jobs.GetAllAsync();
+        Assert.Equal("Renamed Asset", refreshed[0].Asset!.Name);
     }
 }

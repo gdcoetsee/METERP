@@ -80,5 +80,13 @@ public class EmployeeService : IEmployeeService
         InvalidateListCaches();
     }
 
-    private void InvalidateListCaches() => _cache?.InvalidateCategory("employees");
+    private void InvalidateListCaches()
+    {
+        if (_cache == null)
+            return;
+
+        _cache.InvalidateCategory("employees");
+        // Job lists embed AssignedEmployee and crew navigation in cached JSON.
+        _cache.InvalidateCategory("jobs");
+    }
 }
