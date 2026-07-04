@@ -14,10 +14,21 @@ public static class E2EHelpers
     public const string BetaEmail = "admin@beta.demo";
     public const string BetaPassword = "Demo123!";
 
-    public static async Task<IPage> LoginAsync(this IBrowser browser, string? email = null, string? password = null, string? baseUrl = null)
+    public static async Task<IPage> LoginAsync(
+        this IBrowser browser,
+        string? email = null,
+        string? password = null,
+        string? baseUrl = null,
+        bool resetDemoState = true)
     {
         var url = baseUrl ?? BaseUrl;
         var loginEmail = email ?? AcmeEmail;
+
+        if (resetDemoState)
+        {
+            try { await ResetDemoStateAsync(url); }
+            catch { /* dev endpoints unavailable on older images */ }
+        }
 
         // Beta 2FA tests can leave authenticator enabled — reset via dev API before UI login.
         if (string.Equals(loginEmail, BetaEmail, StringComparison.OrdinalIgnoreCase))
@@ -39,7 +50,9 @@ public static class E2EHelpers
                 await page.WaitForURLAsync(
                     u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
                     new() { Timeout = 60000 });
-                await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+                // Blazor Server keeps SignalR open — NetworkIdle never settles reliably.
+                await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 30000 });
+                await page.WaitForAppReadyAsync(20000);
                 return page;
             }
             catch (Exception ex)
@@ -61,7 +74,32 @@ public static class E2EHelpers
 
     public static async Task ClickByTestIdAsync(this IPage page, string testId)
     {
-        await page.ClickAsync($"[data-testid='{testId}']");
+        await ClickByTestIdWhenReadyAsync(page, testId);
+    }
+
+    /// <summary>
+    /// Clicks a test-id after it is visible and scrolls into view (Blazor circuit-safe).
+    /// </summary>
+    public static async Task ClickByTestIdWhenReadyAsync(this IPage page, string testId, int timeoutMs = 30000)
+    {
+        var locator = page.Locator($"[data-testid='{testId}']").First;
+        await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+        await locator.ScrollIntoViewIfNeededAsync();
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await locator.ClickAsync(new() { Timeout = 10000 });
+                return;
+            }
+            catch (PlaywrightException) when (attempt < 2)
+            {
+                await Task.Delay(750);
+            }
+        }
+
+        await locator.ClickAsync(new() { Force = true, Timeout = 10000 });
     }
 
     public static async Task FillByTestIdAsync(this IPage page, string testId, string value)
@@ -98,16 +136,31 @@ public static class E2EHelpers
         string tableTestId,
         int timeoutMs = 45000)
     {
-        var heading = char.ToUpperInvariant(pageKey[0]) + pageKey[1..];
+        await WaitForInteractivePageAsync(page, relativePath, $"{pageKey}-ready", tableTestId, timeoutMs);
+    }
+
+    /// <summary>
+    /// Waits for InteractiveServer prerender:false pages (empty shell until the circuit loads data).
+    /// </summary>
+    public static async Task WaitForInteractivePageAsync(
+        this IPage page,
+        string relativePath,
+        string readyTestId,
+        string contentTestId,
+        int timeoutMs = 45000)
+    {
+        var readySelector = $"[data-testid='{readyTestId}']";
+        var contentSelector = $"[data-testid='{contentTestId}']";
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
             try
             {
                 await page.GotoRelativeAsync(relativePath);
-                await page.Locator("h1").Filter(new() { HasText = heading }).WaitForAsync(new() { Timeout = timeoutMs });
-                await page.WaitForTestIdAsync($"{pageKey}-ready", timeoutMs);
-                await page.WaitForTestIdAsync(tableTestId, timeoutMs);
+                await page.WaitForSelectorAsync(
+                    $"{readySelector}, {contentSelector}",
+                    new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+                await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
                 return;
             }
             catch (TimeoutException) when (attempt < 2)
@@ -117,9 +170,54 @@ public static class E2EHelpers
         }
 
         await page.GotoRelativeAsync(relativePath);
-        await page.Locator("h1").Filter(new() { HasText = heading }).WaitForAsync(new() { Timeout = timeoutMs });
-        await page.WaitForTestIdAsync($"{pageKey}-ready", timeoutMs);
-        await page.WaitForTestIdAsync(tableTestId, timeoutMs);
+        await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+    }
+
+    public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)
+    {
+        await WaitForInteractivePageAsync(page, "/jobs", "jobs-ready", "jobs-table", timeoutMs);
+    }
+
+    public static async Task OpenJobDetailAsync(
+        this IPage page,
+        string searchMarker,
+        string rowTestId = "job-row-e2e-invoice-demo",
+        int timeoutMs = 45000)
+    {
+        await page.WaitForJobsReadyAsync(timeoutMs);
+        await page.FillByTestIdAsync("jobs-search", searchMarker);
+        await page.WaitForJobsReadyAsync(timeoutMs / 2);
+
+        var jobRow = page.Locator($"[data-testid='{rowTestId}']").First;
+        if (await jobRow.CountAsync() == 0)
+            jobRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await jobRow.CountAsync() == 0)
+            jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+
+        await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("job-detail-panel", timeoutMs);
+    }
+
+    public static async Task OpenSalesOrderDetailAsync(
+        this IPage page,
+        string? searchMarker = null,
+        string rowTestId = "sales-order-row-e2e-convertible",
+        int timeoutMs = 45000)
+    {
+        await page.WaitForSalesOrdersReadyAsync(timeoutMs);
+
+        if (!string.IsNullOrWhiteSpace(searchMarker))
+        {
+            await page.FillByTestIdAsync("sales-orders-search", searchMarker);
+            await page.WaitForSalesOrdersReadyAsync(timeoutMs / 2);
+        }
+
+        var soRow = page.Locator($"[data-testid='{rowTestId}']").First;
+        if (await soRow.CountAsync() == 0)
+            soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
+
+        await soRow.Locator("[data-testid='sales-order-view']").ClickAsync();
+        await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
     }
 
     /// <summary>
@@ -352,7 +450,7 @@ public static class E2EHelpers
 
     public static async Task WaitForAccountReadyAsync(this IPage page, string panelTestId, string relativePath, int timeoutMs = 45000)
     {
-        var contentSelector = panelTestId switch
+        var loadedSelector = panelTestId switch
         {
             "account-hub-ready" =>
                 "[data-testid='account-tab-billing'], [data-testid='account-tab-security']",
@@ -369,7 +467,22 @@ public static class E2EHelpers
             {
                 await page.GotoRelativeAsync(relativePath);
                 await page.WaitForTestIdAsync(panelTestId, timeoutMs);
-                await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs });
+
+                var loadingSelector = panelTestId switch
+                {
+                    "account-billing-ready" => "[data-testid='account-billing-loading']",
+                    "account-security-ready" => "[data-testid='account-security-loading']",
+                    _ => null
+                };
+
+                if (loadingSelector != null)
+                {
+                    var loading = page.Locator(loadingSelector);
+                    if (await loading.CountAsync() > 0)
+                        await loading.First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = timeoutMs });
+                }
+
+                await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs });
                 return;
             }
             catch (TimeoutException) when (attempt < 2)
@@ -380,7 +493,7 @@ public static class E2EHelpers
 
         await page.GotoRelativeAsync(relativePath);
         await page.WaitForTestIdAsync(panelTestId, timeoutMs);
-        await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs });
+        await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs });
     }
 
     public static async Task BeginEmailCaptureAsync(string? baseUrl = null)

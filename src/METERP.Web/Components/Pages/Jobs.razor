@@ -45,8 +45,13 @@
     </div>
 </div>
 
+@if (_initialLoadComplete)
+{
+    <span data-testid="jobs-ready" class="visually-hidden">ready</span>
+}
+
 <h6>Recent / Live Jobs (powered by services)</h6>
-<JobList 
+<JobList
     Jobs="demoJobs"
     SelectedJob="selectedJob"
     CommandCenter="commandCenter"
@@ -82,6 +87,7 @@
 
 @code {
     private List<Job> demoJobs = new();
+    private bool _initialLoadComplete;
     private TenantBranding _branding = TenantBranding.Default;
     private Job? selectedJob;
     private JobCommandCenterSummary? commandCenter;
@@ -106,6 +112,7 @@
         }
 
         await LoadJobs();
+        _initialLoadComplete = true;
 
         if (OpenJobId is { } jobId && jobId != Guid.Empty)
             await OpenJobAsync(jobId);

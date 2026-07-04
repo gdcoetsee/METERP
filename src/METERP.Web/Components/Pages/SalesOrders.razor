@@ -197,6 +197,7 @@ else
 
     private async Task ViewSO(SalesOrder so)
     {
+        selectedSO = null;
         selectedSO = await SalesOrderService.GetByIdAsync(so.Id);
     }
 

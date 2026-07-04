@@ -86,7 +86,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             await E2EHelpers.BeginEmailCaptureAsync();
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
-            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             await setupPage.ClickByTestIdAsync("2fa-enable-button");
@@ -140,7 +140,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
             await E2EHelpers.DeleteAllMailpitMessagesAsync();
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
-            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+            var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             await setupPage.ClickByTestIdAsync("2fa-enable-button");
@@ -171,7 +171,7 @@ public class E2ETwoFactorFlowTests : IAsyncLifetime
     private async Task<string> EnableTwoFactorForBetaAsync()
     {
         await E2EHelpers.DisableBetaTwoFactorAsync();
-        var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        var setupPage = await _browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
         await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
         await setupPage.ClickByTestIdAsync("2fa-enable-button");
