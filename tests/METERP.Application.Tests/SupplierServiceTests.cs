@@ -88,6 +88,19 @@ public class SupplierServiceTests
     }
 
     [Fact]
+    public async Task GetByIdAsync_ReturnsNull_WhenSupplierSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+        var id = await service.CreateAsync(new Supplier { Name = "Gone Vendor" });
+
+        await service.DeleteAsync(id);
+
+        Assert.Null(await service.GetByIdAsync(id));
+    }
+
+    [Fact]
     public async Task UpdateAsync_PersistsContactAndEmail()
     {
         var tenantId = Guid.NewGuid();

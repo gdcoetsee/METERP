@@ -99,6 +99,47 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsLocationAndSerialNumber()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var id = await service.CreateAsync(new Asset
+        {
+            CustomerId = customerId,
+            Name = "Motor 1",
+            Location = "Shaft A"
+        });
+
+        var asset = await service.GetByIdAsync(id);
+        Assert.NotNull(asset);
+        asset!.Location = "Shaft B";
+        asset.SerialNumber = "SN-88421";
+        await service.UpdateAsync(asset);
+
+        var reloaded = await service.GetByIdAsync(id);
+        Assert.Equal("Shaft B", reloaded!.Location);
+        Assert.Equal("SN-88421", reloaded.SerialNumber);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_IncludesCustomerNavigation()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Linked Customer" });
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "Panel" });
+
+        var loaded = await service.GetByIdAsync(id);
+        Assert.NotNull(loaded?.Customer);
+        Assert.Equal("Linked Customer", loaded.Customer.Name);
+    }
+
+    [Fact]
     public async Task DeleteAsync_SoftDeletesAsset()
     {
         var tenantId = Guid.NewGuid();

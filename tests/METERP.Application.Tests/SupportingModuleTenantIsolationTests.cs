@@ -117,4 +117,91 @@ public class SupportingModuleTenantIsolationTests
         Assert.Single(itemsB);
         Assert.Equal("B-1", itemsB[0].Sku);
     }
+
+    [Fact]
+    public async Task SupplierService_GetAllAsync_ReturnsOnlyCurrentTenantSuppliers()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Supplier>().Add(new Supplier { TenantId = tenantA, Name = "Supplier A", IsActive = true });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Supplier>().Add(new Supplier { TenantId = tenantB, Name = "Supplier B", IsActive = true });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var suppliersA = await new SupplierService(dbA).GetAllAsync();
+        Assert.Single(suppliersA);
+        Assert.Equal("Supplier A", suppliersA[0].Name);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var suppliersB = await new SupplierService(dbB).GetAllAsync();
+        Assert.Single(suppliersB);
+        Assert.Equal("Supplier B", suppliersB[0].Name);
+    }
+
+    [Fact]
+    public async Task AssetService_GetByIdAsync_DoesNotReturnOtherTenantAsset()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid assetBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Tenant B customer" };
+            seedB.Set<Customer>().Add(customer);
+            var asset = new Asset { TenantId = tenantB, CustomerId = customer.Id, Name = "Tenant B transformer" };
+            seedB.Set<Asset>().Add(asset);
+            await seedB.SaveChangesAsync();
+            assetBId = asset.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var crossTenant = await new AssetService(dbA).GetByIdAsync(assetBId);
+        Assert.Null(crossTenant);
+    }
+
+    [Fact]
+    public async Task AssetService_GetAllAsync_ReturnsOnlyCurrentTenantAssets()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "A customer" };
+            seedA.Set<Customer>().Add(customer);
+            seedA.Set<Asset>().Add(new Asset { TenantId = tenantA, CustomerId = customer.Id, Name = "Asset A" });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "B customer" };
+            seedB.Set<Customer>().Add(customer);
+            seedB.Set<Asset>().Add(new Asset { TenantId = tenantB, CustomerId = customer.Id, Name = "Asset B" });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var assetsA = await new AssetService(dbA).GetAllAsync();
+        Assert.Single(assetsA);
+        Assert.Equal("Asset A", assetsA[0].Name);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var assetsB = await new AssetService(dbB).GetAllAsync();
+        Assert.Single(assetsB);
+        Assert.Equal("Asset B", assetsB[0].Name);
+    }
 }
