@@ -1312,6 +1312,7 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task PurchaseOrders_Receive_Updates_Inventory()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         await E2EHelpers.ResetDemoStateAsync();
         await E2EHelpers.EnsureReceiveDemoPoAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
@@ -1326,6 +1327,7 @@ public class E2EFlowTests : IAsyncLifetime
         var qtyBefore = int.Parse(new string(qtyBeforeText.Where(char.IsDigit).ToArray()));
 
         await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table");
+        await page.WaitForTestIdAsync("purchase-orders-ready", 30000);
 
         await page.FillByTestIdAsync("purchase-orders-search", ReceiveDemoPoMarker);
 
