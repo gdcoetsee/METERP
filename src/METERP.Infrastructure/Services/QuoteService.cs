@@ -399,8 +399,6 @@ public class QuoteService : IQuoteService
         await _dbContext.SaveChangesAsync(ct);
 
         await InvalidateListCachesAsync(ct);
-        if (_cache != null)
-            await _cache.InvalidateCategoryAsync("jobs", ct);
 
         if (_auditService != null)
         {
@@ -420,8 +418,12 @@ public class QuoteService : IQuoteService
 
     private async Task InvalidateListCachesAsync(CancellationToken ct)
     {
-        if (_cache != null)
-            await _cache.InvalidateCategoryAsync("quotes", ct);
+        if (_cache == null)
+            return;
+
+        await _cache.InvalidateCategoryAsync("quotes", ct);
+        // Job lists embed Quote navigation in cached JSON.
+        await _cache.InvalidateCategoryAsync("jobs", ct);
     }
 
     private async Task TryIncrementQuoteCountAsync(Guid tenantId, CancellationToken ct)

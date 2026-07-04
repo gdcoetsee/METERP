@@ -364,8 +364,12 @@ public class JobService : IJobService
 
     private async Task InvalidateListCachesAsync(CancellationToken ct)
     {
-        if (_cache != null)
-            await _cache.InvalidateCategoryAsync("jobs", ct);
+        if (_cache == null)
+            return;
+
+        await _cache.InvalidateCategoryAsync("jobs", ct);
+        // Invoice lists embed Job navigation in cached JSON.
+        await _cache.InvalidateCategoryAsync("invoices", ct);
     }
 
     private async Task ApplyEmployeeDefaultsAsync(JobLabor labor, CancellationToken ct)

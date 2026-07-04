@@ -28,6 +28,7 @@ public class CrossModuleCacheInvalidationTests
         public QuoteService Quotes { get; }
         public JobService Jobs { get; }
         public AssetService Assets { get; }
+        public InvoiceService Invoices { get; }
 
         public Harness(Guid tenantId)
         {
@@ -56,9 +57,79 @@ public class CrossModuleCacheInvalidationTests
             Quotes = new QuoteService(Db, cache: Cache);
             Jobs = new JobService(Db, cache: Cache);
             Assets = new AssetService(Db, Cache);
+            Invoices = new InvoiceService(Db, cache: Cache);
         }
 
         public void Dispose() => Db.Dispose();
+    }
+
+    private static async Task<(Customer Customer, Quote Quote, Job Job)> SeedJobWithQuoteAsync(
+        Harness harness,
+        string quoteNumber)
+    {
+        var customer = new Customer
+        {
+            TenantId = harness.TenantId,
+            Name = "Quote Link Customer"
+        };
+        harness.Db.Set<Customer>().Add(customer);
+
+        var quote = new Quote
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = quoteNumber,
+            TaxRate = 0.15m
+        };
+        harness.Db.Set<Quote>().Add(quote);
+
+        var job = new Job
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            QuoteId = quote.Id,
+            JobNumber = "J-QUOTE-LINK-001",
+            Title = "Quoted install",
+            QuotedTotal = 12000m
+        };
+        harness.Db.Set<Job>().Add(job);
+
+        await harness.Db.SaveChangesAsync();
+        return (customer, quote, job);
+    }
+
+    private static async Task<(Customer Customer, Job Job)> SeedJobWithInvoiceAsync(
+        Harness harness,
+        string jobNumber)
+    {
+        var customer = new Customer
+        {
+            TenantId = harness.TenantId,
+            Name = "Invoice Link Customer"
+        };
+        harness.Db.Set<Customer>().Add(customer);
+
+        var job = new Job
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            JobNumber = jobNumber,
+            Title = "Billable job",
+            QuotedTotal = 8000m
+        };
+        harness.Db.Set<Job>().Add(job);
+
+        harness.Db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            JobId = job.Id,
+            InvoiceNumber = "INV-CROSS-001",
+            TaxRate = 0.15m
+        });
+
+        await harness.Db.SaveChangesAsync();
+        return (customer, job);
     }
 
     private sealed class WorkforceHarness : IDisposable
@@ -415,5 +486,37 @@ public class CrossModuleCacheInvalidationTests
 
         var refreshed = await harness.Jobs.GetAllAsync();
         Assert.Equal("Renamed Asset", refreshed[0].Asset!.Name);
+    }
+
+    [Fact]
+    public async Task QuoteUpdate_InvalidatesJobListCache_WithFreshQuoteNumber()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new Harness(tenantId);
+        var (_, quote, _) = await SeedJobWithQuoteAsync(harness, "Q-OLD-001");
+
+        Assert.Equal("Q-OLD-001", (await harness.Jobs.GetAllAsync())[0].Quote!.QuoteNumber);
+
+        quote.QuoteNumber = "Q-RENAMED-001";
+        await harness.Quotes.UpdateAsync(quote);
+
+        var refreshed = await harness.Jobs.GetAllAsync();
+        Assert.Equal("Q-RENAMED-001", refreshed[0].Quote!.QuoteNumber);
+    }
+
+    [Fact]
+    public async Task JobUpdate_InvalidatesInvoiceListCache_WithFreshJobNumber()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new Harness(tenantId);
+        var (_, job) = await SeedJobWithInvoiceAsync(harness, "J-OLD-001");
+
+        Assert.Equal("J-OLD-001", (await harness.Invoices.GetAllAsync())[0].Job!.JobNumber);
+
+        job.JobNumber = "J-RENAMED-001";
+        await harness.Jobs.UpdateAsync(job);
+
+        var refreshed = await harness.Invoices.GetAllAsync();
+        Assert.Equal("J-RENAMED-001", refreshed[0].Job!.JobNumber);
     }
 }
