@@ -121,7 +121,7 @@ public class UserServiceCacheTests
         await harness.Db.SaveChangesAsync();
         Assert.Equal("original@acme.demo", (await harness.Service.GetAllAsync())[0].Email);
 
-        harness.Cache.InvalidateCategory("users");
+        harness.Cache.InvalidateCategory(TenantCacheCategories.Users);
         Assert.Equal("mutated@acme.demo", (await harness.Service.GetAllAsync())[0].Email);
     }
 
@@ -191,7 +191,7 @@ public class UserServiceCacheTests
 
         Assert.Equal("Alpha", (await harness.Service.GetAvailableRolesAsync())[0]);
 
-        harness.Cache.InvalidateCategory("roles");
+        harness.Cache.InvalidateCategory(TenantCacheCategories.Roles);
         var refreshed = await harness.Service.GetAvailableRolesAsync();
         Assert.Contains("Mutated", refreshed);
     }

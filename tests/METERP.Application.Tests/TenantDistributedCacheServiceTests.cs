@@ -57,7 +57,7 @@ public class TenantDistributedCacheServiceTests
             Assert.Equal(first[0], second[0]);
             Assert.Equal(1, callCount);
 
-            service.InvalidateCategory("quotes");
+            service.InvalidateCategory(TenantCacheCategories.Quotes);
 
             var third = await service.GetOrCreateAsync("quotes", "p1:s20", () =>
             {

@@ -37,7 +37,7 @@ public class TenantMemoryCacheServiceTests
         Assert.Equal("value-1", second);
         Assert.Equal(1, callCount);
 
-        service.InvalidateCategory("quotes");
+        service.InvalidateCategory(TenantCacheCategories.Quotes);
 
         var third = await service.GetOrCreateAsync("quotes", "p1:s20", () =>
         {

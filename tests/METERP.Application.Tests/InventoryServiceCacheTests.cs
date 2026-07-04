@@ -54,7 +54,7 @@ public class InventoryServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal("Original Cable", (await service.GetAllItemsAsync())[0].Name);
 
-            cache.InvalidateCategory("inventory");
+            cache.InvalidateCategory(TenantCacheCategories.Inventory);
             Assert.Equal("Mutated Cable", (await service.GetAllItemsAsync())[0].Name);
         }
     }
@@ -166,7 +166,7 @@ public class InventoryServiceCacheTests
             Assert.Equal(2, (await service.GetAllItemsAsync(pageSize: 50)).Count);
             Assert.Single(await service.GetAllItemsAsync(lowStockOnly: true, pageSize: 50));
 
-            cache.InvalidateCategory("inventory");
+            cache.InvalidateCategory(TenantCacheCategories.Inventory);
             Assert.Empty(await service.GetAllItemsAsync(lowStockOnly: true, pageSize: 50));
         }
     }

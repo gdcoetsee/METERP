@@ -86,7 +86,7 @@ public class InvoiceServiceCacheTests
             var cached = await service.GetAllAsync();
             Assert.Equal("original", cached[0].Notes);
 
-            cache.InvalidateCategory("invoices");
+            cache.InvalidateCategory(TenantCacheCategories.Invoices);
 
             var refreshed = await service.GetAllAsync();
             Assert.Equal("mutated-in-db", refreshed[0].Notes);

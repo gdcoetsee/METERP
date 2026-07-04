@@ -9,9 +9,19 @@ public class TenantCacheInvalidationTests
 {
     [Theory]
     [InlineData(TenantCacheCategories.Customers, "customers")]
+    [InlineData(TenantCacheCategories.Opportunities, "opportunities")]
+    [InlineData(TenantCacheCategories.Quotes, "quotes")]
     [InlineData(TenantCacheCategories.Jobs, "jobs")]
-    [InlineData(TenantCacheCategories.PurchaseOrders, "purchase-orders")]
+    [InlineData(TenantCacheCategories.Invoices, "invoices")]
     [InlineData(TenantCacheCategories.SalesOrders, "sales-orders")]
+    [InlineData(TenantCacheCategories.Assets, "assets")]
+    [InlineData(TenantCacheCategories.Suppliers, "suppliers")]
+    [InlineData(TenantCacheCategories.PurchaseOrders, "purchase-orders")]
+    [InlineData(TenantCacheCategories.Employees, "employees")]
+    [InlineData(TenantCacheCategories.Inventory, "inventory")]
+    [InlineData(TenantCacheCategories.Finance, "finance")]
+    [InlineData(TenantCacheCategories.Users, "users")]
+    [InlineData(TenantCacheCategories.Roles, "roles")]
     public void TenantCacheCategories_UseStableSerializedNames(string constant, string expected)
     {
         Assert.Equal(expected, constant);

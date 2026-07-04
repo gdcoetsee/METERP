@@ -63,7 +63,7 @@ public class AssetServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal("Original Panel", (await service.GetAllAsync())[0].Name);
 
-            cache.InvalidateCategory("assets");
+            cache.InvalidateCategory(TenantCacheCategories.Assets);
             Assert.Equal("Mutated Panel", (await service.GetAllAsync())[0].Name);
         }
     }

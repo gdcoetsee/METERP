@@ -54,7 +54,7 @@ public class EmployeeServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal("Original", (await service.GetAllAsync())[0].LastName);
 
-            cache.InvalidateCategory("employees");
+            cache.InvalidateCategory(TenantCacheCategories.Employees);
             Assert.Equal("Mutated", (await service.GetAllAsync())[0].LastName);
         }
     }

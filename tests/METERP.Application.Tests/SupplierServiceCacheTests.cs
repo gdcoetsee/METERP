@@ -54,7 +54,7 @@ public class SupplierServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal("Original Supply", (await service.GetAllAsync())[0].Name);
 
-            cache.InvalidateCategory("suppliers");
+            cache.InvalidateCategory(TenantCacheCategories.Suppliers);
             Assert.Equal("Mutated Supply", (await service.GetAllAsync())[0].Name);
         }
     }

@@ -92,7 +92,7 @@ public class SalesOrderServiceCacheTests
 
             Assert.Equal("original", (await service.GetAllAsync())[0].Notes);
 
-            cache.InvalidateCategory("sales-orders");
+            cache.InvalidateCategory(TenantCacheCategories.SalesOrders);
 
             Assert.Equal("mutated-in-db", (await service.GetAllAsync())[0].Notes);
         }

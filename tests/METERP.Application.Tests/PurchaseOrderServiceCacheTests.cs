@@ -81,7 +81,7 @@ public class PurchaseOrderServiceCacheTests
 
             Assert.Equal("original", (await service.GetAllAsync())[0].Notes);
 
-            cache.InvalidateCategory("purchase-orders");
+            cache.InvalidateCategory(TenantCacheCategories.PurchaseOrders);
 
             Assert.Equal("mutated-in-db", (await service.GetAllAsync())[0].Notes);
         }

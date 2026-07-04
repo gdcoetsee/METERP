@@ -86,7 +86,7 @@ public class JobServiceCacheTests
             var cached = await service.GetAllAsync();
             Assert.Equal("original", cached[0].Notes);
 
-            cache.InvalidateCategory("jobs");
+            cache.InvalidateCategory(TenantCacheCategories.Jobs);
 
             var refreshed = await service.GetAllAsync();
             Assert.Equal("mutated-in-db", refreshed[0].Notes);

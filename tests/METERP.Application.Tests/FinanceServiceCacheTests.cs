@@ -64,7 +64,7 @@ public class FinanceServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal("Cash", (await service.GetAccountsAsync())[0].Name);
 
-            cache.InvalidateCategory("finance");
+            cache.InvalidateCategory(TenantCacheCategories.Finance);
             Assert.Equal("Cash Updated", (await service.GetAccountsAsync())[0].Name);
         }
     }
@@ -132,7 +132,7 @@ public class FinanceServiceCacheTests
             await db.SaveChangesAsync();
             Assert.Equal(100m, (await service.GetAccountsWithBalancesAsync())[0].Balance);
 
-            cache.InvalidateCategory("finance");
+            cache.InvalidateCategory(TenantCacheCategories.Finance);
             Assert.Equal(250m, (await service.GetAccountsWithBalancesAsync())[0].Balance);
         }
     }
