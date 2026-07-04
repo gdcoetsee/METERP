@@ -300,17 +300,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task Opportunity_Advances_Stage_On_Advance_Button()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/opportunities");
-        try
-        {
-            await page.WaitForTestIdAsync("opportunities-ready", 8000);
-        }
-        catch (TimeoutException)
-        {
-            // Older builds expose pipeline without ready marker
-        }
-
+        await page.WaitForTestIdAsync("opportunities-ready", 30000);
         await page.WaitForTestIdAsync("opportunities-pipeline", 30000);
 
         var uniqueTitle = $"E2E Advance {DateTime.UtcNow.Ticks}";
@@ -1204,6 +1197,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForListPageAsync("/inventory", "inventory-table", 45000);
+        await page.WaitForTestIdAsync("inventory-ready", 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("DB-12W-001", content);
@@ -1255,6 +1249,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.ResetDemoStateAsync();
         var page = await Browser.LoginAsync(resetDemoState: false);
         await page.WaitForInteractiveListAsync("/suppliers", "suppliers", "suppliers-table");
+        await page.WaitForTestIdAsync("suppliers-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
@@ -1283,8 +1278,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task PurchaseOrders_Page_Loads_Demo_Po()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table");
+        await page.WaitForTestIdAsync("purchase-orders-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
@@ -1301,8 +1298,10 @@ public class E2EFlowTests : IAsyncLifetime
     [Fact]
     public async Task PurchaseOrders_Search_FiltersBySupplier()
     {
+        await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForListPageAsync("/purchase-orders", "purchase-orders-table", 45000);
+        await page.WaitForTestIdAsync("purchase-orders-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
         Assert.True(await tableBody.Locator("tr").CountAsync() >= 2);

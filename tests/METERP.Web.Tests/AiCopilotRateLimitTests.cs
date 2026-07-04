@@ -137,4 +137,16 @@ public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory
             Assert.NotEqual(HttpStatusCode.TooManyRequests, jobs.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task Invoices_And_Opportunities_Paths_AreNotRateLimited()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            var invoices = await _client.GetAsync("/invoices");
+            var opportunities = await _client.GetAsync("/opportunities");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, invoices.StatusCode);
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, opportunities.StatusCode);
+        }
+    }
 }

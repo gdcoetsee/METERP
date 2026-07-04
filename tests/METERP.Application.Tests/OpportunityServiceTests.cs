@@ -188,6 +188,22 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public void BuildAiScopeText_UsesLinkedCustomer_WhenCustomerNameMissing()
+    {
+        var service = new OpportunityService(CreateContext(Guid.NewGuid()));
+        var text = service.BuildAiScopeText(new Opportunity
+        {
+            Title = "Substation upgrade",
+            Value = 88000m,
+            ExpectedClose = new DateTime(2026, 8, 15),
+            Customer = new Customer { Name = "Linked Customer Ltd" }
+        });
+
+        Assert.Contains("Linked Customer Ltd", text);
+        Assert.Contains("Substation upgrade", text);
+    }
+
+    [Fact]
     public async Task MarkConvertedToQuoteAsync_LogsAuditEntry()
     {
         var tenantId = Guid.NewGuid();
