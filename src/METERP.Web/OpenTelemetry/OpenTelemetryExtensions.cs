@@ -61,20 +61,11 @@ public static class OpenTelemetryExtensions
         if (options.UseHttpProtobuf)
         {
             otlp.Protocol = OtlpExportProtocol.HttpProtobuf;
-            otlp.Endpoint = BuildHttpProtobufEndpoint(options.OtlpEndpoint!, signal);
+            otlp.Endpoint = OtlpEndpointHelper.BuildHttpProtobufEndpoint(options.OtlpEndpoint!, signal);
         }
         else
         {
             otlp.Endpoint = new Uri(options.OtlpEndpoint!);
         }
-    }
-
-    private static Uri BuildHttpProtobufEndpoint(string endpoint, string signal)
-    {
-        var trimmed = endpoint.TrimEnd('/');
-        if (trimmed.EndsWith($"/v1/{signal}", StringComparison.OrdinalIgnoreCase))
-            return new Uri(trimmed);
-
-        return new Uri($"{trimmed}/v1/{signal}");
     }
 }

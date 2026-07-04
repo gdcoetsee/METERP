@@ -155,6 +155,32 @@ public class ScheduledReportServiceTests
     }
 
     [Fact]
+    public async Task SendExecutiveSummaryEmailAsync_ReturnsFalse_WhenRecipientMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, tenantProvider) = CreateDb(tenantId);
+        using (db)
+        {
+            var email = new Mock<IEmailSender>();
+            email.Setup(e => e.IsConfigured).Returns(true);
+
+            var service = new ScheduledReportService(
+                Mock.Of<IExecutiveDashboardService>(),
+                Mock.Of<IAccountabilityReportService>(),
+                email.Object,
+                Mock.Of<ICurrentUserService>(),
+                Microsoft.Extensions.Options.Options.Create(new EmailOptions { SmtpHost = "mailpit" }),
+                tenantProvider.Object,
+                db);
+
+            var sent = await service.SendExecutiveSummaryEmailAsync("   ");
+
+            Assert.False(sent);
+            email.Verify(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Fact]
     public async Task SendScheduledExecutiveReportsAsync_ReturnsZero_WhenSmtpNotConfigured()
     {
         var tenantId = Guid.NewGuid();
