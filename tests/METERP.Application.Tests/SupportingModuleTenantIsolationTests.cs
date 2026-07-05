@@ -551,6 +551,60 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task StockRequisitionService_GetAllAsync_ReturnsOnlyCurrentTenantRequisitions()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "Req list customer A" };
+            seedA.Set<Customer>().Add(customer);
+            var job = new Job { TenantId = tenantA, CustomerId = customer.Id, Title = "Req list job A", QuotedTotal = 500m };
+            seedA.Set<Job>().Add(job);
+            await seedA.SaveChangesAsync();
+            seedA.Set<StockRequisition>().Add(new StockRequisition
+            {
+                TenantId = tenantA,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                RequisitionNumber = "REQ-A-ALL",
+                Status = RequisitionStatus.Approved
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Req list customer B" };
+            seedB.Set<Customer>().Add(customer);
+            var job = new Job { TenantId = tenantB, CustomerId = customer.Id, Title = "Req list job B", QuotedTotal = 600m };
+            seedB.Set<Job>().Add(job);
+            await seedB.SaveChangesAsync();
+            seedB.Set<StockRequisition>().Add(new StockRequisition
+            {
+                TenantId = tenantB,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                RequisitionNumber = "REQ-B-ALL",
+                Status = RequisitionStatus.Rejected
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var requisitionsA = await new StockRequisitionService(dbA, new InventoryService(dbA)).GetAllAsync(pageSize: 50);
+        Assert.Single(requisitionsA);
+        Assert.Equal("REQ-A-ALL", requisitionsA[0].RequisitionNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var requisitionsB = await new StockRequisitionService(dbB, new InventoryService(dbB)).GetAllAsync(pageSize: 50);
+        Assert.Single(requisitionsB);
+        Assert.Equal("REQ-B-ALL", requisitionsB[0].RequisitionNumber);
+    }
+
+    [Fact]
     public async Task StockRequisitionService_GetPendingApprovalsAsync_ReturnsOnlyCurrentTenantRequisitions()
     {
         var dbName = Guid.NewGuid().ToString();

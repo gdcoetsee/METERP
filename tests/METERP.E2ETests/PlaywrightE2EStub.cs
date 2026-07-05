@@ -832,6 +832,48 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Employees_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/employees");
+        await acmePage.WaitForTestIdAsync("employees-ready", 30000);
+        await acmePage.WaitForTestIdAsync("employees-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Thabo Mokoena", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/employees");
+        await betaPage.WaitForTestIdAsync("employees-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Thabo Mokoena", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Assets_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/assets");
+        await acmePage.WaitForTestIdAsync("assets-ready", 30000);
+        await acmePage.WaitForTestIdAsync("assets-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Main 11kV/400V Transformer", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/assets");
+        await betaPage.WaitForTestIdAsync("assets-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Main 11kV/400V Transformer", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -2415,6 +2457,28 @@ public class E2EFlowTests : IAsyncLifetime
         await page.ClickByTestIdWhenEnabledAsync("purchase-orders-export-csv");
 
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "Purchase orders CSV downloaded" });
+        await toast.First.WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task SalesOrders_Exports_Csv_When_List_Has_Items()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/sales-orders");
+        await page.WaitForTestIdAsync("sales-orders-ready", 30000);
+
+        if (await page.Locator("[data-testid='sales-orders-table']").CountAsync() == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("sales-orders-export-csv");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Sales orders CSV downloaded" });
         await toast.First.WaitForAsync(new() { Timeout = 15000 });
 
         await page.CloseAsync();

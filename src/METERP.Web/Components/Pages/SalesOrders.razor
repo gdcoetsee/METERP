@@ -17,8 +17,9 @@
 
 <PageTitle>Sales Orders</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Sales Orders</h1>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="mb-0">Sales Orders</h1>
+    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="sales-orders-export" OnExportCsv="ExportCsvAsync" Disabled="@_loading" />
 </div>
 
 <div class="mb-3" style="max-width: 420px;">
@@ -257,5 +258,20 @@ else
             SalesOrderStatus.Cancelled => "<span class=\"badge bg-dark\">Cancelled</span>",
             _ => status.ToString()
         };
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (sos == null || !sos.Any()) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("SoNumber,Customer,Quote,Status,SoDate,Total");
+        foreach (var so in sos)
+        {
+            sb.AppendLine($"{so.SoNumber},{so.Customer?.Name},{so.Quote?.QuoteNumber},{so.Status},{so.SoDate:yyyy-MM-dd},{so.Total}");
+        }
+
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "sales-orders.csv", sb.ToString(), "text/csv;charset=utf-8");
+        ToastService.ShowSuccess("Sales orders CSV downloaded.");
     }
 }
