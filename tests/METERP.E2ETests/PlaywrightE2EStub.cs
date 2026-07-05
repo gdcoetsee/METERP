@@ -2099,6 +2099,30 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Scheduling_Exports_Csv_When_List_Has_Items()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForSelectorAsync(
+            "[data-testid='scheduling-ready'], [data-testid='scheduling-empty']",
+            new() { Timeout = 30000 });
+
+        if (await page.Locator("[data-testid='scheduling-table']").CountAsync() == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("scheduling-export-csv");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Schedule CSV downloaded" });
+        await toast.First.WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Inventory_Exports_Csv_When_List_Has_Items()
     {
         await E2EHelpers.EnsureAppReadyAsync();
