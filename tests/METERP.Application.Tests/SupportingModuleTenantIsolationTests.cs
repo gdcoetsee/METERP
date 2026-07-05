@@ -323,6 +323,72 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task CustomerService_GetByIdAsync_DoesNotReturnOtherTenantCustomer()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid customerBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Other tenant customer" };
+            seedB.Set<Customer>().Add(customer);
+            await seedB.SaveChangesAsync();
+            customerBId = customer.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        Assert.Null(await new CustomerService(dbA).GetByIdAsync(customerBId));
+    }
+
+    [Fact]
+    public async Task SupplierService_GetByIdAsync_DoesNotReturnOtherTenantSupplier()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid supplierBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var supplier = new Supplier { TenantId = tenantB, Name = "Other tenant supplier", IsActive = true };
+            seedB.Set<Supplier>().Add(supplier);
+            await seedB.SaveChangesAsync();
+            supplierBId = supplier.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        Assert.Null(await new SupplierService(dbA).GetByIdAsync(supplierBId));
+    }
+
+    [Fact]
+    public async Task OpportunityService_GetByIdAsync_DoesNotReturnOtherTenantOpportunity()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid opportunityBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var opportunity = new Opportunity
+            {
+                TenantId = tenantB,
+                Title = "Other tenant opp",
+                CustomerName = "B",
+                Value = 500m
+            };
+            seedB.Set<Opportunity>().Add(opportunity);
+            await seedB.SaveChangesAsync();
+            opportunityBId = opportunity.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        Assert.Null(await new OpportunityService(dbA).GetByIdAsync(opportunityBId));
+    }
+
+    [Fact]
     public async Task EmployeeService_GetByIdAsync_DoesNotReturnOtherTenantEmployee()
     {
         var dbName = Guid.NewGuid().ToString();

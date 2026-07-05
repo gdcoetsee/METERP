@@ -111,6 +111,30 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task RecordCountAsync_ReturnsFalse_WhenSessionPosted()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "P-1",
+                Name = "Posted item",
+                QuantityOnHand = 6,
+                ReorderLevel = 1,
+                UnitCost = 4m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+            await service.RecordCountAsync(sessionId, itemId, 6m);
+            await service.PostSessionAsync(sessionId, TestUserId);
+
+            Assert.False(await service.RecordCountAsync(sessionId, itemId, 5m));
+        }
+    }
+
+    [Fact]
     public async Task PostSessionAsync_ReturnsFalse_WhenAlreadyPosted()
     {
         var tenantId = Guid.NewGuid();

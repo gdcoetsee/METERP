@@ -547,6 +547,40 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Finance_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/finance");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Suppliers_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/suppliers");
+        await acmePage.WaitForTestIdAsync("suppliers-ready", 30000);
+        await acmePage.WaitForTestIdAsync("suppliers-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("ElectroSupply SA", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/suppliers");
+        await betaPage.WaitForTestIdAsync("suppliers-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("ElectroSupply SA", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Inventory_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();
