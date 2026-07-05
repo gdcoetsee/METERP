@@ -487,6 +487,116 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task LeaveService_GetPendingApprovalsAsync_ReturnsOnlyCurrentTenantRequests()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var employeeA = new Employee
+            {
+                TenantId = tenantA,
+                EmployeeNumber = "LA-1",
+                FirstName = "Leave",
+                LastName = "A",
+                IsActive = true
+            };
+            seedA.Set<Employee>().Add(employeeA);
+            seedA.Set<LeaveRequest>().Add(new LeaveRequest
+            {
+                TenantId = tenantA,
+                EmployeeId = employeeA.Id,
+                StartDate = DateTime.UtcNow.AddDays(7),
+                EndDate = DateTime.UtcNow.AddDays(9),
+                DaysRequested = 2m,
+                Status = LeaveRequestStatus.PendingManager
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var employeeB = new Employee
+            {
+                TenantId = tenantB,
+                EmployeeNumber = "LB-1",
+                FirstName = "Leave",
+                LastName = "B",
+                IsActive = true
+            };
+            seedB.Set<Employee>().Add(employeeB);
+            seedB.Set<LeaveRequest>().Add(new LeaveRequest
+            {
+                TenantId = tenantB,
+                EmployeeId = employeeB.Id,
+                StartDate = DateTime.UtcNow.AddDays(14),
+                EndDate = DateTime.UtcNow.AddDays(16),
+                DaysRequested = 2m,
+                Status = LeaveRequestStatus.PendingManager
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var pendingA = await new LeaveService(dbA).GetPendingApprovalsAsync();
+        Assert.Single(pendingA);
+        Assert.Equal(tenantA, pendingA[0].TenantId);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var pendingB = await new LeaveService(dbB).GetPendingApprovalsAsync();
+        Assert.Single(pendingB);
+        Assert.Equal(tenantB, pendingB[0].TenantId);
+    }
+
+    [Fact]
+    public async Task PurchaseOrderService_GetAllAsync_ReturnsOnlyCurrentTenantOrders()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var supplier = new Supplier { TenantId = tenantA, Name = "PO Supplier A", IsActive = true };
+            seedA.Set<Supplier>().Add(supplier);
+            seedA.Set<PurchaseOrder>().Add(new PurchaseOrder
+            {
+                TenantId = tenantA,
+                SupplierId = supplier.Id,
+                PoNumber = "PO-A-001",
+                Status = PurchaseOrderStatus.Draft
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var supplier = new Supplier { TenantId = tenantB, Name = "PO Supplier B", IsActive = true };
+            seedB.Set<Supplier>().Add(supplier);
+            seedB.Set<PurchaseOrder>().Add(new PurchaseOrder
+            {
+                TenantId = tenantB,
+                SupplierId = supplier.Id,
+                PoNumber = "PO-B-001",
+                Status = PurchaseOrderStatus.Sent
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var ordersA = await new PurchaseOrderService(dbA, new InventoryService(dbA)).GetAllAsync();
+        Assert.Single(ordersA);
+        Assert.Equal("PO-A-001", ordersA[0].PoNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var ordersB = await new PurchaseOrderService(dbB, new InventoryService(dbB)).GetAllAsync();
+        Assert.Single(ordersB);
+        Assert.Equal("PO-B-001", ordersB[0].PoNumber);
+    }
+
+    [Fact]
     public async Task PpeIssueService_GetHistoryAsync_ReturnsOnlyCurrentTenantIssues()
     {
         var dbName = Guid.NewGuid().ToString();

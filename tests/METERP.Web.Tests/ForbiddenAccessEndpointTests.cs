@@ -52,6 +52,54 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
     }
 
     [Fact]
+    public async Task Jobs_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-jobs@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/jobs");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Scheduling_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-scheduling@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/scheduling");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Requisitions_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-requisitions@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/requisitions");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Invoices_ShowsAccessDenied_WhenFieldUserOnly()
     {
         const string email = "forbidden-field-invoices@acme.demo";

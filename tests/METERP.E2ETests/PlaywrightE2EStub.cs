@@ -627,6 +627,68 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Jobs_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/jobs");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("jobs-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Scheduling_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/scheduling");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scheduling-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Requisitions_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/requisitions");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("requisitions-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Invoices_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/invoices");
+        await acmePage.WaitForTestIdAsync("invoices-ready", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Johannesburg General Hospital", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/invoices");
+        await betaPage.WaitForTestIdAsync("invoices-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Suppliers_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();
