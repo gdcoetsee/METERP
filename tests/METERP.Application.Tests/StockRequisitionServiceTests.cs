@@ -271,6 +271,32 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task ApproveExecutiveAsync_ReturnsFalse_WhenWrongStage()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            Assert.False(await service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+            Assert.True(await service.ApproveManagerAsync(id, Guid.NewGuid()));
+            Assert.True(await service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+            Assert.False(await service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+
+            var saved = await db.Set<StockRequisition>().FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.Approved, saved.Status);
+        }
+    }
+
+    [Fact]
     public async Task ApproveManagerAsync_ReturnsFalse_WhenWrongStage()
     {
         var (service, db, tenantId, _) = Create();

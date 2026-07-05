@@ -1756,6 +1756,111 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Approvals_Stock_Requisition_Executive_Approve_After_Manager()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var techPage = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await techPage.GotoRelativeAsync("/field/stock");
+        await techPage.WaitForTestIdAsync("field-stock-ready", 30000);
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-request-btn");
+        await techPage.WaitForTestIdAsync("field-stock-modal", 15000);
+
+        var jobSelect = techPage.Locator("[data-testid='field-stock-job']");
+        if (await jobSelect.Locator("option").CountAsync() <= 1)
+        {
+            await techPage.CloseAsync();
+            return;
+        }
+
+        var firstJobValue = await jobSelect.Locator("option").Nth(1).GetAttributeAsync("value");
+        await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
+        await techPage.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
+        await techPage.FillByTestIdAsync("field-stock-qty", "1");
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
+        await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
+            .First.WaitForAsync(new() { Timeout = 20000 });
+        await techPage.CloseAsync();
+
+        var adminPage = await Browser.LoginAsync();
+        await adminPage.GotoRelativeAsync("/approvals");
+        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.ClickByTestIdAsync("approvals-tab-requisitions");
+        await adminPage.WaitForTestIdAsync("approvals-requisitions-list", 20000);
+
+        if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
+        {
+            await adminPage.CloseAsync();
+            return;
+        }
+
+        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
+        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.Locator(".toast-body").Filter(new() { HasText = "executive approval" })
+            .First.WaitForAsync(new() { Timeout = 20000 });
+
+        if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
+        {
+            await adminPage.CloseAsync();
+            return;
+        }
+
+        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
+        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+
+        var finalToast = adminPage.Locator(".toast-body").Filter(new() { HasText = "stock reserved" });
+        await finalToast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await adminPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Approvals_Leave_Completes_Full_Approval_Chain()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var techPage = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await techPage.GotoRelativeAsync("/field/leave");
+        await techPage.WaitForTestIdAsync("field-leave-ready", 30000);
+
+        if (await techPage.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0)
+        {
+            await techPage.CloseAsync();
+            return;
+        }
+
+        await techPage.ClickByTestIdWhenEnabledAsync("field-leave-request-btn");
+        await techPage.WaitForTestIdAsync("field-leave-modal", 15000);
+        await techPage.FillByTestIdAsync("field-leave-reason", "E2E full leave approval chain");
+        await techPage.ClickByTestIdWhenEnabledAsync("field-leave-submit");
+        await techPage.Locator(".toast-body").Filter(new() { HasText = "Leave submitted" })
+            .First.WaitForAsync(new() { Timeout = 20000 });
+        await techPage.CloseAsync();
+
+        var adminPage = await Browser.LoginAsync();
+        await adminPage.GotoRelativeAsync("/approvals");
+        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.ClickByTestIdAsync("approvals-tab-leave");
+        await adminPage.WaitForTestIdAsync("approvals-leave-list", 20000);
+
+        for (var step = 0; step < 3 && await adminPage.Locator("[data-testid='approvals-leave-row']").CountAsync() > 0; step++)
+        {
+            await adminPage.ClickByTestIdWhenEnabledAsync("approvals-leave-approve");
+            await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+            await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+            await adminPage.Locator(".toast-body").Filter(new() { HasText = "Leave request advanced" })
+                .First.WaitForAsync(new() { Timeout = 20000 });
+            await adminPage.WaitForTestIdAsync("approvals-ready", 10000);
+        }
+
+        Assert.Equal(0, await adminPage.Locator("[data-testid='approvals-leave-row']").CountAsync());
+
+        await adminPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Requisitions_Page_Loads_List_Or_Empty_State()
     {
         await E2EHelpers.EnsureAppReadyAsync();

@@ -273,6 +273,78 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task ApproveExecutiveAsync_ReturnsFalse_WhenWrongStage()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E10",
+                FirstName = "Exec",
+                LastName = "Guard",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 15
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.AddDays(50),
+                EndDate = DateTime.UtcNow.AddDays(51),
+                IsPaid = true
+            });
+
+            Assert.False(await service.ApproveExecutiveAsync(requestId, Guid.NewGuid()));
+            Assert.True(await service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+            Assert.True(await service.ApproveExecutiveAsync(requestId, Guid.NewGuid()));
+            Assert.False(await service.ApproveExecutiveAsync(requestId, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
+    public async Task ApproveHrAsync_ReturnsFalse_WhenWrongStage()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E11",
+                FirstName = "Hr",
+                LastName = "Guard",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 15
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.AddDays(60),
+                EndDate = DateTime.UtcNow.AddDays(61),
+                IsPaid = true
+            });
+
+            await service.ApproveManagerAsync(requestId, Guid.NewGuid());
+            await service.ApproveExecutiveAsync(requestId, Guid.NewGuid());
+
+            Assert.True(await service.ApproveHrAsync(requestId, Guid.NewGuid()));
+            Assert.False(await service.ApproveHrAsync(requestId, Guid.NewGuid()));
+
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(LeaveRequestStatus.Approved, saved.Status);
+        }
+    }
+
+    [Fact]
     public async Task ApproveManagerAsync_ReturnsFalse_WhenWrongStage()
     {
         var (service, db, tenantId) = Create();

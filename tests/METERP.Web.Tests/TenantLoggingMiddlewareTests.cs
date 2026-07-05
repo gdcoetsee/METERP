@@ -51,6 +51,31 @@ public class TenantLoggingMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_RestoresLogContext_AfterRequest()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var capturedTenantIds = new ConcurrentBag<string>();
+        using var scope = await SerilogTestLoggerScope.CreateAsync(capturedTenantIds);
+
+        var middleware = new TenantLoggingMiddleware(_ =>
+        {
+            Log.Information("inside-request");
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(new DefaultHttpContext(), tenantProvider.Object);
+
+        var countAfterRequest = capturedTenantIds.Count;
+        Log.Information("after-request");
+
+        Assert.Contains(capturedTenantIds, id => id == tenantId.ToString());
+        Assert.Equal(countAfterRequest, capturedTenantIds.Count);
+    }
+
+    [Fact]
     public async Task InvokeAsync_UsesNone_WhenTenantIdEmpty()
     {
         var tenantProvider = new Mock<ITenantProvider>();
