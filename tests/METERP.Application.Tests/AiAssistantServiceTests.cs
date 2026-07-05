@@ -84,6 +84,22 @@ public class AiAssistantServiceTests
     }
 
     [Fact]
+    public async Task AskCopilotAsync_ReturnsRateLimitMessage_When_Throttled()
+    {
+        var config = CreateConfig();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(Guid.NewGuid());
+
+        var service = CreateService(config, tenantProvider: tenantProvider.Object);
+
+        await service.AskCopilotAsync("What are my top travel cost risks?");
+        var throttled = await service.AskCopilotAsync("Immediate retry");
+
+        Assert.NotNull(throttled);
+        Assert.Contains("Rate limit", throttled, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SuggestQuoteLinesAsync_ReturnsNull_When_Throttled()
     {
         var config = CreateConfig();

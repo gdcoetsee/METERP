@@ -129,6 +129,87 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Create_Real_Job_From_Travel_Prompt()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickByTestIdAsync("ai-create-real-job");
+
+        try
+        {
+            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 45000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/jobs");
+        }
+
+        await page.WaitForJobsReadyAsync(60000);
+        var content = await page.ContentAsync();
+        Assert.Contains("J-", content);
+        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Ai_Copilot_Transformer_Quick_Prompt_Shows_Response()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        var prompt = page.Locator("[data-testid='ai-quick-prompt-transformer']");
+        await Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await prompt.ClickAsync();
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(response));
+        Assert.True(
+            response!.Contains("transformer", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("quote", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("travel", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("11kV", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected copilot response: {response}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Ai_Copilot_Utilization_Quick_Prompt_Shows_Response()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        var prompt = page.Locator("[data-testid='ai-quick-prompt-utilization']");
+        await Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await prompt.ClickAsync();
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(response));
+        Assert.True(
+            response!.Contains("utiliz", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("employee", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("workforce", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("skill", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected copilot response: {response}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Copilot_LowStock_Quick_Prompt_Shows_Response()
     {
         await E2EHelpers.EnsureAppReadyAsync();

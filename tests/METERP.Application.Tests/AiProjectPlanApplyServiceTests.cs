@@ -73,6 +73,29 @@ public class AiProjectPlanApplyServiceTests
     }
 
     [Fact]
+    public async Task CreateProjectPlanFromAiTextAsync_UsesDefaultTaxRate_OnQuote()
+    {
+        var tenantId = Guid.NewGuid();
+        SetupAiEnabledTenant(tenantId);
+        var customerId = Guid.NewGuid();
+        var quoteId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+
+        _quoteService.Setup(s => s.CreateAsync(It.IsAny<Quote>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(quoteId);
+        _quoteService.Setup(s => s.GetByIdAsync(quoteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Quote { Id = quoteId, CustomerId = customerId, TaxRate = 0.15m });
+        _jobService.Setup(s => s.CreateAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(jobId);
+        _jobService.Setup(s => s.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Job { Id = jobId, CustomerId = customerId });
+
+        await CreateService().CreateProjectPlanFromAiTextAsync("Plan with travel to site", customerId);
+
+        _quoteService.Verify(s => s.CreateAsync(It.Is<Quote>(q => q.TaxRate == 0.15m), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateProjectPlanFromAiTextAsync_Throws_WhenTextEmpty()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
