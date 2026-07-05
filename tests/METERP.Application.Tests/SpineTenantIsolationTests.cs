@@ -166,4 +166,75 @@ public class SpineTenantIsolationTests
         var requisitionService = new StockRequisitionService(dbA, new InventoryService(dbA));
         Assert.Null(await requisitionService.GetByIdAsync(requisitionBId));
     }
+
+    [Fact]
+    public async Task PurchaseOrderService_GetByIdAsync_DoesNotReturnOtherTenantPurchaseOrder()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid poBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var supplier = new Supplier { TenantId = tenantB, Name = "Tenant B supplier", IsActive = true };
+            seedB.Set<Supplier>().Add(supplier);
+            await seedB.SaveChangesAsync();
+
+            var po = new PurchaseOrder
+            {
+                TenantId = tenantB,
+                SupplierId = supplier.Id,
+                PoNumber = "PO-B-001",
+                Status = PurchaseOrderStatus.Draft
+            };
+            seedB.Set<PurchaseOrder>().Add(po);
+            await seedB.SaveChangesAsync();
+            poBId = po.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var poService = new PurchaseOrderService(dbA, new InventoryService(dbA));
+        Assert.Null(await poService.GetByIdAsync(poBId));
+    }
+
+    [Fact]
+    public async Task SalesOrderService_GetByIdAsync_DoesNotReturnOtherTenantSalesOrder()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid soBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Tenant B customer" };
+            seedB.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-B-SO",
+                Status = QuoteStatus.Sent
+            };
+            seedB.Set<Quote>().Add(quote);
+            await seedB.SaveChangesAsync();
+
+            var so = new SalesOrder
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                QuoteId = quote.Id,
+                SoNumber = "SO-B-001",
+                Status = SalesOrderStatus.Confirmed
+            };
+            seedB.Set<SalesOrder>().Add(so);
+            await seedB.SaveChangesAsync();
+            soBId = so.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var soService = new SalesOrderService(dbA, new JobService(dbA));
+        Assert.Null(await soService.GetByIdAsync(soBId));
+    }
 }

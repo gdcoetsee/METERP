@@ -547,6 +547,40 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Invoices_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/invoices");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_PurchaseOrders_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/purchase-orders");
+        await acmePage.WaitForTestIdAsync("purchase-orders-ready", 30000);
+        await acmePage.WaitForTestIdAsync("purchase-orders-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("ElectroSupply SA", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/purchase-orders");
+        await betaPage.WaitForTestIdAsync("purchase-orders-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("ElectroSupply SA", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Field_Tech_Shows_Access_Denied_On_Quotes_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();
