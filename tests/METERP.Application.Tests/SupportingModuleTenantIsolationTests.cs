@@ -38,6 +38,24 @@ public class SupportingModuleTenantIsolationTests
     private static FieldReportService CreateFieldReportService(AppDbContext db)
         => new(db, new JobService(db));
 
+    private static ExecutiveDashboardService CreateExecutiveDashboard(AppDbContext db)
+    {
+        var jobService = new JobService(db);
+        var inventoryService = new InventoryService(db);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.GetUnreadCountAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
+
+        return new ExecutiveDashboardService(
+            new QuoteService(db),
+            new StockRequisitionService(db, inventoryService),
+            new LeaveService(db),
+            new FieldReportService(db, jobService),
+            notifications.Object,
+            jobService,
+            new InvoiceService(db),
+            inventoryService);
+    }
+
     [Fact]
     public async Task CustomerService_GetAllAsync_ReturnsOnlyCurrentTenantCustomers()
     {
@@ -1525,5 +1543,223 @@ public class SupportingModuleTenantIsolationTests
         await using var dbA = CreateContext(dbName, tenantA);
         var approved = await CreateFieldReportService(dbA).ApproveAsync(reportBId, approver);
         Assert.False(approved);
+    }
+
+    [Fact]
+    public async Task ExecutiveDashboardService_GetSummaryAsync_ReturnsOnlyCurrentTenantQueues()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = new Customer { TenantId = tenantA, Name = "Acme Exec" };
+            seedA.Set<Customer>().Add(customerA);
+            seedA.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                QuoteNumber = "Q-A-EXEC",
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = DateTime.UtcNow.AddHours(-2)
+            });
+            seedA.Set<Job>().Add(new Job
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                JobNumber = "J-A-READY",
+                Title = "Acme ready job",
+                QuotedTotal = 12_000m,
+                SignOffStatus = JobSignOffStatus.SignedOff,
+                Status = JobStatus.Completed
+            });
+            seedA.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                InvoiceNumber = "INV-A-AGED",
+                Status = InvoiceStatus.Sent,
+                Total = 8_000m,
+                AmountPaid = 0m,
+                DueDate = DateTime.UtcNow.AddDays(-10),
+                InvoiceDate = DateTime.UtcNow.AddDays(-20)
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Exec" };
+            seedB.Set<Customer>().Add(customerB);
+            seedB.Set<Quote>().AddRange(
+                new Quote
+                {
+                    TenantId = tenantB,
+                    CustomerId = customerB.Id,
+                    QuoteNumber = "Q-B-EXEC-1",
+                    ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                    SubmittedForApprovalAt = DateTime.UtcNow.AddHours(-3)
+                },
+                new Quote
+                {
+                    TenantId = tenantB,
+                    CustomerId = customerB.Id,
+                    QuoteNumber = "Q-B-EXEC-2",
+                    ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                    SubmittedForApprovalAt = DateTime.UtcNow.AddHours(-4)
+                });
+            seedB.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                InvoiceNumber = "INV-B-AGED",
+                Status = InvoiceStatus.Sent,
+                Total = 50_000m,
+                AmountPaid = 0m,
+                DueDate = DateTime.UtcNow.AddDays(-5),
+                InvoiceDate = DateTime.UtcNow.AddDays(-15)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var summaryA = await CreateExecutiveDashboard(dbA).GetSummaryAsync();
+        Assert.Equal(1, summaryA.PendingQuotes);
+        Assert.Equal(1, summaryA.ReadyToInvoiceJobs);
+        Assert.Equal(12_000m, summaryA.ReadyToInvoiceValue);
+        Assert.Equal(8_000m, summaryA.AgedDebtorsTotal);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var summaryB = await CreateExecutiveDashboard(dbB).GetSummaryAsync();
+        Assert.Equal(2, summaryB.PendingQuotes);
+        Assert.Equal(0, summaryB.ReadyToInvoiceJobs);
+        Assert.Equal(50_000m, summaryB.AgedDebtorsTotal);
+    }
+
+    [Fact]
+    public async Task AuditService_GetRecentAsync_ReturnsOnlyCurrentTenantEntries()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<AuditLogEntry>().Add(new AuditLogEntry
+            {
+                TenantId = tenantA,
+                UserEmail = "admin@acme.demo",
+                Action = "CREATE",
+                EntityType = "Quote",
+                EntityReference = "Q-ACME-AUDIT",
+                OccurredAtUtc = DateTime.UtcNow.AddMinutes(-5)
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<AuditLogEntry>().Add(new AuditLogEntry
+            {
+                TenantId = tenantB,
+                UserEmail = "admin@beta.demo",
+                Action = "UPDATE",
+                EntityType = "Customer",
+                EntityReference = "C-BETA-AUDIT",
+                OccurredAtUtc = DateTime.UtcNow.AddMinutes(-10)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var rowsA = await new AuditService(dbA).GetRecentAsync();
+        Assert.Single(rowsA);
+        Assert.Contains("Q-ACME-AUDIT", rowsA[0].EntityReference, StringComparison.Ordinal);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var rowsB = await new AuditService(dbB).GetRecentAsync();
+        Assert.Single(rowsB);
+        Assert.Contains("C-BETA-AUDIT", rowsB[0].EntityReference, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FinanceService_GetAccountsWithBalancesAsync_ReturnsOnlyCurrentTenantBalances()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var accountA = new Account
+            {
+                TenantId = tenantA,
+                AccountCode = "A-1000",
+                Name = "Acme Cash",
+                Type = AccountType.Asset,
+                IsActive = true
+            };
+            seedA.Set<Account>().Add(accountA);
+            seedA.Set<JournalEntry>().Add(new JournalEntry
+            {
+                TenantId = tenantA,
+                EntryNumber = "JE-A-1",
+                EntryDate = DateTime.UtcNow.Date,
+                Description = "Acme receipt",
+                Lines =
+                {
+                    new JournalEntryLine
+                    {
+                        TenantId = tenantA,
+                        AccountId = accountA.Id,
+                        Debit = 2_500m
+                    }
+                }
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var accountB = new Account
+            {
+                TenantId = tenantB,
+                AccountCode = "B-1000",
+                Name = "Beta Cash",
+                Type = AccountType.Asset,
+                IsActive = true
+            };
+            seedB.Set<Account>().Add(accountB);
+            seedB.Set<JournalEntry>().Add(new JournalEntry
+            {
+                TenantId = tenantB,
+                EntryNumber = "JE-B-1",
+                EntryDate = DateTime.UtcNow.Date,
+                Description = "Beta receipt",
+                Lines =
+                {
+                    new JournalEntryLine
+                    {
+                        TenantId = tenantB,
+                        AccountId = accountB.Id,
+                        Debit = 99_000m
+                    }
+                }
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var balancesA = await new FinanceService(dbA).GetAccountsWithBalancesAsync();
+        Assert.Single(balancesA);
+        Assert.Equal("A-1000", balancesA[0].Account.AccountCode);
+        Assert.Equal(2_500m, balancesA[0].Balance);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var balancesB = await new FinanceService(dbB).GetAccountsWithBalancesAsync();
+        Assert.Single(balancesB);
+        Assert.Equal("B-1000", balancesB[0].Account.AccountCode);
+        Assert.Equal(99_000m, balancesB[0].Balance);
     }
 }

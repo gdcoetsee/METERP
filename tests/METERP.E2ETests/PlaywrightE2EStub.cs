@@ -2324,6 +2324,52 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Finance_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/finance");
+        await acmePage.WaitForTestIdAsync("finance-ready", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("4000", acmeContent);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/finance");
+        await betaPage.WaitForTestIdAsync("finance-empty", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("4000", betaContent);
+        Assert.Equal(0, await betaPage.Locator("[data-testid='finance-accounts-table']").CountAsync());
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Home_Executive_Dashboard()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/");
+        await acmePage.WaitForTestIdAsync("home-ready", 30000);
+        await acmePage.WaitForTestIdAsync("home-executive-dashboard", 30000);
+        var acmeReady = acmePage.Locator("[data-testid='home-executive-dashboard'] .text-success").First;
+        await acmeReady.WaitForAsync(new() { Timeout = 10000 });
+        var acmeReadyCount = (await acmeReady.TextContentAsync())?.Trim() ?? "0";
+        Assert.NotEqual("0", acmeReadyCount);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/");
+        await betaPage.WaitForTestIdAsync("home-ready", 30000);
+        await betaPage.WaitForTestIdAsync("home-executive-dashboard", 30000);
+        var betaReady = betaPage.Locator("[data-testid='home-executive-dashboard'] .text-success").First;
+        await betaReady.WaitForAsync(new() { Timeout = 10000 });
+        Assert.Equal("0", (await betaReady.TextContentAsync())?.Trim());
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Finance_Page_Loads_Chart_Of_Accounts_And_Export()
     {
         await E2EHelpers.EnsureAppReadyAsync();
