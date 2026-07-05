@@ -37,7 +37,31 @@ public class AiJobApplyServiceTests
         _jobService.Verify(s => s.AddCostAsync(It.Is<JobCost>(c =>
             c.JobId == jobId &&
             c.CostType == "Travel" &&
+            c.Amount == 650m &&
             c.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateJobFromAiTextAsync_PersistsAiNotes_OnCreatedJob()
+    {
+        var tenantId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+        const string aiText = "Replace 11kV breaker with travel to remote site";
+
+        _tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        _tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai,usage-tracking" });
+        _jobService.Setup(s => s.CreateAsync(It.Is<Job>(j =>
+            j.Title == "AI Generated Job" &&
+            (j.Notes ?? "").Contains(aiText)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(jobId);
+        _jobService.Setup(s => s.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Job { Id = jobId, JobNumber = "J-2026-NOTES", Notes = "AI Generated: " + aiText });
+
+        var result = await CreateService().CreateJobFromAiTextAsync(aiText, Guid.NewGuid());
+
+        Assert.Contains(aiText, result.Notes ?? string.Empty);
+        _jobService.Verify(s => s.AddCostAsync(It.IsAny<JobCost>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

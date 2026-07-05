@@ -129,6 +129,33 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_LowStock_Quick_Prompt_Shows_Response()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        var lowStockPrompt = page.Locator("[data-testid='ai-quick-prompt-lowstock']");
+        await Assertions.Expect(lowStockPrompt).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await lowStockPrompt.ClickAsync();
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(response));
+        Assert.True(
+            response!.Contains("stock", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("inventory", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("material", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("job", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("travel", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected copilot response: {response}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Copilot_Variance_Quick_Prompt_Shows_Response()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -2545,6 +2572,33 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.ClickByTestIdAsync("notifications-mark-all");
         await page.WaitForTestIdAsync("notifications-list", 5000);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Notifications_MarkAllRead_Removes_New_Badges()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/notifications");
+        await page.WaitForTestIdAsync("notifications-ready", 30000);
+        await page.WaitForTestIdAsync("notifications-list", 30000);
+
+        var unreadBefore = await page.Locator("[data-testid='notification-item'] .badge.bg-danger").CountAsync();
+        if (unreadBefore == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.ClickByTestIdAsync("notifications-mark-all");
+        await page.Locator(".toast-body")
+            .Filter(new() { HasText = "All notifications marked read" })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        Assert.Equal(0, await page.Locator("[data-testid='notification-item'] .badge.bg-danger").CountAsync());
 
         await page.CloseAsync();
     }

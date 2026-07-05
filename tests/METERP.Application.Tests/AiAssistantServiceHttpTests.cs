@@ -242,6 +242,61 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task AnalyzeJobVarianceAsync_Throttle_IsolatedPerTenant()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        var tenantServiceA = new Mock<ITenantService>();
+        tenantServiceA.Setup(s => s.GetByIdAsync(tenantA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantA, EnabledFeatures = "ai,usage-tracking" });
+        tenantServiceA.Setup(s => s.IncrementAiCallCountAsync(tenantA, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantServiceB = new Mock<ITenantService>();
+        tenantServiceB.Setup(s => s.GetByIdAsync(tenantB, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantB, EnabledFeatures = "ai,usage-tracking" });
+        tenantServiceB.Setup(s => s.IncrementAiCallCountAsync(tenantB, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantProviderA = new Mock<ITenantProvider>();
+        tenantProviderA.Setup(p => p.GetCurrentTenantId()).Returns(tenantA);
+        var tenantProviderB = new Mock<ITenantProvider>();
+        tenantProviderB.Setup(p => p.GetCurrentTenantId()).Returns(tenantB);
+
+        var analysisContent = JsonSerializer.Serialize(new
+        {
+            summary = "Travel costs drove variance on remote jobs.",
+            varianceDrivers = "Labor overtime and site travel.",
+            recommendations = new[] { "Buffer travel on mining bids" },
+            suggestedMarginNote = "Quote explicit travel line"
+        });
+
+        using var http = CreateMockLlmClient(analysisContent);
+        var serviceA = CreateEnabledService(tenantServiceA.Object, tenantProviderA.Object, http);
+        var serviceB = CreateEnabledService(tenantServiceB.Object, tenantProviderB.Object, http);
+
+        var job = new Job
+        {
+            JobNumber = "J-VAR",
+            Title = "Variance probe",
+            QuotedTotal = 8000m,
+            ActualCost = 9500m
+        };
+
+        var firstA = await serviceA.AnalyzeJobVarianceAsync(job);
+        Assert.NotNull(firstA);
+        Assert.Contains("travel", firstA.Summary, StringComparison.OrdinalIgnoreCase);
+
+        var throttledA = await serviceA.AnalyzeJobVarianceAsync(job);
+        Assert.Null(throttledA);
+
+        var firstB = await serviceB.AnalyzeJobVarianceAsync(job);
+        Assert.NotNull(firstB);
+        tenantServiceB.Verify(s => s.IncrementAiCallCountAsync(tenantB, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task AskCopilotAsync_Throttle_IsolatedPerTenant()
     {
         var tenantA = Guid.NewGuid();
