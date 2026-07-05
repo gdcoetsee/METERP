@@ -1510,6 +1510,31 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Account_Billing_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
+        await acmePage.WaitForTestIdAsync("account-billing-tier", 10000);
+        var acmeTier = (await acmePage.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Professional", acmeTier, StringComparison.OrdinalIgnoreCase);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Acme", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
+        await betaPage.WaitForTestIdAsync("account-billing-tier", 10000);
+        var betaTier = (await betaPage.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
+        Assert.Contains("Starter", betaTier, StringComparison.OrdinalIgnoreCase);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.Contains("Beta", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Professional", betaTier, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task AccountBilling_Page_Shows_Plan_And_Manage_Billing()
     {
         await E2EHelpers.EnsureAppReadyAsync();

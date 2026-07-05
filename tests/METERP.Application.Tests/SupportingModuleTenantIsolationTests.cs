@@ -53,6 +53,12 @@ public class SupportingModuleTenantIsolationTests
         return new DocumentSequenceService(db, tenantProvider.Object);
     }
 
+    private static SchedulingService CreateSchedulingService(AppDbContext db)
+    {
+        var jobService = new JobService(db);
+        return new SchedulingService(jobService, new AssetService(db), new EmployeeService(db), db);
+    }
+
     private static ExecutiveDashboardService CreateExecutiveDashboard(AppDbContext db)
     {
         var jobService = new JobService(db);
@@ -1947,5 +1953,216 @@ public class SupportingModuleTenantIsolationTests
         Assert.Equal($"Q-{year}-00001", numberA1);
         Assert.Equal($"Q-{year}-00002", numberA2);
         Assert.Equal($"Q-{year}-00001", numberB1);
+    }
+
+    [Fact]
+    public async Task SchedulingService_GetCalendarJobsAsync_ReturnsOnlyCurrentTenantJobs()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var weekStart = new DateTime(2026, 7, 7);
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = new Customer { TenantId = tenantA, Name = "Acme Schedule" };
+            seedA.Set<Customer>().Add(customerA);
+            seedA.Set<Job>().Add(new Job
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                JobNumber = "J-A-CAL",
+                Title = "Acme calendar job",
+                ScheduledStart = weekStart.AddDays(2),
+                Status = JobStatus.Scheduled,
+                QuotedTotal = 1000m
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Schedule" };
+            seedB.Set<Customer>().Add(customerB);
+            seedB.Set<Job>().Add(new Job
+            {
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                JobNumber = "J-B-CAL",
+                Title = "Beta calendar job",
+                ScheduledStart = weekStart.AddDays(2),
+                Status = JobStatus.Scheduled,
+                QuotedTotal = 2000m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var calendarA = await CreateSchedulingService(dbA).GetCalendarJobsAsync(weekStart);
+        Assert.Single(calendarA);
+        Assert.Equal("J-A-CAL", calendarA[0].JobNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var calendarB = await CreateSchedulingService(dbB).GetCalendarJobsAsync(weekStart);
+        Assert.Single(calendarB);
+        Assert.Equal("J-B-CAL", calendarB[0].JobNumber);
+    }
+
+    [Fact]
+    public async Task SchedulingService_GetBoardAsync_ReturnsOnlyCurrentTenantResources()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = new Customer { TenantId = tenantA, Name = "Acme Board" };
+            seedA.Set<Customer>().Add(customerA);
+            seedA.Set<Job>().Add(new Job
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                JobNumber = "J-A-BOARD",
+                Title = "Acme board job",
+                Status = JobStatus.Scheduled,
+                QuotedTotal = 1500m
+            });
+            seedA.Set<Employee>().Add(new Employee
+            {
+                TenantId = tenantA,
+                EmployeeNumber = "A-EMP-1",
+                FirstName = "Acme",
+                LastName = "Tech",
+                IsActive = true
+            });
+            seedA.Set<Asset>().Add(new Asset
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                AssetNumber = "A-VAN-1",
+                Name = "Acme van",
+                Status = AssetStatus.Operational
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Board" };
+            seedB.Set<Customer>().Add(customerB);
+            seedB.Set<Job>().Add(new Job
+            {
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                JobNumber = "J-B-BOARD",
+                Title = "Beta board job",
+                Status = JobStatus.Scheduled,
+                QuotedTotal = 2500m
+            });
+            seedB.Set<Employee>().Add(new Employee
+            {
+                TenantId = tenantB,
+                EmployeeNumber = "B-EMP-1",
+                FirstName = "Beta",
+                LastName = "Tech",
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var boardA = await CreateSchedulingService(dbA).GetBoardAsync();
+        Assert.Single(boardA.Jobs);
+        Assert.Equal("J-A-BOARD", boardA.Jobs[0].JobNumber);
+        Assert.Single(boardA.Employees);
+        Assert.Contains("Acme", boardA.Employees[0].FirstName, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(boardA.Assets);
+        Assert.Equal("A-VAN-1", boardA.Assets[0].AssetNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var boardB = await CreateSchedulingService(dbB).GetBoardAsync();
+        Assert.Single(boardB.Jobs);
+        Assert.Equal("J-B-BOARD", boardB.Jobs[0].JobNumber);
+        Assert.Single(boardB.Employees);
+        Assert.Empty(boardB.Assets);
+    }
+
+    [Fact]
+    public async Task SchedulingService_AssignJobResourcesAsync_ThrowsWhenJobBelongsToOtherTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var jobB = Guid.NewGuid();
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Only" };
+            seedB.Set<Customer>().Add(customerB);
+            seedB.Set<Job>().Add(new Job
+            {
+                Id = jobB,
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                JobNumber = "J-B-ONLY",
+                Title = "Beta only job",
+                Status = JobStatus.Scheduled,
+                QuotedTotal = 900m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSchedulingService(dbA).AssignJobResourcesAsync(jobB, null, null));
+    }
+
+    [Fact]
+    public async Task TenantBillingViewService_GetAsync_ReturnsDistinctBillingViewsPerTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seed = CreateContext(dbName, tenantA))
+        {
+            seed.Tenants.AddRange(
+                new Tenant
+                {
+                    Id = tenantA,
+                    TenantId = tenantA,
+                    Name = "Acme Billing",
+                    Subdomain = "acme-bill",
+                    Tier = SubscriptionTier.Professional,
+                    SubscriptionStatus = "active",
+                    EnabledFeatures = "ai,usage-tracking"
+                },
+                new Tenant
+                {
+                    Id = tenantB,
+                    TenantId = tenantB,
+                    Name = "Beta Billing",
+                    Subdomain = "beta-bill",
+                    Tier = SubscriptionTier.Starter,
+                    SubscriptionStatus = "active",
+                    EnabledFeatures = "usage-tracking"
+                });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = CreateContext(dbName, tenantA);
+        var service = new TenantBillingViewService(db);
+        var viewA = await service.GetAsync(tenantA);
+        var viewB = await service.GetAsync(tenantB);
+
+        Assert.NotNull(viewA);
+        Assert.NotNull(viewB);
+        Assert.Equal(SubscriptionTier.Professional, viewA!.Tenant.Tier);
+        Assert.Equal("Acme Billing", viewA.Tenant.Name);
+        Assert.True(viewA.HasAiFeature);
+        Assert.Equal(SubscriptionTier.Starter, viewB!.Tenant.Tier);
+        Assert.Equal("Beta Billing", viewB.Tenant.Name);
+        Assert.False(viewB.HasAiFeature);
     }
 }
