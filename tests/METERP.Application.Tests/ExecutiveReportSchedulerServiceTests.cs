@@ -122,6 +122,36 @@ public class ExecutiveReportSchedulerServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenSendReturnsZero_StillInvokesScheduledServiceOnce()
+    {
+        var scheduledReports = new Mock<IScheduledReportService>();
+        scheduledReports
+            .Setup(s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var delayCalls = 0;
+        var service = new ExecutiveReportSchedulerService(
+            CreateScopeFactory(scheduledReports.Object),
+            Microsoft.Extensions.Options.Options.Create(new ScheduledReportOptions { Enabled = true, IntervalHours = 1 }),
+            Mock.Of<ILogger<ExecutiveReportSchedulerService>>(),
+            delayAsync: (_, ct) =>
+            {
+                if (Interlocked.Increment(ref delayCalls) == 1)
+                    return Task.CompletedTask;
+
+                return Task.Delay(Timeout.Infinite, ct);
+            });
+
+        await service.StartAsync(CancellationToken.None);
+        await Task.Delay(200);
+        await service.StopAsync(CancellationToken.None);
+
+        scheduledReports.Verify(
+            s => s.SendScheduledExecutiveReportsAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenSendFails_ContinuesAndRetriesOnNextInterval()
     {
         var scheduledReports = new Mock<IScheduledReportService>();

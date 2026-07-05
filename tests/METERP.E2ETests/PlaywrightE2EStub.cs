@@ -1879,6 +1879,30 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Audit_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/audit");
+        await acmePage.WaitForTestIdAsync("audit-ready", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("admin@acme.demo", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/audit");
+        await betaPage.WaitForTestIdAsync("audit-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("admin@acme.demo", betaContent, StringComparison.OrdinalIgnoreCase);
+        if (await betaPage.Locator("[data-testid='audit-row']").CountAsync() > 0)
+        {
+            Assert.Contains("admin@beta.demo", betaContent, StringComparison.OrdinalIgnoreCase);
+        }
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Audit_Page_Loads_Compliance_Trail()
     {
         await E2EHelpers.EnsureAppReadyAsync();

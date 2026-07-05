@@ -38,6 +38,21 @@ public class SupportingModuleTenantIsolationTests
     private static FieldReportService CreateFieldReportService(AppDbContext db)
         => new(db, new JobService(db));
 
+    private static (ComplianceAlertService Service, Mock<ITenantNotificationService> Notifications) CreateComplianceAlertService(AppDbContext db)
+    {
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return (new ComplianceAlertService(db, notifications.Object), notifications);
+    }
+
+    private static DocumentSequenceService CreateDocumentSequenceService(AppDbContext db, Guid tenantId)
+    {
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        return new DocumentSequenceService(db, tenantProvider.Object);
+    }
+
     private static ExecutiveDashboardService CreateExecutiveDashboard(AppDbContext db)
     {
         var jobService = new JobService(db);
@@ -1761,5 +1776,176 @@ public class SupportingModuleTenantIsolationTests
         Assert.Single(balancesB);
         Assert.Equal("B-1000", balancesB[0].Account.AccountCode);
         Assert.Equal(99_000m, balancesB[0].Balance);
+    }
+
+    [Fact]
+    public async Task FinanceService_GetAccountsAsync_ReturnsOnlyCurrentTenantAccounts()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Account>().Add(new Account
+            {
+                TenantId = tenantA,
+                AccountCode = "A-4000",
+                Name = "Acme Revenue",
+                Type = AccountType.Revenue,
+                IsActive = true
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Account>().Add(new Account
+            {
+                TenantId = tenantB,
+                AccountCode = "B-4000",
+                Name = "Beta Revenue",
+                Type = AccountType.Revenue,
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var accountsA = await new FinanceService(dbA).GetAccountsAsync();
+        Assert.Single(accountsA);
+        Assert.Equal("A-4000", accountsA[0].AccountCode);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var accountsB = await new FinanceService(dbB).GetAccountsAsync();
+        Assert.Single(accountsB);
+        Assert.Equal("B-4000", accountsB[0].AccountCode);
+    }
+
+    [Fact]
+    public async Task AuditService_SearchAsync_ReturnsOnlyCurrentTenantEntries()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<AuditLogEntry>().Add(new AuditLogEntry
+            {
+                TenantId = tenantA,
+                UserEmail = "admin@acme.demo",
+                Action = "CREATE",
+                EntityType = "Quote",
+                EntityReference = "Q-ACME-SEARCH",
+                OccurredAtUtc = DateTime.UtcNow.AddMinutes(-1)
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<AuditLogEntry>().Add(new AuditLogEntry
+            {
+                TenantId = tenantB,
+                UserEmail = "admin@beta.demo",
+                Action = "UPDATE",
+                EntityType = "Customer",
+                EntityReference = "C-BETA-SEARCH",
+                OccurredAtUtc = DateTime.UtcNow.AddMinutes(-2)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var searchA = await new AuditService(dbA).SearchAsync(entityType: "Quote");
+        Assert.Single(searchA);
+        Assert.Contains("Q-ACME-SEARCH", searchA[0].EntityReference, StringComparison.Ordinal);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var searchB = await new AuditService(dbB).SearchAsync(userEmail: "beta");
+        Assert.Single(searchB);
+        Assert.Contains("C-BETA-SEARCH", searchB[0].EntityReference, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ComplianceAlertService_RunExpiryScanAsync_ScansOnlyCurrentTenantDocuments()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var expiry = DateTime.UtcNow.Date.AddDays(14);
+
+        Guid docAId = Guid.Empty;
+        Guid docBId = Guid.Empty;
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var docA = new CompanyDocument
+            {
+                TenantId = tenantA,
+                DocumentType = "COID",
+                Title = "Acme COID Certificate",
+                ExpiryDate = expiry,
+                LastExpiryAlertDaysRemaining = null
+            };
+            seedA.Set<CompanyDocument>().Add(docA);
+            await seedA.SaveChangesAsync();
+            docAId = docA.Id;
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var docB = new CompanyDocument
+            {
+                TenantId = tenantB,
+                DocumentType = "COID",
+                Title = "Beta COID Certificate",
+                ExpiryDate = expiry,
+                LastExpiryAlertDaysRemaining = null
+            };
+            seedB.Set<CompanyDocument>().Add(docB);
+            await seedB.SaveChangesAsync();
+            docBId = docB.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var (serviceA, notificationsA) = CreateComplianceAlertService(dbA);
+        var createdA = await serviceA.RunExpiryScanAsync();
+        Assert.Equal(1, createdA);
+        notificationsA.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t => t.RelatedEntityId == docAId && t.Message.Contains("Acme COID")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        notificationsA.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t => t.RelatedEntityId == docBId),
+            It.IsAny<CancellationToken>()), Times.Never);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var (serviceB, notificationsB) = CreateComplianceAlertService(dbB);
+        var createdB = await serviceB.RunExpiryScanAsync();
+        Assert.Equal(1, createdB);
+        notificationsB.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t => t.RelatedEntityId == docBId && t.Message.Contains("Beta COID")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DocumentSequenceService_GetNextNumberAsync_UsesIndependentSequencesPerTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var year = DateTime.UtcNow.Year;
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var numberA1 = await CreateDocumentSequenceService(dbA, tenantA).GetNextNumberAsync("Quote", "Q");
+        var numberA2 = await CreateDocumentSequenceService(dbA, tenantA).GetNextNumberAsync("Quote", "Q");
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var numberB1 = await CreateDocumentSequenceService(dbB, tenantB).GetNextNumberAsync("Quote", "Q");
+
+        Assert.Equal($"Q-{year}-00001", numberA1);
+        Assert.Equal($"Q-{year}-00002", numberA2);
+        Assert.Equal($"Q-{year}-00001", numberB1);
     }
 }
