@@ -237,6 +237,61 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task GetByJobIdAsync_ReturnsRequisitionsForJob()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var otherCustomer = new Customer { TenantId = tenantId, Name = "Other Co" };
+            db.Set<Customer>().Add(otherCustomer);
+            var otherJob = new Job { TenantId = tenantId, CustomerId = otherCustomer.Id, Title = "Other", QuotedTotal = 1000m };
+            db.Set<Job>().Add(otherJob);
+            await db.SaveChangesAsync();
+
+            await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+            await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = otherJob.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+            });
+
+            var forJob = await service.GetByJobIdAsync(job.Id);
+            Assert.Single(forJob);
+            Assert.Equal(job.Id, forJob[0].JobId);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveManagerAsync_ReturnsFalse_WhenWrongStage()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            Assert.True(await service.ApproveManagerAsync(id, Guid.NewGuid()));
+            Assert.False(await service.ApproveManagerAsync(id, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task GetPendingApprovalsAsync_ReturnsManagerAndExecutiveQueues()
     {
         var (service, db, tenantId, _) = Create();

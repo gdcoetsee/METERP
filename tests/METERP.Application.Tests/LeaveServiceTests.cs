@@ -273,6 +273,38 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task ApproveManagerAsync_ReturnsFalse_WhenWrongStage()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E9",
+                FirstName = "Stage",
+                LastName = "Guard",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 15
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.AddDays(40),
+                EndDate = DateTime.UtcNow.AddDays(41),
+                IsPaid = true
+            });
+
+            Assert.True(await service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+            Assert.False(await service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_RejectsWhenInsufficientBalance()
     {
         var (service, db, tenantId) = Create();

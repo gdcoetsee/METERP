@@ -106,6 +106,34 @@ public class BillingWebhookMaintenanceServiceTests
     }
 
     [Fact]
+    public async Task PurgeProcessedEventsOlderThanAsync_RemovesAll_WhenAllEventsAreStale()
+    {
+        var (db, service) = CreateHarness();
+        using (db)
+        {
+            db.ProcessedStripeWebhookEvents.AddRange(
+                new ProcessedStripeWebhookEvent
+                {
+                    EventId = "evt_stale_a",
+                    EventType = "customer.subscription.updated",
+                    ProcessedAtUtc = DateTime.UtcNow.AddDays(-200)
+                },
+                new ProcessedStripeWebhookEvent
+                {
+                    EventId = "evt_stale_b",
+                    EventType = "checkout.session.completed",
+                    ProcessedAtUtc = DateTime.UtcNow.AddDays(-150)
+                });
+            await db.SaveChangesAsync();
+
+            var removed = await service.PurgeProcessedEventsOlderThanAsync(TimeSpan.FromDays(30));
+
+            Assert.Equal(2, removed);
+            Assert.Empty(db.ProcessedStripeWebhookEvents);
+        }
+    }
+
+    [Fact]
     public async Task PurgeProcessedEventsOlderThanAsync_ReturnsZeroForNonPositiveRetention()
     {
         var (db, service) = CreateHarness();
