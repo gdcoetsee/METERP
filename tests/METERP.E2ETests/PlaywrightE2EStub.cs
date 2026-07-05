@@ -501,6 +501,30 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Customers_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/customers");
+        await acmePage.WaitForTestIdAsync("customers-ready", 30000);
+        await acmePage.WaitForTestIdAsync("customers-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Johannesburg General Hospital", acmeContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Beta Mining Services", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/customers");
+        await betaPage.WaitForTestIdAsync("customers-ready", 30000);
+        await betaPage.WaitForTestIdAsync("customers-table", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.Contains("Beta Mining Services", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
         await E2EHelpers.EnsureAppReadyAsync();

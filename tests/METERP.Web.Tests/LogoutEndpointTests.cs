@@ -55,6 +55,20 @@ public class LogoutEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Logout_RedirectsToHome_WhenUnauthenticated()
+    {
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        var response = await client.GetAsync("/logout");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = response.Headers.Location?.ToString() ?? string.Empty;
+        Assert.True(
+            location == "/" || location.EndsWith("/", StringComparison.Ordinal),
+            $"Expected redirect to home, got: {location}");
+    }
+
+    [Fact]
     public async Task Logout_IsNotRateLimited_UnderBurst()
     {
         using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

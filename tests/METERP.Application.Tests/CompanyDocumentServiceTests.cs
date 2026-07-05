@@ -58,6 +58,16 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task GetByIdAsync_ReturnsNull_WhenMissing()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            Assert.Null(await service.GetByIdAsync(Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task UploadAsync_RequiresExpiryUnlessNoExpiry()
     {
         var (service, db, _, _) = Create();

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -203,5 +204,181 @@ public class SupportingModuleTenantIsolationTests
         var assetsB = await new AssetService(dbB).GetAllAsync();
         Assert.Single(assetsB);
         Assert.Equal("Asset B", assetsB[0].Name);
+    }
+
+    [Fact]
+    public async Task DivisionService_GetAllAsync_ReturnsOnlyCurrentTenantDivisions()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Division>().Add(new Division { TenantId = tenantA, Code = "A", Name = "Division A", IsActive = true });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Division>().Add(new Division { TenantId = tenantB, Code = "B", Name = "Division B", IsActive = true });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var divisionsA = await new DivisionService(dbA).GetAllAsync();
+        Assert.Single(divisionsA);
+        Assert.Equal("Division A", divisionsA[0].Name);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var divisionsB = await new DivisionService(dbB).GetAllAsync();
+        Assert.Single(divisionsB);
+        Assert.Equal("Division B", divisionsB[0].Name);
+    }
+
+    [Fact]
+    public async Task CompanyDocumentService_GetAllAsync_ReturnsOnlyCurrentTenantDocuments()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<CompanyDocument>().Add(new CompanyDocument { TenantId = tenantA, DocumentType = "COID", Title = "Doc A", NoExpiry = true });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<CompanyDocument>().Add(new CompanyDocument { TenantId = tenantB, DocumentType = "Tax", Title = "Doc B", NoExpiry = true });
+            await seedB.SaveChangesAsync();
+        }
+
+        var storage = new Mock<IDocumentStorageService>();
+        var audit = new Mock<IAuditService>();
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var tenantProviderA = new Mock<ITenantProvider>();
+        tenantProviderA.Setup(p => p.GetCurrentTenantId()).Returns(tenantA);
+        var docsA = await new CompanyDocumentService(
+            dbA,
+            storage.Object,
+            tenantProviderA.Object,
+            audit.Object).GetAllAsync();
+        Assert.Single(docsA);
+        Assert.Equal("Doc A", docsA[0].Title);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var tenantProviderB = new Mock<ITenantProvider>();
+        tenantProviderB.Setup(p => p.GetCurrentTenantId()).Returns(tenantB);
+        var docsB = await new CompanyDocumentService(
+            dbB,
+            storage.Object,
+            tenantProviderB.Object,
+            audit.Object).GetAllAsync();
+        Assert.Single(docsB);
+        Assert.Equal("Doc B", docsB[0].Title);
+    }
+
+    [Fact]
+    public async Task StockTakeService_GetAllAsync_ReturnsOnlyCurrentTenantSessions()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<StockTakeSession>().Add(new StockTakeSession
+            {
+                TenantId = tenantA,
+                StartedByUserId = userId,
+                Status = StockTakeStatus.Open
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<StockTakeSession>().Add(new StockTakeSession
+            {
+                TenantId = tenantB,
+                StartedByUserId = userId,
+                Status = StockTakeStatus.Posted
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var sessionsA = await new StockTakeService(dbA, new InventoryService(dbA)).GetAllAsync();
+        Assert.Single(sessionsA);
+        Assert.Equal(StockTakeStatus.Open, sessionsA[0].Status);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var sessionsB = await new StockTakeService(dbB, new InventoryService(dbB)).GetAllAsync();
+        Assert.Single(sessionsB);
+        Assert.Equal(StockTakeStatus.Posted, sessionsB[0].Status);
+    }
+
+    [Fact]
+    public async Task PpeIssueService_GetHistoryAsync_ReturnsOnlyCurrentTenantIssues()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "PPE customer A" };
+            seedA.Set<Customer>().Add(customer);
+            var job = new Job { TenantId = tenantA, CustomerId = customer.Id, Title = "Job A", QuotedTotal = 100m };
+            seedA.Set<Job>().Add(job);
+            var item = new InventoryItem { TenantId = tenantA, Sku = "PPE-A", Name = "Helmet A", IsActive = true };
+            seedA.Set<InventoryItem>().Add(item);
+            await seedA.SaveChangesAsync();
+            seedA.Set<EmployeePpeIssue>().Add(new EmployeePpeIssue
+            {
+                TenantId = tenantA,
+                JobId = job.Id,
+                InventoryItemId = item.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Quantity = 1,
+                IssuedAt = DateTime.UtcNow
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "PPE customer B" };
+            seedB.Set<Customer>().Add(customer);
+            var job = new Job { TenantId = tenantB, CustomerId = customer.Id, Title = "Job B", QuotedTotal = 200m };
+            seedB.Set<Job>().Add(job);
+            var item = new InventoryItem { TenantId = tenantB, Sku = "PPE-B", Name = "Helmet B", IsActive = true };
+            seedB.Set<InventoryItem>().Add(item);
+            await seedB.SaveChangesAsync();
+            seedB.Set<EmployeePpeIssue>().Add(new EmployeePpeIssue
+            {
+                TenantId = tenantB,
+                JobId = job.Id,
+                InventoryItemId = item.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Quantity = 2,
+                IssuedAt = DateTime.UtcNow
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var historyA = await new PpeIssueService(dbA).GetHistoryAsync();
+        Assert.Single(historyA);
+        Assert.Equal(1m, historyA[0].Quantity);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var historyB = await new PpeIssueService(dbB).GetHistoryAsync();
+        Assert.Single(historyB);
+        Assert.Equal(2m, historyB[0].Quantity);
     }
 }
