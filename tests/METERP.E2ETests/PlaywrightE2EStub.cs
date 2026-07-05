@@ -2011,6 +2011,28 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Inventory_Exports_Csv_When_List_Has_Items()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/inventory");
+        await page.WaitForTestIdAsync("inventory-ready", 30000);
+
+        if (await page.Locator("[data-testid='inventory-table']").CountAsync() == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("inventory-export-csv");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Inventory CSV downloaded" });
+        await toast.First.WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Requisitions_Page_Loads_List_Or_Empty_State()
     {
         await E2EHelpers.EnsureAppReadyAsync();

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Security.Claims;
-using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
@@ -11,12 +10,12 @@ using Xunit;
 
 namespace METERP.Web.Tests;
 
-public class RequisitionsEndpointTests : IClassFixture<MeterpWebApplicationFactory>
+public class NotificationsEndpointTests : IClassFixture<MeterpWebApplicationFactory>
 {
     private readonly MeterpWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
-    public RequisitionsEndpointTests(MeterpWebApplicationFactory factory)
+    public NotificationsEndpointTests(MeterpWebApplicationFactory factory)
     {
         _factory = factory;
         _client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -26,42 +25,42 @@ public class RequisitionsEndpointTests : IClassFixture<MeterpWebApplicationFacto
     }
 
     [Fact]
-    public async Task Requisitions_RedirectsToLogin_WhenUnauthenticated()
+    public async Task Notifications_RedirectsToLogin_WhenUnauthenticated()
     {
-        var response = await _client.GetAsync("/requisitions");
+        var response = await _client.GetAsync("/notifications");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/login", response.Headers.Location?.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task Requisitions_ReturnsOk_WhenAuthenticated()
+    public async Task Notifications_ReturnsOk_WhenAuthenticated()
     {
-        const string email = "requisitions@acme.demo";
-        await EnsureRequisitionsUserAsync(email);
+        const string email = "notifications@acme.demo";
+        await EnsureNotificationsUserAsync(email);
 
         using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
         await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
 
-        var response = await client.GetAsync("/requisitions");
+        var response = await client.GetAsync("/notifications");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("requisitions-ready", body, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("requisitions-export-csv", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("notifications-ready", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("notifications-mark-all", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task Requisitions_IsNotRateLimited_UnderBurst()
+    public async Task Notifications_IsNotRateLimited_UnderBurst()
     {
         for (var i = 0; i < 35; i++)
         {
-            var response = await _client.GetAsync("/requisitions");
+            var response = await _client.GetAsync("/notifications");
             Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
         }
     }
 
-    private async Task EnsureRequisitionsUserAsync(string email)
+    private async Task EnsureNotificationsUserAsync(string email)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -78,8 +77,8 @@ public class RequisitionsEndpointTests : IClassFixture<MeterpWebApplicationFacto
             {
                 Id = tenantId,
                 TenantId = tenantId,
-                Name = "Requisitions Test Tenant",
-                Subdomain = "reqtest",
+                Name = "Notifications Test Tenant",
+                Subdomain = "notiftest",
                 IsActive = true
             });
             await db.SaveChangesAsync();
@@ -95,7 +94,5 @@ public class RequisitionsEndpointTests : IClassFixture<MeterpWebApplicationFacto
         };
         await userManager.CreateAsync(user, "TestPass123!");
         await userManager.AddClaimAsync(user, new Claim("TenantId", tenantId.ToString()));
-        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.RequisitionsView));
-        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.RequisitionsManage));
     }
 }

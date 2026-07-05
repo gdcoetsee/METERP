@@ -48,6 +48,7 @@ public class InventoryEndpointTests : IClassFixture<MeterpWebApplicationFactory>
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("inventory-ready", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("inventory-export-csv", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
