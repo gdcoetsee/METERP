@@ -233,6 +233,51 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task MarkAllReadAsync_DoesNotAffectOtherTenantUnread()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid betaNotificationId;
+
+        await using (var seedB = CreateSharedContext(dbName, tenantB))
+        {
+            var notification = new TenantNotification
+            {
+                TenantId = tenantB,
+                Title = "Beta stays unread",
+                Message = "Other tenant",
+                TargetRoles = "*",
+                IsRead = false
+            };
+            seedB.Set<TenantNotification>().Add(notification);
+            await seedB.SaveChangesAsync();
+            betaNotificationId = notification.Id;
+        }
+
+        var (service, dbA) = CreateSharedService(dbName, tenantA, Guid.NewGuid(), "Admin");
+        await using (dbA)
+        {
+            dbA.Set<TenantNotification>().Add(new TenantNotification
+            {
+                TenantId = tenantA,
+                Title = "Acme unread",
+                Message = "Should be marked read",
+                TargetRoles = "*",
+                IsRead = false
+            });
+            await dbA.SaveChangesAsync();
+
+            await service.MarkAllReadAsync();
+            Assert.Equal(0, await service.GetUnreadCountAsync());
+        }
+
+        await using var verifyB = CreateSharedContext(dbName, tenantB);
+        var betaSaved = await verifyB.Set<TenantNotification>().FirstAsync(n => n.Id == betaNotificationId);
+        Assert.False(betaSaved.IsRead);
+    }
+
+    [Fact]
     public async Task MarkReadAsync_NoOp_WhenNotificationBelongsToOtherTenant()
     {
         var dbName = Guid.NewGuid().ToString();

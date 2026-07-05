@@ -129,6 +129,32 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Variance_Quick_Prompt_Shows_Response()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        var variancePrompt = page.Locator("[data-testid='ai-quick-prompt-variance']");
+        await Assertions.Expect(variancePrompt).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await variancePrompt.ClickAsync();
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(response));
+        Assert.True(
+            response!.Contains("variance", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("travel", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("job", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("labor", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected copilot response: {response}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Quotes_Manual_Create_With_Line()
     {
         await E2EHelpers.EnsureAppReadyAsync();

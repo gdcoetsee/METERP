@@ -297,6 +297,28 @@ public class AiAssistantServiceTests
     }
 
     [Fact]
+    public async Task AnalyzeJobVarianceAsync_ReturnsNull_When_Throttled()
+    {
+        var config = CreateConfig();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(Guid.NewGuid());
+
+        var service = CreateService(config, tenantProvider: tenantProvider.Object);
+
+        var job = new Job
+        {
+            QuotedTotal = 10000m,
+            ActualCost = 12000m,
+            Title = "Throttled variance job"
+        };
+
+        await service.AnalyzeJobVarianceAsync(job);
+        var throttled = await service.AnalyzeJobVarianceAsync(job);
+
+        Assert.Null(throttled);
+    }
+
+    [Fact]
     public async Task AnalyzeJobVarianceAsync_DoesNotIncrementCounter_When_AiQuotaExceeded()
     {
         AiAssistantService.ClearThrottleStateForTesting();

@@ -242,6 +242,45 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task AskCopilotAsync_Throttle_IsolatedPerTenant()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        var tenantServiceA = new Mock<ITenantService>();
+        tenantServiceA.Setup(s => s.GetByIdAsync(tenantA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantA, EnabledFeatures = "ai,usage-tracking" });
+        tenantServiceA.Setup(s => s.IncrementAiCallCountAsync(tenantA, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantServiceB = new Mock<ITenantService>();
+        tenantServiceB.Setup(s => s.GetByIdAsync(tenantB, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantB, EnabledFeatures = "ai,usage-tracking" });
+        tenantServiceB.Setup(s => s.IncrementAiCallCountAsync(tenantB, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantProviderA = new Mock<ITenantProvider>();
+        tenantProviderA.Setup(p => p.GetCurrentTenantId()).Returns(tenantA);
+        var tenantProviderB = new Mock<ITenantProvider>();
+        tenantProviderB.Setup(p => p.GetCurrentTenantId()).Returns(tenantB);
+
+        const string copilotReply = "Top variance drivers are travel and labor on remote jobs.";
+        using var http = CreateMockLlmClient(copilotReply);
+        var serviceA = CreateEnabledService(tenantServiceA.Object, tenantProviderA.Object, http);
+        var serviceB = CreateEnabledService(tenantServiceB.Object, tenantProviderB.Object, http);
+
+        var firstA = await serviceA.AskCopilotAsync("Analyze worst variance jobs");
+        Assert.Equal(copilotReply, firstA);
+
+        var throttledA = await serviceA.AskCopilotAsync("Immediate retry on Acme");
+        Assert.Contains("Rate limit", throttledA, StringComparison.OrdinalIgnoreCase);
+
+        var firstB = await serviceB.AskCopilotAsync("Analyze worst variance jobs for Beta");
+        Assert.Equal(copilotReply, firstB);
+        tenantServiceB.Verify(s => s.IncrementAiCallCountAsync(tenantB, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task AskCopilotAsync_ReturnsResponseText_When_LlmSucceeds()
     {
         var tenantId = Guid.NewGuid();
