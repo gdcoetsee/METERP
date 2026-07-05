@@ -763,4 +763,58 @@ public class SupportingModuleTenantIsolationTests
         Assert.Single(historyB);
         Assert.Equal(2m, historyB[0].Quantity);
     }
+
+    [Fact]
+    public async Task RecurringJobService_GetAllAsync_ReturnsOnlyCurrentTenantSchedules()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "Recurring customer A" };
+            seedA.Set<Customer>().Add(customer);
+            await seedA.SaveChangesAsync();
+            seedA.Set<RecurringJobSchedule>().Add(new RecurringJobSchedule
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                Title = "Quarterly panel inspection (recurring)",
+                IntervalDays = 90,
+                NextRunDate = DateTime.UtcNow.Date.AddDays(14),
+                DefaultQuotedTotal = 8500m,
+                IsActive = true
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Recurring customer B" };
+            seedB.Set<Customer>().Add(customer);
+            await seedB.SaveChangesAsync();
+            seedB.Set<RecurringJobSchedule>().Add(new RecurringJobSchedule
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                Title = "Beta-only recurring maintenance",
+                IntervalDays = 60,
+                NextRunDate = DateTime.UtcNow.Date.AddDays(30),
+                DefaultQuotedTotal = 4200m,
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var schedulesA = await new RecurringJobService(dbA, new JobService(dbA)).GetAllAsync(activeOnly: false);
+        Assert.Single(schedulesA);
+        Assert.Contains("Quarterly panel", schedulesA[0].Title, StringComparison.OrdinalIgnoreCase);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var schedulesB = await new RecurringJobService(dbB, new JobService(dbB)).GetAllAsync(activeOnly: false);
+        Assert.Single(schedulesB);
+        Assert.Contains("Beta-only", schedulesB[0].Title, StringComparison.OrdinalIgnoreCase);
+    }
 }
