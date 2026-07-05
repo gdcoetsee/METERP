@@ -414,6 +414,40 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
     }
 
     [Fact]
+    public async Task Customers_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-customers@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/customers");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("customers-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Employees_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-employees@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/employees");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("employees-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Opportunities_ShowsAccessDenied_WhenFieldUserOnly()
     {
         const string email = "forbidden-field-opportunities@acme.demo";
@@ -513,6 +547,57 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("opportunities-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Assets_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-assets@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/assets");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("assets-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Divisions_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-divisions@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/divisions");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("divisions-table", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CompanyDocuments_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-companydocs@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/company-documents");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("company-docs-table", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -658,6 +658,34 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Customers_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/customers");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("customers-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Employees_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/employees");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("employees-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Opportunities_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -1008,6 +1036,29 @@ public class E2EFlowTests : IAsyncLifetime
             new() { Timeout = 30000 });
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("ppe-history-row", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Scheduling_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/scheduling");
+        await acmePage.WaitForTestIdAsync("scheduling-recurring", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Quarterly panel inspection", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/scheduling");
+        await betaPage.WaitForSelectorAsync(
+            "[data-testid='scheduling-ready'], [data-testid='scheduling-empty'], [data-testid='scheduling-calendar']",
+            new() { Timeout = 30000 });
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Quarterly panel inspection", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scheduling-recurring", betaContent, StringComparison.OrdinalIgnoreCase);
         await betaPage.CloseAsync();
     }
 
