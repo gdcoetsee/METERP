@@ -278,6 +278,40 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
     }
 
     [Fact]
+    public async Task AiCopilot_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-aicopilot@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/ai-copilot");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ai-copilot-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AiCopilot_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-aicopilot@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/ai-copilot");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ai-copilot-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Invoices_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
     {
         const string email = "forbidden-invoices@acme.demo";

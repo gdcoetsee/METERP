@@ -901,6 +901,21 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_AiCopilot_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/ai-copilot");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ai-copilot-ready", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ai-prompt-input", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Invoices_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();

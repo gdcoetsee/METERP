@@ -487,6 +487,53 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task StockTakeService_StartSessionAsync_UsesOnlyCurrentTenantInventory()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<InventoryItem>().Add(new InventoryItem
+            {
+                TenantId = tenantA,
+                Sku = "STK-A",
+                Name = "Stock take item A",
+                QuantityOnHand = 12,
+                ReorderLevel = 2,
+                IsActive = true
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<InventoryItem>().Add(new InventoryItem
+            {
+                TenantId = tenantB,
+                Sku = "STK-B",
+                Name = "Stock take item B",
+                QuantityOnHand = 8,
+                ReorderLevel = 1,
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var serviceA = new StockTakeService(dbA, new InventoryService(dbA));
+        var sessionId = await serviceA.StartSessionAsync(userId);
+        var session = await serviceA.GetByIdAsync(sessionId);
+
+        Assert.NotNull(session);
+        Assert.Single(session!.Lines);
+        Assert.Equal(12, session.Lines.First().SystemQuantity);
+        Assert.Equal(tenantA, session.TenantId);
+    }
+
+    [Fact]
     public async Task LeaveService_GetPendingApprovalsAsync_ReturnsOnlyCurrentTenantRequests()
     {
         var dbName = Guid.NewGuid().ToString();
