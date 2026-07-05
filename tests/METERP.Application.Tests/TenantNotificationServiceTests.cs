@@ -231,4 +231,112 @@ public class TenantNotificationServiceTests
             Assert.False(hrSaved.IsRead);
         }
     }
+
+    [Fact]
+    public async Task GetForCurrentUserAsync_ReturnsOnlyCurrentTenantNotifications()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var userIdA = Guid.NewGuid();
+
+        await using (var seedB = CreateSharedContext(dbName, tenantB))
+        {
+            seedB.Set<TenantNotification>().Add(new TenantNotification
+            {
+                TenantId = tenantB,
+                Title = "Beta tenant alert",
+                Message = "Should not leak",
+                TargetRoles = "*"
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        var (service, dbA) = CreateSharedService(dbName, tenantA, userIdA, "Admin");
+        await using (dbA)
+        {
+            dbA.Set<TenantNotification>().Add(new TenantNotification
+            {
+                TenantId = tenantA,
+                Title = "Acme tenant alert",
+                Message = "Visible to Acme",
+                TargetRoles = "*"
+            });
+            await dbA.SaveChangesAsync();
+
+            var visible = await service.GetForCurrentUserAsync();
+            Assert.Single(visible);
+            Assert.Equal("Acme tenant alert", visible[0].Title);
+        }
+    }
+
+    private static AppDbContext CreateSharedContext(string dbName, Guid tenantId)
+    {
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(Guid.NewGuid());
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(dbName)
+            .Options;
+
+        return new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+    }
+
+    private static (TenantNotificationService Service, AppDbContext Db) CreateSharedService(
+        string dbName, Guid tenantId, Guid userId, string roleName)
+    {
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(userId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(dbName)
+            .Options;
+
+        var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var userManager = CreateUserManager(db);
+
+        var role = new ApplicationRole
+        {
+            Id = Guid.NewGuid(),
+            Name = roleName,
+            NormalizedName = roleName.ToUpperInvariant(),
+            TenantId = tenantId
+        };
+        db.Set<ApplicationRole>().Add(role);
+
+        var user = new ApplicationUser
+        {
+            Id = userId,
+            UserName = $"user-{tenantId:N}@test.com",
+            NormalizedUserName = $"USER-{tenantId:N}@TEST.COM",
+            Email = $"user-{tenantId:N}@test.com",
+            NormalizedEmail = $"USER-{tenantId:N}@TEST.COM",
+            TenantId = tenantId
+        };
+        userManager.CreateAsync(user).GetAwaiter().GetResult();
+        userManager.AddToRoleAsync(user, roleName).GetAwaiter().GetResult();
+        db.SaveChanges();
+
+        return (new TenantNotificationService(db, userManager, currentUser.Object), db);
+    }
+
+    private static UserManager<ApplicationUser> CreateUserManager(AppDbContext db)
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var store = new UserStore<ApplicationUser, ApplicationRole, AppDbContext, Guid>(db);
+        return new UserManager<ApplicationUser>(
+            store,
+            Microsoft.Extensions.Options.Options.Create(new IdentityOptions()),
+            new PasswordHasher<ApplicationUser>(),
+            new IUserValidator<ApplicationUser>[] { new UserValidator<ApplicationUser>() },
+            new IPasswordValidator<ApplicationUser>[] { new PasswordValidator<ApplicationUser>() },
+            new UpperInvariantLookupNormalizer(),
+            new IdentityErrorDescriber(),
+            services,
+            new LoggerFactory().CreateLogger<UserManager<ApplicationUser>>());
+    }
 }

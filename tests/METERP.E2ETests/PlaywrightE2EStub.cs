@@ -914,6 +914,75 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Notifications_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/notifications");
+        await acmePage.WaitForTestIdAsync("notifications-ready", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Low Stock Alert", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/notifications");
+        await betaPage.WaitForTestIdAsync("notifications-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Low Stock Alert", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Job Overdue", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_StockTake_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/stock-take");
+        await acmePage.WaitForSelectorAsync(
+            "[data-testid='stock-take-empty'], [data-testid='stock-take-sessions']",
+            new() { Timeout = 30000 });
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Stock Take", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/stock-take");
+        await betaPage.WaitForSelectorAsync(
+            "[data-testid='stock-take-empty'], [data-testid='stock-take-sessions']",
+            new() { Timeout = 30000 });
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("stock-take-detail", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_PpeHistory_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/ppe-history");
+        await acmePage.WaitForSelectorAsync(
+            "[data-testid='ppe-history-empty'], [data-testid='ppe-history-table']",
+            new() { Timeout = 30000 });
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("PPE", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/ppe-history");
+        await betaPage.WaitForSelectorAsync(
+            "[data-testid='ppe-history-empty'], [data-testid='ppe-history-table']",
+            new() { Timeout = 30000 });
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("ppe-history-row", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
         await E2EHelpers.EnsureAppReadyAsync();
