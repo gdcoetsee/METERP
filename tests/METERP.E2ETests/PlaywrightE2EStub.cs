@@ -493,6 +493,52 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Manual_Ask_Shows_Response()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.FillByTestIdAsync("ai-prompt-input", "What travel cost risks should I watch on remote jobs?");
+        await page.ClickByTestIdAsync("ai-ask-button");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(response));
+        Assert.True(
+            response!.Contains("travel", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("job", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("cost", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected copilot response: {response}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_AiSettings_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/settings/ai");
+        await acmePage.WaitForTestIdAsync("ai-settings-ready", 30000);
+        await acmePage.WaitForTestIdAsync("ai-provider-select", 15000);
+        var acmeProviders = await acmePage.Locator("[data-testid='ai-provider-select'] option").CountAsync();
+        Assert.True(acmeProviders > 0);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/settings/ai");
+        await betaPage.WaitForTestIdAsync("ai-settings-ready", 30000);
+        await betaPage.WaitForTestIdAsync("ai-provider-select", 15000);
+        var betaProviders = await betaPage.Locator("[data-testid='ai-provider-select'] option").CountAsync();
+        Assert.True(betaProviders > 0);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Settings_Page_Loads_Free_Providers()
     {
         await E2EHelpers.EnsureAppReadyAsync();

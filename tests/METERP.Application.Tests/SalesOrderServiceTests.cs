@@ -151,6 +151,39 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task ConvertToJobAsync_WithTravelLine_PreservesQuoteLinkAndTotals()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0.15m,
+                Lines =
+                {
+                    new SalesOrderLine { Description = "Work package", Quantity = 1, UnitPrice = 5000m },
+                    new SalesOrderLine { Description = "Mobilization travel", Quantity = 1, UnitPrice = 750m, LineType = "Travel" }
+                }
+            });
+
+            var job = await service.ConvertToJobAsync(soId);
+
+            var loadedSo = await service.GetByIdAsync(soId);
+
+            Assert.Equal(quoteId, job.QuoteId);
+            Assert.Equal(soId, job.SalesOrderId);
+            Assert.Equal(loadedSo!.Total, job.QuotedTotal);
+            Assert.Contains(loadedSo.Lines, l => l.LineType == "Travel" && l.UnitPrice == 750m);
+        }
+    }
+
+    [Fact]
     public async Task ConvertToJobAsync_ThrowsWhenSalesOrderNotFound()
     {
         var tenantId = Guid.NewGuid();

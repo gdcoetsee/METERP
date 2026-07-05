@@ -388,6 +388,39 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task AnalyzeJobVarianceAsync_DoesNotIncrementCounter_When_QuotaExceeded()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var quotaService = new Mock<IQuotaService>();
+        quotaService.Setup(q => q.EnsureAllowedAsync(tenantId, QuotaType.AiCall, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new QuotaExceededException(QuotaType.AiCall, 30, 30));
+
+        using var http = CreateMockLlmClient("{}");
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http, quotaService.Object);
+
+        var job = new Job
+        {
+            JobNumber = "J-HTTP-QUOTA",
+            Title = "Over budget",
+            QuotedTotal = 10000m,
+            ActualCost = 12500m
+        };
+
+        await service.AnalyzeJobVarianceAsync(job);
+
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task AskCopilotAsync_ReturnsResponseText_When_LlmSucceeds()
     {
         var tenantId = Guid.NewGuid();

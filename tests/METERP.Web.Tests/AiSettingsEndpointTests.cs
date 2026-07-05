@@ -48,6 +48,8 @@ public class AiSettingsEndpointTests : IClassFixture<MeterpWebApplicationFactory
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("ai-settings-ready", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-provider-select", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-use-tenant-key", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ai-settings-save", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ai-test-connection", body, StringComparison.OrdinalIgnoreCase);
     }
