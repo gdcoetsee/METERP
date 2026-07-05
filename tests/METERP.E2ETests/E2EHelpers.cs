@@ -618,6 +618,17 @@ public static class E2EHelpers
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Sets Acme AI call quota to 1/1 used (Development endpoint) for quota-exceeded E2E.
+    /// </summary>
+    public static async Task EnsureAiQuotaExceededAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var response = await client.PostAsync($"{url}/e2e/ensure-ai-quota-exceeded", null);
+        response.EnsureSuccessStatusCode();
+    }
+
     public static async Task ResetDemoQuotasAsync(string? baseUrl = null)
     {
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');

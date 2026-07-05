@@ -403,6 +403,39 @@ public class SpineTenantIsolationTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateFromJobAsync_ThrowsWhenJobBelongsToOtherTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid jobBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Tenant B customer" };
+            seedB.Set<Customer>().Add(customer);
+            var job = new Job
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                JobNumber = "J-B-INV-CREATE",
+                Title = "Other tenant billable job",
+                QuotedTotal = 3000m,
+                SignOffStatus = JobSignOffStatus.SignedOff
+            };
+            seedB.Set<Job>().Add(job);
+            await seedB.SaveChangesAsync();
+            jobBId = job.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new InvoiceService(dbA).CreateFromJobAsync(jobBId));
+
+        Assert.Contains("Job not found", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task InvoiceService_GetAllAsync_ReturnsOnlyCurrentTenantInvoices()
     {
         var dbName = Guid.NewGuid().ToString();

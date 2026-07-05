@@ -129,6 +129,35 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Quota_Exceeded_Disables_Quick_Prompts()
+    {
+        try
+        {
+            await E2EHelpers.EnsureAppReadyAsync();
+            var page = await Browser.LoginAsync(resetDemoState: false);
+            await E2EHelpers.EnsureAiQuotaExceededAsync();
+            await page.GotoRelativeAsync("/ai-copilot");
+            await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+            await page.WaitForTestIdAsync("ai-quota-exhausted-banner", 15000);
+
+            var banner = page.Locator("[data-testid='ai-quota-exhausted-banner']");
+            var bannerText = (await banner.TextContentAsync()) ?? string.Empty;
+            Assert.Contains("Monthly AI call quota reached", bannerText, StringComparison.OrdinalIgnoreCase);
+
+            var travelPrompt = page.Locator("[data-testid='ai-quick-prompt-travel']");
+            var variancePrompt = page.Locator("[data-testid='ai-quick-prompt-variance']");
+            await Assertions.Expect(travelPrompt).ToBeDisabledAsync(new() { Timeout = 10000 });
+            await Assertions.Expect(variancePrompt).ToBeDisabledAsync(new() { Timeout = 10000 });
+
+            await page.CloseAsync();
+        }
+        finally
+        {
+            await E2EHelpers.ResetDemoStateAsync();
+        }
+    }
+
+    [Fact]
     public async Task Ai_Copilot_Demo_Job_Pdf_Downloads()
     {
         await E2EHelpers.EnsureAppReadyAsync();

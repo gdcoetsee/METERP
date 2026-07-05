@@ -35,6 +35,14 @@ public static class E2EDemoQuotaSeeder
         await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Invoice, ct);
     }
 
+    public static async Task EnsureAiQuotaExceededAsync(
+        ITenantService tenantService,
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.AiCall, ct);
+    }
+
     private static async Task SetQuotaAtLimitAsync(
         ITenantService tenantService,
         Guid tenantId,
@@ -60,6 +68,10 @@ public static class E2EDemoQuotaSeeder
             case QuotaType.Invoice:
                 tenant.MaxInvoicesPerMonth = 1;
                 tenant.PeriodInvoicesIssued = 1;
+                break;
+            case QuotaType.AiCall:
+                tenant.MaxAiCallsPerMonth = 1;
+                tenant.PeriodAiCalls = 1;
                 break;
         }
 

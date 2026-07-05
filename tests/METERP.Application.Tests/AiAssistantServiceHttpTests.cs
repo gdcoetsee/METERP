@@ -388,6 +388,28 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task SuggestQuoteLinesAsync_ReturnsNull_When_AiFeatureDisabled()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "usage-tracking" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        using var http = CreateMockLlmClient(QuoteSuggestionContent);
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http);
+
+        var result = await service.SuggestQuoteLinesAsync("Install panel with travel", 0.15m);
+
+        Assert.Null(result);
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task AnalyzeJobVarianceAsync_ReturnsNull_When_AiFeatureDisabled()
     {
         var tenantId = Guid.NewGuid();
