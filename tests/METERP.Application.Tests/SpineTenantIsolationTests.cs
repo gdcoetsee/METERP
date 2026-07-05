@@ -303,4 +303,152 @@ public class SpineTenantIsolationTests
         Assert.Single(ordersB);
         Assert.Equal("SO-B-001", ordersB[0].SoNumber);
     }
+
+    [Fact]
+    public async Task QuoteService_GetAllAsync_ReturnsOnlyCurrentTenantQuotes()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "Quote customer A" };
+            seedA.Set<Customer>().Add(customer);
+            await seedA.SaveChangesAsync();
+            seedA.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-A-ALL",
+                Status = QuoteStatus.Sent
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Quote customer B" };
+            seedB.Set<Customer>().Add(customer);
+            await seedB.SaveChangesAsync();
+            seedB.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-B-ALL",
+                Status = QuoteStatus.Draft
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var quotesA = await new QuoteService(dbA).GetAllAsync(pageSize: 50);
+        Assert.Single(quotesA);
+        Assert.Equal("Q-A-ALL", quotesA[0].QuoteNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var quotesB = await new QuoteService(dbB).GetAllAsync(pageSize: 50);
+        Assert.Single(quotesB);
+        Assert.Equal("Q-B-ALL", quotesB[0].QuoteNumber);
+    }
+
+    [Fact]
+    public async Task JobService_GetAllAsync_ReturnsOnlyCurrentTenantJobs()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "Job customer A" };
+            seedA.Set<Customer>().Add(customer);
+            await seedA.SaveChangesAsync();
+            seedA.Set<Job>().Add(new Job
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                JobNumber = "J-A-ALL",
+                Title = "Job A",
+                QuotedTotal = 1200m
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Job customer B" };
+            seedB.Set<Customer>().Add(customer);
+            await seedB.SaveChangesAsync();
+            seedB.Set<Job>().Add(new Job
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                JobNumber = "J-B-ALL",
+                Title = "Job B",
+                QuotedTotal = 2400m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var jobsA = await new JobService(dbA).GetAllAsync(pageSize: 50);
+        Assert.Single(jobsA);
+        Assert.Equal("J-A-ALL", jobsA[0].JobNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var jobsB = await new JobService(dbB).GetAllAsync(pageSize: 50);
+        Assert.Single(jobsB);
+        Assert.Equal("J-B-ALL", jobsB[0].JobNumber);
+    }
+
+    [Fact]
+    public async Task InvoiceService_GetAllAsync_ReturnsOnlyCurrentTenantInvoices()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "Invoice customer A" };
+            seedA.Set<Customer>().Add(customer);
+            await seedA.SaveChangesAsync();
+            seedA.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-A-ALL",
+                Status = InvoiceStatus.Sent,
+                Total = 1500m
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Invoice customer B" };
+            seedB.Set<Customer>().Add(customer);
+            await seedB.SaveChangesAsync();
+            seedB.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-B-ALL",
+                Status = InvoiceStatus.Draft,
+                Total = 900m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var invoicesA = await new InvoiceService(dbA).GetAllAsync(pageSize: 50);
+        Assert.Single(invoicesA);
+        Assert.Equal("INV-A-ALL", invoicesA[0].InvoiceNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var invoicesB = await new InvoiceService(dbB).GetAllAsync(pageSize: 50);
+        Assert.Single(invoicesB);
+        Assert.Equal("INV-B-ALL", invoicesB[0].InvoiceNumber);
+    }
 }
