@@ -323,6 +323,77 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task DivisionService_GetByIdAsync_DoesNotReturnOtherTenantDivision()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid divisionBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var division = new Division { TenantId = tenantB, Code = "B", Name = "Other tenant division", IsActive = true };
+            seedB.Set<Division>().Add(division);
+            await seedB.SaveChangesAsync();
+            divisionBId = division.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        Assert.Null(await new DivisionService(dbA).GetByIdAsync(divisionBId));
+    }
+
+    [Fact]
+    public async Task CompanyDocumentService_GetByIdAsync_DoesNotReturnOtherTenantDocument()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid docBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var doc = new CompanyDocument { TenantId = tenantB, DocumentType = "Tax", Title = "Other tenant doc", NoExpiry = true };
+            seedB.Set<CompanyDocument>().Add(doc);
+            await seedB.SaveChangesAsync();
+            docBId = doc.Id;
+        }
+
+        var storage = new Mock<IDocumentStorageService>();
+        var audit = new Mock<IAuditService>();
+        var tenantProviderA = new Mock<ITenantProvider>();
+        tenantProviderA.Setup(p => p.GetCurrentTenantId()).Returns(tenantA);
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var service = new CompanyDocumentService(dbA, storage.Object, tenantProviderA.Object, audit.Object);
+        Assert.Null(await service.GetByIdAsync(docBId));
+    }
+
+    [Fact]
+    public async Task StockTakeService_GetByIdAsync_DoesNotReturnOtherTenantSession()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid sessionBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var session = new StockTakeSession
+            {
+                TenantId = tenantB,
+                StartedByUserId = Guid.NewGuid(),
+                Status = StockTakeStatus.Open
+            };
+            seedB.Set<StockTakeSession>().Add(session);
+            await seedB.SaveChangesAsync();
+            sessionBId = session.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        Assert.Null(await new StockTakeService(dbA, new InventoryService(dbA)).GetByIdAsync(sessionBId));
+    }
+
+    [Fact]
     public async Task PpeIssueService_GetHistoryAsync_ReturnsOnlyCurrentTenantIssues()
     {
         var dbName = Guid.NewGuid().ToString();

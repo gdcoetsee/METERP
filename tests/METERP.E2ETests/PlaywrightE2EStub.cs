@@ -501,6 +501,39 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Jobs_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/jobs");
+        await acmePage.WaitForTestIdAsync("jobs-ready", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Hospital DB Upgrade", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/jobs");
+        await betaPage.WaitForTestIdAsync("jobs-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Hospital DB Upgrade", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Tenants_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/tenants");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Customers_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();

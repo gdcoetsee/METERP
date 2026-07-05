@@ -66,6 +66,40 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task GetByIdAsync_ReturnsNull_WhenMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        await using (db)
+        {
+            Assert.Null(await service.GetByIdAsync(Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
+    public async Task RecordCountAsync_ReturnsFalse_WhenLineMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "X-1",
+                Name = "Spare",
+                QuantityOnHand = 4,
+                ReorderLevel = 1,
+                UnitCost = 3m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+
+            Assert.False(await service.RecordCountAsync(sessionId, Guid.NewGuid(), 4m));
+            Assert.False(await service.RecordCountAsync(Guid.NewGuid(), itemId, 4m));
+        }
+    }
+
+    [Fact]
     public async Task PostSessionAsync_ReturnsFalse_WhenSessionMissing()
     {
         var tenantId = Guid.NewGuid();
