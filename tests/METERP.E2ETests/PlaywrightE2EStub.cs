@@ -2394,6 +2394,34 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Approvals_Field_Reports()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/approvals");
+        await acmePage.WaitForTestIdAsync("approvals-ready", 30000);
+        await acmePage.ClickByTestIdAsync("approvals-tab-field");
+        var acmeFieldRows = acmePage.Locator("[data-testid='approvals-field-row']");
+        var acmeContent = await acmePage.ContentAsync();
+        if (await acmeFieldRows.CountAsync() > 0)
+        {
+            Assert.DoesNotContain("B-FIELD", acmeContent, StringComparison.OrdinalIgnoreCase);
+        }
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/approvals");
+        await betaPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await betaPage.ClickByTestIdAsync("approvals-tab-field");
+        await betaPage.WaitForTestIdAsync("approvals-field-empty", 30000);
+        Assert.Equal(0, await betaPage.Locator("[data-testid='approvals-field-row']").CountAsync());
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Thabo", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Approvals_Field_Report_Approve_After_Tech_Submit()
     {
         await E2EHelpers.EnsureAppReadyAsync();

@@ -35,6 +35,9 @@ public class SupportingModuleTenantIsolationTests
         return new AccountabilityReportService(db, tenantProvider.Object);
     }
 
+    private static FieldReportService CreateFieldReportService(AppDbContext db)
+        => new(db, new JobService(db));
+
     [Fact]
     public async Task CustomerService_GetAllAsync_ReturnsOnlyCurrentTenantCustomers()
     {
@@ -1333,5 +1336,194 @@ public class SupportingModuleTenantIsolationTests
         var overdueB = await CreateAccountabilityService(dbB, tenantB).GetOverdueApprovalsAsync();
         Assert.Single(overdueB);
         Assert.Equal("Q-BETA-OVERDUE", overdueB[0].Reference);
+    }
+
+    [Fact]
+    public async Task FieldReportService_GetPendingAsync_ReturnsOnlyCurrentTenantReports()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var jobA = Guid.NewGuid();
+        var jobB = Guid.NewGuid();
+        var submitter = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = new Customer { TenantId = tenantA, Name = "Acme Customer" };
+            seedA.Set<Customer>().Add(customerA);
+            seedA.Set<Job>().Add(new Job
+            {
+                Id = jobA,
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                JobNumber = "A-FIELD-JOB",
+                Title = "Acme field job",
+                QuotedTotal = 3000m
+            });
+            seedA.Set<FieldReport>().Add(new FieldReport
+            {
+                TenantId = tenantA,
+                JobId = jobA,
+                SubmittedByUserId = submitter,
+                HoursWorked = 5m,
+                Status = FieldReportStatus.PendingApproval,
+                SubmittedAt = DateTime.UtcNow.AddHours(-2)
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Customer" };
+            seedB.Set<Customer>().Add(customerB);
+            seedB.Set<Job>().Add(new Job
+            {
+                Id = jobB,
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                JobNumber = "B-FIELD-JOB",
+                Title = "Beta field job",
+                QuotedTotal = 4000m
+            });
+            seedB.Set<FieldReport>().Add(new FieldReport
+            {
+                TenantId = tenantB,
+                JobId = jobB,
+                SubmittedByUserId = submitter,
+                HoursWorked = 8m,
+                Status = FieldReportStatus.PendingApproval,
+                SubmittedAt = DateTime.UtcNow.AddHours(-1)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var pendingA = await CreateFieldReportService(dbA).GetPendingAsync();
+        Assert.Single(pendingA);
+        Assert.Equal(jobA, pendingA[0].JobId);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var pendingB = await CreateFieldReportService(dbB).GetPendingAsync();
+        Assert.Single(pendingB);
+        Assert.Equal(jobB, pendingB[0].JobId);
+    }
+
+    [Fact]
+    public async Task FieldReportService_GetByJobIdAsync_ReturnsOnlyCurrentTenantReports()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var jobA = Guid.NewGuid();
+        var jobB = Guid.NewGuid();
+        var submitter = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Job>().Add(new Job
+            {
+                Id = jobA,
+                TenantId = tenantA,
+                CustomerId = Guid.NewGuid(),
+                JobNumber = "A-JOB-1",
+                Title = "Acme install",
+                QuotedTotal = 2000m
+            });
+            seedA.Set<FieldReport>().AddRange(
+                new FieldReport
+                {
+                    TenantId = tenantA,
+                    JobId = jobA,
+                    SubmittedByUserId = submitter,
+                    HoursWorked = 3m,
+                    Status = FieldReportStatus.PendingApproval,
+                    SubmittedAt = DateTime.UtcNow.AddDays(-1)
+                },
+                new FieldReport
+                {
+                    TenantId = tenantA,
+                    JobId = jobA,
+                    SubmittedByUserId = submitter,
+                    HoursWorked = 4m,
+                    Status = FieldReportStatus.Approved,
+                    SubmittedAt = DateTime.UtcNow.AddDays(-2)
+                });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Job>().Add(new Job
+            {
+                Id = jobB,
+                TenantId = tenantB,
+                CustomerId = Guid.NewGuid(),
+                JobNumber = "B-JOB-1",
+                Title = "Beta install",
+                QuotedTotal = 2500m
+            });
+            seedB.Set<FieldReport>().Add(new FieldReport
+            {
+                TenantId = tenantB,
+                JobId = jobB,
+                SubmittedByUserId = submitter,
+                HoursWorked = 6m,
+                Status = FieldReportStatus.PendingApproval,
+                SubmittedAt = DateTime.UtcNow.AddHours(-3)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var reportsA = await CreateFieldReportService(dbA).GetByJobIdAsync(jobA);
+        Assert.Equal(2, reportsA.Count);
+
+        var crossTenantFromA = await CreateFieldReportService(dbA).GetByJobIdAsync(jobB);
+        Assert.Empty(crossTenantFromA);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var reportsB = await CreateFieldReportService(dbB).GetByJobIdAsync(jobB);
+        Assert.Single(reportsB);
+        Assert.Equal(6m, reportsB[0].HoursWorked);
+    }
+
+    [Fact]
+    public async Task FieldReportService_ApproveAsync_ReturnsFalse_WhenReportBelongsToOtherTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var jobB = Guid.NewGuid();
+        var reportBId = Guid.NewGuid();
+        var approver = Guid.NewGuid();
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Job>().Add(new Job
+            {
+                Id = jobB,
+                TenantId = tenantB,
+                CustomerId = Guid.NewGuid(),
+                JobNumber = "B-APPROVE",
+                Title = "Beta only",
+                QuotedTotal = 1500m
+            });
+            seedB.Set<FieldReport>().Add(new FieldReport
+            {
+                Id = reportBId,
+                TenantId = tenantB,
+                JobId = jobB,
+                SubmittedByUserId = approver,
+                HoursWorked = 7m,
+                Status = FieldReportStatus.PendingApproval,
+                SubmittedAt = DateTime.UtcNow.AddHours(-4)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var approved = await CreateFieldReportService(dbA).ApproveAsync(reportBId, approver);
+        Assert.False(approved);
     }
 }

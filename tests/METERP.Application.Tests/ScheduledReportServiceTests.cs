@@ -528,6 +528,86 @@ public class ScheduledReportServiceTests
         }
     }
 
+    [Fact]
+    public async Task SendScheduledExecutiveReportsAsync_SendsTenantScopedBrandingForEachActiveTenant()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var currentTenant = tenantA;
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(() => currentTenant);
+        tenantProvider.Setup(p => p.SetTenantId(It.IsAny<Guid>())).Callback<Guid>(id => currentTenant = id);
+
+        var currentUser = new Mock<ICurrentUserService>();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+
+        using (db)
+        {
+            db.Tenants.AddRange(
+                new Tenant
+                {
+                    Id = tenantA,
+                    TenantId = tenantA,
+                    Name = "Acme",
+                    Subdomain = "acme",
+                    IsActive = true,
+                    NotificationEmail = "ops@acme.demo",
+                    BrandDisplayName = "Acme Electrical"
+                },
+                new Tenant
+                {
+                    Id = tenantB,
+                    TenantId = tenantB,
+                    Name = "Beta",
+                    Subdomain = "beta",
+                    IsActive = true,
+                    NotificationEmail = "ops@beta.demo",
+                    BrandDisplayName = "Beta Contractors"
+                });
+            await db.SaveChangesAsync();
+
+            var captured = new List<(string To, string Subject)>();
+            var dashboard = new Mock<IExecutiveDashboardService>();
+            dashboard.Setup(d => d.GetSummaryAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ExecutiveDashboardSummary());
+
+            var accountability = new Mock<IAccountabilityReportService>();
+            accountability.Setup(a => a.GetDivisionScorecardsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<DivisionScorecardRow>());
+            accountability.Setup(a => a.GetUserActivityAsync(30, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<UserActivityRow>());
+            accountability.Setup(a => a.GetOverdueApprovalsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<OverdueApprovalRow>());
+
+            var email = new Mock<IEmailSender>();
+            email.Setup(e => e.IsConfigured).Returns(true);
+            email.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, string, string, CancellationToken>((to, subject, _, _) => captured.Add((to, subject)))
+                .Returns(Task.CompletedTask);
+
+            var service = new ScheduledReportService(
+                dashboard.Object,
+                accountability.Object,
+                email.Object,
+                currentUser.Object,
+                Microsoft.Extensions.Options.Options.Create(new EmailOptions { SmtpHost = "mailpit", FromName = "METERP" }),
+                tenantProvider.Object,
+                db);
+
+            var sent = await service.SendScheduledExecutiveReportsAsync();
+
+            Assert.Equal(2, sent);
+            Assert.Contains(captured, e => e.To == "ops@acme.demo" && e.Subject.Contains("Acme Electrical", StringComparison.Ordinal));
+            Assert.Contains(captured, e => e.To == "ops@beta.demo" && e.Subject.Contains("Beta Contractors", StringComparison.Ordinal));
+            tenantProvider.Verify(p => p.SetTenantId(tenantA), Times.AtLeastOnce);
+            tenantProvider.Verify(p => p.SetTenantId(tenantB), Times.AtLeastOnce);
+        }
+    }
+
     private static UserManager<ApplicationUser> CreateUserManager(AppDbContext db)
     {
         var services = new ServiceCollection().BuildServiceProvider();
