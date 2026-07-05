@@ -64,6 +64,16 @@ public class DivisionServiceTests
     }
 
     [Fact]
+    public async Task GetByIdAsync_ReturnsNull_WhenMissing()
+    {
+        var (service, db, _) = Create();
+        await using (db)
+        {
+            Assert.Null(await service.GetByIdAsync(Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task UpdateAsync_PersistsChanges()
     {
         var (service, db, tenantId) = Create();

@@ -66,6 +66,41 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task PostSessionAsync_ReturnsFalse_WhenSessionMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        await using (db)
+        {
+            Assert.False(await service.PostSessionAsync(Guid.NewGuid(), TestUserId));
+        }
+    }
+
+    [Fact]
+    public async Task PostSessionAsync_ReturnsFalse_WhenAlreadyPosted()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "D-1",
+                Name = "Drill",
+                QuantityOnHand = 5,
+                ReorderLevel = 1,
+                UnitCost = 8m,
+                IsActive = true
+            });
+
+            var sessionId = await service.StartSessionAsync(TestUserId);
+            await service.PostSessionAsync(sessionId, TestUserId);
+
+            Assert.False(await service.PostSessionAsync(sessionId, TestUserId));
+        }
+    }
+
+    [Fact]
     public async Task PostSessionAsync_AppliesVarianceToInventory()
     {
         var tenantId = Guid.NewGuid();

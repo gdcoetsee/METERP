@@ -37,6 +37,41 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Logout_Clears_Session_And_Protected_Page_Redirects_To_Login()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/account-billing");
+        await page.WaitForTestIdAsync("account-billing-ready", 30000);
+
+        await page.GotoRelativeAsync("/logout");
+        await page.WaitForURLAsync(
+            u => !u.Contains("logout", StringComparison.OrdinalIgnoreCase),
+            new() { Timeout = 30000 });
+
+        await page.GotoRelativeAsync("/audit");
+        await page.WaitForURLAsync(
+            u => u.Contains("login", StringComparison.OrdinalIgnoreCase),
+            new() { Timeout = 45000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task AccessDenied_Page_Loads_With_Message()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.NewPageAsync();
+        await page.GotoRelativeAsync("/access-denied");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("permission", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Login_Succeeds_With_Demo_Credentials()
     {
         // Exercise the interactive login form (login-complete is used by other tests for speed).
