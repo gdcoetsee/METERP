@@ -1176,6 +1176,50 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Reports_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/reports");
+        await acmePage.WaitForTestIdAsync("reports-ready", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Reports & Insights", acmeContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Total Items: <strong>0</strong>", acmeContent);
+        Assert.DoesNotContain("Total Assets: <strong>0</strong>", acmeContent);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/reports");
+        await betaPage.WaitForTestIdAsync("reports-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.Contains("Total Items: <strong>0</strong>", betaContent);
+        Assert.Contains("Total Assets: <strong>0</strong>", betaContent);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Payroll_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/payroll");
+        await acmePage.WaitForTestIdAsync("payroll-ready", 30000);
+        await acmePage.WaitForTestIdAsync("payroll-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Thabo Mokoena", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/payroll");
+        await betaPage.WaitForTestIdAsync("payroll-empty", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Thabo Mokoena", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
         await E2EHelpers.EnsureAppReadyAsync();

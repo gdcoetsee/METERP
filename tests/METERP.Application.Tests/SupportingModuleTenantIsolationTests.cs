@@ -920,4 +920,51 @@ public class SupportingModuleTenantIsolationTests
         var jobsB = await new JobService(dbB).GetAllAsync(pageSize: 50);
         Assert.Empty(jobsB);
     }
+
+    [Fact]
+    public async Task PayrollService_GetMonthlySummariesAsync_ReturnsOnlyCurrentTenantEmployees()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var month = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Employee>().Add(new Employee
+            {
+                TenantId = tenantB,
+                EmployeeNumber = "B-PAY-1",
+                FirstName = "Beta",
+                LastName = "Payroll",
+                DefaultHourlyRate = 150m,
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Employee>().Add(new Employee
+            {
+                TenantId = tenantA,
+                EmployeeNumber = "A-PAY-1",
+                FirstName = "Acme",
+                LastName = "Payroll",
+                DefaultHourlyRate = 200m,
+                IsActive = true
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var summariesA = await new PayrollService(dbA).GetMonthlySummariesAsync(month);
+        Assert.Single(summariesA);
+        Assert.Contains("Acme", summariesA[0].Name, StringComparison.OrdinalIgnoreCase);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var summariesB = await new PayrollService(dbB).GetMonthlySummariesAsync(month);
+        Assert.Single(summariesB);
+        Assert.Contains("Beta", summariesB[0].Name, StringComparison.OrdinalIgnoreCase);
+    }
 }
