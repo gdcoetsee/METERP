@@ -686,6 +686,48 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Assets_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/assets");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("assets-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Inventory_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/inventory");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("inventory-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Suppliers_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/suppliers");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("suppliers-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Opportunities_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();

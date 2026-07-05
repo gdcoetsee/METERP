@@ -817,4 +817,60 @@ public class SupportingModuleTenantIsolationTests
         Assert.Single(schedulesB);
         Assert.Contains("Beta-only", schedulesB[0].Title, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task RecurringJobService_ProcessDueAsync_SpawnsOnlyCurrentTenantJobs()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Recur due customer B" };
+            seedB.Set<Customer>().Add(customer);
+            await seedB.SaveChangesAsync();
+            seedB.Set<RecurringJobSchedule>().Add(new RecurringJobSchedule
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                Title = "Beta due recurring job",
+                IntervalDays = 30,
+                NextRunDate = DateTime.UtcNow.Date,
+                DefaultQuotedTotal = 3000m,
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using (var dbA = CreateContext(dbName, tenantA))
+        {
+            var serviceA = new RecurringJobService(dbA, new JobService(dbA));
+            Assert.Equal(0, await serviceA.ProcessDueAsync());
+
+            var customer = new Customer { TenantId = tenantA, Name = "Recur due customer A" };
+            dbA.Set<Customer>().Add(customer);
+            await dbA.SaveChangesAsync();
+            dbA.Set<RecurringJobSchedule>().Add(new RecurringJobSchedule
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                Title = "Acme due recurring job",
+                IntervalDays = 30,
+                NextRunDate = DateTime.UtcNow.Date,
+                DefaultQuotedTotal = 5000m,
+                IsActive = true
+            });
+            await dbA.SaveChangesAsync();
+
+            Assert.Equal(1, await serviceA.ProcessDueAsync());
+            var jobsA = await new JobService(dbA).GetAllAsync(pageSize: 50);
+            Assert.Single(jobsA);
+            Assert.Equal("Acme due recurring job", jobsA[0].Title);
+        }
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var jobsB = await new JobService(dbB).GetAllAsync(pageSize: 50);
+        Assert.Empty(jobsB);
+    }
 }
