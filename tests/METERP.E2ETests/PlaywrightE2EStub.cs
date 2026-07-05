@@ -2891,6 +2891,25 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Beta_Tenant_Reports_Exports_Csv_When_Insights_Loaded()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 30000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Total Items: <strong>0</strong>", content);
+
+        await page.ClickByTestIdWhenEnabledAsync("reports-export-csv");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Reports summary CSV downloaded" });
+        await toast.First.WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Scheduling_Exports_Csv_When_List_Has_Items()
     {
         await E2EHelpers.EnsureAppReadyAsync();

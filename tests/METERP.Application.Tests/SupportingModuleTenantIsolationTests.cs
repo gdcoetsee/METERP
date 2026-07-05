@@ -967,4 +967,223 @@ public class SupportingModuleTenantIsolationTests
         Assert.Single(summariesB);
         Assert.Contains("Beta", summariesB[0].Name, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task WorkforceReportService_GetTechnicianUtilizationAsync_ReturnsOnlyCurrentTenantEmployees()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var month = new DateTime(2026, 6, 10, 0, 0, 0, DateTimeKind.Utc);
+
+        var techA = Guid.NewGuid();
+        var techB = Guid.NewGuid();
+        var jobA = Guid.NewGuid();
+        var jobB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Employee>().Add(new Employee
+            {
+                Id = techA,
+                TenantId = tenantA,
+                FirstName = "Acme",
+                LastName = "Tech",
+                IsActive = true
+            });
+            seedA.Set<Job>().Add(new Job { Id = jobA, TenantId = tenantA, CustomerId = Guid.NewGuid(), Title = "Acme job", QuotedTotal = 1000m });
+            seedA.Set<JobLabor>().Add(new JobLabor
+            {
+                TenantId = tenantA,
+                JobId = jobA,
+                EmployeeId = techA,
+                WorkDate = month,
+                Hours = 40,
+                HourlyRate = 200m
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Employee>().Add(new Employee
+            {
+                Id = techB,
+                TenantId = tenantB,
+                FirstName = "Beta",
+                LastName = "Tech",
+                IsActive = true
+            });
+            seedB.Set<Job>().Add(new Job { Id = jobB, TenantId = tenantB, CustomerId = Guid.NewGuid(), Title = "Beta job", QuotedTotal = 2000m });
+            seedB.Set<JobLabor>().Add(new JobLabor
+            {
+                TenantId = tenantB,
+                JobId = jobB,
+                EmployeeId = techB,
+                WorkDate = month,
+                Hours = 80,
+                HourlyRate = 150m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var utilizationA = await new WorkforceReportService(dbA).GetTechnicianUtilizationAsync(month);
+        Assert.Single(utilizationA);
+        Assert.Equal("Acme Tech", utilizationA[0].Name);
+        Assert.Equal(40m, utilizationA[0].HoursLogged);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var utilizationB = await new WorkforceReportService(dbB).GetTechnicianUtilizationAsync(month);
+        Assert.Single(utilizationB);
+        Assert.Equal("Beta Tech", utilizationB[0].Name);
+        Assert.Equal(80m, utilizationB[0].HoursLogged);
+    }
+
+    [Fact]
+    public async Task JobReportService_GetJobProfitabilitySummaryAsync_ReturnsOnlyCurrentTenantJobs()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        var profitableJobA = Guid.NewGuid();
+        var profitableJobB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Job>().Add(new Job
+            {
+                Id = profitableJobA,
+                TenantId = tenantA,
+                CustomerId = Guid.NewGuid(),
+                JobNumber = "A-JOB",
+                Title = "Acme profitable",
+                QuotedTotal = 10_000m
+            });
+            seedA.Set<JobCost>().Add(new JobCost
+            {
+                TenantId = tenantA,
+                JobId = profitableJobA,
+                Amount = 7_000m,
+                CostType = "Material"
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Job>().Add(new Job
+            {
+                Id = profitableJobB,
+                TenantId = tenantB,
+                CustomerId = Guid.NewGuid(),
+                JobNumber = "B-JOB",
+                Title = "Beta profitable",
+                QuotedTotal = 5_000m
+            });
+            seedB.Set<JobCost>().Add(new JobCost
+            {
+                TenantId = tenantB,
+                JobId = profitableJobB,
+                Amount = 2_000m,
+                CostType = "Material"
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var summaryA = await new JobReportService(dbA).GetJobProfitabilitySummaryAsync();
+        Assert.Equal(1, summaryA.JobsAnalyzed);
+        Assert.NotNull(summaryA.TopPerformer);
+        Assert.Equal("Acme profitable", summaryA.TopPerformer!.Title);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var summaryB = await new JobReportService(dbB).GetJobProfitabilitySummaryAsync();
+        Assert.Equal(1, summaryB.JobsAnalyzed);
+        Assert.NotNull(summaryB.TopPerformer);
+        Assert.Equal("Beta profitable", summaryB.TopPerformer!.Title);
+    }
+
+    [Fact]
+    public async Task CashflowReportService_GetCashflowForecastAsync_ReturnsOnlyCurrentTenantDocuments()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = Guid.NewGuid();
+            seedA.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantA,
+                CustomerId = customerA,
+                InvoiceNumber = "A-INV",
+                Status = InvoiceStatus.Sent,
+                Total = 100_000m
+            });
+            seedA.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantA,
+                CustomerId = customerA,
+                QuoteNumber = "A-Q",
+                Status = QuoteStatus.Accepted,
+                Total = 50_000m
+            });
+            seedA.Set<PurchaseOrder>().Add(new PurchaseOrder
+            {
+                TenantId = tenantA,
+                SupplierId = Guid.NewGuid(),
+                PoNumber = "A-PO",
+                Status = PurchaseOrderStatus.Sent,
+                Total = 25_000m
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = Guid.NewGuid();
+            seedB.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantB,
+                CustomerId = customerB,
+                InvoiceNumber = "B-INV",
+                Status = InvoiceStatus.Sent,
+                Total = 999_000m
+            });
+            seedB.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantB,
+                CustomerId = customerB,
+                QuoteNumber = "B-Q",
+                Status = QuoteStatus.Accepted,
+                Total = 888_000m
+            });
+            seedB.Set<PurchaseOrder>().Add(new PurchaseOrder
+            {
+                TenantId = tenantB,
+                SupplierId = Guid.NewGuid(),
+                PoNumber = "B-PO",
+                Status = PurchaseOrderStatus.Sent,
+                Total = 777_000m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var forecastA = await new CashflowReportService(dbA).GetCashflowForecastAsync();
+        Assert.Equal(100_000m, forecastA.ReceivableInflow);
+        Assert.Equal(50_000m, forecastA.PipelineInflow);
+        Assert.Equal(25_000m, forecastA.CommittedOutflow);
+        Assert.Equal(125_000m, forecastA.NetForecastInflow);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var forecastB = await new CashflowReportService(dbB).GetCashflowForecastAsync();
+        Assert.Equal(999_000m, forecastB.ReceivableInflow);
+        Assert.Equal(888_000m, forecastB.PipelineInflow);
+        Assert.Equal(777_000m, forecastB.CommittedOutflow);
+        Assert.Equal(1_110_000m, forecastB.NetForecastInflow);
+    }
 }
