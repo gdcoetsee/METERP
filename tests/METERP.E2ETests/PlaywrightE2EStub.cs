@@ -874,6 +874,46 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Divisions_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/divisions");
+        await acmePage.WaitForTestIdAsync("divisions-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Johannesburg Operations", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/divisions");
+        await betaPage.WaitForTestIdAsync("divisions-empty", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Johannesburg Operations", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_CompanyDocuments_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/company-documents");
+        await acmePage.WaitForTestIdAsync("company-docs-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Compensation Fund Letter", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/company-documents");
+        await betaPage.WaitForTestIdAsync("company-docs-empty", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Compensation Fund Letter", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Tenants_Page_Loads_Commercial_Usage_Table()
     {
         await E2EHelpers.EnsureAppReadyAsync();

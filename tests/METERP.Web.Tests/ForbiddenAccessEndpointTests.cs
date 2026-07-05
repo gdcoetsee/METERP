@@ -295,6 +295,58 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
     }
 
     [Fact]
+    public async Task SalesOrders_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-salesorders@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/sales-orders");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sales-orders-ready", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sales-orders-empty", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PurchaseOrders_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-purchaseorders@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/purchase-orders");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("purchase-orders-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Scheduling_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-scheduling@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/scheduling");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scheduling-ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Audit_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
     {
         const string email = "forbidden-audit@acme.demo";
