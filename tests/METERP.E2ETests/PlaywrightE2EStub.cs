@@ -581,6 +581,41 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_PurchaseOrders_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/purchase-orders");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("purchase-orders-ready", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_SalesOrders_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/sales-orders");
+        await acmePage.WaitForTestIdAsync("sales-orders-ready", 30000);
+        await acmePage.WaitForTestIdAsync("sales-orders-table", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Johannesburg General Hospital", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/sales-orders");
+        await betaPage.WaitForTestIdAsync("sales-orders-empty", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Field_Tech_Shows_Access_Denied_On_Quotes_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();

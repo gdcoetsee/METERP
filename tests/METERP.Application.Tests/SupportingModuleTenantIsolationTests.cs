@@ -551,6 +551,60 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task StockRequisitionService_GetPendingApprovalsAsync_ReturnsOnlyCurrentTenantRequisitions()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "Req customer A" };
+            seedA.Set<Customer>().Add(customer);
+            var job = new Job { TenantId = tenantA, CustomerId = customer.Id, Title = "Req job A", QuotedTotal = 500m };
+            seedA.Set<Job>().Add(job);
+            await seedA.SaveChangesAsync();
+            seedA.Set<StockRequisition>().Add(new StockRequisition
+            {
+                TenantId = tenantA,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                RequisitionNumber = "REQ-A-PEND",
+                Status = RequisitionStatus.PendingManager
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "Req customer B" };
+            seedB.Set<Customer>().Add(customer);
+            var job = new Job { TenantId = tenantB, CustomerId = customer.Id, Title = "Req job B", QuotedTotal = 600m };
+            seedB.Set<Job>().Add(job);
+            await seedB.SaveChangesAsync();
+            seedB.Set<StockRequisition>().Add(new StockRequisition
+            {
+                TenantId = tenantB,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                RequisitionNumber = "REQ-B-PEND",
+                Status = RequisitionStatus.PendingExecutive
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var pendingA = await new StockRequisitionService(dbA, new InventoryService(dbA)).GetPendingApprovalsAsync();
+        Assert.Single(pendingA);
+        Assert.Equal("REQ-A-PEND", pendingA[0].RequisitionNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var pendingB = await new StockRequisitionService(dbB, new InventoryService(dbB)).GetPendingApprovalsAsync();
+        Assert.Single(pendingB);
+        Assert.Equal("REQ-B-PEND", pendingB[0].RequisitionNumber);
+    }
+
+    [Fact]
     public async Task PurchaseOrderService_GetAllAsync_ReturnsOnlyCurrentTenantOrders()
     {
         var dbName = Guid.NewGuid().ToString();

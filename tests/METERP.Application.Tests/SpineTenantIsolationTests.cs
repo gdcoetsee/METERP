@@ -237,4 +237,70 @@ public class SpineTenantIsolationTests
         var soService = new SalesOrderService(dbA, new JobService(dbA));
         Assert.Null(await soService.GetByIdAsync(soBId));
     }
+
+    [Fact]
+    public async Task SalesOrderService_GetAllAsync_ReturnsOnlyCurrentTenantOrders()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customer = new Customer { TenantId = tenantA, Name = "SO customer A" };
+            seedA.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-A-SO",
+                Status = QuoteStatus.Sent
+            };
+            seedA.Set<Quote>().Add(quote);
+            await seedA.SaveChangesAsync();
+            seedA.Set<SalesOrder>().Add(new SalesOrder
+            {
+                TenantId = tenantA,
+                CustomerId = customer.Id,
+                QuoteId = quote.Id,
+                SoNumber = "SO-A-001",
+                Status = SalesOrderStatus.Confirmed
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customer = new Customer { TenantId = tenantB, Name = "SO customer B" };
+            seedB.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-B-SO-ALL",
+                Status = QuoteStatus.Sent
+            };
+            seedB.Set<Quote>().Add(quote);
+            await seedB.SaveChangesAsync();
+            seedB.Set<SalesOrder>().Add(new SalesOrder
+            {
+                TenantId = tenantB,
+                CustomerId = customer.Id,
+                QuoteId = quote.Id,
+                SoNumber = "SO-B-001",
+                Status = SalesOrderStatus.Draft
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var ordersA = await new SalesOrderService(dbA, new JobService(dbA)).GetAllAsync(pageSize: 50);
+        Assert.Single(ordersA);
+        Assert.Equal("SO-A-001", ordersA[0].SoNumber);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var ordersB = await new SalesOrderService(dbB, new JobService(dbB)).GetAllAsync(pageSize: 50);
+        Assert.Single(ordersB);
+        Assert.Equal("SO-B-001", ordersB[0].SoNumber);
+    }
 }
