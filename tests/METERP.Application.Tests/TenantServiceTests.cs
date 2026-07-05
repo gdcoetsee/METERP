@@ -147,6 +147,8 @@ public class TenantServiceTests
         await service.IncrementQuoteCountAsync(acme.Id);
         await service.IncrementQuoteCountAsync(acme.Id);
         await service.IncrementJobCountAsync(beta.Id);
+        await service.IncrementAiCallCountAsync(beta.Id);
+        await service.IncrementAiCallCountAsync(beta.Id);
 
         var acmeUpdated = await service.GetByIdAsync(acme.Id);
         var betaUpdated = await service.GetByIdAsync(beta.Id);
@@ -155,8 +157,12 @@ public class TenantServiceTests
         Assert.NotNull(betaUpdated);
         Assert.Equal(2, acmeUpdated.TotalQuotesCreated);
         Assert.Equal(0, acmeUpdated.TotalJobsCreated);
+        Assert.Equal(0, acmeUpdated.TotalAiCalls);
+        Assert.Equal(0, acmeUpdated.PeriodAiCalls);
         Assert.Equal(0, betaUpdated.TotalQuotesCreated);
         Assert.Equal(1, betaUpdated.TotalJobsCreated);
+        Assert.Equal(2, betaUpdated.TotalAiCalls);
+        Assert.Equal(2, betaUpdated.PeriodAiCalls);
     }
 
     [Fact]

@@ -129,6 +129,23 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Export_Response_Pdf_Downloads()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-export-response-pdf']", "e2e-ai-response");
+        Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Copilot_Optimize_Bid_Shows_Response()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -536,6 +553,27 @@ public class E2EFlowTests : IAsyncLifetime
 
         var stageAfter = await page.Locator("[data-testid='opportunity-stage']").TextContentAsync();
         Assert.Contains("Qualified", stageAfter ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Opportunity_Manual_Quote_Preselects_Customer()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
+
+        await page.OpenFirstOpportunityDetailAsync(30000);
+        var detailContent = await page.Locator("[data-testid='opportunity-detail']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(detailContent));
+
+        await page.ClickByTestIdAsync("opportunity-convert-manual");
+        await page.WaitForTestIdAsync("quote-editor", 30000);
+
+        var selectedCustomer = await page.Locator("[data-testid='quote-customer-select']").InputValueAsync();
+        Assert.False(string.IsNullOrWhiteSpace(selectedCustomer));
+        Assert.NotEqual(Guid.Empty.ToString(), selectedCustomer);
 
         await page.CloseAsync();
     }
@@ -1308,6 +1346,30 @@ public class E2EFlowTests : IAsyncLifetime
         await acmePage.WaitForTestIdAsync("notifications-ready", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Low Stock Alert", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/notifications");
+        await betaPage.WaitForTestIdAsync("notifications-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Low Stock Alert", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Job Overdue", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Notifications_Acme_MarkAllRead_DoesNot_Affect_Beta()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/notifications");
+        await acmePage.WaitForTestIdAsync("notifications-list", 30000);
+        await acmePage.ClickByTestIdAsync("notifications-mark-all");
+        await acmePage.Locator(".toast-body")
+            .Filter(new() { HasText = "All notifications marked read" })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
         await acmePage.CloseAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);

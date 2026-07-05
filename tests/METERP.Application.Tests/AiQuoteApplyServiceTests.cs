@@ -25,6 +25,35 @@ public class AiQuoteApplyServiceTests
     }
 
     [Fact]
+    public async Task CreateQuoteFromAiTextAsync_PreservesTravelLinePrice_FromStructuredSuggestion()
+    {
+        var tenantId = Guid.NewGuid();
+        SetupAiEnabledTenant(tenantId);
+        var customerId = Guid.NewGuid();
+        var quoteId = Guid.NewGuid();
+
+        _quoteService.Setup(s => s.CreateAsync(It.IsAny<Quote>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(quoteId);
+        _quoteService.Setup(s => s.GetByIdAsync(quoteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Quote { Id = quoteId, CustomerId = customerId });
+
+        _aiService.Setup(s => s.SuggestQuoteLinesAsync(It.IsAny<string>(), It.IsAny<decimal>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiQuoteSuggestion(
+                "Include explicit travel for remote site.",
+                new List<AiSuggestedLine>
+                {
+                    new("Site travel and mobilization", 1m, "lot", "Travel", 1850m)
+                }));
+
+        await CreateService().CreateQuoteFromAiTextAsync("Transformer install with travel", customerId);
+
+        _quoteService.Verify(s => s.AddLineAsync(It.Is<QuoteLine>(l =>
+            l.LineType == "Travel" &&
+            l.UnitPrice == 1850m &&
+            l.Description.Contains("travel", StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateQuoteFromAiTextAsync_AddsSuggestedLines_WhenAiReturnsStructuredSuggestion()
     {
         var tenantId = Guid.NewGuid();
