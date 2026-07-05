@@ -193,6 +193,51 @@ public class CrmSpineFlowTests
     }
 
     [Fact]
+    public async Task OpportunityToQuoteToJob_EndToEnd_PreservesTravelThroughSpine()
+    {
+        using var harness = new Harness();
+        var customer = new Customer { TenantId = harness.TenantId, Name = "End-to-end CRM" };
+        harness.Db.Set<Customer>().Add(customer);
+        await harness.Db.SaveChangesAsync();
+
+        var oppId = await harness.Opportunities.CreateAsync(new Opportunity
+        {
+            TenantId = harness.TenantId,
+            Title = "Full spine mobilization job",
+            CustomerId = customer.Id,
+            Value = 95000m,
+            Stage = OpportunityStage.Qualified,
+            Notes = "Travel to client yard required"
+        });
+
+        var opp = await harness.Opportunities.GetByIdAsync(oppId);
+        var quoteId = await harness.Quotes.CreateAsync(new Quote
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0.15m,
+            Notes = harness.Opportunities.BuildAiScopeText(opp!),
+            Lines =
+            {
+                new QuoteLine { Description = "Full spine work", Quantity = 1, UnitPrice = 90000m },
+                new QuoteLine { Description = "Travel mobilization", Quantity = 1, UnitPrice = 5000m, LineType = "Travel" }
+            }
+        });
+
+        await harness.Opportunities.MarkConvertedToQuoteAsync(oppId, quoteId);
+
+        var convertedOpp = await harness.Opportunities.GetByIdAsync(oppId);
+        var job = await harness.Quotes.ConvertToJobAsync(quoteId);
+        var loadedJob = await new JobService(harness.Db).GetByIdAsync(job.Id);
+
+        Assert.Equal(quoteId, convertedOpp!.QuoteId);
+        Assert.Equal(OpportunityStage.Proposal, convertedOpp.Stage);
+        Assert.NotNull(loadedJob);
+        Assert.Equal(quoteId, loadedJob!.QuoteId);
+        Assert.Single(loadedJob.ActualCosts, c => !c.IsDeleted && c.CostType == "Travel" && c.Amount == 5000m);
+    }
+
+    [Fact]
     public async Task OpportunityToQuote_ClosedWon_DoesNotDowngradeStageOnLink()
     {
         using var harness = new Harness();

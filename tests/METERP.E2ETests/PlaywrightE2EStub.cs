@@ -595,6 +595,74 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Opportunity_Ai_Quote_To_Job_Preserves_Travel()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        await E2EHelpers.ResetDemoStateAsync();
+        var page = await Browser.LoginAsync(resetDemoState: false);
+        await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
+
+        await page.OpenFirstOpportunityDetailAsync(30000);
+        await page.ClickByTestIdAsync("opportunity-convert-ai");
+
+        try
+        {
+            await page.WaitForURLAsync("**/ai-copilot**", new() { Timeout = 15000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/ai-copilot");
+        }
+
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+        await page.WaitForTestIdAsync("ai-last-response", 60000);
+        await page.ClickByTestIdAsync("ai-create-real-quote");
+
+        try
+        {
+            await page.WaitForURLAsync("**/quotes**", new() { Timeout = 30000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/quotes");
+        }
+
+        await page.WaitForTestIdAsync("quotes-table", 30000);
+
+        var travelRow = page.Locator("[data-testid='quote-row-with-travel']").First;
+        if (await travelRow.CountAsync() == 0)
+            travelRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
+
+        await travelRow.Locator("[data-testid='quote-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("quote-editor", 20000);
+        await page.WaitForTestIdAsync("convert-to-job", 20000);
+        await page.ClickByTestIdAsync("convert-to-job");
+
+        try
+        {
+            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 30000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/jobs");
+        }
+
+        await page.WaitForJobsReadyAsync(60000);
+        var jobRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await jobRow.CountAsync() == 0)
+            jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+
+        await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("job-detail-panel", 20000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("J-", content);
+        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Opportunity_Manual_Quote_Preselects_Customer()
     {
         await E2EHelpers.EnsureAppReadyAsync();

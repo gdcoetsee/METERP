@@ -50,6 +50,12 @@ public class AiCopilotEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         Assert.Contains("ai-copilot-ready", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ai-prompt-input", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ai-ask-button", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-quick-prompt-variance", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-quick-prompt-travel", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-quick-prompt-transformer", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-quick-prompt-utilization", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-quick-prompt-lowstock", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ai-optimize-bid", body, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task EnsureAiCopilotUserAsync(string email)

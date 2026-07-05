@@ -336,6 +336,58 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task SuggestQuoteLinesAsync_DoesNotIncrementCounter_When_QuotaExceeded()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var quotaService = new Mock<IQuotaService>();
+        quotaService.Setup(q => q.EnsureAllowedAsync(tenantId, QuotaType.AiCall, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new QuotaExceededException(QuotaType.AiCall, 30, 30));
+
+        using var http = CreateMockLlmClient(QuoteSuggestionContent);
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http, quotaService.Object);
+
+        await service.SuggestQuoteLinesAsync("Install panel with travel", 0.15m);
+
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task AskCopilotAsync_ReturnsQuotaMessage_When_QuotaExceeded()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var quotaService = new Mock<IQuotaService>();
+        quotaService.Setup(q => q.EnsureAllowedAsync(tenantId, QuotaType.AiCall, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new QuotaExceededException(QuotaType.AiCall, 30, 30));
+
+        using var http = CreateMockLlmClient("Should not be called");
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http, quotaService.Object);
+
+        var result = await service.AskCopilotAsync("Summarize travel variance risks");
+
+        Assert.NotNull(result);
+        Assert.Contains("quota exceeded", result, StringComparison.OrdinalIgnoreCase);
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task AskCopilotAsync_ReturnsResponseText_When_LlmSucceeds()
     {
         var tenantId = Guid.NewGuid();
