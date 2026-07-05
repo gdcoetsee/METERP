@@ -180,6 +180,63 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_ThrowsWhenJobMissing()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (_, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = Guid.Empty,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            }));
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenNoLines()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, _) = await SeedJobAndItemAsync(db, tenantId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = []
+            }));
+        }
+    }
+
+    [Fact]
+    public async Task RejectAsync_ReturnsFalse_WhenAlreadyRejected()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+            });
+
+            Assert.True(await service.RejectAsync(id, Guid.NewGuid(), "Cancelled"));
+            Assert.False(await service.RejectAsync(id, Guid.NewGuid(), "Again"));
+        }
+    }
+
+    [Fact]
     public async Task GetPendingApprovalsAsync_ReturnsManagerAndExecutiveQueues()
     {
         var (service, db, tenantId, _) = Create();

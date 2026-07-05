@@ -1705,6 +1705,63 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Stock_Submits_Requisition()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/field/stock");
+        await page.WaitForTestIdAsync("field-stock-ready", 30000);
+
+        await page.ClickByTestIdWhenEnabledAsync("field-stock-request-btn");
+        await page.WaitForTestIdAsync("field-stock-modal", 15000);
+
+        var jobSelect = page.Locator("[data-testid='field-stock-job']");
+        var jobOptions = await jobSelect.Locator("option").CountAsync();
+        if (jobOptions <= 1)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        var firstJobValue = await jobSelect.Locator("option").Nth(1).GetAttributeAsync("value");
+        await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
+        await page.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
+
+        await page.FillByTestIdAsync("field-stock-qty", "2");
+        await page.ClickByTestIdWhenEnabledAsync("field-stock-submit");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" });
+        await toast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Leave_Submits_Request()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/field/leave");
+        await page.WaitForTestIdAsync("field-leave-ready", 30000);
+
+        if (await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn");
+        await page.WaitForTestIdAsync("field-leave-modal", 15000);
+        await page.FillByTestIdAsync("field-leave-reason", "E2E field leave request");
+        await page.ClickByTestIdWhenEnabledAsync("field-leave-submit");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Leave submitted" });
+        await toast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Field_Portal_Loads_Hub_And_Navigates_As_Technician()
     {
         await E2EHelpers.EnsureAppReadyAsync();
