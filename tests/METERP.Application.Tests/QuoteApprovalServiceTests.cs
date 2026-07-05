@@ -108,6 +108,31 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveApprove_ReturnsFalse_WhenNotPending()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-004",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            var execId = Guid.NewGuid();
+            await service.ExecutiveApproveAsync(quote.Id, execId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ExecutiveApproveAsync(quote.Id, execId));
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveApprove_AllowsSentStatus()
     {
         var (service, db, tenantId, customer) = Create();

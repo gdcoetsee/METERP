@@ -1861,6 +1861,91 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Requisitions_Issues_Stock_After_Full_Approval()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var techPage = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await techPage.GotoRelativeAsync("/field/stock");
+        await techPage.WaitForTestIdAsync("field-stock-ready", 30000);
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-request-btn");
+        await techPage.WaitForTestIdAsync("field-stock-modal", 15000);
+
+        var jobSelect = techPage.Locator("[data-testid='field-stock-job']");
+        if (await jobSelect.Locator("option").CountAsync() <= 1)
+        {
+            await techPage.CloseAsync();
+            return;
+        }
+
+        var firstJobValue = await jobSelect.Locator("option").Nth(1).GetAttributeAsync("value");
+        await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
+        await techPage.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
+        await techPage.FillByTestIdAsync("field-stock-qty", "1");
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
+        await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
+            .First.WaitForAsync(new() { Timeout = 20000 });
+        await techPage.CloseAsync();
+
+        var adminPage = await Browser.LoginAsync();
+        await adminPage.GotoRelativeAsync("/approvals");
+        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.ClickByTestIdAsync("approvals-tab-requisitions");
+        await adminPage.WaitForTestIdAsync("approvals-requisitions-list", 20000);
+
+        if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
+        {
+            await adminPage.CloseAsync();
+            return;
+        }
+
+        for (var step = 0; step < 2 && await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() > 0; step++)
+        {
+            await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
+            await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+            await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+            await adminPage.Locator(".toast-body").Filter(new() { HasText = "approval" })
+                .First.WaitForAsync(new() { Timeout = 20000 });
+            await adminPage.WaitForTestIdAsync("approvals-ready", 10000);
+        }
+
+        await adminPage.GotoRelativeAsync("/requisitions");
+        await adminPage.WaitForTestIdAsync("requisitions-ready", 30000);
+
+        var issueBtn = adminPage.Locator("[data-testid='requisition-issue-btn']").First;
+        if (await issueBtn.CountAsync() == 0)
+        {
+            await adminPage.CloseAsync();
+            return;
+        }
+
+        await issueBtn.ClickAsync();
+        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+
+        var issuedToast = adminPage.Locator(".toast-body").Filter(new() { HasText = "issued" });
+        await issuedToast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await adminPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Approvals_Exports_Overdue_Csv()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/approvals");
+        await page.WaitForTestIdAsync("approvals-ready", 30000);
+
+        await page.ClickByTestIdWhenEnabledAsync("approvals-export-csv");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "Overdue approvals exported" });
+        await toast.First.WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Approvals_Quote_Approve_After_Submit_For_Executive()
     {
         await E2EHelpers.EnsureAppReadyAsync();

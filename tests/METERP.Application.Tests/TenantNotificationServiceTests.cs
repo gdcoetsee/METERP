@@ -181,6 +181,37 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task GetUnreadCountAsync_ReturnsZero_AfterMarkAllRead()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Unread one",
+                Message = "Needs attention",
+                TargetRoles = "Executive",
+                IsRead = false
+            });
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Unread two",
+                Message = "Also needs attention",
+                TargetRoles = "Executive",
+                IsRead = false
+            });
+
+            Assert.Equal(2, await harness.Service.GetUnreadCountAsync());
+
+            await harness.Service.MarkAllReadAsync();
+
+            Assert.Equal(0, await harness.Service.GetUnreadCountAsync());
+        }
+    }
+
+    [Fact]
     public async Task MarkAllReadAsync_MarksOnlyVisibleNotifications()
     {
         using var harness = new Harness("Executive");
