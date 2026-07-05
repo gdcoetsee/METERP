@@ -60,6 +60,7 @@ public class LoginTwoFactorEndpointTests : IClassFixture<MeterpWebApplicationFac
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("login-2fa-ready", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("login-2fa-code", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("login-2fa-submit", body, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(userId, store.GetChallenge(token));

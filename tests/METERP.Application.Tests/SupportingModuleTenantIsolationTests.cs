@@ -323,6 +323,33 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
+    public async Task EmployeeService_GetByIdAsync_DoesNotReturnOtherTenantEmployee()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid employeeBId;
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantB,
+                EmployeeNumber = "B-1",
+                FirstName = "Other",
+                LastName = "Tenant Tech",
+                IsActive = true
+            };
+            seedB.Set<Employee>().Add(employee);
+            await seedB.SaveChangesAsync();
+            employeeBId = employee.Id;
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        Assert.Null(await new EmployeeService(dbA).GetByIdAsync(employeeBId));
+    }
+
+    [Fact]
     public async Task DivisionService_GetByIdAsync_DoesNotReturnOtherTenantDivision()
     {
         var dbName = Guid.NewGuid().ToString();
