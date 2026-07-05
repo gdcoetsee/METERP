@@ -65,6 +65,26 @@ public class AiJobApplyServiceTests
     }
 
     [Fact]
+    public async Task CreateJobFromAiTextAsync_CreatesJob_WhenCustomerIdNull()
+    {
+        var tenantId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+
+        _tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        _tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai,usage-tracking" });
+        _jobService.Setup(s => s.CreateAsync(It.Is<Job>(j => j.CustomerId == Guid.Empty), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(jobId);
+        _jobService.Setup(s => s.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Job { Id = jobId, JobNumber = "J-2026-NO-CUST", CustomerId = Guid.Empty });
+
+        var result = await CreateService().CreateJobFromAiTextAsync("Travel to site for breaker swap", null);
+
+        Assert.Equal(jobId, result.Id);
+        _jobService.Verify(s => s.AddCostAsync(It.Is<JobCost>(c => c.CostType == "Travel"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateJobFromAiTextAsync_Throws_When_AiFeatureDisabled()
     {
         var tenantId = Guid.NewGuid();

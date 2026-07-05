@@ -388,6 +388,36 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task AnalyzeJobVarianceAsync_ReturnsNull_When_AiFeatureDisabled()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "usage-tracking" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        using var http = CreateMockLlmClient("{}");
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http);
+
+        var job = new Job
+        {
+            JobNumber = "J-DISABLED",
+            Title = "Disabled AI job",
+            QuotedTotal = 5000m,
+            ActualCost = 6000m
+        };
+
+        var result = await service.AnalyzeJobVarianceAsync(job);
+
+        Assert.Null(result);
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task AnalyzeJobVarianceAsync_DoesNotIncrementCounter_When_QuotaExceeded()
     {
         var tenantId = Guid.NewGuid();

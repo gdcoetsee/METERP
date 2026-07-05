@@ -146,6 +146,43 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Export_Full_Session_Pdf_Downloads()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-export-full-pdf']", "e2e-ai-full-session");
+        Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Ai_Copilot_Copy_Response_Shows_Toast()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickByTestIdAsync("ai-copy-response");
+
+        await page.Locator(".toast-body")
+            .Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("copied to clipboard", System.Text.RegularExpressions.RegexOptions.IgnoreCase) })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Copilot_Feedback_Thumbs_Shows_Toast()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -159,6 +196,26 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.Locator(".toast-body")
             .Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("feedback", System.Text.RegularExpressions.RegexOptions.IgnoreCase) })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Ai_Copilot_Feedback_Thumbs_Down_Shows_Toast()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-variance");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickByTestIdAsync("ai-feedback-thumbs-down");
+
+        await page.Locator(".toast-body")
+            .Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("negative feedback", System.Text.RegularExpressions.RegexOptions.IgnoreCase) })
             .First
             .WaitForAsync(new() { Timeout = 15000 });
 
