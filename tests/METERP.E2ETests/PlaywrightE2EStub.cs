@@ -129,6 +129,32 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Optimize_Bid_Shows_Response()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.Locator("input[placeholder*='bid optimization']").FillAsync(
+            "11kV transformer install at remote mine site with explicit travel");
+        await page.ClickByTestIdAsync("ai-optimize-bid");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(response));
+        Assert.True(
+            response!.Contains("travel", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("transformer", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("quote", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("bid", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected copilot response: {response}");
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Copilot_Create_Real_Job_From_Travel_Prompt()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -2653,6 +2679,34 @@ public class E2EFlowTests : IAsyncLifetime
 
         await page.ClickByTestIdAsync("notifications-mark-all");
         await page.WaitForTestIdAsync("notifications-list", 5000);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Notifications_Single_Click_MarkRead_Removes_New_Badge()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/notifications");
+        await page.WaitForTestIdAsync("notifications-ready", 30000);
+        await page.WaitForTestIdAsync("notifications-list", 30000);
+
+        var unreadItem = page.Locator("[data-testid='notification-item']").Filter(new()
+        {
+            Has = page.Locator(".badge.bg-danger", new() { HasText = "New" })
+        }).First;
+
+        if (await unreadItem.CountAsync() == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await unreadItem.ClickAsync();
+        await page.WaitForTestIdAsync("notifications-list", 5000);
+
+        Assert.Equal(0, await unreadItem.Locator(".badge.bg-danger").CountAsync());
 
         await page.CloseAsync();
     }
