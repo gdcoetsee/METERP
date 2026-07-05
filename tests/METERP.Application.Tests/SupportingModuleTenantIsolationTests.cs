@@ -28,6 +28,13 @@ public class SupportingModuleTenantIsolationTests
         return new AppDbContext(options, tenantProvider.Object, currentUser.Object);
     }
 
+    private static AccountabilityReportService CreateAccountabilityService(AppDbContext db, Guid tenantId)
+    {
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        return new AccountabilityReportService(db, tenantProvider.Object);
+    }
+
     [Fact]
     public async Task CustomerService_GetAllAsync_ReturnsOnlyCurrentTenantCustomers()
     {
@@ -1185,5 +1192,146 @@ public class SupportingModuleTenantIsolationTests
         Assert.Equal(888_000m, forecastB.PipelineInflow);
         Assert.Equal(777_000m, forecastB.CommittedOutflow);
         Assert.Equal(1_110_000m, forecastB.NetForecastInflow);
+    }
+
+    [Fact]
+    public async Task AccountabilityReportService_GetDivisionScorecardsAsync_ReturnsOnlyCurrentTenantDivisions()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Division>().Add(new Division
+            {
+                TenantId = tenantA,
+                Code = "ACME",
+                Name = "Acme Division",
+                IsActive = true
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Division>().Add(new Division
+            {
+                TenantId = tenantB,
+                Code = "BETA",
+                Name = "Beta Division",
+                IsActive = true
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var scorecardsA = await CreateAccountabilityService(dbA, tenantA).GetDivisionScorecardsAsync();
+        Assert.Single(scorecardsA);
+        Assert.Equal("Acme Division", scorecardsA[0].DivisionName);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var scorecardsB = await CreateAccountabilityService(dbB, tenantB).GetDivisionScorecardsAsync();
+        Assert.Single(scorecardsB);
+        Assert.Equal("Beta Division", scorecardsB[0].DivisionName);
+    }
+
+    [Fact]
+    public async Task AccountabilityReportService_GetUserActivityAsync_ReturnsOnlyCurrentTenantAuditEntries()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<AuditLogEntry>().Add(new AuditLogEntry
+            {
+                TenantId = tenantA,
+                UserEmail = "exec@acme.demo",
+                Action = "APPROVE",
+                EntityType = "Quote",
+                EntityReference = "Q-A",
+                OccurredAtUtc = DateTime.UtcNow.AddDays(-1)
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<AuditLogEntry>().Add(new AuditLogEntry
+            {
+                TenantId = tenantB,
+                UserEmail = "admin@beta.demo",
+                Action = "CREATE",
+                EntityType = "Customer",
+                EntityReference = "C-B",
+                OccurredAtUtc = DateTime.UtcNow.AddDays(-2)
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var activityA = await CreateAccountabilityService(dbA, tenantA).GetUserActivityAsync(30);
+        Assert.Single(activityA);
+        Assert.Equal("exec@acme.demo", activityA[0].UserEmail);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var activityB = await CreateAccountabilityService(dbB, tenantB).GetUserActivityAsync(30);
+        Assert.Single(activityB);
+        Assert.Equal("admin@beta.demo", activityB[0].UserEmail);
+    }
+
+    [Fact]
+    public async Task AccountabilityReportService_GetOverdueApprovalsAsync_ReturnsOnlyCurrentTenantQuotes()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var submittedAt = DateTime.UtcNow.AddHours(-72);
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = new Customer { TenantId = tenantA, Name = "Acme Customer" };
+            seedA.Set<Customer>().Add(customerA);
+            await seedA.SaveChangesAsync();
+
+            seedA.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantA,
+                CustomerId = customerA.Id,
+                QuoteNumber = "Q-ACME-OVERDUE",
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = submittedAt
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Customer" };
+            seedB.Set<Customer>().Add(customerB);
+            await seedB.SaveChangesAsync();
+
+            seedB.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                QuoteNumber = "Q-BETA-OVERDUE",
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = submittedAt
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var overdueA = await CreateAccountabilityService(dbA, tenantA).GetOverdueApprovalsAsync();
+        Assert.Single(overdueA);
+        Assert.Equal("Q-ACME-OVERDUE", overdueA[0].Reference);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var overdueB = await CreateAccountabilityService(dbB, tenantB).GetOverdueApprovalsAsync();
+        Assert.Single(overdueB);
+        Assert.Equal("Q-BETA-OVERDUE", overdueB[0].Reference);
     }
 }

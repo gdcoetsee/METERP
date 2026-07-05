@@ -1452,6 +1452,28 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Home_Accountability()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/");
+        await acmePage.WaitForTestIdAsync("home-ready", 30000);
+        await acmePage.WaitForTestIdAsync("home-division-scorecards", 30000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Johannesburg Operations", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/");
+        await betaPage.WaitForTestIdAsync("home-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Johannesburg Operations", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, await betaPage.Locator("[data-testid='home-division-scorecards']").CountAsync());
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task Home_Quota_Exceeded_Shows_Upgrade_Banner()
     {
         try
