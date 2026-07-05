@@ -381,6 +381,61 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Opportunity_Manual_Quote_To_Job_Preserves_Travel()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        await E2EHelpers.ResetDemoStateAsync();
+        var page = await Browser.LoginAsync(resetDemoState: false);
+        await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
+
+        await page.OpenFirstOpportunityDetailAsync(30000);
+        await page.ClickByTestIdAsync("opportunity-convert-manual");
+        await page.WaitForTestIdAsync("quote-editor", 30000);
+
+        await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
+        await page.Locator("[data-testid='quote-line-form'] select").SelectOptionAsync(new[] { "Travel" });
+        await page.FillByTestIdAsync("quote-line-description", "E2E opportunity travel allowance");
+        await page.ClickByTestIdWhenEnabledAsync("quote-line-save-button", 30000);
+        await page.WaitForTestIdAsync("quote-lines-table", 15000);
+        await page.ClickByTestIdWhenEnabledAsync("quote-save-button", 30000);
+        await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
+
+        var quoteTitle = await page.Locator("[data-testid='quote-editor-title']").TextContentAsync();
+        Assert.Contains("Q-", quoteTitle ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        var quoteNumber = quoteTitle!.Split('—', '-')[0].Trim();
+
+        await page.ClickByTestIdAsync("convert-to-job");
+
+        try
+        {
+            await page.WaitForURLAsync("**/jobs**", new() { Timeout = 30000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.GotoRelativeAsync("/jobs");
+        }
+
+        await page.WaitForJobsReadyAsync(60000);
+        await page.FillByTestIdAsync("jobs-search", quoteNumber);
+        await page.WaitForJobsReadyAsync(30000);
+
+        var jobRow = page.Locator("[data-testid='job-row-with-travel']").First;
+        if (await jobRow.CountAsync() == 0)
+            jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
+
+        await Assertions.Expect(jobRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
+        await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
+        await page.WaitForTestIdAsync("job-detail-panel", 20000);
+
+        var content = await page.ContentAsync();
+        Assert.Contains("J-", content);
+        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Convert_Quote_To_Job_Preserves_Travel_Costs()
     {
         await E2EHelpers.EnsureAppReadyAsync();

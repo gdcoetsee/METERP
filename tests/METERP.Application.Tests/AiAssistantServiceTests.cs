@@ -297,6 +297,51 @@ public class AiAssistantServiceTests
     }
 
     [Fact]
+    public async Task AnalyzeJobVarianceAsync_DoesNotIncrementCounter_When_AiQuotaExceeded()
+    {
+        AiAssistantService.ClearThrottleStateForTesting();
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        var tenant = new Tenant
+        {
+            Id = tenantId,
+            EnabledFeatures = "ai",
+            PeriodAiCalls = 30,
+            MaxAiCallsPerMonth = 30,
+            Tier = SubscriptionTier.Starter,
+            UsagePeriodStartUtc = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+        };
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+
+        var quotaService = new Mock<IQuotaService>();
+        quotaService.Setup(q => q.EnsureAllowedAsync(tenantId, QuotaType.AiCall, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new QuotaExceededException(QuotaType.AiCall, 30, 30));
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var service = CreateService(
+            CreateConfig(),
+            tenantService.Object,
+            tenantProvider.Object,
+            quotaService.Object);
+
+        var job = new Job
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            QuotedTotal = 10000m,
+            ActualCost = 12000m
+        };
+
+        await service.AnalyzeJobVarianceAsync(job);
+
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task SuggestQuoteLinesAsync_DoesNotIncrementCounter_When_AiQuotaExceeded()
     {
         AiAssistantService.ClearThrottleStateForTesting();

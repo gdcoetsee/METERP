@@ -233,6 +233,87 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task MarkReadAsync_NoOp_WhenNotificationBelongsToOtherTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        Guid betaNotificationId;
+
+        await using (var seedB = CreateSharedContext(dbName, tenantB))
+        {
+            var notification = new TenantNotification
+            {
+                TenantId = tenantB,
+                Title = "Beta unread",
+                Message = "Should stay unread",
+                TargetRoles = "*",
+                IsRead = false
+            };
+            seedB.Set<TenantNotification>().Add(notification);
+            await seedB.SaveChangesAsync();
+            betaNotificationId = notification.Id;
+        }
+
+        var (service, dbA) = CreateSharedService(dbName, tenantA, Guid.NewGuid(), "Admin");
+        await using (dbA)
+        {
+            await service.MarkReadAsync(betaNotificationId);
+
+            await using var verifyB = CreateSharedContext(dbName, tenantB);
+            var saved = await verifyB.Set<TenantNotification>().FirstAsync(n => n.Id == betaNotificationId);
+            Assert.False(saved.IsRead);
+        }
+    }
+
+    [Fact]
+    public async Task GetUnreadCountAsync_ReturnsOnlyCurrentTenantUnread()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var userIdA = Guid.NewGuid();
+
+        await using (var seedB = CreateSharedContext(dbName, tenantB))
+        {
+            seedB.Set<TenantNotification>().Add(new TenantNotification
+            {
+                TenantId = tenantB,
+                Title = "Beta unread",
+                Message = "Should not count for Acme",
+                TargetRoles = "*",
+                IsRead = false
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        var (service, dbA) = CreateSharedService(dbName, tenantA, userIdA, "Admin");
+        await using (dbA)
+        {
+            dbA.Set<TenantNotification>().AddRange(
+                new TenantNotification
+                {
+                    TenantId = tenantA,
+                    Title = "Acme unread",
+                    Message = "Visible",
+                    TargetRoles = "*",
+                    IsRead = false
+                },
+                new TenantNotification
+                {
+                    TenantId = tenantA,
+                    Title = "Acme read",
+                    Message = "Already read",
+                    TargetRoles = "*",
+                    IsRead = true
+                });
+            await dbA.SaveChangesAsync();
+
+            Assert.Equal(1, await service.GetUnreadCountAsync());
+        }
+    }
+
+    [Fact]
     public async Task GetForCurrentUserAsync_ReturnsOnlyCurrentTenantNotifications()
     {
         var dbName = Guid.NewGuid().ToString();

@@ -172,6 +172,76 @@ public class AiAssistantServiceHttpTests
     }
 
     [Fact]
+    public async Task SuggestQuoteLinesAsync_Throttle_IsolatedPerTenant()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        var tenantServiceA = new Mock<ITenantService>();
+        tenantServiceA.Setup(s => s.GetByIdAsync(tenantA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantA, EnabledFeatures = "ai,usage-tracking" });
+        tenantServiceA.Setup(s => s.IncrementAiCallCountAsync(tenantA, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantServiceB = new Mock<ITenantService>();
+        tenantServiceB.Setup(s => s.GetByIdAsync(tenantB, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantB, EnabledFeatures = "ai,usage-tracking" });
+        tenantServiceB.Setup(s => s.IncrementAiCallCountAsync(tenantB, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantProviderA = new Mock<ITenantProvider>();
+        tenantProviderA.Setup(p => p.GetCurrentTenantId()).Returns(tenantA);
+        var tenantProviderB = new Mock<ITenantProvider>();
+        tenantProviderB.Setup(p => p.GetCurrentTenantId()).Returns(tenantB);
+
+        using var http = CreateMockLlmClient(QuoteSuggestionContent);
+        var serviceA = CreateEnabledService(tenantServiceA.Object, tenantProviderA.Object, http);
+        var serviceB = CreateEnabledService(tenantServiceB.Object, tenantProviderB.Object, http);
+
+        var firstA = await serviceA.SuggestQuoteLinesAsync("Acme scope with travel", 0.15m);
+        Assert.NotNull(firstA);
+
+        var throttledA = await serviceA.SuggestQuoteLinesAsync("Acme immediate retry", 0.15m);
+        Assert.Null(throttledA);
+
+        var firstB = await serviceB.SuggestQuoteLinesAsync("Beta scope with travel", 0.15m);
+        Assert.NotNull(firstB);
+        tenantServiceB.Verify(s => s.IncrementAiCallCountAsync(tenantB, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AnalyzeJobVarianceAsync_ReturnsNull_When_QuotaExceeded()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var quotaService = new Mock<IQuotaService>();
+        quotaService.Setup(q => q.EnsureAllowedAsync(tenantId, QuotaType.AiCall, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new QuotaExceededException(QuotaType.AiCall, 50, 50));
+
+        using var http = CreateMockLlmClient("{}");
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http, quotaService.Object);
+
+        var job = new Job
+        {
+            JobNumber = "J-QUOTA",
+            Title = "Over budget job",
+            QuotedTotal = 5000m,
+            ActualCost = 7000m
+        };
+
+        var result = await service.AnalyzeJobVarianceAsync(job);
+
+        Assert.Null(result);
+        tenantService.Verify(s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task AskCopilotAsync_ReturnsResponseText_When_LlmSucceeds()
     {
         var tenantId = Guid.NewGuid();
