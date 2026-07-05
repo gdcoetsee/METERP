@@ -52,6 +52,22 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
     }
 
     [Fact]
+    public async Task Quotes_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-quotes@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/quotes");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Tenants_ShowsAccessDenied_WhenFieldUserOnly()
     {
         const string email = "forbidden-field-tenants@acme.demo";
