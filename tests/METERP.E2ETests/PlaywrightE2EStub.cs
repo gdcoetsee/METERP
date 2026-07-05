@@ -129,6 +129,43 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Ai_Copilot_Demo_Job_Pdf_Downloads()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-variance");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+
+        var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-demo-job-pdf']", "e2e-demo-job");
+        Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Ai_Copilot_Feedback_Thumbs_Shows_Toast()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/ai-copilot");
+        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+
+        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
+        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickByTestIdAsync("ai-feedback-thumbs-up");
+
+        await page.Locator(".toast-body")
+            .Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("feedback", System.Text.RegularExpressions.RegexOptions.IgnoreCase) })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Ai_Copilot_Export_Response_Pdf_Downloads()
     {
         await E2EHelpers.EnsureAppReadyAsync();

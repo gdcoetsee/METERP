@@ -96,6 +96,33 @@ public class AiProjectPlanApplyServiceTests
     }
 
     [Fact]
+    public async Task CreateProjectPlanFromAiTextAsync_PersistsTravelScope_InQuoteAndJobNotes()
+    {
+        var tenantId = Guid.NewGuid();
+        SetupAiEnabledTenant(tenantId);
+        var customerId = Guid.NewGuid();
+        var quoteId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+        const string aiText = "Full project plan with explicit travel to remote substation";
+
+        _quoteService.Setup(s => s.CreateAsync(It.IsAny<Quote>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(quoteId);
+        _quoteService.Setup(s => s.GetByIdAsync(quoteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Quote { Id = quoteId, CustomerId = customerId, Notes = "AI Project Plan - Quote: " + aiText });
+        _jobService.Setup(s => s.CreateAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(jobId);
+        _jobService.Setup(s => s.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Job { Id = jobId, CustomerId = customerId, Notes = "AI Generated Project Plan: " + aiText });
+
+        await CreateService().CreateProjectPlanFromAiTextAsync(aiText, customerId);
+
+        _quoteService.Verify(s => s.CreateAsync(It.Is<Quote>(q =>
+            (q.Notes ?? "").Contains("travel", StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>()), Times.Once);
+        _jobService.Verify(s => s.CreateAsync(It.Is<Job>(j =>
+            (j.Notes ?? "").Contains("travel", StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateProjectPlanFromAiTextAsync_Throws_WhenTextEmpty()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>

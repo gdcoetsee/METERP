@@ -38,7 +38,7 @@ public class CrmSpineFlowTests
             Db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
             Audit = new AuditService(Db, currentUser.Object);
             Opportunities = new OpportunityService(Db, Audit);
-            Quotes = new QuoteService(Db, tenantProvider: tenantProvider.Object);
+            Quotes = new QuoteService(Db, tenantProvider: tenantProvider.Object, auditService: Audit);
         }
 
         public void Dispose() => Db.Dispose();
@@ -139,6 +139,34 @@ public class CrmSpineFlowTests
         var travelCost = Assert.Single(loaded.ActualCosts, c => !c.IsDeleted && c.CostType == "Travel");
         Assert.Equal(3200m, travelCost.Amount);
         Assert.Contains("travel", travelCost.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OpportunityQuoteToJob_Conversion_LogsQuoteConvertAudit()
+    {
+        using var harness = new Harness();
+        var customer = new Customer { TenantId = harness.TenantId, Name = "Audit CRM Co" };
+        harness.Db.Set<Customer>().Add(customer);
+        await harness.Db.SaveChangesAsync();
+
+        var quoteId = await harness.Quotes.CreateAsync(new Quote
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0.15m,
+            Lines =
+            {
+                new QuoteLine { Description = "Switchgear install", Quantity = 1, UnitPrice = 28000m },
+                new QuoteLine { Description = "Mobilization travel", Quantity = 1, UnitPrice = 1800m, LineType = "Travel" }
+            }
+        });
+
+        var job = await harness.Quotes.ConvertToJobAsync(quoteId);
+
+        var entries = await harness.Audit.GetRecentAsync();
+        var convertEntry = entries.First(e => e.Action == "CONVERT" && e.EntityType == "Quote");
+        Assert.Contains(job.JobNumber, convertEntry.Details);
+        Assert.Contains("travel", convertEntry.Details, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

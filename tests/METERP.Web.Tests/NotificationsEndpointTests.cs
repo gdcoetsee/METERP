@@ -48,6 +48,10 @@ public class NotificationsEndpointTests : IClassFixture<MeterpWebApplicationFact
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("notifications-ready", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("notifications-mark-all", body, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            body.Contains("notifications-list", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("notifications-empty", StringComparison.OrdinalIgnoreCase),
+            "Expected notifications list or empty state marker.");
     }
 
     [Fact]
