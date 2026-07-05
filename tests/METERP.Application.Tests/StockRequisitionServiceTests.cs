@@ -338,6 +338,50 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_FiltersBySearch()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Notes = "Alpha panel cable run",
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+            await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Notes = "Beta transformer oil",
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+            });
+
+            var filtered = await service.GetAllAsync(search: "Alpha");
+            var misses = await service.GetAllAsync(search: "nonexistent-xyz");
+
+            Assert.Single(filtered);
+            Assert.Contains("Alpha", filtered[0].Notes, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(misses);
+        }
+    }
+
+    [Fact]
+    public async Task FulfillAfterPoReceiptAsync_ReturnsFalse_WhenNoLinkedRequisition()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            Assert.False(await service.FulfillAfterPoReceiptAsync(Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task GetPendingApprovalsAsync_ReturnsManagerAndExecutiveQueues()
     {
         var (service, db, tenantId, _) = Create();
