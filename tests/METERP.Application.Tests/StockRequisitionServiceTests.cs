@@ -318,6 +318,26 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_ReturnsFalse_WhenNotApproved()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            Assert.False(await service.IssueAsync(id, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task GetPendingApprovalsAsync_ReturnsManagerAndExecutiveQueues()
     {
         var (service, db, tenantId, _) = Create();

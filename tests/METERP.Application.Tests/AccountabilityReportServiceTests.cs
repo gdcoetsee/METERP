@@ -156,6 +156,35 @@ public class AccountabilityReportServiceTests
     }
 
     [Fact]
+    public async Task ExportOverdueApprovalsCsvAsync_IncludesOverdueQuote()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = Create(tenantId);
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Csv Co" };
+            db.Set<Customer>().Add(customer);
+            await db.SaveChangesAsync();
+
+            db.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-CSV-001",
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = DateTime.UtcNow.AddHours(-60)
+            });
+            await db.SaveChangesAsync();
+
+            var csv = await service.ExportOverdueApprovalsCsvAsync();
+
+            Assert.Contains("ItemType,Reference", csv);
+            Assert.Contains("Q-CSV-001", csv);
+            Assert.Contains("Quote", csv);
+        }
+    }
+
+    [Fact]
     public async Task GetOverdueApprovalsAsync_FlagsQuotePastSla()
     {
         var tenantId = Guid.NewGuid();

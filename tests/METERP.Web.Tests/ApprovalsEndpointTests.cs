@@ -52,6 +52,22 @@ public class ApprovalsEndpointTests : IClassFixture<MeterpWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Approvals_ReturnsOk_WithQuotesTab_WhenUserHasQuoteApprove()
+    {
+        const string email = "approvalsquotes@acme.demo";
+        await EnsureApprovalsUserAsync(email, Permissions.QuotesApprove);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/approvals");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("approvals-tab-quotes", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Approvals_IsNotRateLimited_UnderBurst()
     {
         for (var i = 0; i < 35; i++)
@@ -61,7 +77,10 @@ public class ApprovalsEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         }
     }
 
-    private async Task EnsureApprovalsUserAsync(string email)
+    private Task EnsureApprovalsUserAsync(string email) =>
+        EnsureApprovalsUserAsync(email, Permissions.JobsManage);
+
+    private async Task EnsureApprovalsUserAsync(string email, params string[] extraPermissions)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -96,6 +115,7 @@ public class ApprovalsEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         await userManager.CreateAsync(user, "TestPass123!");
         await userManager.AddClaimAsync(user, new Claim("TenantId", tenantId.ToString()));
         await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.ApprovalsView));
-        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.JobsManage));
+        foreach (var permission in extraPermissions)
+            await userManager.AddClaimAsync(user, new Claim("Permission", permission));
     }
 }

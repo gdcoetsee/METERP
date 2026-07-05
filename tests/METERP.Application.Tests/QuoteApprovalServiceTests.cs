@@ -83,6 +83,31 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveRejectAsync_SetsRejectedStatus()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-REJ",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), "Margin too low");
+
+            var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(QuoteApprovalStatus.Rejected, saved.ApprovalStatus);
+            Assert.Equal("Margin too low", saved.ExecutiveRejectionReason);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveApprove_AllowsSentStatus()
     {
         var (service, db, tenantId, customer) = Create();

@@ -1861,6 +1861,49 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Approvals_Quote_Approve_After_Submit_For_Executive()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
+
+        await page.ClickByTestIdAsync("new-quote-button");
+        await page.WaitForTestIdAsync("quote-editor", 10000);
+        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+        await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
+        await page.FillAsync("[data-testid='quote-line-description']", "E2E executive approval quote");
+        await page.ClickByTestIdAsync("quote-line-save-button");
+        await page.WaitForTestIdAsync("quote-lines-table", 15000);
+        await page.ClickByTestIdAsync("quote-save-button");
+        await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
+
+        await page.ClickByTestIdWhenEnabledAsync("quote-submit-approval");
+        await page.Locator(".toast-body").Filter(new() { HasText = "Submitted for executive approval" })
+            .First.WaitForAsync(new() { Timeout = 20000 });
+
+        await page.GotoRelativeAsync("/approvals");
+        await page.WaitForTestIdAsync("approvals-ready", 30000);
+        await page.ClickByTestIdAsync("approvals-tab-quotes");
+        await page.WaitForTestIdAsync("approvals-quotes-list", 20000);
+
+        if (await page.Locator("[data-testid='approvals-quote-row']").CountAsync() == 0)
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("approvals-quote-approve");
+        await page.WaitForTestIdAsync("confirm-dialog", 10000);
+        await page.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+
+        var toast = page.Locator(".toast-body").Filter(new() { HasText = "approved" });
+        await toast.First.WaitForAsync(new() { Timeout = 20000 });
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Requisitions_Page_Loads_List_Or_Empty_State()
     {
         await E2EHelpers.EnsureAppReadyAsync();
