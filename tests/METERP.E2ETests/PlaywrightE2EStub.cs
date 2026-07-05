@@ -2489,6 +2489,53 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MultiTenant_Isolation_On_Approvals_Hub()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.GotoRelativeAsync("/approvals");
+        await acmePage.WaitForTestIdAsync("approvals-ready", 30000);
+        await acmePage.WaitForTestIdAsync("approvals-tabs", 10000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Approvals Hub", acmeContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Beta Mining", acmeContent, StringComparison.OrdinalIgnoreCase);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.GotoRelativeAsync("/approvals");
+        await betaPage.WaitForTestIdAsync("approvals-ready", 30000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Hospital DB Upgrade", betaContent, StringComparison.OrdinalIgnoreCase);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
+    public async Task MultiTenant_Isolation_On_Account_Security_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+
+        var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
+        await acmePage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
+        await acmePage.WaitForTestIdAsync("account-security-card", 10000);
+        var acmeContent = await acmePage.ContentAsync();
+        Assert.Contains("Two-Factor Authentication", acmeContent, StringComparison.OrdinalIgnoreCase);
+        Assert.True(await acmePage.Locator(
+            "[data-testid='2fa-enable-button'], [data-testid='2fa-status-disabled'], [data-testid='2fa-status-enabled']").CountAsync() > 0);
+        await acmePage.CloseAsync();
+
+        var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
+        await betaPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
+        await betaPage.WaitForTestIdAsync("account-security-card", 10000);
+        var betaContent = await betaPage.ContentAsync();
+        Assert.Contains("Two-Factor Authentication", betaContent, StringComparison.OrdinalIgnoreCase);
+        Assert.True(await betaPage.Locator(
+            "[data-testid='2fa-enable-button'], [data-testid='2fa-status-disabled'], [data-testid='2fa-status-enabled']").CountAsync() > 0);
+        await betaPage.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Approvals_Field_Reports()
     {
         await E2EHelpers.EnsureAppReadyAsync();

@@ -2165,4 +2165,98 @@ public class SupportingModuleTenantIsolationTests
         Assert.Equal("Beta Billing", viewB.Tenant.Name);
         Assert.False(viewB.HasAiFeature);
     }
+
+    [Fact]
+    public async Task SchedulingService_GetCalendarJobsAsync_ExcludesInvoicedJobs()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var weekStart = new DateTime(2026, 7, 7);
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            var customerA = new Customer { TenantId = tenantA, Name = "Calendar Filter Co" };
+            seedA.Set<Customer>().Add(customerA);
+            seedA.Set<Job>().AddRange(
+                new Job
+                {
+                    TenantId = tenantA,
+                    CustomerId = customerA.Id,
+                    JobNumber = "J-ACTIVE",
+                    Title = "Still schedulable",
+                    ScheduledStart = weekStart.AddDays(1),
+                    Status = JobStatus.Scheduled,
+                    QuotedTotal = 1000m
+                },
+                new Job
+                {
+                    TenantId = tenantA,
+                    CustomerId = customerA.Id,
+                    JobNumber = "J-INVOICED",
+                    Title = "Already invoiced",
+                    ScheduledStart = weekStart.AddDays(2),
+                    Status = JobStatus.Invoiced,
+                    QuotedTotal = 2000m
+                });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var calendar = await CreateSchedulingService(dbA).GetCalendarJobsAsync(weekStart);
+        Assert.Single(calendar);
+        Assert.Equal("J-ACTIVE", calendar[0].JobNumber);
+    }
+
+    [Fact]
+    public async Task SchedulingService_UpdateScheduledStartAsync_ThrowsWhenJobBelongsToOtherTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var jobB = Guid.NewGuid();
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            var customerB = new Customer { TenantId = tenantB, Name = "Beta Schedule" };
+            seedB.Set<Customer>().Add(customerB);
+            seedB.Set<Job>().Add(new Job
+            {
+                Id = jobB,
+                TenantId = tenantB,
+                CustomerId = customerB.Id,
+                JobNumber = "J-B-RESCHED",
+                Title = "Beta reschedule",
+                Status = JobStatus.Scheduled,
+                QuotedTotal = 1100m
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSchedulingService(dbA).UpdateScheduledStartAsync(jobB, DateTime.UtcNow.Date));
+    }
+
+    [Fact]
+    public async Task AuditService_LogAsync_PersistsOnlyCurrentTenantVisibleEntries()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var currentUserA = new Mock<ICurrentUserService>();
+        currentUserA.Setup(u => u.UserName).Returns("admin@acme.demo");
+        var auditA = new AuditService(dbA, currentUserA.Object);
+        await auditA.LogAsync("CREATE", "Quote", "Q-A-LOG", "Tenant A only");
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var rowsB = await new AuditService(dbB).GetRecentAsync();
+        Assert.Empty(rowsB);
+
+        var rowsA = await auditA.GetRecentAsync();
+        Assert.Single(rowsA);
+        Assert.Equal("admin@acme.demo", rowsA[0].UserEmail);
+        Assert.Contains("Q-A-LOG", rowsA[0].EntityReference, StringComparison.Ordinal);
+    }
 }
