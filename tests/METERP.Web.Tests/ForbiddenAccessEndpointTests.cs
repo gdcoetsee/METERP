@@ -482,6 +482,74 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
     }
 
     [Fact]
+    public async Task Divisions_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-divisions@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/divisions");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("divisions-table", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CompanyDocuments_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-companydocs@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/company-documents");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("company-docs-table", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StockTake_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-stocktake@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/stock-take");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stock-take-start", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PpeHistory_ShowsAccessDenied_WhenFieldUserOnly()
+    {
+        const string email = "forbidden-field-ppehistory@acme.demo";
+        await EnsureFieldOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/ppe-history");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ppe-history-table", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Employees_ShowsAccessDenied_WhenFieldUserOnly()
     {
         const string email = "forbidden-field-employees@acme.demo";
@@ -649,6 +717,40 @@ public class ForbiddenAccessEndpointTests : IClassFixture<MeterpWebApplicationFa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("company-docs-table", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StockTake_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-stocktake@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/stock-take");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stock-take-start", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PpeHistory_ShowsAccessDenied_WhenAuthenticatedWithoutPermission()
+    {
+        const string email = "forbidden-ppehistory@acme.demo";
+        await EnsureTenantOnlyUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.GetAsync("/ppe-history");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Access Denied", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ppe-history-table", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

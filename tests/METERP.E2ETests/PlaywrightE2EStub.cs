@@ -728,6 +728,62 @@ public class E2EFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_Divisions_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/divisions");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("divisions-table", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_CompanyDocuments_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/company-documents");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("company-docs-table", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_StockTake_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/stock-take");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stock-take-start", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Field_Tech_Shows_Access_Denied_On_PpeHistory_Page()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
+        await page.GotoRelativeAsync("/ppe-history");
+
+        var content = await page.ContentAsync();
+        Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ppe-history-table", content, StringComparison.OrdinalIgnoreCase);
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Opportunities_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();
