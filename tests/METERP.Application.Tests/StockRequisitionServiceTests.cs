@@ -473,6 +473,127 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_NonCatalogLine_RequiresDescription()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, _) = await SeedJobAndItemAsync(db, tenantId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = null, Description = "", QuantityRequested = 2 }]
+            }));
+        }
+    }
+
+    [Fact]
+    public async Task NonCatalogLine_Approve_Po_Receive_Issue_ToJob()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, _) = await SeedJobAndItemAsync(db, tenantId);
+            // Real inventory service so GRV/fulfill/issue paths run end-to-end.
+            var inventory = new InventoryService(db);
+            var reqService = new StockRequisitionService(db, inventory);
+            var poService = new PurchaseOrderService(db, inventory, reqService);
+            var supplier = new Supplier { TenantId = tenantId, Name = "Specials CC" };
+            db.Set<Supplier>().Add(supplier);
+            await db.SaveChangesAsync();
+
+            var id = await reqService.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = null,
+                        Description = "50mm galvanised special conduit bend",
+                        QuantityRequested = 4,
+                        EstimatedUnitCost = 85m,
+                        Unit = "ea"
+                    }
+                ]
+            });
+
+            await reqService.ApproveManagerAsync(id, Guid.NewGuid());
+            await reqService.ApproveExecutiveAsync(id, Guid.NewGuid());
+
+            var afterApprove = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.AwaitingProcurement, afterApprove.Status);
+            Assert.Equal(0m, afterApprove.Lines.First().QuantityReserved);
+            Assert.True(afterApprove.Lines.First().IsNonCatalog);
+
+            var poId = await poService.CreateFromRequisitionAsync(id, supplier.Id);
+            var po = await db.Set<PurchaseOrder>().Include(p => p.Lines).FirstAsync(p => p.Id == poId);
+            Assert.Single(po.Lines);
+            Assert.Null(po.Lines.First().InventoryItemId);
+            Assert.Contains("conduit", po.Lines.First().Description, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(85m, po.Lines.First().UnitPrice);
+
+            po.Status = PurchaseOrderStatus.Sent;
+            await db.SaveChangesAsync();
+
+            var grv = await poService.ReceiveAsync(poId, Guid.NewGuid());
+            Assert.NotNull(grv);
+
+            var afterGrv = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.Approved, afterGrv.Status);
+            Assert.Equal(4m, afterGrv.Lines.First().QuantityReserved);
+
+            Assert.True(await reqService.IssueAsync(id, Guid.NewGuid()));
+            var afterIssue = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.Issued, afterIssue.Status);
+            Assert.Equal(4m, afterIssue.Lines.First().QuantityIssued);
+
+            var cost = await db.Set<JobCost>().FirstOrDefaultAsync(c => c.JobId == job.Id);
+            Assert.NotNull(cost);
+            Assert.Equal(4m * 85m, cost.Amount);
+            Assert.Contains("non-catalog", cost.Description, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_MixedCatalogAndNonCatalog_Allowed()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 20m);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 },
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = null,
+                        Description = "Custom bracket fabrication",
+                        QuantityRequested = 1,
+                        EstimatedUnitCost = 450m
+                    }
+                ]
+            });
+
+            var saved = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(2, saved.Lines.Count);
+            Assert.Contains(saved.Lines, l => !l.IsNonCatalog);
+            Assert.Contains(saved.Lines, l => l.IsNonCatalog && l.Description.Contains("bracket", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    [Fact]
     public async Task GetPendingApprovalsAsync_ReturnsManagerAndExecutiveQueues()
     {
         var (service, db, tenantId, _) = Create();

@@ -100,14 +100,32 @@ public sealed class StockRequisitionService : IStockRequisitionService
         if (requisition.Lines == null || !requisition.Lines.Any(l => l.QuantityRequested > 0))
             throw new InvalidOperationException("At least one line with quantity is required.");
 
-        foreach (var line in requisition.Lines)
+        var lines = requisition.Lines.Where(l => l.QuantityRequested > 0).ToList();
+        foreach (var line in lines)
         {
             if (line.QuantityRequested <= 0)
                 throw new InvalidOperationException("Line quantity must be positive.");
 
-            var item = await _dbContext.Set<InventoryItem>().FirstOrDefaultAsync(i => i.Id == line.InventoryItemId, ct);
-            if (item == null || !item.IsActive)
-                throw new InvalidOperationException("Inventory item not found or inactive.");
+            var hasItem = line.InventoryItemId.HasValue && line.InventoryItemId != Guid.Empty;
+            if (hasItem)
+            {
+                var item = await _dbContext.Set<InventoryItem>()
+                    .FirstOrDefaultAsync(i => i.Id == line.InventoryItemId!.Value, ct);
+                if (item == null || !item.IsActive)
+                    throw new InvalidOperationException("Inventory item not found or inactive.");
+                if (string.IsNullOrWhiteSpace(line.Description))
+                    line.Description = item.Name;
+                if (string.IsNullOrWhiteSpace(line.Unit))
+                    line.Unit = item.Unit;
+            }
+            else
+            {
+                line.InventoryItemId = null;
+                if (string.IsNullOrWhiteSpace(line.Description))
+                    throw new InvalidOperationException(
+                        "Non-catalog lines require a description (item not yet in stock master).");
+                line.Description = line.Description.Trim();
+            }
         }
 
         requisition.Status = RequisitionStatus.PendingManager;
@@ -115,16 +133,18 @@ public sealed class StockRequisitionService : IStockRequisitionService
             ? await _documentSequence.GetNextNumberAsync("Requisition", "REQ", ct)
             : $"REQ-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
 
-        var lines = requisition.Lines.ToList();
         requisition.Lines = new List<StockRequisitionLine>();
         _dbContext.Set<StockRequisition>().Add(requisition);
         await _dbContext.SaveChangesAsync(ct);
 
+        var nonCatalogCount = 0;
         foreach (var line in lines)
         {
             line.StockRequisitionId = requisition.Id;
             line.QuantityReserved = 0;
             line.QuantityIssued = 0;
+            if (line.IsNonCatalog)
+                nonCatalogCount++;
             _dbContext.Set<StockRequisitionLine>().Add(line);
         }
 
@@ -136,7 +156,9 @@ public sealed class StockRequisitionService : IStockRequisitionService
                 "SUBMIT",
                 "StockRequisition",
                 requisition.RequisitionNumber,
-                $"Submitted for job, {lines.Count} line(s)" + (requisition.IsPpe ? " [PPE]" : ""),
+                $"Submitted for job, {lines.Count} line(s)" +
+                (nonCatalogCount > 0 ? $", {nonCatalogCount} non-catalog" : "") +
+                (requisition.IsPpe ? " [PPE]" : ""),
                 ct);
         }
 
@@ -167,7 +189,15 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
         foreach (var line in req.Lines.Where(l => !l.IsDeleted))
         {
-            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId, ct);
+            if (line.IsNonCatalog)
+            {
+                // Free-text needs always require procurement (cannot reserve from stock master).
+                line.QuantityReserved = 0;
+                anyShort = true;
+                continue;
+            }
+
+            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId!.Value, ct);
             var available = StockAvailabilityCalculator.GetAvailableQuantity(item.QuantityOnHand, item.QuantityReserved);
             var reserve = StockAvailabilityCalculator.CalculateReservation(line.QuantityRequested, available);
 
@@ -188,7 +218,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
         await _dbContext.SaveChangesAsync(ct);
 
         var detail = anyShort
-            ? "Executive approved — shortfall remains; issue reserved qty and/or create PO for remainder"
+            ? "Executive approved — shortfall and/or non-catalog lines require procurement"
             : "Executive approved — stock fully reserved for issue";
         if (req.IsPpe)
             detail += " [PPE]";
@@ -233,11 +263,28 @@ public sealed class StockRequisitionService : IStockRequisitionService
             var toIssue = line.QuantityReserved - line.QuantityIssued;
             if (toIssue <= 0) continue;
 
-            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId, ct);
+            if (line.IsNonCatalog)
+            {
+                // Non-catalog: procurement fulfilled (reserved after GRV) — post job cost, no stock txn.
+                line.QuantityIssued += toIssue;
+                issuedAny = true;
+                var unitCost = line.EstimatedUnitCost;
+                _dbContext.Set<JobCost>().Add(new JobCost
+                {
+                    JobId = req.JobId,
+                    Description = $"{line.DisplayDescription} (req {req.RequisitionNumber}, non-catalog)",
+                    Amount = toIssue * unitCost,
+                    CostType = "Material",
+                    CostDate = DateTime.UtcNow
+                });
+                continue;
+            }
+
+            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId!.Value, ct);
             item.QuantityReserved = Math.Max(0, item.QuantityReserved - toIssue);
 
             await _inventoryService.RecordStockTransactionAsync(
-                line.InventoryItemId,
+                line.InventoryItemId!.Value,
                 -toIssue,
                 StockTransactionType.Issue,
                 req.RequisitionNumber,
@@ -299,7 +346,15 @@ public sealed class StockRequisitionService : IStockRequisitionService
             var shortfall = line.QuantityRequested - line.QuantityReserved;
             if (shortfall <= 0) continue;
 
-            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId, ct);
+            if (line.IsNonCatalog)
+            {
+                // Free-text lines are fulfilled when the PO is received (no stock master yet).
+                line.QuantityReserved = line.QuantityRequested;
+                anyReserved = true;
+                continue;
+            }
+
+            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId!.Value, ct);
             var available = StockAvailabilityCalculator.GetAvailableQuantity(item.QuantityOnHand, item.QuantityReserved);
             var reserve = StockAvailabilityCalculator.CalculateReservation(shortfall, available);
 
@@ -320,7 +375,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
             req.Status = RequisitionStatus.Approved;
 
         await _dbContext.SaveChangesAsync(ct);
-        await LogAsync("PO_RECEIVED", req, "Stock reserved after GRV — ready for issue", ct);
+        await LogAsync("PO_RECEIVED", req, "Stock/non-catalog reserved after GRV — ready for issue", ct);
         return true;
     }
 
@@ -336,9 +391,14 @@ public sealed class StockRequisitionService : IStockRequisitionService
         foreach (var line in req.Lines.Where(l => !l.IsDeleted && l.QuantityReserved > l.QuantityIssued))
         {
             var release = line.QuantityReserved - line.QuantityIssued;
-            var item = await _dbContext.Set<InventoryItem>().FirstOrDefaultAsync(i => i.Id == line.InventoryItemId, ct);
-            if (item != null)
-                item.QuantityReserved = Math.Max(0, item.QuantityReserved - release);
+            if (!line.IsNonCatalog && line.InventoryItemId.HasValue)
+            {
+                var item = await _dbContext.Set<InventoryItem>()
+                    .FirstOrDefaultAsync(i => i.Id == line.InventoryItemId.Value, ct);
+                if (item != null)
+                    item.QuantityReserved = Math.Max(0, item.QuantityReserved - release);
+            }
+
             line.QuantityReserved = line.QuantityIssued;
         }
     }

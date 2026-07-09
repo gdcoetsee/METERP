@@ -129,14 +129,14 @@ public sealed class PpeIssueService : IPpeIssueService
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == requisition.JobId, ct);
         Guid? employeeId = job?.AssignedEmployeeId;
 
-        foreach (var line in requisition.Lines.Where(l => !l.IsDeleted && l.QuantityIssued > 0))
+        foreach (var line in requisition.Lines.Where(l => !l.IsDeleted && l.QuantityIssued > 0 && !l.IsNonCatalog && l.InventoryItemId.HasValue))
         {
             _dbContext.Set<EmployeePpeIssue>().Add(new EmployeePpeIssue
             {
                 EmployeeId = employeeId,
                 RequestedByUserId = requisition.RequestedByUserId,
                 JobId = requisition.JobId == Guid.Empty ? null : requisition.JobId,
-                InventoryItemId = line.InventoryItemId,
+                InventoryItemId = line.InventoryItemId!.Value,
                 StockRequisitionId = requisition.Id,
                 Quantity = line.QuantityIssued,
                 IssuedAt = DateTime.UtcNow,

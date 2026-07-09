@@ -293,7 +293,22 @@ else
                     <input type="number" min="0.01" step="0.01" class="form-control form-control-sm" @bind="_reqQty" data-testid="job-cc-req-qty" />
                 </div>
                 <div class="col-7">
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100" data-testid="job-cc-req-add-line" @onclick="AddReqLine">+ Add line</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100" data-testid="job-cc-req-add-line" @onclick="AddReqLine">+ Stocked line</button>
+                </div>
+            </div>
+            <hr class="my-2" />
+            <p class="small text-muted mb-1">Not in stock master?</p>
+            <input class="form-control form-control-sm mb-1" placeholder="Description of required material"
+                   @bind="_reqFreeDescription" data-testid="job-cc-req-free-description" />
+            <div class="row g-1">
+                <div class="col-3">
+                    <input type="number" min="0.01" step="0.01" class="form-control form-control-sm" @bind="_reqFreeQty" data-testid="job-cc-req-free-qty" />
+                </div>
+                <div class="col-4">
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm" placeholder="Est. R" @bind="_reqFreeCost" data-testid="job-cc-req-free-cost" />
+                </div>
+                <div class="col-5">
+                    <button type="button" class="btn btn-sm btn-outline-warning w-100" data-testid="job-cc-req-add-free" @onclick="AddReqFreeLine">+ Non-catalog</button>
                 </div>
             </div>
         </div>
@@ -399,9 +414,11 @@ else
 @code {
     private sealed class ReqDraftLine
     {
-        public Guid InventoryItemId { get; init; }
+        public Guid? InventoryItemId { get; init; }
         public string Label { get; init; } = "";
         public decimal Quantity { get; init; }
+        public decimal EstimatedUnitCost { get; init; }
+        public bool IsNonCatalog => !InventoryItemId.HasValue;
     }
 
     [Parameter] public Guid JobId { get; set; }
@@ -423,6 +440,9 @@ else
     private bool _reqIsPpe;
     private string _reqNotes = "";
     private string _reqSearch = "";
+    private string _reqFreeDescription = "";
+    private decimal _reqFreeQty = 1;
+    private decimal _reqFreeCost;
 
     private string _costDescription = "";
     private string _costType = "Travel";
@@ -525,6 +545,9 @@ else
         _reqIsPpe = false;
         _reqNotes = "";
         _reqSearch = "";
+        _reqFreeDescription = "";
+        _reqFreeQty = 1;
+        _reqFreeCost = 0;
         await LoadReqItemsAsync();
         _showReqModal = true;
     }
@@ -568,6 +591,27 @@ else
         _reqQty = 1;
     }
 
+    private void AddReqFreeLine()
+    {
+        if (string.IsNullOrWhiteSpace(_reqFreeDescription) || _reqFreeQty <= 0)
+        {
+            Toast.ShowError("Enter description and quantity for non-catalog items.");
+            return;
+        }
+
+        var desc = _reqFreeDescription.Trim();
+        _reqLines.Add(new ReqDraftLine
+        {
+            InventoryItemId = null,
+            Label = $"[Non-catalog] {desc}",
+            Quantity = _reqFreeQty,
+            EstimatedUnitCost = _reqFreeCost
+        });
+        _reqFreeDescription = "";
+        _reqFreeQty = 1;
+        _reqFreeCost = 0;
+    }
+
     private async Task SubmitReqAsync()
     {
         if (CurrentUser.UserId is not { } userId)
@@ -593,7 +637,11 @@ else
                 Lines = _reqLines.Select(l => new StockRequisitionLine
                 {
                     InventoryItemId = l.InventoryItemId,
-                    QuantityRequested = l.Quantity
+                    Description = l.IsNonCatalog
+                        ? l.Label.Replace("[Non-catalog] ", "", StringComparison.Ordinal)
+                        : l.Label,
+                    QuantityRequested = l.Quantity,
+                    EstimatedUnitCost = l.EstimatedUnitCost
                 }).ToList()
             });
             Toast.ShowSuccess($"Requisition submitted ({_reqLines.Count} line(s)).");

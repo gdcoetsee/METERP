@@ -104,7 +104,29 @@ else
                 </div>
                 <div class="col-6">
                     <button type="button" class="btn btn-outline-primary w-100" data-testid="field-stock-add-line" @onclick="AddLine">
-                        + Add line
+                        + Add stocked line
+                    </button>
+                </div>
+            </div>
+
+            <hr class="my-2" />
+            <p class="small text-muted mb-1">Need something <strong>not in the stock list</strong>?</p>
+            <div class="mb-2">
+                <input class="form-control" placeholder="Describe item (e.g. 50mm galvanised conduit special)"
+                       @bind="_freeTextDescription" data-testid="field-stock-free-description" />
+            </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-4">
+                    <input type="number" min="0.01" step="0.01" class="form-control" placeholder="Qty"
+                           @bind="_freeTextQty" data-testid="field-stock-free-qty" />
+                </div>
+                <div class="col-4">
+                    <input type="number" min="0" step="0.01" class="form-control" placeholder="Est. unit R"
+                           @bind="_freeTextCost" data-testid="field-stock-free-cost" />
+                </div>
+                <div class="col-4">
+                    <button type="button" class="btn btn-outline-warning w-100" data-testid="field-stock-add-free-line" @onclick="AddFreeTextLine">
+                        + Non-catalog
                     </button>
                 </div>
             </div>
@@ -128,9 +150,11 @@ else
 @code {
     private sealed class DraftLine
     {
-        public Guid InventoryItemId { get; init; }
+        public Guid? InventoryItemId { get; init; }
         public string Label { get; init; } = "";
         public decimal Quantity { get; init; }
+        public decimal EstimatedUnitCost { get; init; }
+        public bool IsNonCatalog => !InventoryItemId.HasValue;
     }
 
     private bool _loading = true;
@@ -145,6 +169,9 @@ else
     private decimal _quantity = 1;
     private bool _isPpe;
     private string _notes = "";
+    private string _freeTextDescription = "";
+    private decimal _freeTextQty = 1;
+    private decimal _freeTextCost;
 
     protected override async Task OnInitializedAsync()
     {
@@ -182,6 +209,9 @@ else
         _quantity = 1;
         _isPpe = false;
         _notes = "";
+        _freeTextDescription = "";
+        _freeTextQty = 1;
+        _freeTextCost = 0;
         _lines = new();
         _open = true;
     }
@@ -222,6 +252,27 @@ else
         _quantity = 1;
     }
 
+    private void AddFreeTextLine()
+    {
+        if (string.IsNullOrWhiteSpace(_freeTextDescription) || _freeTextQty <= 0)
+        {
+            Toast.ShowError("Enter a description and quantity for non-catalog items.");
+            return;
+        }
+
+        var desc = _freeTextDescription.Trim();
+        _lines.Add(new DraftLine
+        {
+            InventoryItemId = null,
+            Label = $"[Non-catalog] {desc}",
+            Quantity = _freeTextQty,
+            EstimatedUnitCost = _freeTextCost
+        });
+        _freeTextDescription = "";
+        _freeTextQty = 1;
+        _freeTextCost = 0;
+    }
+
     private void RemoveLine(DraftLine line) => _lines.Remove(line);
 
     private async Task SubmitAsync()
@@ -255,7 +306,9 @@ else
                 Lines = _lines.Select(l => new StockRequisitionLine
                 {
                     InventoryItemId = l.InventoryItemId,
-                    QuantityRequested = l.Quantity
+                    Description = l.IsNonCatalog ? l.Label.Replace("[Non-catalog] ", "", StringComparison.Ordinal) : l.Label,
+                    QuantityRequested = l.Quantity,
+                    EstimatedUnitCost = l.EstimatedUnitCost
                 }).ToList()
             };
 

@@ -280,11 +280,15 @@ public class PurchaseOrderService : IPurchaseOrderService
 
             po.Lines.Add(new PurchaseOrderLine
             {
-                InventoryItemId = line.InventoryItemId,
-                Description = line.InventoryItem?.Name ?? "Material",
+                InventoryItemId = line.IsNonCatalog ? null : line.InventoryItemId,
+                Description = line.IsNonCatalog
+                    ? line.DisplayDescription
+                    : (line.InventoryItem?.Name ?? line.DisplayDescription),
                 Quantity = toOrder,
-                UnitPrice = line.InventoryItem?.UnitCost ?? 0m,
-                Unit = line.InventoryItem?.Unit ?? "ea"
+                UnitPrice = line.IsNonCatalog
+                    ? line.EstimatedUnitCost
+                    : (line.InventoryItem?.UnitCost ?? 0m),
+                Unit = line.Unit ?? line.InventoryItem?.Unit ?? "ea"
             });
         }
 
@@ -350,19 +354,22 @@ public class PurchaseOrderService : IPurchaseOrderService
         await _dbContext.SaveChangesAsync(ct);
 
         var receivedAny = false;
-        foreach (var line in po.Lines.Where(l => !l.IsDeleted && l.InventoryItemId.HasValue))
+        foreach (var line in po.Lines.Where(l => !l.IsDeleted))
         {
             var outstanding = line.QuantityOutstanding;
             if (outstanding <= 0) continue;
 
-            await _inventoryService.RecordStockTransactionAsync(
-                line.InventoryItemId!.Value,
-                outstanding,
-                StockTransactionType.Receipt,
-                grv.GrvNumber,
-                null,
-                $"GRV {grv.GrvNumber} — PO {po.PoNumber}: {line.Description}",
-                ct);
+            if (line.InventoryItemId.HasValue)
+            {
+                await _inventoryService.RecordStockTransactionAsync(
+                    line.InventoryItemId.Value,
+                    outstanding,
+                    StockTransactionType.Receipt,
+                    grv.GrvNumber,
+                    null,
+                    $"GRV {grv.GrvNumber} — PO {po.PoNumber}: {line.Description}",
+                    ct);
+            }
 
             _dbContext.Set<GoodsReceiptLine>().Add(new GoodsReceiptLine
             {

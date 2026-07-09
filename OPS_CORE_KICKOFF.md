@@ -4,8 +4,8 @@
 
 This document is the **execution contract** for the Ops Core sprint. Do not invent product rules that contradict it.
 
-**Status (2026-07-09):** Chunks **1–5 done** (Composer 1–4; Grok Chunk 5). Unit/web green; Playwright Command Center flow committed. Next: R2 remainder (multi-line REQ, PPE register). Primary implementer: **Grok**.  
-**Advisory:** Flag plan risks and consult the user before changing product rules or roadmap order.
+**Status (2026-07-09):** Ops Core 1–5 done. **R2a/R2b:** PPE employee register; multi-line + **non-catalog free-text** requisitions; negative stock guard. Next: R3 employees/payslip or GRV polish. Primary implementer: **Grok**.  
+**Advisory:** Flag plan risks and consult the user before changing product rules or roadmap order. Update `COMPLETION_PLAN.md` whenever product rules change.
 
 ---
 
