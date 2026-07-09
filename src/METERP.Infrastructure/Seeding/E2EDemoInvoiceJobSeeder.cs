@@ -73,12 +73,25 @@ public static class E2EDemoInvoiceJobSeeder
         foreach (var invoice in invoices.Where(i => i.JobId == demoJob.Id))
             await invoiceService.DeleteAsync(invoice.Id, ct);
 
-        if (demoJob.Status == JobStatus.Invoiced || demoJob.Status == JobStatus.Completed)
+        // Ops Core: Closed is hard-locked — reopen so E2E can reset costs/invoices cleanly.
+        if (demoJob.Status == JobStatus.Closed)
+            await jobService.ReopenAsync(demoJob.Id, Guid.Empty, "E2E demo job reset", ct);
+        else if (demoJob.Status is JobStatus.Invoiced or JobStatus.Completed or JobStatus.Cancelled)
             await jobService.UpdateStatusAsync(demoJob.Id, JobStatus.InProgress, ct);
 
         var loaded = await jobService.GetByIdAsync(demoJob.Id, ct);
         if (loaded == null)
             return null;
+
+        if (loaded.Status is JobStatus.Closed or JobStatus.Cancelled)
+        {
+            if (loaded.IsClosed())
+                await jobService.ReopenAsync(loaded.Id, Guid.Empty, "E2E demo job reset", ct);
+            await jobService.UpdateStatusAsync(loaded.Id, JobStatus.InProgress, ct);
+            loaded = await jobService.GetByIdAsync(demoJob.Id, ct);
+            if (loaded == null)
+                return null;
+        }
 
         var hasTravelCost = (loaded.ActualCosts ?? [])
             .Any(c => !c.IsDeleted && c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase));

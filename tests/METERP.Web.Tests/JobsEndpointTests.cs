@@ -61,6 +61,26 @@ public class JobsEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         }
     }
 
+    [Fact]
+    public async Task JobCommandCenter_ReturnsOk_WhenAuthenticated()
+    {
+        const string email = "job-cc@acme.demo";
+        await EnsureJobsUserAsync(email);
+
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        await client.GetAsync($"/login-complete?email={Uri.EscapeDataString(email)}");
+
+        // Unknown id still renders page shell (not found state) when authenticated.
+        var response = await client.GetAsync($"/jobs/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            body.Contains("job-command-center", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("Command Center", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("Job not found", StringComparison.OrdinalIgnoreCase),
+            "Expected Job Command Center markup.");
+    }
+
     private async Task EnsureJobsUserAsync(string email)
     {
         using var scope = _factory.Services.CreateScope();

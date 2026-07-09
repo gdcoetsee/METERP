@@ -45,10 +45,10 @@ else
                         <button type="button" class="btn btn-sm btn-warning" data-testid="job-sign-off-button"
                                 @onclick="SignOffAsync">Record sign-off</button>
                     }
-                    @if (CanInvoice && _job.SignOffStatus == JobSignOffStatus.SignedOff)
+                    @if (CanInvoice)
                     {
-                        <button type="button" class="btn btn-sm btn-success" data-testid="create-invoice-from-job-detail"
-                                @onclick="CreateInvoiceAsync">Create invoice</button>
+                        <button type="button" class="btn btn-sm btn-success" data-testid="job-cc-create-invoice"
+                                @onclick="() => _showInvoiceModal = true">Create invoice</button>
                     }
                     <button type="button" class="btn btn-sm btn-dark" data-testid="job-cc-executive-close"
                             @onclick="() => _showCloseModal = true">Executive close</button>
@@ -91,7 +91,7 @@ else
                 <div class="card h-100">
                     <div class="card-body">
                         <div class="text-muted small">Actual (costs + labor)</div>
-                        <div class="h5 mb-0">R @_summary.ActualTotal.ToString("N2")</div>
+                        <div class="h5 mb-0" data-testid="job-cc-actual-total">R @_summary.ActualTotal.ToString("N2")</div>
                     </div>
                 </div>
             </div>
@@ -99,7 +99,7 @@ else
                 <div class="card h-100">
                     <div class="card-body">
                         <div class="text-muted small">Billed to date</div>
-                        <div class="h5 mb-0">R @_summary.BilledToDate.ToString("N2")</div>
+                        <div class="h5 mb-0" data-testid="job-cc-billed-amount">R @_summary.BilledToDate.ToString("N2")</div>
                     </div>
                 </div>
             </div>
@@ -213,6 +213,46 @@ else
     </div>
 }
 
+@if (_showInvoiceModal)
+{
+    <FormModal IsOpen="true" Title="Create invoice from job" TestId="job-cc-invoice-modal" OnClose="CloseInvoiceModal">
+        <p class="small text-muted mb-3">
+            Billing does not close the job. Deposit and proforma can be raised anytime while open.
+            Final / partial claims require client sign-off. Costs remain editable after invoicing.
+        </p>
+        <div class="mb-3">
+            <label class="form-label">Document type</label>
+            <select class="form-select" @bind="_invoiceDocType" data-testid="job-cc-invoice-type">
+                <option value="@InvoiceDocumentType.Deposit">Deposit (no sign-off required)</option>
+                <option value="@InvoiceDocumentType.Proforma">Proforma (no sign-off required)</option>
+                <option value="@InvoiceDocumentType.Partial">Partial / progress (sign-off required)</option>
+                <option value="@InvoiceDocumentType.Final">Final (sign-off required)</option>
+            </select>
+        </div>
+        @if (_invoiceDocType is InvoiceDocumentType.Deposit or InvoiceDocumentType.Partial)
+        {
+            <div class="mb-3">
+                <label class="form-label">Percent of quoted total</label>
+                <input type="number" min="1" max="100" step="1" class="form-control" @bind="_invoicePercent"
+                       data-testid="job-cc-invoice-percent" />
+            </div>
+        }
+        @if (_invoiceDocType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial
+             && _job?.SignOffStatus != JobSignOffStatus.SignedOff)
+        {
+            <div class="alert alert-warning small py-2" data-testid="job-cc-invoice-signoff-hint">
+                Record client sign-off before final or partial invoicing.
+            </div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseInvoiceModal">Cancel</button>
+            <button type="button" class="btn btn-success" data-testid="job-cc-invoice-confirm"
+                    @onclick="CreateInvoiceAsync"
+                    disabled="@InvoiceConfirmDisabled">Create</button>
+        </div>
+    </FormModal>
+}
+
 @if (_showCostModal)
 {
     <FormModal IsOpen="true" Title="Add job cost" TestId="job-cc-cost-modal" OnClose="CloseCostModal">
@@ -308,6 +348,7 @@ else
     private bool _showLaborModal;
     private bool _showCloseModal;
     private bool _showReopenModal;
+    private bool _showInvoiceModal;
 
     private string _costDescription = "";
     private string _costType = "Travel";
@@ -318,9 +359,15 @@ else
     private DateTime _laborDate = DateTime.Today;
     private string _closeNotes = "";
     private string _reopenReason = "";
+    private InvoiceDocumentType _invoiceDocType = InvoiceDocumentType.Deposit;
+    private decimal _invoicePercent = 30m;
 
     private bool CanManage => CurrentUser.Permissions.Contains(Permissions.JobsManage);
     private bool CanInvoice => CurrentUser.Permissions.Contains(Permissions.InvoicesManage);
+
+    private bool InvoiceConfirmDisabled =>
+        _invoiceDocType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial
+        && _job?.SignOffStatus != JobSignOffStatus.SignedOff;
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -350,15 +397,28 @@ else
         await LoadAsync();
     }
 
+    private void CloseInvoiceModal() => _showInvoiceModal = false;
+
     private async Task CreateInvoiceAsync()
     {
+        if (InvoiceConfirmDisabled) return;
         try
         {
-            var inv = await InvoiceService.CreateFromJobAsync(JobId);
-            Toast.ShowSuccess($"Invoice {inv.InvoiceNumber} created.");
-            Nav.NavigateTo($"/invoices?open={inv.Id}");
+            decimal? percent = _invoiceDocType is InvoiceDocumentType.Deposit or InvoiceDocumentType.Partial
+                ? _invoicePercent
+                : null;
+
+            var inv = await InvoiceService.CreateBillingDocumentAsync(JobId, _invoiceDocType, percent);
+            Toast.ShowSuccess($"{_invoiceDocType} {inv.InvoiceNumber} created — job stays open for costs.");
+            CloseInvoiceModal();
+            // Stay on Command Center so operators can keep capturing costs after billing.
+            await LoadAsync();
         }
         catch (QuotaExceededException ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        catch (JobClosedException ex)
         {
             Toast.ShowError(ex.Message);
         }

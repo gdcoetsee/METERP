@@ -13,11 +13,11 @@
 |-------|--------|
 | R0 Truth reset (plan + kickoff) | **Done (docs)** |
 | R2 partial-REQ hotfix (Chunk 1) | **Done (DoD met)** — unit verified 2026-07-09 |
-| R1 cost integrity + billing≠close + Command Center (Chunks 2–4) | **Done (unit/UI)** — verified green; **Chunk 5 E2E still open** |
+| R1 cost integrity + billing≠close + Command Center (Chunks 2–5) | **Done (unit/web)** — Chunk 5 E2E test added; run Playwright when app up |
 | R2 remainder (multi-line REQ, PPE register, GRV polish) | **Not started** |
 | R3 Employee + payslip | **Not started** |
 
-**Tests verified (2026-07-09):** Application **704** passed; Web **239** passed. E2E not re-run this session.
+**Tests verified (2026-07-09 Chunk 5):** Application **705** (+deposit-while-open); Web **240** (+Command Center route). Playwright test `Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close` added — run when app is up (`docker-compose` / localhost).
 
 ### Advisory duty
 
@@ -35,10 +35,9 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. **Chunk 5:** E2E (or strong integration) for invoice-while-open → cost-after-invoice → executive close  
-2. Command Center: deposit/partial invoice without forcing final+sign-off only (product polish)  
-3. R2 remainder: multi-line REQ, PPE employee register (`JobId` optional), GRV polish  
-4. R3: full employee profile + payslip v1  
+1. Run full Playwright suite against docker/app (verify new Command Center E2E green in CI/local)  
+2. **R2 remainder:** multi-line REQ, PPE employee register (`JobId` optional), GRV polish, negative stock  
+3. **R3:** full employee profile + payslip v1  
 
 Per chunk: `dotnet test` → update handoff → commit → push.
 
@@ -119,7 +118,7 @@ PPE (employee-centric):
 | Phase | Focus | Status |
 |-------|--------|--------|
 | **R0** | Truth reset — this document, DoD, OPS_CORE_KICKOFF | **Done (docs)** |
-| **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Done (unit/UI)** — E2E Chunk 5 open |
+| **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Done (unit/web + E2E test)** |
 | **R2** | Stock flow: partial shortfall **done**; multi-line REQ, GRV UX, PPE register, negative stock | **In progress** |
 | **R3** | Full employee profile, payslip v1, payroll permissions | Not started |
 | **R4** | Billing polish (POP, retention UI, emergency job-first) | Not started |
@@ -137,8 +136,9 @@ Broad **surface** was built Jul 3–5 2026. Treat as **Surface only**, not Done.
 - [x] REQ material issues → job material cost + JobId on stock txn
 - [x] Invoice leaves job open; costs after invoice work
 - [x] Job closes only via executive close (P&L visible)
-- [ ] Green unit + E2E for above (unit green; E2E = Chunk 5)
+- [x] Green unit + web; E2E test committed (execute against running app/CI)
 - [x] Jobs UI ops-first, not AI-first
+- [x] Command Center deposit/partial/final invoice modal (sign-off only where required)
 
 ### Definition of Done
 

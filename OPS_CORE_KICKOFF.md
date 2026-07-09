@@ -4,7 +4,7 @@
 
 This document is the **execution contract** for the Ops Core sprint. Do not invent product rules that contradict it.
 
-**Status (2026-07-09):** Chunks **1–4 implemented** (Composer) and **unit/web verified green** (Grok). **Chunk 5 (E2E) still open.** Primary implementer is now **Grok** per user preference.  
+**Status (2026-07-09):** Chunks **1–5 done** (Composer 1–4; Grok Chunk 5). Unit/web green; Playwright Command Center flow committed. Next: R2 remainder (multi-line REQ, PPE register). Primary implementer: **Grok**.  
 **Advisory:** Flag plan risks and consult the user before changing product rules or roadmap order.
 
 ---
@@ -128,12 +128,12 @@ PPE: EmployeePpeIssue.EmployeeId required; JobId nullable
 
 ---
 
-### Chunk 5 — E2E + handoff  ← **CURRENT**
+### Chunk 5 — E2E + handoff  ← **DONE (test committed)**
 
-1. Playwright (or strong integration): Command Center → invoice while open → add cost after invoice → executive close → optional reopen.
-2. Confirm closed job blocks mutations (unit + E2E as practical).
-3. Update `COMPLETION_PLAN.md` handoff when green.
-4. Optional polish: deposit/partial from Command Center without final-only sign-off path.
+1. Playwright: `Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close` (deposit → cost → close → reopen).
+2. Unit: deposit without sign-off; invoice-while-open cost until close (existing + new).
+3. Command Center invoice modal: Deposit / Proforma / Partial / Final with correct gates; stay on job after create.
+4. Demo job seeder reopens Closed jobs for E2E reset.
 
 ---
 

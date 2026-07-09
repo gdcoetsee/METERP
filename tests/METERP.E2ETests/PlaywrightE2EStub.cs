@@ -971,6 +971,64 @@ public class E2EFlowTests : IAsyncLifetime
         await page.CloseAsync();
     }
 
+    /// <summary>
+    /// Ops Core Chunk 5: Command Center — deposit while open, cost after invoice, executive close + reopen.
+    /// </summary>
+    [Fact]
+    public async Task Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var demoJob = await E2EHelpers.EnsureDemoInvoiceJobAsync(maxAttempts: 5);
+        Assert.NotNull(demoJob);
+        var (_, jobId) = demoJob.Value;
+
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync($"/jobs/{jobId}");
+        await page.WaitForTestIdAsync("job-command-center-ready", 45000);
+        await page.WaitForTestIdAsync("job-cc-pnl", 15000);
+
+        // Deposit does not require sign-off and must not close the job.
+        await page.ClickByTestIdAsync("job-cc-create-invoice");
+        await page.WaitForTestIdAsync("job-cc-invoice-modal", 15000);
+        await page.ClickByTestIdAsync("job-cc-invoice-confirm");
+        await page.WaitForTestIdAsync("job-command-center-ready", 30000);
+        await page.WaitForTestIdAsync("job-cc-add-cost", 20000);
+
+        var billedText = await page.Locator("[data-testid='job-cc-billed-amount']").InnerTextAsync();
+        Assert.DoesNotContain("R 0.00", billedText);
+
+        var actualBefore = await page.Locator("[data-testid='job-cc-actual-total']").InnerTextAsync();
+
+        await page.ClickByTestIdAsync("job-cc-add-cost");
+        await page.WaitForTestIdAsync("job-cc-cost-modal", 15000);
+        await page.FillByTestIdAsync("job-cc-cost-description", "Post-invoice site materials");
+        await page.Locator("[data-testid='job-cc-cost-type']").SelectOptionAsync(new[] { "Material" });
+        await page.FillByTestIdAsync("job-cc-cost-amount", "125.50");
+        await page.ClickByTestIdAsync("job-cc-cost-save");
+        await page.WaitForTestIdAsync("job-command-center-ready", 20000);
+
+        var costToast = page.Locator(".toast-body").Filter(new() { HasText = "Cost added" }).Last;
+        await costToast.WaitForAsync(new() { Timeout = 15000 });
+
+        var actualAfter = await page.Locator("[data-testid='job-cc-actual-total']").InnerTextAsync();
+        Assert.NotEqual(actualBefore, actualAfter);
+
+        await page.ClickByTestIdAsync("job-cc-executive-close");
+        await page.WaitForTestIdAsync("job-cc-close-modal", 15000);
+        await page.FillByTestIdAsync("job-cc-close-notes", "E2E P&L review complete");
+        await page.ClickByTestIdAsync("job-cc-close-confirm");
+        await page.WaitForTestIdAsync("job-cc-closed-banner", 30000);
+        Assert.Equal(0, await page.Locator("[data-testid='job-cc-add-cost']").CountAsync());
+
+        await page.ClickByTestIdAsync("job-cc-reopen");
+        await page.WaitForTestIdAsync("job-cc-reopen-modal", 15000);
+        await page.FillByTestIdAsync("job-cc-reopen-reason", "Late supplier invoice after close");
+        await page.ClickByTestIdAsync("job-cc-reopen-confirm");
+        await page.WaitForTestIdAsync("job-cc-add-cost", 30000);
+
+        await page.CloseAsync();
+    }
+
     [Fact]
     public async Task MultiTenant_Isolation_Basic_Check()
     {

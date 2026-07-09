@@ -566,6 +566,37 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_DepositWithoutSignOff_LeavesJobOpen()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var jobService = new JobService(db);
+        var invoiceService = new InvoiceService(db);
+        var jobId = await SeedJobAsync(db, jobService, tenantId);
+
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobSignOffStatus.None, job.SignOffStatus);
+
+        var deposit = await invoiceService.CreateBillingDocumentAsync(jobId, InvoiceDocumentType.Deposit, 30m);
+        Assert.Equal(InvoiceDocumentType.Deposit, deposit.DocumentType);
+
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.True(job.IsOpenForOperations());
+        Assert.NotEqual(JobStatus.Closed, job.Status);
+
+        await jobService.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Description = "After deposit",
+            Amount = 99m,
+            CostType = "Travel",
+            CostDate = DateTime.UtcNow
+        });
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(99m, job.ActualCost);
+    }
+
+    [Fact]
     public async Task JobService_InvoiceWhileOpen_AllowsCostUntilExecutiveClose()
     {
         var tenantId = Guid.NewGuid();
