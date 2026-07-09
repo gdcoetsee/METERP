@@ -1,19 +1,44 @@
 @page "/ppe-history"
 @using METERP.Application.Services
+@using METERP.Application.Interfaces
 @using METERP.Common
 @using METERP.Domain
-@attribute [Authorize(Policy = "Approvals.View")]
+@attribute [Authorize(Policy = "Inventory.View")]
 @rendermode InteractiveServer
 @inject IPpeIssueService PpeIssueService
+@inject IEmployeeService EmployeeService
+@inject IInventoryService InventoryService
+@inject IJobService JobService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
 
-<PageTitle>PPE Issue History</PageTitle>
+<PageTitle>PPE Register</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <h1 class="h4 mb-1">PPE Issue History</h1>
-        <p class="text-muted small mb-0">Executive visibility into safety equipment issued to field crews via requisitions.</p>
+        <h1 class="h4 mb-1">PPE Register</h1>
+        <p class="text-muted small mb-0">
+            PPE is stock issued to <strong>employees</strong>. Job link is optional site context only.
+        </p>
     </div>
-    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="ppe-history-export" />
+    <div class="d-flex gap-2">
+        @if (CanIssue)
+        {
+            <button type="button" class="btn btn-primary" data-testid="ppe-issue-btn" @onclick="OpenIssueModal">Issue PPE</button>
+        }
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="ppe-history-export" />
+    </div>
+</div>
+
+<div class="mb-3" style="max-width: 360px;" data-testid="ppe-filter">
+    <label class="form-label small text-muted">Filter by employee</label>
+    <select class="form-select" @bind="_filterEmployeeId" @bind:after="ReloadAsync" data-testid="ppe-filter-employee">
+        <option value="@Guid.Empty">All employees</option>
+        @foreach (var e in _employees)
+        {
+            <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName</option>
+        }
+    </select>
 </div>
 
 @if (_loading)
@@ -23,7 +48,7 @@
 else if (_issues.Count == 0)
 {
     <EmptyState Title="No PPE issues recorded"
-                Description="PPE requisitions issued to jobs appear here for compliance tracking."
+                Description="Issue PPE stock to employees from this register, or via PPE-flagged requisitions."
                 Icon="🦺"
                 TestId="ppe-history-empty" />
 }
@@ -35,10 +60,11 @@ else
                 <tr>
                     <th>Issued</th>
                     <th>Employee</th>
-                    <th>Job</th>
                     <th>Item</th>
                     <th class="text-end">Qty</th>
+                    <th>Job (optional)</th>
                     <th>Requisition</th>
+                    <th>Notes</th>
                 </tr>
             </thead>
             <tbody>
@@ -47,10 +73,11 @@ else
                     <tr data-testid="ppe-history-row">
                         <td>@issue.IssuedAt.ToString("yyyy-MM-dd")</td>
                         <td>@(issue.Employee != null ? $"{issue.Employee.FirstName} {issue.Employee.LastName}" : "—")</td>
-                        <td>@(issue.Job?.JobNumber ?? "—")</td>
-                        <td>@(issue.InventoryItem?.Name ?? "—")</td>
+                        <td>@(issue.InventoryItem != null ? $"{issue.InventoryItem.Sku} — {issue.InventoryItem.Name}" : "—")</td>
                         <td class="text-end">@issue.Quantity.ToString("N2")</td>
+                        <td>@(issue.Job?.JobNumber ?? "—")</td>
                         <td>@(issue.StockRequisition?.RequisitionNumber ?? "—")</td>
+                        <td class="small text-muted">@(issue.Notes ?? "—")</td>
                     </tr>
                 }
             </tbody>
@@ -58,20 +85,157 @@ else
     </div>
 }
 
+@if (_showIssueModal)
+{
+    <FormModal IsOpen="true" Title="Issue PPE to employee" TestId="ppe-issue-modal" OnClose="CloseIssueModal">
+        <div class="mb-3">
+            <label class="form-label">Employee *</label>
+            <select class="form-select" @bind="_issueEmployeeId" data-testid="ppe-issue-employee">
+                <option value="@Guid.Empty">— Select —</option>
+                @foreach (var e in _employees)
+                {
+                    <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Stock item *</label>
+            <input class="form-control mb-1" placeholder="Search SKU or name…" value="@_itemSearch"
+                   @oninput="OnItemSearch" data-testid="ppe-issue-item-search" />
+            <select class="form-select" @bind="_issueItemId" data-testid="ppe-issue-item">
+                @foreach (var item in _items)
+                {
+                    <option value="@item.Id">@item.Sku — @item.Name (on hand: @item.QuantityOnHand.ToString("N0"))</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Quantity *</label>
+            <input type="number" min="0.01" step="0.01" class="form-control" @bind="_issueQty" data-testid="ppe-issue-qty" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Job (optional)</label>
+            <select class="form-select" @bind="_issueJobId" data-testid="ppe-issue-job">
+                <option value="@Guid.Empty">— None (register only) —</option>
+                @foreach (var j in _jobs)
+                {
+                    <option value="@j.Id">@j.JobNumber — @j.Title</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <input class="form-control" @bind="_issueNotes" data-testid="ppe-issue-notes" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseIssueModal">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="ppe-issue-confirm" @onclick="IssueAsync">Issue to register</button>
+        </div>
+    </FormModal>
+}
+
 @code {
     private List<EmployeePpeIssue> _issues = new();
+    private List<Employee> _employees = new();
+    private List<InventoryItem> _items = new();
+    private List<Job> _jobs = new();
     private bool _loading = true;
 
+    private Guid _filterEmployeeId = Guid.Empty;
+
+    private bool _showIssueModal;
+    private Guid _issueEmployeeId;
+    private Guid _issueItemId;
+    private Guid _issueJobId;
+    private decimal _issueQty = 1;
+    private string _issueNotes = "";
+    private string _itemSearch = "";
+
+    private bool CanIssue =>
+        CurrentUser.Permissions.Contains(Permissions.InventoryManage)
+        || CurrentUser.Permissions.Contains(Permissions.RequisitionsManage);
+
     protected override async Task OnInitializedAsync()
+    {
+        _employees = (await EmployeeService.GetAllAsync(pageSize: 200)).ToList();
+        _jobs = (await JobService.GetAllAsync(pageSize: 100)).Where(j => j.IsOpenForOperations()).ToList();
+        await LoadItemsAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
     {
         _loading = true;
         try
         {
-            _issues = (await PpeIssueService.GetHistoryAsync(pageSize: 100)).ToList();
+            Guid? filter = _filterEmployeeId == Guid.Empty ? null : _filterEmployeeId;
+            _issues = (await PpeIssueService.GetHistoryAsync(filter, pageSize: 100)).ToList();
         }
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        _items = (await InventoryService.GetAllItemsAsync(
+            string.IsNullOrWhiteSpace(_itemSearch) ? null : _itemSearch,
+            pageSize: 40)).ToList();
+        if (_items.Count > 0 && !_items.Any(i => i.Id == _issueItemId))
+            _issueItemId = _items[0].Id;
+    }
+
+    private async Task OnItemSearch(ChangeEventArgs e)
+    {
+        _itemSearch = e.Value?.ToString() ?? "";
+        await LoadItemsAsync();
+    }
+
+    private void OpenIssueModal()
+    {
+        _issueEmployeeId = _employees.FirstOrDefault()?.Id ?? Guid.Empty;
+        _issueQty = 1;
+        _issueJobId = Guid.Empty;
+        _issueNotes = "";
+        _showIssueModal = true;
+    }
+
+    private void CloseIssueModal() => _showIssueModal = false;
+
+    private async Task IssueAsync()
+    {
+        if (CurrentUser.UserId is not { } userId)
+        {
+            Toast.ShowError("Not signed in.");
+            return;
+        }
+
+        if (_issueEmployeeId == Guid.Empty || _issueItemId == Guid.Empty || _issueQty <= 0)
+        {
+            Toast.ShowError("Select employee, item, and quantity.");
+            return;
+        }
+
+        try
+        {
+            Guid? jobId = _issueJobId == Guid.Empty ? null : _issueJobId;
+            await PpeIssueService.IssueToEmployeeAsync(
+                _issueEmployeeId,
+                _issueItemId,
+                _issueQty,
+                userId,
+                jobId,
+                _issueNotes);
+
+            Toast.ShowSuccess("PPE issued to employee register.");
+            CloseIssueModal();
+            await ReloadAsync();
+            await LoadItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
         }
     }
 }

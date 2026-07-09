@@ -60,25 +60,56 @@ else
                 }
             </select>
         </div>
-        <div class="mb-3">
-            <label class="form-label" for="field-stock-search">Stock item</label>
-            <input id="field-stock-search" class="form-control form-control-lg" placeholder="Search SKU or name…"
-                   value="@_search" @oninput="OnSearchInput" data-testid="field-stock-search" />
-            @if (_items.Count > 0)
+
+        <div class="border rounded p-2 mb-3" data-testid="field-stock-lines">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong class="small">Lines (@_lines.Count)</strong>
+            </div>
+            @if (_lines.Count == 0)
             {
-                <select class="form-select mt-2" @bind="_itemId" data-testid="field-stock-item">
-                    @foreach (var item in _items)
-                    {
-                        <option value="@item.Id">@item.Sku — @item.Name (avail: @item.QuantityAvailable.ToString("N0"))</option>
-                    }
-                </select>
+                <p class="text-muted small mb-2">Add one or more stock items below.</p>
             }
+            else
+            {
+                <ul class="list-group list-group-flush mb-2">
+                    @foreach (var line in _lines)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-1" data-testid="field-stock-line">
+                            <span class="small">@line.Label × @line.Quantity.ToString("N2")</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveLine(line)">Remove</button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="mb-2">
+                <label class="form-label small" for="field-stock-search">Add item</label>
+                <input id="field-stock-search" class="form-control" placeholder="Search SKU or name…"
+                       value="@_search" @oninput="OnSearchInput" data-testid="field-stock-search" />
+                @if (_items.Count > 0)
+                {
+                    <select class="form-select mt-2" @bind="_itemId" data-testid="field-stock-item">
+                        @foreach (var item in _items)
+                        {
+                            <option value="@item.Id">@item.Sku — @item.Name (avail: @item.QuantityAvailable.ToString("N0"))</option>
+                        }
+                    </select>
+                }
+            </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-6">
+                    <label class="form-label small" for="field-stock-qty">Qty</label>
+                    <input id="field-stock-qty" type="number" min="0.01" step="0.01" class="form-control"
+                           @bind="_quantity" data-testid="field-stock-qty" />
+                </div>
+                <div class="col-6">
+                    <button type="button" class="btn btn-outline-primary w-100" data-testid="field-stock-add-line" @onclick="AddLine">
+                        + Add line
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="mb-3">
-            <label class="form-label" for="field-stock-qty">Quantity</label>
-            <input id="field-stock-qty" type="number" min="0.01" step="0.01" class="form-control form-control-lg"
-                   @bind="_quantity" data-testid="field-stock-qty" />
-        </div>
+
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="field-stock-ppe" @bind="_isPpe" data-testid="field-stock-ppe" />
             <label class="form-check-label" for="field-stock-ppe">PPE / safety equipment</label>
@@ -95,11 +126,19 @@ else
 </FormModal>
 
 @code {
+    private sealed class DraftLine
+    {
+        public Guid InventoryItemId { get; init; }
+        public string Label { get; init; } = "";
+        public decimal Quantity { get; init; }
+    }
+
     private bool _loading = true;
     private bool _open;
     private List<Job> _jobs = new();
     private List<InventoryItem> _items = new();
     private List<StockRequisition> _recent = new();
+    private List<DraftLine> _lines = new();
     private Guid _jobId;
     private Guid _itemId;
     private string _search = "";
@@ -112,7 +151,7 @@ else
         _loading = true;
         try
         {
-            _jobs = (await JobService.GetAllAsync(pageSize: 50)).ToList();
+            _jobs = (await JobService.GetAllAsync(pageSize: 50)).Where(j => j.IsOpenForOperations()).ToList();
             _recent = (await RequisitionService.GetAllAsync(pageSize: 10)).ToList();
             await LoadItemsAsync();
         }
@@ -143,10 +182,47 @@ else
         _quantity = 1;
         _isPpe = false;
         _notes = "";
+        _lines = new();
         _open = true;
     }
 
     private void CloseForm() => _open = false;
+
+    private void AddLine()
+    {
+        if (_itemId == Guid.Empty || _quantity <= 0)
+        {
+            Toast.ShowError("Select an item and quantity.");
+            return;
+        }
+
+        var item = _items.FirstOrDefault(i => i.Id == _itemId);
+        var label = item != null ? $"{item.Sku} — {item.Name}" : _itemId.ToString("N")[..8];
+        var existing = _lines.FirstOrDefault(l => l.InventoryItemId == _itemId);
+        if (existing != null)
+        {
+            _lines.Remove(existing);
+            _lines.Add(new DraftLine
+            {
+                InventoryItemId = _itemId,
+                Label = label,
+                Quantity = existing.Quantity + _quantity
+            });
+        }
+        else
+        {
+            _lines.Add(new DraftLine
+            {
+                InventoryItemId = _itemId,
+                Label = label,
+                Quantity = _quantity
+            });
+        }
+
+        _quantity = 1;
+    }
+
+    private void RemoveLine(DraftLine line) => _lines.Remove(line);
 
     private async Task SubmitAsync()
     {
@@ -156,9 +232,15 @@ else
             return;
         }
 
-        if (_jobId == Guid.Empty || _itemId == Guid.Empty || _quantity <= 0)
+        if (_jobId == Guid.Empty)
         {
-            Toast.ShowError("Select a job, item, and quantity.");
+            Toast.ShowError("Select a job.");
+            return;
+        }
+
+        if (_lines.Count == 0)
+        {
+            Toast.ShowError("Add at least one stock line.");
             return;
         }
 
@@ -170,18 +252,15 @@ else
                 RequestedByUserId = userId,
                 IsPpe = _isPpe,
                 Notes = _notes,
-                Lines =
-                [
-                    new StockRequisitionLine
-                    {
-                        InventoryItemId = _itemId,
-                        QuantityRequested = _quantity
-                    }
-                ]
+                Lines = _lines.Select(l => new StockRequisitionLine
+                {
+                    InventoryItemId = l.InventoryItemId,
+                    QuantityRequested = l.Quantity
+                }).ToList()
             };
 
             await RequisitionService.SubmitAsync(req);
-            Toast.ShowSuccess("Requisition submitted — manager then executive approval.");
+            Toast.ShowSuccess($"Requisition submitted ({_lines.Count} line(s)) — manager then executive approval.");
             _recent = (await RequisitionService.GetAllAsync(pageSize: 10)).ToList();
             CloseForm();
         }

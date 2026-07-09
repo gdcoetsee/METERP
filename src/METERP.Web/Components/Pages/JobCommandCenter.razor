@@ -8,6 +8,8 @@
 @rendermode InteractiveServer
 @inject IJobService JobService
 @inject IInvoiceService InvoiceService
+@inject IStockRequisitionService RequisitionService
+@inject IInventoryService InventoryService
 @inject ICurrentUserService CurrentUser
 @inject ToastService Toast
 @inject NavigationManager Nav
@@ -160,9 +162,10 @@ else
                 <div class="card" data-testid="job-cc-requisitions">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span>Stock requisitions</span>
-                        @if (_job.IsOpenForOperations())
+                        @if (_job.IsOpenForOperations() && CanManage)
                         {
-                            <a href="/field/stock" class="btn btn-sm btn-outline-primary">New REQ (field)</a>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-testid="job-cc-new-req"
+                                    @onclick="OpenReqModal">New requisition</button>
                         }
                     </div>
                     <div class="card-body p-0">
@@ -257,6 +260,58 @@ else
     </FormModal>
 }
 
+@if (_showReqModal)
+{
+    <FormModal IsOpen="true" Title="@($"Stock requisition — {_job?.JobNumber}")" TestId="job-cc-req-modal" OnClose="CloseReqModal">
+        <div class="border rounded p-2 mb-3" data-testid="job-cc-req-lines">
+            @if (_reqLines.Count == 0)
+            {
+                <p class="text-muted small mb-2">Add one or more lines.</p>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush mb-2">
+                    @foreach (var line in _reqLines)
+                    {
+                        <li class="list-group-item d-flex justify-content-between px-0 py-1 small">
+                            <span>@line.Label × @line.Quantity.ToString("N2")</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => _reqLines.Remove(line)">Remove</button>
+                        </li>
+                    }
+                </ul>
+            }
+            <input class="form-control form-control-sm mb-1" placeholder="Search stock…" value="@_reqSearch"
+                   @oninput="OnReqSearch" data-testid="job-cc-req-search" />
+            <select class="form-select form-select-sm mb-1" @bind="_reqItemId" data-testid="job-cc-req-item">
+                @foreach (var item in _reqItems)
+                {
+                    <option value="@item.Id">@item.Sku — @item.Name (avail @item.QuantityAvailable.ToString("N0"))</option>
+                }
+            </select>
+            <div class="row g-1">
+                <div class="col-5">
+                    <input type="number" min="0.01" step="0.01" class="form-control form-control-sm" @bind="_reqQty" data-testid="job-cc-req-qty" />
+                </div>
+                <div class="col-7">
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100" data-testid="job-cc-req-add-line" @onclick="AddReqLine">+ Add line</button>
+                </div>
+            </div>
+        </div>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" @bind="_reqIsPpe" data-testid="job-cc-req-ppe" id="job-cc-req-ppe" />
+            <label class="form-check-label" for="job-cc-req-ppe">PPE / safety equipment</label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <input class="form-control form-control-sm" @bind="_reqNotes" data-testid="job-cc-req-notes" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseReqModal">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="job-cc-req-submit" @onclick="SubmitReqAsync">Submit for approval</button>
+        </div>
+    </FormModal>
+}
+
 @if (_showCostModal)
 {
     <FormModal IsOpen="true" Title="Add job cost" TestId="job-cc-cost-modal" OnClose="CloseCostModal">
@@ -342,6 +397,13 @@ else
 }
 
 @code {
+    private sealed class ReqDraftLine
+    {
+        public Guid InventoryItemId { get; init; }
+        public string Label { get; init; } = "";
+        public decimal Quantity { get; init; }
+    }
+
     [Parameter] public Guid JobId { get; set; }
 
     private Job? _job;
@@ -353,6 +415,14 @@ else
     private bool _showCloseModal;
     private bool _showReopenModal;
     private bool _showInvoiceModal;
+    private bool _showReqModal;
+    private List<ReqDraftLine> _reqLines = new();
+    private List<InventoryItem> _reqItems = new();
+    private Guid _reqItemId;
+    private decimal _reqQty = 1;
+    private bool _reqIsPpe;
+    private string _reqNotes = "";
+    private string _reqSearch = "";
 
     private string _costDescription = "";
     private string _costType = "Travel";
@@ -435,6 +505,100 @@ else
         catch (QuotaExceededException ex)
         {
             Toast.ShowError(ex.Message);
+        }
+        catch (JobClosedException ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseReqModal() => _showReqModal = false;
+
+    private async Task OpenReqModal()
+    {
+        _reqLines = new();
+        _reqQty = 1;
+        _reqIsPpe = false;
+        _reqNotes = "";
+        _reqSearch = "";
+        await LoadReqItemsAsync();
+        _showReqModal = true;
+    }
+
+    private async Task LoadReqItemsAsync()
+    {
+        _reqItems = (await InventoryService.GetAllItemsAsync(
+            string.IsNullOrWhiteSpace(_reqSearch) ? null : _reqSearch,
+            pageSize: 30)).ToList();
+        if (_reqItems.Count > 0 && !_reqItems.Any(i => i.Id == _reqItemId))
+            _reqItemId = _reqItems[0].Id;
+    }
+
+    private async Task OnReqSearch(ChangeEventArgs e)
+    {
+        _reqSearch = e.Value?.ToString() ?? "";
+        await LoadReqItemsAsync();
+    }
+
+    private void AddReqLine()
+    {
+        if (_reqItemId == Guid.Empty || _reqQty <= 0)
+        {
+            Toast.ShowError("Select item and quantity.");
+            return;
+        }
+
+        var item = _reqItems.FirstOrDefault(i => i.Id == _reqItemId);
+        var label = item != null ? $"{item.Sku} — {item.Name}" : "Item";
+        var existing = _reqLines.FirstOrDefault(l => l.InventoryItemId == _reqItemId);
+        if (existing != null)
+        {
+            _reqLines.Remove(existing);
+            _reqLines.Add(new ReqDraftLine { InventoryItemId = _reqItemId, Label = label, Quantity = existing.Quantity + _reqQty });
+        }
+        else
+        {
+            _reqLines.Add(new ReqDraftLine { InventoryItemId = _reqItemId, Label = label, Quantity = _reqQty });
+        }
+
+        _reqQty = 1;
+    }
+
+    private async Task SubmitReqAsync()
+    {
+        if (CurrentUser.UserId is not { } userId)
+        {
+            Toast.ShowError("Not signed in.");
+            return;
+        }
+
+        if (_reqLines.Count == 0)
+        {
+            Toast.ShowError("Add at least one line.");
+            return;
+        }
+
+        try
+        {
+            await RequisitionService.SubmitAsync(new StockRequisition
+            {
+                JobId = JobId,
+                RequestedByUserId = userId,
+                IsPpe = _reqIsPpe,
+                Notes = _reqNotes,
+                Lines = _reqLines.Select(l => new StockRequisitionLine
+                {
+                    InventoryItemId = l.InventoryItemId,
+                    QuantityRequested = l.Quantity
+                }).ToList()
+            });
+            Toast.ShowSuccess($"Requisition submitted ({_reqLines.Count} line(s)).");
+            CloseReqModal();
+            await LoadAsync();
         }
         catch (JobClosedException ex)
         {

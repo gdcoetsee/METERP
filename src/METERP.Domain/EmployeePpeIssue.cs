@@ -1,16 +1,18 @@
 namespace METERP.Domain;
 
 /// <summary>
-/// PPE / safety equipment issued to a field worker — executive visibility & compliance history.
+/// PPE stock issued to an employee (register). Job link is optional (site context only).
 /// </summary>
 public class EmployeePpeIssue : BaseEntity
 {
+    /// <summary>Primary holder — PPE is employee-centric, not job-primary.</summary>
     public Guid? EmployeeId { get; set; }
     public Employee? Employee { get; set; }
 
     public Guid RequestedByUserId { get; set; }
 
-    public Guid JobId { get; set; }
+    /// <summary>Optional site/job context when PPE is issued for a specific job.</summary>
+    public Guid? JobId { get; set; }
     public Job? Job { get; set; }
 
     public Guid InventoryItemId { get; set; }

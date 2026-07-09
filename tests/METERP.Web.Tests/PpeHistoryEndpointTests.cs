@@ -47,7 +47,7 @@ public class PpeHistoryEndpointTests : IClassFixture<MeterpWebApplicationFactory
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("PPE Issue History", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PPE Register", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ppe-history-export", body, StringComparison.OrdinalIgnoreCase);
         Assert.True(
             body.Contains("ppe-history-table", StringComparison.OrdinalIgnoreCase)
@@ -100,6 +100,6 @@ public class PpeHistoryEndpointTests : IClassFixture<MeterpWebApplicationFactory
         };
         await userManager.CreateAsync(user, "TestPass123!");
         await userManager.AddClaimAsync(user, new Claim("TenantId", tenantId.ToString()));
-        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.ApprovalsView));
+        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.InventoryView));
     }
 }

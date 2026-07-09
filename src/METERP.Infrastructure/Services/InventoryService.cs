@@ -91,6 +91,13 @@ public class InventoryService : IInventoryService
         var item = await _dbContext.Set<InventoryItem>().FirstOrDefaultAsync(i => i.Id == itemId, ct);
         if (item == null) return;
 
+        // Block issues/adjustments that would drive stock negative (returns/receipts still allowed).
+        if (quantityChange < 0 && item.QuantityOnHand + quantityChange < 0)
+        {
+            throw new InvalidOperationException(
+                $"Insufficient stock for {item.Name}. On hand: {item.QuantityOnHand:N2}, change: {quantityChange:N2}.");
+        }
+
         // Update on-hand
         item.QuantityOnHand += quantityChange;
 

@@ -850,12 +850,12 @@ public class SupportingModuleTenantIsolationTests
         }
 
         await using var dbA = CreateContext(dbName, tenantA);
-        var historyA = await new PpeIssueService(dbA).GetHistoryAsync();
+        var historyA = await new PpeIssueService(dbA, new InventoryService(dbA)).GetHistoryAsync();
         Assert.Single(historyA);
         Assert.Equal(1m, historyA[0].Quantity);
 
         await using var dbB = CreateContext(dbName, tenantB);
-        var historyB = await new PpeIssueService(dbB).GetHistoryAsync();
+        var historyB = await new PpeIssueService(dbB, new InventoryService(dbB)).GetHistoryAsync();
         Assert.Single(historyB);
         Assert.Equal(2m, historyB[0].Quantity);
     }
