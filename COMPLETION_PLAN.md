@@ -4,16 +4,24 @@
 
 ---
 
-## Handoff (current — 2026-07-09)
+## Handoff (current — 2026-07-09, Grok takeover)
 
-**Active work: Ops Core.**  
-**Implementer brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md) ← **start here for Composer / coding agents**.
+**Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
+**Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
 | Phase | Status |
 |-------|--------|
-| R0 Truth reset (this plan + kickoff) | **Done (docs)** |
-| R2 partial-REQ hotfix | **Done (DoD met)** (Chunk 1) |
-| R1 Command Center + billing≠close | **Done (DoD met)** (Chunks 2–4) |
+| R0 Truth reset (plan + kickoff) | **Done (docs)** |
+| R2 partial-REQ hotfix (Chunk 1) | **Done (DoD met)** — unit verified 2026-07-09 |
+| R1 cost integrity + billing≠close + Command Center (Chunks 2–4) | **Done (unit/UI)** — verified green; **Chunk 5 E2E still open** |
+| R2 remainder (multi-line REQ, PPE register, GRV polish) | **Not started** |
+| R3 Employee + payslip | **Not started** |
+
+**Tests verified (2026-07-09):** Application **704** passed; Web **239** passed. E2E not re-run this session.
+
+### Advisory duty
+
+Implementer must **flag plan/product risks** and **consult the user before** changing product rules or roadmap order.
 
 ### Locked product decisions
 
@@ -25,15 +33,14 @@
 6. **Payslip v1** = JobLabor contractor payslip (simple deductions) — not SARS full payroll.
 7. Modals where they improve UX. Definition of Done requires service + UI + audit + tests.
 
-### Next priorities (ordered) — see OPS_CORE_KICKOFF.md chunks
+### Next priorities
 
-1. Partial requisition shortfall fix (stock + procure remainder)
-2. Job cost integrity (ActualCost after REQ issue / labor)
-3. Domain: billing separate from close; `Closed` + reopen; retire terminal `Invoiced` semantics
-4. Job Command Center `/jobs/{id}` (P&L, invoices, costs, REQ, executive close)
-5. Unit + E2E for invoice-while-open, cost-after-invoice, close
+1. **Chunk 5:** E2E (or strong integration) for invoice-while-open → cost-after-invoice → executive close  
+2. Command Center: deposit/partial invoice without forcing final+sign-off only (product polish)  
+3. R2 remainder: multi-line REQ, PPE employee register (`JobId` optional), GRV polish  
+4. R3: full employee profile + payslip v1  
 
-Per chunk: `dotnet test` → update handoff → commit.
+Per chunk: `dotnet test` → update handoff → commit → push.
 
 ---
 
@@ -112,8 +119,8 @@ PPE (employee-centric):
 | Phase | Focus | Status |
 |-------|--------|--------|
 | **R0** | Truth reset — this document, DoD, OPS_CORE_KICKOFF | **Done (docs)** |
-| **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Not started** (next after R2 hotfix) |
-| **R2** | Stock flow: partial shortfall, multi-line REQ, GRV UX, PPE register, negative stock guard | **In progress** (partial shortfall first) |
+| **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Done (unit/UI)** — E2E Chunk 5 open |
+| **R2** | Stock flow: partial shortfall **done**; multi-line REQ, GRV UX, PPE register, negative stock | **In progress** |
 | **R3** | Full employee profile, payslip v1, payroll permissions | Not started |
 | **R4** | Billing polish (POP, retention UI, emergency job-first) | Not started |
 | **R5** | Reporting/export truth (wire or hide stubs) | Not started |

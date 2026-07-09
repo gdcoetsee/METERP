@@ -2,7 +2,10 @@
 
 **Read this first**, then `COMPLETION_PLAN.md` handoff (2026-07-09), then `AGENTS.md`.
 
-This document is the **execution contract** for the next implementation sprint. Do not invent product rules that contradict it.
+This document is the **execution contract** for the Ops Core sprint. Do not invent product rules that contradict it.
+
+**Status (2026-07-09):** Chunks **1–4 implemented** (Composer) and **unit/web verified green** (Grok). **Chunk 5 (E2E) still open.** Primary implementer is now **Grok** per user preference.  
+**Advisory:** Flag plan risks and consult the user before changing product rules or roadmap order.
 
 ---
 
