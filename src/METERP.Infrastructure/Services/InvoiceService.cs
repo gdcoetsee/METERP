@@ -221,6 +221,9 @@ public class InvoiceService : IInvoiceService
         if (job == null)
             throw new InvalidOperationException("Job not found.");
 
+        if (!job.IsOpenForOperations())
+            throw JobClosedException.ForJob(job.JobNumber);
+
         if (documentType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial or InvoiceDocumentType.Standard)
         {
             if (job.SignOffStatus != JobSignOffStatus.SignedOff)

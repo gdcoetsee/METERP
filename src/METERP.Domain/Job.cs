@@ -39,6 +39,18 @@ public class Job : BaseEntity
 
     public DateTime? CompletedDate { get; set; }
 
+    public DateTime? ClosedAt { get; set; }
+
+    public Guid? ClosedByUserId { get; set; }
+
+    public string? CloseNotes { get; set; }
+
+    public DateTime? LastReopenedAt { get; set; }
+
+    public Guid? LastReopenedByUserId { get; set; }
+
+    public string? LastReopenReason { get; set; }
+
     public JobSignOffStatus SignOffStatus { get; set; } = JobSignOffStatus.None;
 
     public DateTime? SignedOffAt { get; set; }
@@ -109,8 +121,13 @@ public class Job : BaseEntity
         return Math.Round((QuotedTotal - GetActualTotal()) / QuotedTotal * 100m, 1);
     }
 
+    public bool IsClosed() => Status == JobStatus.Closed;
+
+    public bool IsOpenForOperations() =>
+        Status is not (JobStatus.Closed or JobStatus.Cancelled);
+
     public bool IsReadyToInvoice() =>
-        SignOffStatus == JobSignOffStatus.SignedOff && Status != JobStatus.Invoiced;
+        SignOffStatus == JobSignOffStatus.SignedOff && IsOpenForOperations();
 
     public int GetProgressPercent()
     {
@@ -124,7 +141,9 @@ public class Job : BaseEntity
             JobStatus.InProgress => 50,
             JobStatus.OnHold => 40,
             JobStatus.Completed => 90,
-            JobStatus.Invoiced => 100,
+            JobStatus.Invoiced => 90,
+            JobStatus.Closed => 100,
+            JobStatus.Cancelled => 0,
             _ => 0
         };
     }

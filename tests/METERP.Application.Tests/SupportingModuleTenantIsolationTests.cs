@@ -2167,7 +2167,7 @@ public class SupportingModuleTenantIsolationTests
     }
 
     [Fact]
-    public async Task SchedulingService_GetCalendarJobsAsync_ExcludesInvoicedJobs()
+    public async Task SchedulingService_GetCalendarJobsAsync_ExcludesClosedJobs()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantA = Guid.NewGuid();
@@ -2192,10 +2192,10 @@ public class SupportingModuleTenantIsolationTests
                 {
                     TenantId = tenantA,
                     CustomerId = customerA.Id,
-                    JobNumber = "J-INVOICED",
-                    Title = "Already invoiced",
+                    JobNumber = "J-CLOSED",
+                    Title = "Executive closed",
                     ScheduledStart = weekStart.AddDays(2),
-                    Status = JobStatus.Invoiced,
+                    Status = JobStatus.Closed,
                     QuotedTotal = 2000m
                 });
             await seedA.SaveChangesAsync();

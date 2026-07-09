@@ -78,22 +78,25 @@ public class JobTests
     }
 
     [Fact]
-    public void Job_IsReadyToInvoice_RequiresSignOffAndNotInvoiced()
+    public void Job_IsReadyToInvoice_RequiresSignOffAndOpenJob()
     {
         var ready = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Completed };
         var notSigned = new Job { SignOffStatus = JobSignOffStatus.Pending, Status = JobStatus.Completed };
-        var invoiced = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Invoiced };
+        var invoicedLegacy = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Invoiced };
+        var closed = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Closed };
 
         Assert.True(ready.IsReadyToInvoice());
         Assert.False(notSigned.IsReadyToInvoice());
-        Assert.False(invoiced.IsReadyToInvoice());
+        Assert.True(invoicedLegacy.IsReadyToInvoice());
+        Assert.False(closed.IsReadyToInvoice());
     }
 
     [Fact]
     public void Job_GetProgressPercent_MapsStatus()
     {
         Assert.Equal(50, new Job { Status = JobStatus.InProgress }.GetProgressPercent());
-        Assert.Equal(100, new Job { Status = JobStatus.Invoiced }.GetProgressPercent());
+        Assert.Equal(90, new Job { Status = JobStatus.Invoiced }.GetProgressPercent());
+        Assert.Equal(100, new Job { Status = JobStatus.Closed }.GetProgressPercent());
     }
 
     [Fact]
@@ -560,6 +563,89 @@ public class JobTests
         await service.DeleteMilestoneAsync(milestoneId);
         milestones = await service.GetMilestonesAsync(jobId);
         Assert.Empty(milestones);
+    }
+
+    [Fact]
+    public async Task JobService_InvoiceWhileOpen_AllowsCostUntilExecutiveClose()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var jobService = new JobService(db, audit: audit.Object);
+        var invoiceService = new InvoiceService(db, auditService: audit.Object);
+        var jobId = await SeedJobAsync(db, jobService, tenantId);
+
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.SignOffStatus = JobSignOffStatus.SignedOff;
+        job.Status = JobStatus.Completed;
+        await db.SaveChangesAsync();
+
+        var invoice = await invoiceService.CreateFromJobAsync(jobId);
+        Assert.NotNull(invoice);
+
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Completed, job.Status);
+
+        await jobService.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Description = "Post-invoice travel",
+            Amount = 450m,
+            CostType = "Travel",
+            CostDate = DateTime.UtcNow
+        });
+
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(450m, job.ActualCost);
+
+        var execId = Guid.NewGuid();
+        Assert.True(await jobService.CloseAsync(jobId, execId, "P&L reviewed"));
+
+        await Assert.ThrowsAsync<JobClosedException>(() => jobService.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Description = "Should fail",
+            Amount = 100m,
+            CostType = "Other",
+            CostDate = DateTime.UtcNow
+        }));
+
+        Assert.True(await jobService.ReopenAsync(jobId, execId, "Additional snag work discovered"));
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Completed, job.Status);
+        Assert.Null(job.ClosedAt);
+
+        await jobService.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Description = "After reopen",
+            Amount = 120m,
+            CostType = "Other",
+            CostDate = DateTime.UtcNow
+        });
+
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(570m, job.ActualCost);
+    }
+
+    [Fact]
+    public async Task JobService_CloseAsync_LogsAudit()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new JobService(db, audit: audit.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Done"));
+
+        audit.Verify(a => a.LogAsync("CLOSE", "Job", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

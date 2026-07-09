@@ -143,7 +143,7 @@ public class SchedulingService : ISchedulingService
             .AsNoTracking()
             .Include(j => j.Customer)
             .Include(j => j.AssignedEmployee)
-            .Where(j => j.ScheduledStart.HasValue && j.Status != JobStatus.Invoiced)
+            .Where(j => j.ScheduledStart.HasValue && j.Status != JobStatus.Closed && j.Status != JobStatus.Cancelled)
             .ToListAsync(ct);
 
         return candidates
