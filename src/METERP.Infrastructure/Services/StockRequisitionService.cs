@@ -154,7 +154,6 @@ public sealed class StockRequisitionService : IStockRequisitionService
         if (req == null || req.Status != RequisitionStatus.PendingExecutive)
             return false;
 
-        var anyReserved = false;
         var anyShort = false;
 
         foreach (var line in req.Lines.Where(l => !l.IsDeleted))
@@ -165,16 +164,13 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
             line.QuantityReserved = reserve;
             if (reserve > 0)
-            {
                 item.QuantityReserved += reserve;
-                anyReserved = true;
-            }
 
             if (reserve < line.QuantityRequested)
                 anyShort = true;
         }
 
-        req.Status = anyShort && !anyReserved
+        req.Status = anyShort
             ? RequisitionStatus.AwaitingProcurement
             : RequisitionStatus.Approved;
 
@@ -183,8 +179,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         await _dbContext.SaveChangesAsync(ct);
 
         var detail = anyShort
-            ? "Executive approved — partial/no stock reserved; procurement may be required"
-            : "Executive approved — stock reserved for issue";
+            ? "Executive approved — shortfall remains; issue reserved qty and/or create PO for remainder"
+            : "Executive approved — stock fully reserved for issue";
         if (req.IsPpe)
             detail += " [PPE]";
 
@@ -212,7 +208,10 @@ public sealed class StockRequisitionService : IStockRequisitionService
     public async Task<bool> IssueAsync(Guid requisitionId, Guid issuedByUserId, CancellationToken ct = default)
     {
         var req = await LoadForUpdateAsync(requisitionId, ct);
-        if (req == null || req.Status != RequisitionStatus.Approved)
+        if (req == null || req.Status is not (
+            RequisitionStatus.Approved
+            or RequisitionStatus.AwaitingProcurement
+            or RequisitionStatus.ProcurementOrdered))
             return false;
 
         var issuedAny = false;
@@ -249,9 +248,17 @@ public sealed class StockRequisitionService : IStockRequisitionService
         if (!issuedAny)
             return false;
 
-        req.Status = RequisitionStatus.Issued;
-        req.IssuedByUserId = issuedByUserId;
-        req.IssuedAt = DateTime.UtcNow;
+        var fullyIssued = req.Lines
+            .Where(l => !l.IsDeleted)
+            .All(l => l.QuantityIssued >= l.QuantityRequested);
+
+        if (fullyIssued)
+        {
+            req.Status = RequisitionStatus.Issued;
+            req.IssuedByUserId = issuedByUserId;
+            req.IssuedAt = DateTime.UtcNow;
+        }
+
         await _dbContext.SaveChangesAsync(ct);
 
         if (req.IsPpe && _ppeIssue != null)

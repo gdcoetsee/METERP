@@ -382,6 +382,70 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task ApproveExecutiveAsync_PartialReserve_SetsAwaitingProcurement()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 3m);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 5 }]
+            });
+
+            await service.ApproveManagerAsync(id, Guid.NewGuid());
+            await service.ApproveExecutiveAsync(id, Guid.NewGuid());
+
+            var saved = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.AwaitingProcurement, saved.Status);
+            Assert.Equal(3m, saved.Lines.First().QuantityReserved);
+        }
+    }
+
+    [Fact]
+    public async Task PartialReserve_Issue_DoesNotFullyCloseRequisition()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 2m);
+            var poService = new PurchaseOrderService(db, new InventoryService(db), service);
+            var supplier = new Supplier { TenantId = tenantId, Name = "Parts Co" };
+            db.Set<Supplier>().Add(supplier);
+            await db.SaveChangesAsync();
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 5 }]
+            });
+
+            await service.ApproveManagerAsync(id, Guid.NewGuid());
+            await service.ApproveExecutiveAsync(id, Guid.NewGuid());
+
+            Assert.True(await service.IssueAsync(id, Guid.NewGuid()));
+
+            var afterPartialIssue = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.AwaitingProcurement, afterPartialIssue.Status);
+            Assert.Equal(2m, afterPartialIssue.Lines.First().QuantityIssued);
+            Assert.Equal(2m, afterPartialIssue.Lines.First().QuantityReserved);
+
+            var poId = await poService.CreateFromRequisitionAsync(id, supplier.Id);
+            Assert.NotEqual(Guid.Empty, poId);
+
+            inventory.Verify(i => i.RecordStockTransactionAsync(
+                item.Id, -2m, StockTransactionType.Issue,
+                afterPartialIssue.RequisitionNumber, job.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
     public async Task GetPendingApprovalsAsync_ReturnsManagerAndExecutiveQueues()
     {
         var (service, db, tenantId, _) = Create();

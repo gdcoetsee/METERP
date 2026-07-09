@@ -74,7 +74,7 @@ else
                                 <button type="button" class="btn btn-sm btn-warning" data-testid="requisition-create-po-btn"
                                         @onclick="() => ShowCreatePo(req)">Create PO</button>
                             }
-                            @if (CanIssue && req.Status == RequisitionStatus.Approved)
+                            @if (CanIssue && CanIssueRequisition(req))
                             {
                                 <button type="button" class="btn btn-sm btn-success" data-testid="requisition-issue-btn"
                                         @onclick="() => IssueAsync(req)">Issue to job</button>
@@ -222,6 +222,12 @@ else
         await JS.InvokeVoidAsync("meterpUi.downloadText", "requisitions.csv", sb.ToString(), "text/csv;charset=utf-8");
         Toast.ShowSuccess("Requisitions CSV downloaded.");
     }
+
+    private static bool CanIssueRequisition(StockRequisition req) =>
+        req.Status is RequisitionStatus.Approved
+            or RequisitionStatus.AwaitingProcurement
+            or RequisitionStatus.ProcurementOrdered
+        && req.Lines.Any(l => !l.IsDeleted && l.QuantityReserved > l.QuantityIssued);
 
     private static string GetStatusBadge(RequisitionStatus status) => status switch
     {
