@@ -128,11 +128,12 @@ PPE: EmployeePpeIssue.EmployeeId required; JobId nullable
 
 ---
 
-### Chunk 5 — E2E + handoff
+### Chunk 5 — E2E + handoff  ← **CURRENT**
 
-1. Playwright (or extend existing): quote→job → invoice while open → add cost → (optional) REQ issue → executive close.
-2. Update `COMPLETION_PLAN.md` handoff checkboxes.
-3. `dotnet test` full suite green.
+1. Playwright (or strong integration): Command Center → invoice while open → add cost after invoice → executive close → optional reopen.
+2. Confirm closed job blocks mutations (unit + E2E as practical).
+3. Update `COMPLETION_PLAN.md` handoff when green.
+4. Optional polish: deposit/partial from Command Center without final-only sign-off path.
 
 ---
 
