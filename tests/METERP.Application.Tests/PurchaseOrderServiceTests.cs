@@ -270,8 +270,9 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
-    public async Task ReceiveAsync_WithoutInventoryLinks_DoesNotCreateGrv()
+    public async Task ReceiveAsync_WithoutInventoryLinks_CreatesGrvButNoStockTxn()
     {
+        // Non-catalog PO lines (no InventoryItemId) still get a GRV so free-text REQ procurement can complete.
         var tenantId = Guid.NewGuid();
         var (db, service, inventory) = CreateServices(tenantId);
         using (db)
@@ -291,9 +292,10 @@ public class PurchaseOrderServiceTests
             await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
             var grv = await service.ReceiveAsync(poId, TestUserId);
 
-            Assert.Null(grv);
+            Assert.NotNull(grv);
             var loaded = await service.GetByIdAsync(poId);
-            Assert.Equal(PurchaseOrderStatus.Sent, loaded!.Status);
+            Assert.Equal(PurchaseOrderStatus.Received, loaded!.Status);
+            Assert.Equal(3m, loaded.Lines.First().QuantityReceived);
             Assert.Empty(await inventory.GetRecentTransactionsAsync(10));
         }
     }
