@@ -21,17 +21,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <h1>Jobs <span class="badge bg-primary">AI-Powered</span></h1>
-        <p class="text-muted mb-0">Track real costs: materials (consume from inventory), explicit Travel (JobCost type Travel), and labor (JobLabor with rates). AI provides closeout variance analysis and margin recommendations.</p>
+        <h1>Jobs</h1>
+        <p class="text-muted mb-0">Operations hub: open a job command center for P&amp;L, requisitions, invoicing (while open), costs, labor, and executive close.</p>
     </div>
     <div class="d-flex gap-2 align-items-center">
         <ExportToolbar TestId="jobs-export" OnExportCsv="ExportJobsCsvAsync" OnExportExcel="ExportJobsExcelAsync" OnExportPdf="ExportJobsPdfAsync" />
-        <a href="/ai-copilot" class="btn btn-primary">Open AI Copilot to Create/Analyze Jobs</a>
     </div>
-</div>
-
-<div class="alert alert-info">
-    <strong>Creation, analysis and closeout recommendations are AI-first.</strong> Use the Copilot for "Create job from scope", "What-if travel +20% fuel", "Workforce utilization", or "Full operation review". The AI understands your historical labor/travel numbers and current ERP data.
 </div>
 
 <div class="mb-3" style="max-width: 420px;">
@@ -84,13 +79,7 @@ else
     OnCloseView="CloseJobView" />
 }
 
-<div class="card mt-3">
-    <div class="card-body small">
-        <p class="mb-1"><strong>Full costing, labor entry, asset linking, status workflow and explicit Travel tracking are implemented in the domain + services.</strong> The AI AnalyzeJobVarianceAsync call (used by Copilot and buttons) reads labor + all JobCost types (incl. Travel) and suggests margin notes that get appended to the Job.</p>
-        <button class="btn btn-sm btn-secondary" @onclick="GoToCopilot">Go to AI Copilot</button>
-        <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="ShowTravelNote">Why explicit Travel tracking matters</button>
-    </div>
-</div>
+
 
 @code {
     private List<Job> demoJobs = new();
@@ -123,7 +112,7 @@ else
         _initialLoadComplete = true;
 
         if (OpenJobId is { } jobId && jobId != Guid.Empty)
-            await OpenJobCore(jobId);
+            Nav.NavigateTo($"/jobs/{jobId}");
     });
 
     private async Task LoadJobs() => await LoadJobsCore();
@@ -157,7 +146,11 @@ else
         currentPage++; await LoadJobsCore();
     });
 
-    private Task ViewJob(Job j) => OpenJobAsync(j.Id);
+    private Task ViewJob(Job j)
+    {
+        Nav.NavigateTo($"/jobs/{j.Id}");
+        return Task.CompletedTask;
+    }
 
     private Task OpenJobAsync(Guid jobId) => _dataGate.RunAsync(() => OpenJobCore(jobId));
 

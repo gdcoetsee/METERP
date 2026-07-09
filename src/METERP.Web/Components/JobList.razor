@@ -31,7 +31,7 @@ else
                 @foreach (var j in Jobs)
                 {
                     <tr data-testid="@GetJobRowTestId(j)">
-                        <td><strong>@j.JobNumber</strong></td>
+                        <td><a href="@($"/jobs/{j.Id}")" class="fw-bold text-decoration-none" data-testid="job-command-center-link">@j.JobNumber</a></td>
                         <td><strong>@j.Title</strong><br /><small class="text-muted">@(j.Customer?.Name ?? "")</small></td>
                         <td>
                             @((MarkupString)GetJobStatusBadge(j.Status))
@@ -44,7 +44,7 @@ else
                         <td class="text-end">R @(GetActualTotal(j).ToString("N2"))</td>
                         <td class="text-end @(GetVariance(j) > 0 ? "text-danger" : GetVariance(j) < 0 ? "text-success" : "")">R @GetVariance(j).ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(j)" data-testid="job-view-button">View</button>
+                            <a class="btn btn-sm btn-outline-primary me-1" href="@($"/jobs/{j.Id}")" data-testid="job-view-button">Command center</a>
                             @if (CanManage)
                             {
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(j)">Delete</button>
@@ -355,7 +355,9 @@ else
             JobStatus.InProgress => "<span class=\"badge bg-primary\">In Progress</span>",
             JobStatus.OnHold => "<span class=\"badge bg-warning text-dark\">On Hold</span>",
             JobStatus.Completed => "<span class=\"badge bg-success\">Completed</span>",
-            JobStatus.Invoiced => "<span class=\"badge bg-dark\">Invoiced</span>",
+            JobStatus.Invoiced => "<span class=\"badge bg-info text-dark\">Invoiced</span>",
+            JobStatus.Closed => "<span class=\"badge bg-dark\">Closed</span>",
+            JobStatus.Cancelled => "<span class=\"badge bg-secondary\">Cancelled</span>",
             _ => $"<span class=\"badge bg-light text-dark\">{s}</span>"
         };
     }

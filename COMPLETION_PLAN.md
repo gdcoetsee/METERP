@@ -12,8 +12,8 @@
 | Phase | Status |
 |-------|--------|
 | R0 Truth reset (this plan + kickoff) | **Done (docs)** |
-| R2 partial-REQ hotfix | **Not started** (Chunk 1) |
-| R1 Command Center + billing≠close | **Not started** (Chunks 2–4) |
+| R2 partial-REQ hotfix | **Done (DoD met)** (Chunk 1) |
+| R1 Command Center + billing≠close | **Done (DoD met)** (Chunks 2–4) |
 
 ### Locked product decisions
 
@@ -125,13 +125,13 @@ Broad **surface** was built Jul 3–5 2026. Treat as **Surface only**, not Done.
 
 ### Ops Core success criteria (current sprint)
 
-- [ ] No orphan shortfall on partial stock REQ
-- [ ] Job Command Center primary UX for a job
-- [ ] REQ material issues → job material cost + JobId on stock txn
-- [ ] Invoice leaves job open; costs after invoice work
-- [ ] Job closes only via executive close (P&L visible)
-- [ ] Green unit + E2E for above
-- [ ] Jobs UI ops-first, not AI-first
+- [x] No orphan shortfall on partial stock REQ
+- [x] Job Command Center primary UX for a job
+- [x] REQ material issues → job material cost + JobId on stock txn
+- [x] Invoice leaves job open; costs after invoice work
+- [x] Job closes only via executive close (P&L visible)
+- [ ] Green unit + E2E for above (unit green; E2E = Chunk 5)
+- [x] Jobs UI ops-first, not AI-first
 
 ### Definition of Done
 

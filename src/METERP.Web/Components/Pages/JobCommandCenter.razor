@@ -1,0 +1,487 @@
+@page "/jobs/{JobId:guid}"
+@using METERP.Application.Models
+@using METERP.Application.Services
+@using METERP.Application.Interfaces
+@using METERP.Domain
+@using METERP.Common
+@attribute [Authorize(Policy = "Jobs.View")]
+@rendermode InteractiveServer
+@inject IJobService JobService
+@inject IInvoiceService InvoiceService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+@inject NavigationManager Nav
+
+<PageTitle>@(_job?.JobNumber ?? "Job") — Command Center</PageTitle>
+
+@if (_loading)
+{
+    <p data-testid="job-command-center-loading"><em>Loading job…</em></p>
+}
+else if (_job == null || _summary == null)
+{
+    <div class="alert alert-warning" data-testid="job-command-center-not-found">
+        Job not found. <a href="/jobs">Back to jobs</a>
+    </div>
+}
+else
+{
+    <div data-testid="job-command-center-ready">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+            <div>
+                <a href="/jobs" class="small text-muted text-decoration-none">← Jobs list</a>
+                <h1 class="h4 mb-1" data-testid="job-command-center-title">@_job.JobNumber — @_job.Title</h1>
+                <p class="text-muted small mb-0">@(_job.Customer?.Name ?? "—") · @((MarkupString)GetStatusBadge(_job.Status))</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                @if (CanManage && _job.IsOpenForOperations())
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-add-cost"
+                            @onclick="() => _showCostModal = true">Add cost</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-add-labor"
+                            @onclick="() => _showLaborModal = true">Add labor</button>
+                    @if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
+                    {
+                        <button type="button" class="btn btn-sm btn-warning" data-testid="job-sign-off-button"
+                                @onclick="SignOffAsync">Record sign-off</button>
+                    }
+                    @if (CanInvoice && _job.SignOffStatus == JobSignOffStatus.SignedOff)
+                    {
+                        <button type="button" class="btn btn-sm btn-success" data-testid="create-invoice-from-job-detail"
+                                @onclick="CreateInvoiceAsync">Create invoice</button>
+                    }
+                    <button type="button" class="btn btn-sm btn-dark" data-testid="job-cc-executive-close"
+                            @onclick="() => _showCloseModal = true">Executive close</button>
+                }
+                @if (CanManage && _job.IsClosed())
+                {
+                    <button type="button" class="btn btn-sm btn-warning" data-testid="job-cc-reopen"
+                            @onclick="() => _showReopenModal = true">Reopen job</button>
+                }
+            </div>
+        </div>
+
+        @if (_job.IsClosed())
+        {
+            <div class="alert alert-secondary small" data-testid="job-cc-closed-banner">
+                <strong>Closed</strong> @_job.ClosedAt?.ToString("yyyy-MM-dd HH:mm") UTC
+                @if (!string.IsNullOrWhiteSpace(_job.CloseNotes))
+                {
+                    <span> — @_job.CloseNotes</span>
+                }
+            </div>
+        }
+        else if (_summary.UnbilledResidual > 0 && _summary.BilledToDate > 0)
+        {
+            <div class="alert alert-info small" data-testid="job-cc-unbilled-banner">
+                R @_summary.UnbilledResidual.ToString("N2") of quoted work remains unbilled — costs can still be captured until executive close.
+            </div>
+        }
+
+        <div class="row g-3 mb-4" data-testid="job-cc-pnl">
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Quoted</div>
+                        <div class="h5 mb-0">R @_summary.QuotedTotal.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Actual (costs + labor)</div>
+                        <div class="h5 mb-0">R @_summary.ActualTotal.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Billed to date</div>
+                        <div class="h5 mb-0">R @_summary.BilledToDate.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 border-primary">
+                    <div class="card-body">
+                        <div class="text-muted small">Margin / unbilled</div>
+                        <div class="h5 mb-0">@_summary.MarginPercent%</div>
+                        <small class="text-muted">Unbilled R @_summary.UnbilledResidual.ToString("N2")</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Cost breakdown</span>
+                    </div>
+                    <div class="card-body small">
+                        <div class="d-flex justify-content-between"><span>Material</span><strong>R @_summary.MaterialCost.ToString("N2")</strong></div>
+                        <div class="d-flex justify-content-between"><span>Travel</span><strong>R @_summary.TravelCost.ToString("N2")</strong></div>
+                        <div class="d-flex justify-content-between"><span>Labor</span><strong>R @_summary.LaborCost.ToString("N2")</strong></div>
+                        <div class="d-flex justify-content-between"><span>Other</span><strong>R @_summary.OtherCost.ToString("N2")</strong></div>
+                    </div>
+                </div>
+
+                <div class="card mt-3" data-testid="job-cc-invoices">
+                    <div class="card-header">Invoices</div>
+                    <div class="card-body p-0">
+                        @if (_summary.Invoices.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No invoices yet — billing does not close the job.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>#</th><th>Type</th><th>Status</th><th class="text-end">Total</th></tr></thead>
+                                <tbody>
+                                    @foreach (var inv in _summary.Invoices)
+                                    {
+                                        <tr>
+                                            <td><a href="@($"/invoices?open={inv.InvoiceId}")">@inv.InvoiceNumber</a></td>
+                                            <td>@inv.DocumentType</td>
+                                            <td>@inv.Status</td>
+                                            <td class="text-end">R @inv.Total.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card" data-testid="job-cc-requisitions">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Stock requisitions</span>
+                        @if (_job.IsOpenForOperations())
+                        {
+                            <a href="/field/stock" class="btn btn-sm btn-outline-primary">New REQ (field)</a>
+                        }
+                    </div>
+                    <div class="card-body p-0">
+                        @if (_summary.Requisitions.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No requisitions linked to this job.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>REQ</th><th>Status</th><th>PO</th><th>GRV</th></tr></thead>
+                                <tbody>
+                                    @foreach (var req in _summary.Requisitions)
+                                    {
+                                        <tr>
+                                            <td>@req.RequisitionNumber</td>
+                                            <td>@req.Status</td>
+                                            <td>@(req.PurchaseOrderNumber ?? "—")</td>
+                                            <td>@(req.GrvNumber ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        <div class="p-2 border-top">
+                            <a href="/requisitions" class="small">Manage issue / PO on requisitions page →</a>
+                        </div>
+                    </div>
+                </div>
+
+                @if (_job.Labors?.Any(l => !l.IsDeleted) == true)
+                {
+                    <div class="card mt-3">
+                        <div class="card-header">Labor entries</div>
+                        <ul class="list-group list-group-flush small">
+                            @foreach (var labor in _job.Labors.Where(l => !l.IsDeleted))
+                            {
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>@labor.Technician · @labor.Hours h @@ R @labor.HourlyRate.ToString("N2")</span>
+                                    <strong>R @labor.TotalCost.ToString("N2")</strong>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showCostModal)
+{
+    <FormModal IsOpen="true" Title="Add job cost" TestId="job-cc-cost-modal" OnClose="CloseCostModal">
+        <div class="mb-2">
+            <label class="form-label">Description</label>
+            <input class="form-control" @bind="_costDescription" data-testid="job-cc-cost-description" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Type</label>
+            <select class="form-select" @bind="_costType" data-testid="job-cc-cost-type">
+                <option value="Material">Material</option>
+                <option value="Travel">Travel</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Amount (R)</label>
+            <input type="number" step="0.01" class="form-control" @bind="_costAmount" data-testid="job-cc-cost-amount" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseCostModal">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="job-cc-cost-save" @onclick="SaveCostAsync">Save</button>
+        </div>
+    </FormModal>
+}
+
+@if (_showLaborModal)
+{
+    <FormModal IsOpen="true" Title="Add labor" TestId="job-cc-labor-modal" OnClose="CloseLaborModal">
+        <div class="mb-2">
+            <label class="form-label">Technician</label>
+            <input class="form-control" @bind="_laborTechnician" data-testid="job-cc-labor-technician" />
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <label class="form-label">Hours</label>
+                <input type="number" step="0.25" class="form-control" @bind="_laborHours" data-testid="job-cc-labor-hours" />
+            </div>
+            <div class="col-6">
+                <label class="form-label">Rate (R/h)</label>
+                <input type="number" step="0.01" class="form-control" @bind="_laborRate" data-testid="job-cc-labor-rate" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Work date</label>
+            <input type="date" class="form-control" @bind="_laborDate" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseLaborModal">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="job-cc-labor-save" @onclick="SaveLaborAsync">Save</button>
+        </div>
+    </FormModal>
+}
+
+@if (_showCloseModal)
+{
+    <FormModal IsOpen="true" Title="Executive close — P&amp;L review" TestId="job-cc-close-modal" OnClose="CloseCloseModal">
+        <p class="small text-muted">Hard-locks costs, requisitions, and new invoices. Reopen requires an executive reason.</p>
+        <div class="mb-3">
+            <label class="form-label">Close notes (optional)</label>
+            <textarea class="form-control" rows="3" @bind="_closeNotes" data-testid="job-cc-close-notes"></textarea>
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseCloseModal">Cancel</button>
+            <button type="button" class="btn btn-dark" data-testid="job-cc-close-confirm" @onclick="ExecutiveCloseAsync">Approve close</button>
+        </div>
+    </FormModal>
+}
+
+@if (_showReopenModal)
+{
+    <FormModal IsOpen="true" Title="Reopen job" TestId="job-cc-reopen-modal" OnClose="CloseReopenModal">
+        <div class="mb-3">
+            <label class="form-label">Reason *</label>
+            <textarea class="form-control" rows="3" @bind="_reopenReason" data-testid="job-cc-reopen-reason" required></textarea>
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseReopenModal">Cancel</button>
+            <button type="button" class="btn btn-warning" data-testid="job-cc-reopen-confirm"
+                    disabled="@string.IsNullOrWhiteSpace(_reopenReason)" @onclick="ReopenAsync">Reopen</button>
+        </div>
+    </FormModal>
+}
+
+@code {
+    [Parameter] public Guid JobId { get; set; }
+
+    private Job? _job;
+    private JobCommandCenterSummary? _summary;
+    private bool _loading = true;
+
+    private bool _showCostModal;
+    private bool _showLaborModal;
+    private bool _showCloseModal;
+    private bool _showReopenModal;
+
+    private string _costDescription = "";
+    private string _costType = "Travel";
+    private decimal _costAmount;
+    private string _laborTechnician = "";
+    private decimal _laborHours = 8m;
+    private decimal _laborRate = 195m;
+    private DateTime _laborDate = DateTime.Today;
+    private string _closeNotes = "";
+    private string _reopenReason = "";
+
+    private bool CanManage => CurrentUser.Permissions.Contains(Permissions.JobsManage);
+    private bool CanInvoice => CurrentUser.Permissions.Contains(Permissions.InvoicesManage);
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _job = await JobService.GetByIdAsync(JobId);
+            _summary = _job != null ? await JobService.GetCommandCenterSummaryAsync(JobId) : null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SignOffAsync()
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        if (!await JobService.SignOffAsync(JobId, userId))
+        {
+            Toast.ShowError("Could not record sign-off.");
+            return;
+        }
+        Toast.ShowSuccess("Client sign-off recorded.");
+        await LoadAsync();
+    }
+
+    private async Task CreateInvoiceAsync()
+    {
+        try
+        {
+            var inv = await InvoiceService.CreateFromJobAsync(JobId);
+            Toast.ShowSuccess($"Invoice {inv.InvoiceNumber} created.");
+            Nav.NavigateTo($"/invoices?open={inv.Id}");
+        }
+        catch (QuotaExceededException ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseCostModal() => _showCostModal = false;
+
+    private async Task SaveCostAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_costDescription) || _costAmount <= 0) return;
+        try
+        {
+            await JobService.AddCostAsync(new JobCost
+            {
+                JobId = JobId,
+                Description = _costDescription.Trim(),
+                CostType = _costType,
+                Amount = _costAmount,
+                CostDate = DateTime.UtcNow
+            });
+            Toast.ShowSuccess("Cost added.");
+            CloseCostModal();
+            _costDescription = "";
+            _costAmount = 0;
+            await LoadAsync();
+        }
+        catch (JobClosedException ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseLaborModal() => _showLaborModal = false;
+
+    private async Task SaveLaborAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_laborTechnician) || _laborHours <= 0) return;
+        try
+        {
+            await JobService.AddLaborAsync(new JobLabor
+            {
+                JobId = JobId,
+                Technician = _laborTechnician.Trim(),
+                Hours = _laborHours,
+                HourlyRate = _laborRate > 0 ? _laborRate : 195m,
+                WorkDate = _laborDate
+            });
+            Toast.ShowSuccess("Labor added.");
+            CloseLaborModal();
+            await LoadAsync();
+        }
+        catch (JobClosedException ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseCloseModal() => _showCloseModal = false;
+
+    private async Task ExecutiveCloseAsync()
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            if (!await JobService.CloseAsync(JobId, userId, _closeNotes))
+            {
+                Toast.ShowError("Could not close job.");
+                return;
+            }
+            Toast.ShowSuccess("Job closed — hard lock applied.");
+            CloseCloseModal();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseReopenModal() => _showReopenModal = false;
+
+    private async Task ReopenAsync()
+    {
+        if (CurrentUser.UserId is not { } userId || string.IsNullOrWhiteSpace(_reopenReason)) return;
+        try
+        {
+            if (!await JobService.ReopenAsync(JobId, userId, _reopenReason))
+            {
+                Toast.ShowError("Could not reopen job.");
+                return;
+            }
+            Toast.ShowSuccess("Job reopened.");
+            CloseReopenModal();
+            _reopenReason = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private static string GetStatusBadge(JobStatus status) => status switch
+    {
+        JobStatus.Scheduled => "<span class=\"badge bg-secondary\">Scheduled</span>",
+        JobStatus.InProgress => "<span class=\"badge bg-primary\">In Progress</span>",
+        JobStatus.OnHold => "<span class=\"badge bg-warning text-dark\">On Hold</span>",
+        JobStatus.Completed => "<span class=\"badge bg-success\">Completed</span>",
+        JobStatus.Invoiced => "<span class=\"badge bg-info text-dark\">Invoiced (legacy)</span>",
+        JobStatus.Closed => "<span class=\"badge bg-dark\">Closed</span>",
+        JobStatus.Cancelled => "<span class=\"badge bg-secondary\">Cancelled</span>",
+        _ => $"<span class=\"badge bg-light text-dark\">{status}</span>"
+    };
+}
