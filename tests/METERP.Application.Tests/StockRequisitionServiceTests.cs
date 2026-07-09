@@ -32,7 +32,8 @@ public class StockRequisitionServiceTests
             .Options;
 
         var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
-        var service = new StockRequisitionService(db, inventory.Object, audit: audit.Object);
+        var jobService = new JobService(db);
+        var service = new StockRequisitionService(db, inventory.Object, audit: audit.Object, jobService: jobService);
         return (service, db, tenantId, inventory);
     }
 
@@ -77,6 +78,32 @@ public class StockRequisitionServiceTests
             Assert.Equal(RequisitionStatus.PendingManager, saved.Status);
             Assert.False(string.IsNullOrWhiteSpace(saved.RequisitionNumber));
             Assert.Single(saved.Lines);
+        }
+    }
+
+    [Fact]
+    public async Task IssueAsync_RecalculatesJobActualCost()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 10m);
+            Assert.Equal(0m, (await db.Set<Job>().FirstAsync(j => j.Id == job.Id)).ActualCost);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 3 }]
+            });
+
+            await service.ApproveManagerAsync(id, Guid.NewGuid());
+            await service.ApproveExecutiveAsync(id, Guid.NewGuid());
+            await service.IssueAsync(id, Guid.NewGuid());
+
+            var jobAfter = await db.Set<Job>().FirstAsync(j => j.Id == job.Id);
+            Assert.Equal(300m, jobAfter.ActualCost);
         }
     }
 

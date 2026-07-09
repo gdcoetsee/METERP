@@ -22,6 +22,13 @@ public interface IJobService
 
     Task<bool> SignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default);
 
+    Task<bool> CloseAsync(Guid jobId, Guid executiveUserId, string? notes, CancellationToken ct = default);
+
+    Task<bool> ReopenAsync(Guid jobId, Guid executiveUserId, string reason, CancellationToken ct = default);
+
+    /// <summary>Recomputes <see cref="Job.ActualCost"/> from active <see cref="JobCost"/> rows (labor is tracked separately).</summary>
+    Task RecalculateActualCostAsync(Guid jobId, CancellationToken ct = default);
+
     // Actual costs (variance tracking)
     Task<Guid> AddCostAsync(JobCost cost, CancellationToken ct = default);
     Task DeleteCostAsync(Guid costId, CancellationToken ct = default);

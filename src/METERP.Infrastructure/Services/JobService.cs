@@ -16,6 +16,7 @@ public class JobService : IJobService
     private readonly IQuotaService? _quotaService;
     private readonly ITenantCacheService? _cache;
     private readonly IDocumentSequenceService? _documentSequence;
+    private readonly IAuditService? _audit;
 
     public JobService(
         AppDbContext dbContext,
@@ -23,7 +24,8 @@ public class JobService : IJobService
         ITenantProvider? tenantProvider = null,
         IQuotaService? quotaService = null,
         ITenantCacheService? cache = null,
-        IDocumentSequenceService? documentSequence = null)
+        IDocumentSequenceService? documentSequence = null,
+        IAuditService? audit = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -31,6 +33,7 @@ public class JobService : IJobService
         _quotaService = quotaService;
         _cache = cache;
         _documentSequence = documentSequence;
+        _audit = audit;
     }
 
     public async Task<JobCommandCenterSummary?> GetCommandCenterSummaryAsync(Guid jobId, CancellationToken ct = default)
@@ -65,9 +68,26 @@ public class JobService : IJobService
         var grvByPo = grvs.GroupBy(g => g.PurchaseOrderId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.ReceivedAt).First().GrvNumber);
 
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId == jobId && !i.IsDeleted && i.DocumentType != InvoiceDocumentType.CreditNote)
+            .OrderByDescending(i => i.InvoiceDate)
+            .ToListAsync(ct);
+
+        var billedToDate = invoices.Sum(i => i.Total);
+        var actualTotal = job.GetActualTotal();
+
         return new JobCommandCenterSummary
         {
             JobId = jobId,
+            JobNumber = job.JobNumber,
+            Title = job.Title,
+            Status = job.Status,
+            IsClosed = job.IsClosed(),
+            QuotedTotal = job.QuotedTotal,
+            ActualTotal = actualTotal,
+            BilledToDate = billedToDate,
+            UnbilledResidual = Math.Max(0m, job.QuotedTotal - billedToDate),
             MaterialCost = costs.Where(c => c.CostType.Equals("Material", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
             TravelCost = costs.Where(c => c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
             OtherCost = costs.Where(c => !c.CostType.Equals("Material", StringComparison.OrdinalIgnoreCase)
@@ -85,6 +105,15 @@ public class JobService : IJobService
                     ? grv
                     : null,
                 LineCount = r.Lines.Count(l => !l.IsDeleted)
+            }).ToList(),
+            Invoices = invoices.Select(i => new JobInvoiceSummary
+            {
+                InvoiceId = i.Id,
+                InvoiceNumber = i.InvoiceNumber,
+                DocumentType = i.DocumentType,
+                Status = i.Status,
+                Total = i.Total,
+                InvoiceDate = i.InvoiceDate
             }).ToList()
         };
     }
@@ -252,11 +281,91 @@ public class JobService : IJobService
         await InvalidateListCachesAsync(ct);
     }
 
+    public async Task<bool> CloseAsync(Guid jobId, Guid executiveUserId, string? notes, CancellationToken ct = default)
+    {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || job.IsClosed())
+            return false;
+
+        job.Status = JobStatus.Closed;
+        job.ClosedAt = DateTime.UtcNow;
+        job.ClosedByUserId = executiveUserId;
+        job.CloseNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        job.CompletedDate ??= DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+
+        if (_audit != null)
+        {
+            await _audit.LogAsync(
+                "CLOSE",
+                "Job",
+                job.JobNumber,
+                $"Executive close — actual R {job.GetActualTotal():N0}, quoted R {job.QuotedTotal:N0}" +
+                (job.CloseNotes != null ? $" — {job.CloseNotes}" : ""),
+                ct);
+        }
+
+        return true;
+    }
+
+    public async Task<bool> ReopenAsync(Guid jobId, Guid executiveUserId, string reason, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Reopen reason is required.", nameof(reason));
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || !job.IsClosed())
+            return false;
+
+        job.Status = JobStatus.Completed;
+        job.LastReopenedAt = DateTime.UtcNow;
+        job.LastReopenedByUserId = executiveUserId;
+        job.LastReopenReason = reason.Trim();
+        job.ClosedAt = null;
+        job.ClosedByUserId = null;
+        job.CloseNotes = null;
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+
+        if (_audit != null)
+        {
+            await _audit.LogAsync(
+                "REOPEN",
+                "Job",
+                job.JobNumber,
+                $"Executive reopen — {job.LastReopenReason}",
+                ct);
+        }
+
+        return true;
+    }
+
+    public async Task RecalculateActualCostAsync(Guid jobId, CancellationToken ct = default)
+    {
+        var job = await _dbContext.Set<Job>()
+            .Include(j => j.ActualCosts)
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+
+        if (job == null) return;
+
+        job.ActualCost = job.ActualCosts
+            .Where(c => !c.IsDeleted)
+            .Sum(c => c.Amount);
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
     public async Task<bool> SignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default)
     {
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null)
             return false;
+
+        await EnsureJobOpenAsync(job, ct);
 
         job.SignOffStatus = JobSignOffStatus.SignedOff;
         job.SignedOffAt = DateTime.UtcNow;
@@ -273,23 +382,14 @@ public class JobService : IJobService
 
     public async Task<Guid> AddCostAsync(JobCost cost, CancellationToken ct = default)
     {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == cost.JobId, ct)
+            ?? throw new InvalidOperationException($"Job {cost.JobId} was not found.");
+
+        await EnsureJobOpenAsync(job, ct);
+
         _dbContext.Set<JobCost>().Add(cost);
         await _dbContext.SaveChangesAsync(ct);
-
-        // Recalculate job actuals
-        var job = await _dbContext.Set<Job>()
-            .Include(j => j.ActualCosts)
-            .FirstOrDefaultAsync(j => j.Id == cost.JobId, ct);
-
-        if (job != null)
-        {
-            job.ActualCost = job.ActualCosts
-                .Where(c => !c.IsDeleted)
-                .Sum(c => c.Amount);
-            await _dbContext.SaveChangesAsync(ct);
-        }
-
-        await InvalidateListCachesAsync(ct);
+        await RecalculateActualCostAsync(cost.JobId, ct);
         return cost.Id;
     }
 
@@ -299,43 +399,25 @@ public class JobService : IJobService
         if (cost == null) return;
 
         var jobId = cost.JobId;
-        cost.IsDeleted = true;
-
-        await _dbContext.SaveChangesAsync(ct);
-
-        var job = await _dbContext.Set<Job>()
-            .Include(j => j.ActualCosts)
-            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
-
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job != null)
-        {
-            job.ActualCost = job.ActualCosts
-                .Where(c => !c.IsDeleted)
-                .Sum(c => c.Amount);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+            await EnsureJobOpenAsync(job, ct);
 
-        await InvalidateListCachesAsync(ct);
+        cost.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+        await RecalculateActualCostAsync(jobId, ct);
     }
 
     public async Task<Guid> AddLaborAsync(JobLabor labor, CancellationToken ct = default)
     {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == labor.JobId, ct)
+            ?? throw new InvalidOperationException($"Job {labor.JobId} was not found.");
+
+        await EnsureJobOpenAsync(job, ct);
         await ApplyEmployeeDefaultsAsync(labor, ct);
 
         _dbContext.Set<JobLabor>().Add(labor);
         await _dbContext.SaveChangesAsync(ct);
-
-        // Optionally update a total labor cost on Job if we add the field later
-        var job = await _dbContext.Set<Job>()
-            .Include(j => j.Labors)
-            .FirstOrDefaultAsync(j => j.Id == labor.JobId, ct);
-
-        if (job != null)
-        {
-            // For now, we can expose total labor via the collection in UI
-            await _dbContext.SaveChangesAsync(ct);
-        }
-
         await InvalidateListCachesAsync(ct);
         return labor.Id;
     }
@@ -346,20 +428,21 @@ public class JobService : IJobService
         if (labor == null) return;
 
         var jobId = labor.JobId;
-        labor.IsDeleted = true;
-
-        await _dbContext.SaveChangesAsync(ct);
-
-        var job = await _dbContext.Set<Job>()
-            .Include(j => j.Labors)
-            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
-
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job != null)
-        {
-            await _dbContext.SaveChangesAsync(ct);
-        }
+            await EnsureJobOpenAsync(job, ct);
 
+        labor.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+    }
+
+    private Task EnsureJobOpenAsync(Job job, CancellationToken ct)
+    {
+        if (job.IsOpenForOperations())
+            return Task.CompletedTask;
+
+        throw JobClosedException.ForJob(job.JobNumber);
     }
 
     private Task InvalidateListCachesAsync(CancellationToken ct) =>

@@ -13,19 +13,22 @@ public sealed class StockRequisitionService : IStockRequisitionService
     private readonly IDocumentSequenceService? _documentSequence;
     private readonly IAuditService? _audit;
     private readonly IPpeIssueService? _ppeIssue;
+    private readonly IJobService? _jobService;
 
     public StockRequisitionService(
         AppDbContext dbContext,
         IInventoryService inventoryService,
         IDocumentSequenceService? documentSequence = null,
         IAuditService? audit = null,
-        IPpeIssueService? ppeIssue = null)
+        IPpeIssueService? ppeIssue = null,
+        IJobService? jobService = null)
     {
         _dbContext = dbContext;
         _inventoryService = inventoryService;
         _documentSequence = documentSequence;
         _audit = audit;
         _ppeIssue = ppeIssue;
+        _jobService = jobService;
     }
 
     public async Task<StockRequisition?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -87,6 +90,12 @@ public sealed class StockRequisitionService : IStockRequisitionService
     {
         if (requisition.JobId == Guid.Empty)
             throw new InvalidOperationException("Job is required for a stock requisition.");
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == requisition.JobId, ct);
+        if (job == null)
+            throw new InvalidOperationException("Job not found.");
+        if (!job.IsOpenForOperations())
+            throw JobClosedException.ForJob(job.JobNumber);
 
         if (requisition.Lines == null || !requisition.Lines.Any(l => l.QuantityRequested > 0))
             throw new InvalidOperationException("At least one line with quantity is required.");
@@ -214,6 +223,10 @@ public sealed class StockRequisitionService : IStockRequisitionService
             or RequisitionStatus.ProcurementOrdered))
             return false;
 
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
+        if (job == null || !job.IsOpenForOperations())
+            return false;
+
         var issuedAny = false;
         foreach (var line in req.Lines.Where(l => !l.IsDeleted && l.QuantityReserved > 0))
         {
@@ -260,6 +273,9 @@ public sealed class StockRequisitionService : IStockRequisitionService
         }
 
         await _dbContext.SaveChangesAsync(ct);
+
+        if (_jobService != null)
+            await _jobService.RecalculateActualCostAsync(req.JobId, ct);
 
         if (req.IsPpe && _ppeIssue != null)
             await _ppeIssue.RecordFromRequisitionIssueAsync(req, ct);
