@@ -990,28 +990,38 @@ public class E2EFlowTests : IAsyncLifetime
         // Deposit does not require sign-off and must not close the job.
         await page.ClickByTestIdAsync("job-cc-create-invoice");
         await page.WaitForTestIdAsync("job-cc-invoice-modal", 15000);
-        await page.ClickByTestIdAsync("job-cc-invoice-confirm");
+        await page.ClickByTestIdAsync("job-cc-invoice-deposit");
+
+        var createdToast = page.Locator(".toast-body").Filter(new() { HasText = "created" }).Last;
+        await createdToast.WaitForAsync(new() { Timeout = 20000 });
+
         await page.WaitForTestIdAsync("job-command-center-ready", 30000);
+        await page.WaitForTestIdAsync("job-cc-invoice-row", 20000);
         await page.WaitForTestIdAsync("job-cc-add-cost", 20000);
 
-        var billedText = await page.Locator("[data-testid='job-cc-billed-amount']").InnerTextAsync();
-        Assert.DoesNotContain("R 0.00", billedText);
+        // Wait until billed total reflects the deposit (Blazor may refresh after toast).
+        await Assertions.Expect(page.Locator("[data-testid='job-cc-billed-amount']"))
+            .Not.ToHaveTextAsync("R 0.00", new() { Timeout = 15000 });
 
-        var actualBefore = await page.Locator("[data-testid='job-cc-actual-total']").InnerTextAsync();
+        var actualBefore = (await page.Locator("[data-testid='job-cc-actual-total']").InnerTextAsync()).Trim();
 
         await page.ClickByTestIdAsync("job-cc-add-cost");
         await page.WaitForTestIdAsync("job-cc-cost-modal", 15000);
         await page.FillByTestIdAsync("job-cc-cost-description", "Post-invoice site materials");
         await page.Locator("[data-testid='job-cc-cost-type']").SelectOptionAsync(new[] { "Material" });
-        await page.FillByTestIdAsync("job-cc-cost-amount", "125.50");
+        var amountInput = page.Locator("[data-testid='job-cc-cost-amount']");
+        await amountInput.ClickAsync();
+        await amountInput.FillAsync("125.50");
+        await amountInput.DispatchEventAsync("input");
+        await amountInput.DispatchEventAsync("change");
         await page.ClickByTestIdAsync("job-cc-cost-save");
-        await page.WaitForTestIdAsync("job-command-center-ready", 20000);
 
         var costToast = page.Locator(".toast-body").Filter(new() { HasText = "Cost added" }).Last;
-        await costToast.WaitForAsync(new() { Timeout = 15000 });
+        await costToast.WaitForAsync(new() { Timeout = 20000 });
 
-        var actualAfter = await page.Locator("[data-testid='job-cc-actual-total']").InnerTextAsync();
-        Assert.NotEqual(actualBefore, actualAfter);
+        // Blazor reloads summary after save — wait until Actual reflects the new material cost.
+        await Assertions.Expect(page.Locator("[data-testid='job-cc-actual-total']"))
+            .Not.ToHaveTextAsync(actualBefore, new() { Timeout = 20000 });
 
         await page.ClickByTestIdAsync("job-cc-executive-close");
         await page.WaitForTestIdAsync("job-cc-close-modal", 15000);

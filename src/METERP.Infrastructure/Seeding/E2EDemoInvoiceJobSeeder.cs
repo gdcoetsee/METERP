@@ -121,6 +121,14 @@ public static class E2EDemoInvoiceJobSeeder
             }, ct);
         }
 
+        // Ensure deposit billing has a positive base (QuotedTotal * deposit %).
+        if (loaded.QuotedTotal <= 0)
+        {
+            loaded.QuotedTotal = Math.Max(
+                10_000m,
+                loaded.GetActualTotal() > 0 ? loaded.GetActualTotal() * 1.2m : 10_000m);
+        }
+
         loaded.CreatedDate = DateTime.UtcNow;
         loaded.Notes = DemoNotesMarker;
         await jobService.UpdateAsync(loaded, ct);

@@ -17,7 +17,7 @@
 | R2 remainder (multi-line REQ, PPE register, GRV polish) | **Not started** |
 | R3 Employee + payslip | **Not started** |
 
-**Tests verified (2026-07-09 Chunk 5):** Application **705** (+deposit-while-open); Web **240** (+Command Center route). Playwright test `Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close` added — run when app is up (`docker-compose` / localhost).
+**Tests verified (2026-07-09 Chunk 5):** Application **705**; Web **240**; Playwright **Command Center E2E green** against `docker compose` on `:8080` (`Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close`).
 
 ### Advisory duty
 

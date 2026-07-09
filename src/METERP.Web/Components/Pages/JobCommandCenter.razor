@@ -142,7 +142,7 @@ else
                                 <tbody>
                                     @foreach (var inv in _summary.Invoices)
                                     {
-                                        <tr>
+                                        <tr data-testid="job-cc-invoice-row">
                                             <td><a href="@($"/invoices?open={inv.InvoiceId}")">@inv.InvoiceNumber</a></td>
                                             <td>@inv.DocumentType</td>
                                             <td>@inv.Status</td>
@@ -222,11 +222,13 @@ else
         </p>
         <div class="mb-3">
             <label class="form-label">Document type</label>
-            <select class="form-select" @bind="_invoiceDocType" data-testid="job-cc-invoice-type">
-                <option value="@InvoiceDocumentType.Deposit">Deposit (no sign-off required)</option>
-                <option value="@InvoiceDocumentType.Proforma">Proforma (no sign-off required)</option>
-                <option value="@InvoiceDocumentType.Partial">Partial / progress (sign-off required)</option>
-                <option value="@InvoiceDocumentType.Final">Final (sign-off required)</option>
+            <select class="form-select" value="@((int)_invoiceDocType)"
+                    @onchange="OnInvoiceTypeChanged"
+                    data-testid="job-cc-invoice-type">
+                <option value="@((int)InvoiceDocumentType.Deposit)">Deposit (no sign-off required)</option>
+                <option value="@((int)InvoiceDocumentType.Proforma)">Proforma (no sign-off required)</option>
+                <option value="@((int)InvoiceDocumentType.Partial)">Partial / progress (sign-off required)</option>
+                <option value="@((int)InvoiceDocumentType.Final)">Final (sign-off required)</option>
             </select>
         </div>
         @if (_invoiceDocType is InvoiceDocumentType.Deposit or InvoiceDocumentType.Partial)
@@ -237,18 +239,20 @@ else
                        data-testid="job-cc-invoice-percent" />
             </div>
         }
-        @if (_invoiceDocType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial
+        @if ((_invoiceDocType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial)
              && _job?.SignOffStatus != JobSignOffStatus.SignedOff)
         {
             <div class="alert alert-warning small py-2" data-testid="job-cc-invoice-signoff-hint">
                 Record client sign-off before final or partial invoicing.
             </div>
         }
-        <div class="d-flex gap-2 justify-content-end">
+        <div class="d-flex gap-2 justify-content-end flex-wrap">
             <button type="button" class="btn btn-secondary" @onclick="CloseInvoiceModal">Cancel</button>
+            <button type="button" class="btn btn-outline-success" data-testid="job-cc-invoice-deposit"
+                    @onclick="() => CreateInvoiceOfTypeAsync(InvoiceDocumentType.Deposit)">Create deposit</button>
             <button type="button" class="btn btn-success" data-testid="job-cc-invoice-confirm"
                     @onclick="CreateInvoiceAsync"
-                    disabled="@InvoiceConfirmDisabled">Create</button>
+                    disabled="@InvoiceConfirmDisabled">Create selected</button>
         </div>
     </FormModal>
 }
@@ -399,17 +403,31 @@ else
 
     private void CloseInvoiceModal() => _showInvoiceModal = false;
 
-    private async Task CreateInvoiceAsync()
+    private void OnInvoiceTypeChanged(ChangeEventArgs e)
     {
-        if (InvoiceConfirmDisabled) return;
+        if (int.TryParse(e.Value?.ToString(), out var v) && Enum.IsDefined(typeof(InvoiceDocumentType), v))
+            _invoiceDocType = (InvoiceDocumentType)v;
+    }
+
+    private Task CreateInvoiceAsync() => CreateInvoiceOfTypeAsync(_invoiceDocType);
+
+    private async Task CreateInvoiceOfTypeAsync(InvoiceDocumentType documentType)
+    {
+        if (documentType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial
+            && _job?.SignOffStatus != JobSignOffStatus.SignedOff)
+        {
+            Toast.ShowError("Record client sign-off before final or partial invoicing.");
+            return;
+        }
+
         try
         {
-            decimal? percent = _invoiceDocType is InvoiceDocumentType.Deposit or InvoiceDocumentType.Partial
-                ? _invoicePercent
+            decimal? percent = documentType is InvoiceDocumentType.Deposit or InvoiceDocumentType.Partial
+                ? (_invoicePercent > 0 ? _invoicePercent : 30m)
                 : null;
 
-            var inv = await InvoiceService.CreateBillingDocumentAsync(JobId, _invoiceDocType, percent);
-            Toast.ShowSuccess($"{_invoiceDocType} {inv.InvoiceNumber} created — job stays open for costs.");
+            var inv = await InvoiceService.CreateBillingDocumentAsync(JobId, documentType, percent);
+            Toast.ShowSuccess($"{documentType} {inv.InvoiceNumber} created — job stays open for costs.");
             CloseInvoiceModal();
             // Stay on Command Center so operators can keep capturing costs after billing.
             await LoadAsync();
