@@ -1,212 +1,151 @@
-# METERP Completion & Full Testing Plan
+# METERP Completion Plan
 
-> **Source of truth (2026-07-05):** This file is the authoritative plan for METERP. The **Master Completion Plan** below captures all user requirements agreed in the July 3, 2026 planning session. Historical session logs (Sessions 1–59) remain below for audit trail only.
-
----
-
-## 🚨 CURSOR / NEXT SESSION HANDOFF (Read this FIRST — current as of 2026-07-05)
-
-**Master plan formalized in this file.** User approved definitive spec on 2026-07-03; implementation executed Phases 0–11 through 2026-07-04/05. Ongoing work: test hardening, CI green, gap verification against spec.
-
-### Current state (approximate)
-- **Tests:** ~699 application unit + ~239 web integration + expanding E2E (see latest commit message for exact counts).
-- **Phases 0–11:** Broad surface implemented (migrations through Phase 8–11 branding/scheduled reports). Verify each requirement in the Master Plan against UI + tests before marking complete.
-- **Next priorities:** Gap audit (spec vs code), E2E for critical north-star flows, polish items marked Nice-to-have / v1.1.
-
-### Per chunk
-`dotnet test` → update handoff → commit with phase/test counts.
+> **Source of truth (2026-07-09):** Revised after critical review. Prior "Phases 0–11 complete" framing was optimism bias. Status vocabulary: `Not started` | `In progress` | `Done (DoD met)` | `Stub (labeled)` | `Surface only` (code exists, not sellable depth).
 
 ---
 
-# METERP Master Completion Plan (Definitive)
+## Handoff (current — 2026-07-09)
 
-**Product:** Multi-tenant ERP for **all contractors** (any trade/industry). Compliance document **types** are tenant-configurable — not electrical-only.
+**Active work: Ops Core.**  
+**Implementer brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md) ← **start here for Composer / coding agents**.
 
-**Locked decisions:** Tenant-wide HR Manager; Field Portal for technicians; stores→job material flow; all gap items below included.
+| Phase | Status |
+|-------|--------|
+| R0 Truth reset (this plan + kickoff) | **Done (docs)** |
+| R2 partial-REQ hotfix | **Not started** (Chunk 1) |
+| R1 Command Center + billing≠close | **Not started** (Chunks 2–4) |
 
-**Delivery principles (user-mandated):**
-- **Complete functionality first** — end-to-end workflows without major gaps.
-- **Quality over quantity** — pleasant, complete features; not test/cache volume for its own sake.
-- **Modal/slide-over UX** where it reduces friction vs full-page redirects.
-- **Must-have vs Nice-to-have** — prioritize by business/user impact.
+### Locked product decisions
 
----
+1. **Job ID** is central for job operations (materials-to-job, labor, costs, field reports, invoices, closeout).
+2. **Invoicing does not close the job.** Costs remain captureable after invoice.
+3. **Job closes only** after executive P&L/performance review → Approve close. Hard lock + executive reopen (reason + audit).
+4. **PPE** is **stock issued to employees**, maintained in a **register**. Job link is **optional**, not primary.
+5. **AI freeze** until Ops Core is stable. Completeness over new AI features.
+6. **Payslip v1** = JobLabor contractor payslip (simple deductions) — not SARS full payroll.
+7. Modals where they improve UX. Definition of Done requires service + UI + audit + tests.
 
-## Purpose & North Star
+### Next priorities (ordered) — see OPS_CORE_KICKOFF.md chunks
 
-METERP exists to:
+1. Partial requisition shortfall fix (stock + procure remainder)
+2. Job cost integrity (ActualCost after REQ issue / labor)
+3. Domain: billing separate from close; `Closed` + reopen; retire terminal `Invoiced` semantics
+4. Job Command Center `/jobs/{id}` (P&L, invoices, costs, REQ, executive close)
+5. Unit + E2E for invoice-while-open, cost-after-invoice, close
 
-1. **Reduce human error** — single source of truth, validation gates, computed totals, no duplicate manual entry across quote/job/invoice/stores.
-2. **Eliminate physical paperwork and delays** — digital documents, e-approvals, e-PO/email, GRV, PDF/print when needed; no parallel paper trail.
-3. **Create accountability per user and role** — every action logged (who/when/what); approvals tied to named individuals; permission boundaries enforced.
-4. **Give executives transparency** — real-time view of jobs, divisions, users, bottlenecks, and compliance; no “black holes”.
-5. **Maximize speed-to-cash** — complete jobs as fast as legitimately possible; invoice as soon as gates allow; recognize revenue sooner.
-
-### Success metrics (executive-visible)
-
-| Metric | Meaning |
-|--------|---------|
-| Quote → cash days | Time from quote creation to paid invoice |
-| Approval turnaround | Avg hours per approval step (quote, req, leave, sign-off) |
-| Jobs ready to invoice | Count and R value post-sign-off but not invoiced |
-| Division throughput | Jobs completed / invoiced per division per period |
-| User activity & delays | Actions completed vs items in user queue > SLA |
-| Error/rework rate | Revisions, credit notes, rejected approvals |
-| Paperless ratio | % transactions with no offline-only step (target 100% in-system) |
-
-Every major feature must trace to at least one metric above.
-
-### Design principles
-
-| Principle | Enforcement |
-|-----------|-------------|
-| Enter once, flow everywhere | Quote lines → job → requisition → issue → invoice; field report → labor/cost |
-| No action without authority | Role templates + per-user permissions; approval chains before proceed/spend/invoice |
-| No silent overrides | Executive overrides require reason + audit |
-| Gates prevent mistakes | No invoice without sign-off/deposit; no stock issue without approved req; no client quote send without exec approval (if enabled) |
-| Queues, not email chasing | `/approvals` hub + notifications — accountable inbox per role |
-| Job Command Center = single pane | One job truth; reduces wrong-job errors |
-| Scheduled + on-demand reports | Executives review without asking for spreadsheets |
+Per chunk: `dotnet test` → update handoff → commit.
 
 ---
 
-## User Requirements (agreed 2026-07-03)
+# Master Completion Plan (Revised)
 
-### Workflows & commercial spine
+**Product:** Multi-tenant ERP for contractors (any trade). Sellable demo + SaaS foundation.
 
-- **Dual workflows:** **Planned** (quote-first) and **Emergency** (job-first; final quote only after repairs complete — e.g. night breakdown callouts).
-- **Scope revisions** on planned jobs — revise quote up/down; revised sales order on changed quote.
-- **Informal client authorization** — phone, email, WhatsApp, or text counts; still require client authorization **or** executive override to proceed without written SO.
-- **Executive quote approval** before sending to clients — notify executives; approve/change/reject; feedback to quote creator.
-- **Deposits** required before some jobs proceed; **proforma** and **partial invoices** on client request.
-- **Billing must-haves:** POP attachment on deposits, **retention** + release, **credit notes**, **aged debtors**.
-- **Sequential job numbers** — proper incrementing for all jobs.
-- **Full audit trail** — date, time, user on all material actions; turnaround reporting (quote → invoiced, per step).
-- **Travel costs** remain explicit across Quote/Job/Invoice (contractor differentiator — existing AGENTS.md constraint).
+## North Star
 
-### Field operations & job completion
+1. Reduce human error
+2. Eliminate paperwork and delays
+3. Accountability per user/role
+4. Executive transparency
+5. Maximize speed-to-cash
 
-- **Field Portal** (mobile, technicians): mandatory job info on phone; comments, time, travel, material used; manager reviews for division.
-- **Job sign-off before invoicing:** divisional manager then executive for that division.
-- **Job Command Center** (`/jobs/{id}`): quote/SO, materials booked out, procured material (PO#, attachments), progress % per quoted line, start/status/expected completion, financial performance, manager/executive comments, compliance, snag/safety, audit, actions; **“Ready to invoice”** when gates green.
+## Honest current state (2026-07-09)
 
-### Stock, procurement & inventory
-
-- **Requisition approval chain:** requester → divisional manager → executive (employee requests: manager first, then executive).
-- **Out of stock:** flag items; notify procurement; multiple supplier quotes; manager selects; executive approves; PO per supplier; **email PO to supplier**.
-- **Receive flow:** GRV into stores → update levels → issue/book to job with job number tracking (purchase → stock → job).
-- **PPE:** full issue log (what, whom, by whom, date); stock levels; executive approval with employee PPE history; PO after approval.
-- **Stock control:** reserved qty, low-stock reports, **stock takes** (dates, variances, exportable), search/filter stock on requisition.
-- **Scheduled reports** (e.g. weekly low stock) to selected roles/users.
-
-### HR & leave
-
-- **Employee profile:** personal info, division, hourly rate, mandatory hours/month (varies).
-- **Leave:** request → divisional manager → executive → **tenant-wide HR Manager**.
-- **Accrual** (days/month) and **deduction** on taken leave; **unpaid** or **negative leave** with executive + HR approval.
-
-### Company & compliance documentation
-
-- **Company documents:** type on upload, **expiry date** (unless “no expiry”), file storage.
-- **Expiry alerts** to HR Manager + Executive (30/14/7 days).
-- **Employee certifications** + job **compliance certificates** (tenant-defined types, e.g. CoC, trade licence) with expiry alerts.
-- **`IDocumentStorageService`** — tenant-scoped blob storage.
-
-### Roles & access
-
-- **Preset templates:** Admin, Executive, Division Manager, Estimator, Procurement, Stores, Finance, HR Manager, Technician (Field Portal), Auditor.
-- **Per-user permission customization** by Executive or HR Manager (`Users.ManagePermissions`) with audit.
-- Technicians: restricted Field Portal + own leave only.
-
-### Reporting, AI & exports
-
-- **Standard pipeline reports** (period filters + export): WIP, completed awaiting order, completed not invoiced, on hold, invoiced, completed awaiting internal paperwork, etc.
-- **Turnaround analytics** and **AI query reports** (allowlisted metrics).
-- **Executive Dashboard:** speed-to-cash, division scorecards, user performance, bottleneck heatmap, compliance health, ready-to-invoice list, revenue at risk; accountability reports (division, user SLA, jobs behind, audit by user); configurable approval SLAs.
-- **Universal exports:** PDF, Excel, CSV, print on applicable screens — quotes, SOs, requisitions, POs, reports, job summaries; **tenant-branded**, neat and readable.
-
-### Additional modules (all included)
-
-| Item | Priority |
+| Area | Maturity |
 |------|----------|
-| Snag list / defects / punch list | v1.1 |
-| Safety incidents / site checklist | Nice-to-have |
-| Recurring / SLA maintenance jobs | Nice-to-have |
-| Calendar/scheduling view | Nice-to-have |
-| Subcontractor lite | v1.1 |
-| Job cancel/void workflow | Must-have |
-| POPIA notes for employee personal data | Must-have |
-| Role-based home dashboards | Nice-to-have |
-| Customer portal (view/accept quote) | v1.1 |
-| Accounting API (Sage/Xero) beyond CSV | v1.1 |
-| White-label on PDFs/exports | Must-have (Phase 8) |
-| Budget vs forecast on job dashboard | Phase 7 |
+| Commercial spine (Quote → SO → Job → Invoice, travel) | **Strong** |
+| Multi-tenancy, permissions skeleton, quotas | **Strong** |
+| Stock REQ → approve → reserve → issue / PO → GRV | **Partial** (happy path real; partial shortfall broken) |
+| Job Command Center / closeout | **Surface only** (list side-panel; single-step sign-off; Invoiced conflates billing) |
+| PPE | **Wrong model** (job-REQ side-effect; should be employee register) |
+| Employee / leave / payroll | **Partial / Stub payslip** |
+| Executive reports / AI / exports | **Partial** (AI over-invested vs ops) |
+
+**Tests:** High volume but uneven quality. Web tests often auth-only. Full stores E2E not proven.
+
+### Critical gaps
+
+- No dedicated `/jobs/{id}` Command Center
+- Invoice must not close job; no executive close review
+- Partial stock shortfall orphans procurement
+- PPE requires JobId; not employee register
+- Employee UI is rate-card only; payslip labeled Stub
+- Job cancel/void missing; dual work sign-off missing
+
+## Locked architecture
+
+```text
+Opportunity → Quote → (optional SO) → Job  ──central key──► job operations
+                                              ├─ Requisitions → Approvals → Issue / PO → GRV → Issue
+                                              ├─ Labor / field reports / travel (until Closed)
+                                              ├─ Crew / scheduling / snags / safety
+                                              ├─ Invoices (any time while not Closed)
+                                              └─ Executive close review → Closed
+
+PPE (employee-centric):
+  Inventory PPE stock → issue to Employee → PPE Register
+       optional JobId when site-specific
+```
+
+### Job lifecycle (billing ≠ closure)
+
+| Rule | Detail |
+|------|--------|
+| Invoice anytime while open | Deposit / partial / progress / final docs |
+| Costs after invoice | Labor, materials, field reports allowed until Closed |
+| Close | Executive reviews P&L → Approve close → hard lock |
+| Reopen | Executive only, reason + audit |
+| Work sign-off | Separate from close (mgr → exec for work acceptance) |
+| Multiple invoices | Progress/partial/final allowed while open; soft warnings only |
+
+### PPE model
+
+| Rule | Detail |
+|------|--------|
+| PPE is stock | Inventory items (flag/category) |
+| Primary holder | **Employee** |
+| Register | What / whom / by whom / date / qty |
+| Job | **Optional** context only |
+
+## Phases (revised R0–R6)
+
+| Phase | Focus | Status |
+|-------|--------|--------|
+| **R0** | Truth reset — this document, DoD, OPS_CORE_KICKOFF | **Done (docs)** |
+| **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Not started** (next after R2 hotfix) |
+| **R2** | Stock flow: partial shortfall, multi-line REQ, GRV UX, PPE register, negative stock guard | **In progress** (partial shortfall first) |
+| **R3** | Full employee profile, payslip v1, payroll permissions | Not started |
+| **R4** | Billing polish (POP, retention UI, emergency job-first) | Not started |
+| **R5** | Reporting/export truth (wire or hide stubs) | Not started |
+| **R6** | Production hardening for pilot | Ongoing partial |
+
+### Historical phases 0–11
+
+Broad **surface** was built Jul 3–5 2026. Treat as **Surface only**, not Done. Archive session logs below.
+
+### Ops Core success criteria (current sprint)
+
+- [ ] No orphan shortfall on partial stock REQ
+- [ ] Job Command Center primary UX for a job
+- [ ] REQ material issues → job material cost + JobId on stock txn
+- [ ] Invoice leaves job open; costs after invoice work
+- [ ] Job closes only via executive close (P&L visible)
+- [ ] Green unit + E2E for above
+- [ ] Jobs UI ops-first, not AI-first
+
+### Definition of Done
+
+1. End-to-end UI workflow without workarounds
+2. Service enforces rules
+3. Audit on material actions
+4. `dotnet test` green + new tests committed
+5. No "complete" claim without DoD
+
+### Deferred (v1.1+)
+
+Customer portal, Sage/Xero API, subcontractor lite, full SARS payroll, advanced warehouse, new AI features.
 
 ---
-
-## Phased Implementation (~22 weeks)
-
-| Phase | Focus | North-star link | Status |
-|-------|-------|-----------------|--------|
-| **0** | UX modals, Field Portal, storage, ExportToolbar shell | Paperless UX foundation | Implemented — verify polish |
-| **1** | Roles, divisions, HR, leave, sequences | Accountability via permissions | Implemented — verify polish |
-| **2** | Company docs, certs, expiry alerts, quote approval, audit expansion | Transparency + compliance | Implemented — verify polish |
-| **3** | Spine, billing (retention, POP, credit notes) | Speed-to-cash billing | Implemented — verify polish |
-| **4–6** | Requisitions, procurement/GRV, PPE, stock take | Paperless stores | Implemented — verify polish |
-| **7** | Job Command Center + ready-to-invoice | Single job truth | Implemented — verify polish |
-| **8** | Universal PDF/Excel/CSV/print + white-label | Replace physical documents | Implemented — verify polish |
-| **9** | Field reports, calendar, recurring jobs, safety, snag | Field efficiency | Implemented — verify polish |
-| **10** | Executive Dashboard, pipeline, turnaround, AI, scheduled reports | Executive transparency | Implemented — verify polish |
-| **11** | Payslip, notifications DB, role-based home, docs | Finish | Implemented — verify polish |
-
-### Go-live milestones
-
-- **MVP Accountability:** Phases 0–2 + audit + `/approvals`
-- **MVP Speed-to-cash:** Phases 3 + 7 lite (invoice gates + job dashboard)
-- **MVP Stores:** Phases 4–6
-- **Full v1:** All phases
-
-### Phase todos
-
-- [x] **p0-foundation** — UX modals, Field Portal, ExportToolbar, document storage, print CSS
-- [x] **p1-roles-hr** — Role templates, per-user permissions, divisions, HR/leave, sequences
-- [x] **p2-compliance-audit** — Company docs, cert expiry alerts, quote approval, comprehensive audit
-- [x] **p3-billing-spine** — Spine, deposits, retention, POP, credit notes, sign-off gates
-- [x] **p4-p6-inventory** — Requisitions, procurement/GRV, PPE, stock take
-- [x] **p7-job-dashboard** — Job Command Center + ready-to-invoice indicator
-- [x] **p8-exports** — Universal PDF/Excel/CSV/print + white-label
-- [x] **p9-field-ops** — Field reports, calendar, recurring jobs, safety, snag
-- [x] **p10-exec-reporting** — Executive Dashboard, accountability reports, pipeline, turnaround, AI, scheduled email
-- [x] **p11-finish** — Payslip, notifications DB, role-based home, README
-- [ ] **p-verify** — Gap audit: every user requirement above has green tests + sellable UX
-
----
-
-## Testing & Definition of Done
-
-A feature is **done** when it:
-
-1. Reduces duplicate entry or paper steps.
-2. Logs accountable user action (audit).
-3. Appears in executive or pipeline reporting where relevant.
-4. Has **automated tests** (`dotnet test` green).
-5. Exports if user-facing list/document.
-
-Follow `AGENTS.md`, `.cursor/rules/meterp-testing.mdc`, and layer rules. Preserve multi-tenancy, computed `LineTotal`, soft-delete, usage counters, explicit travel.
-
-### Feature → North Star traceability (sample)
-
-| Feature | Error ↓ | Paper ↓ | Accountability | Exec visibility | Speed-to-cash |
-|---------|---------|---------|----------------|-----------------|---------------|
-| Approval hub | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Job Command Center | ✓ | ✓ | ✓ | ✓ | ✓ |
-| GRV + issue to job | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Sign-off before invoice | ✓ | | ✓ | ✓ | ✓ |
-| Executive Dashboard | | | ✓ | ✓ | ✓ |
-| Sequential job numbers | ✓ | | ✓ | | ✓ |
-
----
-
 ## Historical session log (archival — pre–master-plan)
 
 The sections below document Sessions 1–59 (through 2026-06-19) and the original Phase 1–5 testing plan. **Do not reprioritize master-plan work** based on cache-test sessions unless user directs otherwise.
