@@ -110,8 +110,8 @@ else
                             }
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EditTenant(tenant)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTenant(tenant)">Delete</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EditTenant(tenant)" data-testid="tenant-edit-button">Edit</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTenant(tenant)" data-testid="tenant-delete-button">Delete</button>
                             }
                         </td>
                     </tr>
@@ -383,6 +383,7 @@ else
         };
         isEditing = true;
         showForm = true;
+        StateHasChanged();
     }
 
     private async Task SaveTenant()

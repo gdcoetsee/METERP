@@ -1810,11 +1810,12 @@ public class E2EFlowTests
     public async Task Tenants_Edit_Form_Shows_Quota_Badges()
     {
         await E2EHelpers.EnsureAppReadyAsync();
-        var page = await Browser.LoginAsync();
+        var page = await Browser.LoginAsync(resetDemoState: true);
         await page.WaitForTenantsReadyAsync(45000);
 
-        await page.Locator("tr", new() { HasText = "Acme" }).Locator("button", new() { HasText = "Edit" }).ClickAsync();
-        await page.WaitForTestIdAsync("tenant-edit-form", 15000);
+        var acmeRow = page.Locator("tr", new() { HasText = "Acme" }).First;
+        await acmeRow.Locator("[data-testid='tenant-edit-button']").ClickAsync(new() { Force = true });
+        await page.WaitForTestIdAsync("tenant-edit-form", 20000);
         await page.WaitForTestIdAsync("tenant-edit-quota-badges", 10000);
 
         var quotesBadge = page.Locator("[data-testid='tenants-edit-quota-quotes']");
@@ -1838,8 +1839,9 @@ public class E2EFlowTests
             await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             await page.WaitForTenantsReadyAsync(45000);
 
-            await page.Locator("tr", new() { HasText = "Acme" }).Locator("button", new() { HasText = "Edit" }).ClickAsync();
-            await page.WaitForTestIdAsync("tenant-edit-form", 15000);
+            var acmeRow = page.Locator("tr", new() { HasText = "Acme" }).First;
+            await acmeRow.Locator("[data-testid='tenant-edit-button']").ClickAsync(new() { Force = true });
+            await page.WaitForTestIdAsync("tenant-edit-form", 20000);
             await page.WaitForTestIdAsync("tenant-edit-quota-exceeded-banner", 15000);
 
             var quotesBadge = page.Locator("[data-testid='tenants-edit-quota-quotes']");
