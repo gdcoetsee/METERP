@@ -779,30 +779,20 @@ public static class E2EHelpers
                 if (await soRow.CountAsync() == 0)
                     soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
 
-                // Prefer deep-link panel open (reliable on InteractiveServer).
-                var soNumber = (await soRow.Locator("td").First.TextContentAsync())?.Trim();
-                var viewBtn = soRow.Locator("[data-testid='sales-order-view']");
-                await viewBtn.ClickAsync(new() { Timeout = 10000 });
-                try
+                var soId = await soRow.Locator("[data-testid='sales-order-view']").GetAttributeAsync("data-so-id");
+                if (!string.IsNullOrWhiteSpace(soId) && Guid.TryParse(soId, out _))
                 {
-                    await page.WaitForTestIdAsync("sales-order-detail", Math.Min(15000, timeoutMs));
-                    return;
-                }
-                catch (TimeoutException)
-                {
-                    // Fallback: resolve SO id via list reload + first confirmed row is still clickable.
-                    if (!string.IsNullOrWhiteSpace(soNumber))
-                    {
-                        await page.FillByTestIdAsync("sales-orders-search", soNumber);
-                        await page.WaitForSalesOrdersReadyAsync(timeoutMs / 2);
-                        soRow = page.Locator($"[data-testid='{rowTestId}']").First;
-                        if (await soRow.CountAsync() == 0)
-                            soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
-                        await soRow.Locator("[data-testid='sales-order-view']").ClickAsync(new() { Force = true, Timeout = 10000 });
-                    }
+                    await page.GotoAsync(
+                        $"{BaseUrl.TrimEnd('/')}/sales-orders?panel={Uri.EscapeDataString(soId)}",
+                        new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                    await page.WaitForBlazorReadyAsync(20000);
                     await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
                     return;
                 }
+
+                await soRow.Locator("[data-testid='sales-order-view']").ClickAsync(new() { Timeout = 10000 });
+                await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
+                return;
             }
             catch (TimeoutException) when (attempt < 2)
             {

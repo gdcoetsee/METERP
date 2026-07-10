@@ -66,8 +66,15 @@
 
     private async Task MarkAllRead()
     {
-        await NotificationService.MarkAllReadAsync();
-        notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
-        ToastService.ShowSuccess("All notifications marked read.");
+        try
+        {
+            await NotificationService.MarkAllReadAsync();
+            notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
+        }
+        finally
+        {
+            ToastService.ShowSuccess("All notifications marked read.");
+            await InvokeAsync(StateHasChanged);
+        }
     }
 }

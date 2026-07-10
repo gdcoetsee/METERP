@@ -643,10 +643,10 @@ else
         showNewCustomer = false;
     }
 
-    private void ToggleNewCustomer()
+    private async Task ToggleNewCustomer()
     {
         showNewCustomer = !showNewCustomer;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private Task SaveNewCustomer()

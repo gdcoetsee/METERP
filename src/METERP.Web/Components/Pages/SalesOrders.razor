@@ -67,7 +67,10 @@ else
                         <td>@GetStatusBadge(so.Status)</td>
                         <td class="text-end">R @so.Total.ToString("N2")</td>
                         <td class="text-end">
-                            <button type="button" class="btn btn-sm btn-outline-primary me-1" data-testid="sales-order-view" @onclick="() => ViewSO(so)">View</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary me-1"
+                                    data-testid="sales-order-view"
+                                    data-so-id="@so.Id"
+                                    @onclick="() => ViewSO(so)">View</button>
                             @if (UserCanManage && so.Status == SalesOrderStatus.Draft)
                             {
                                 <button class="btn btn-sm btn-success" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(so)">Convert to Job</button>
