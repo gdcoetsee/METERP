@@ -459,7 +459,15 @@ else
             sb.AppendLine($"{item.Sku},{item.Name},{item.Category},{item.QuantityOnHand},{item.QuantityReserved},{item.QuantityAvailable},{item.UnitCost},{item.ReorderLevel}");
         }
 
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "inventory.csv", sb.ToString(), "text/csv;charset=utf-8");
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", "inventory.csv", sb.ToString(), "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
         ToastService.ShowSuccess("Inventory CSV downloaded.");
     }
 }

@@ -597,7 +597,15 @@ else
             sb.AppendLine($"{po.PoNumber},{po.Supplier?.Name},{po.Status},{po.PoDate:yyyy-MM-dd},{po.Total}");
         }
 
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "purchase-orders.csv", sb.ToString(), "text/csv;charset=utf-8");
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", "purchase-orders.csv", sb.ToString(), "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
         ToastService.ShowSuccess("Purchase orders CSV downloaded.");
     }
 

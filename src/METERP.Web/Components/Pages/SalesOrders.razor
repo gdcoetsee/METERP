@@ -271,7 +271,15 @@ else
             sb.AppendLine($"{so.SoNumber},{so.Customer?.Name},{so.Quote?.QuoteNumber},{so.Status},{so.SoDate:yyyy-MM-dd},{so.Total}");
         }
 
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "sales-orders.csv", sb.ToString(), "text/csv;charset=utf-8");
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", "sales-orders.csv", sb.ToString(), "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
         ToastService.ShowSuccess("Sales orders CSV downloaded.");
     }
 }

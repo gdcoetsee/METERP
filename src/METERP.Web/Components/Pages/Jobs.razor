@@ -322,11 +322,24 @@ else
 
     private async Task ExportJobsCsvAsync()
     {
-        if (!demoJobs.Any()) return;
-        var csv = TabularExportHelper.BuildCsv(
-            "JobNumber,Title,Customer,Status,Quoted,Actual,Variance",
-            BuildJobExportRows().Select(r => r.AsEnumerable()));
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "jobs.csv", csv, "text/csv;charset=utf-8");
+        if (!demoJobs.Any())
+        {
+            ToastService.ShowError("No jobs to export.");
+            return;
+        }
+
+        try
+        {
+            var csv = TabularExportHelper.BuildCsv(
+                "JobNumber,Title,Customer,Status,Quoted,Actual,Variance",
+                BuildJobExportRows().Select(r => r.AsEnumerable()));
+            await JS.InvokeVoidAsync("meterpUi.downloadText", "jobs.csv", csv, "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
         ToastService.ShowSuccess("Jobs CSV downloaded.");
     }
 

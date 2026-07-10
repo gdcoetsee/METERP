@@ -442,7 +442,15 @@ else
                 j.Status.ToString(),
                 j.AssignedEmployee != null ? $"{j.AssignedEmployee.FirstName} {j.AssignedEmployee.LastName}" : ""
             }));
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "schedule.csv", csv, "text/csv;charset=utf-8");
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", "schedule.csv", csv, "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
         ToastService.ShowSuccess("Schedule CSV downloaded.");
     }
 

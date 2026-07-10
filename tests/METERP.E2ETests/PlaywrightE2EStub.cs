@@ -3869,9 +3869,24 @@ public class E2EFlowTests
             return;
         }
 
-        await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn");
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn");
+                await page.WaitForTestIdAsync("field-leave-modal", 10000);
+                break;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await page.EvaluateAsync("() => document.querySelector(\"[data-testid='field-leave-request-btn']\")?.click()");
+                await Task.Delay(400);
+            }
+        }
         await page.WaitForTestIdAsync("field-leave-modal", 15000);
         await page.FillByTestIdAsync("field-leave-reason", "E2E field leave request");
+        await Assertions.Expect(page.Locator("[data-testid='field-leave-reason']"))
+            .ToHaveValueAsync("E2E field leave request", new() { Timeout = 5000 });
         await page.ClickByTestIdWhenEnabledAsync("field-leave-submit");
 
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "Leave submitted" });

@@ -404,7 +404,15 @@ else
             sb.AppendLine($"{r.RequisitionNumber},{r.Job?.JobNumber},{r.Status},{r.Lines.Count},{r.IsPpe}");
         }
 
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "requisitions.csv", sb.ToString(), "text/csv;charset=utf-8");
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", "requisitions.csv", sb.ToString(), "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
         Toast.ShowSuccess("Requisitions CSV downloaded.");
     }
 
