@@ -59,11 +59,53 @@ public class PayrollServiceTests
             Assert.Equal(12m, thabo.Hours);
             Assert.Equal(2340m, thabo.GrossPay);
             Assert.Equal(2, thabo.LaborEntryCount);
+            // Default 1% deduction
+            Assert.Equal(23.40m, thabo.Deductions);
+            Assert.Equal(2316.60m, thabo.NetPay);
 
             var johan = summaries.First(s => s.EmployeeId == johanId);
             Assert.Equal(6m, johan.Hours);
             Assert.Equal(1260m, johan.GrossPay);
             Assert.Equal(1, johan.LaborEntryCount);
+        }
+    }
+
+    [Fact]
+    public async Task GetMonthlySummariesAsync_AppliesCustomDeductions()
+    {
+        var (db, service, tenantId) = CreateHarness();
+        using (db)
+        {
+            var empId = Guid.NewGuid();
+            var jobId = Guid.NewGuid();
+            var month = new DateTime(2026, 6, 10, 0, 0, 0, DateTimeKind.Utc);
+            db.Set<Employee>().Add(new Employee
+            {
+                Id = empId,
+                TenantId = tenantId,
+                EmployeeNumber = "E1",
+                FirstName = "Pay",
+                LastName = "Test",
+                DefaultHourlyRate = 100m,
+                IsActive = true
+            });
+            db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "J", QuotedTotal = 1 });
+            db.Set<JobLabor>().Add(new JobLabor
+            {
+                TenantId = tenantId,
+                JobId = jobId,
+                EmployeeId = empId,
+                WorkDate = month,
+                Hours = 10,
+                HourlyRate = 100m
+            });
+            await db.SaveChangesAsync();
+
+            var summaries = await service.GetMonthlySummariesAsync(month, deductionPercent: 10m, fixedDeductions: 50m);
+            var row = Assert.Single(summaries);
+            Assert.Equal(1000m, row.GrossPay);
+            Assert.Equal(150m, row.Deductions); // 10% + 50
+            Assert.Equal(850m, row.NetPay);
         }
     }
 

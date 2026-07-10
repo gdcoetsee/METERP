@@ -45,15 +45,21 @@ public class WorkforceReportService : IWorkforceReportService
         foreach (var employee in employees)
         {
             hoursByEmployee.TryGetValue(employee.Id, out var hours);
-            var utilization = monthlyCapacityHours > 0
-                ? Math.Round(hours / monthlyCapacityHours * 100m, 1)
+            var capacity = employee.MandatoryHoursPerMonth > 0
+                ? employee.MandatoryHoursPerMonth
+                : monthlyCapacityHours;
+            if (capacity <= 0)
+                capacity = 160m;
+
+            var utilization = capacity > 0
+                ? Math.Round(hours / capacity * 100m, 1)
                 : 0m;
 
             summaries.Add(new TechnicianUtilizationSummary(
                 employee.Id,
                 $"{employee.FirstName} {employee.LastName}".Trim(),
                 hours,
-                monthlyCapacityHours,
+                capacity,
                 utilization));
         }
 

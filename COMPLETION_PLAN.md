@@ -15,9 +15,9 @@
 | R2 partial-REQ hotfix (Chunk 1) | **Done (DoD met)** — unit verified 2026-07-09 |
 | R1 cost integrity + billing≠close + Command Center (Chunks 2–5) | **Done (unit/web)** — Chunk 5 E2E test added; run Playwright when app up |
 | R2 remainder | **In progress** — PPE register + multi-line REQ + **non-catalog REQ lines** (2026-07-09) |
-| R3 Employee + payslip | **Not started** |
+| R3 Employee + payslip | **Done (unit/UI)** — full profile, safe update, payslip v1, payroll permissions (2026-07-10) |
 
-**Tests verified (2026-07-09 Chunk 5):** Application **705**; Web **240**; Playwright **Command Center E2E green** against `docker compose` on `:8080` (`Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close`).
+**Tests verified (2026-07-10 R3):** Employee + payroll unit tests green; full suite run at commit.
 
 ### Advisory duty
 
@@ -35,13 +35,15 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. Finish R2 remainder: GRV polish, multi-supplier RFQ (P1)  
-2. **R3:** full employee profile + payslip v1 + payroll permissions  
-3. Dual work sign-off; job cancel/void  
+1. Dual work sign-off (mgr → exec); job cancel/void  
+2. GRV polish / multi-supplier RFQ (P1)  
+3. Certifications CRUD, leave admin polish  
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
 
 **R2b non-catalog requisitions (2026-07-09):** REQ lines may be free-text (no stock code). Flow: submit → approve → always procurement for non-catalog → PO (description) → GRV → fulfill → issue as job material cost (no stock SKU required). Catalog lines unchanged.
+
+**R3 delivered (2026-07-10):** Full employee profile (contact, division, manager, hire, leave, mandatory hours); load-then-patch `UpdateAsync` (no field wipe); `Payroll.View`/`Manage`; period + simple %/fixed deductions; payslip CSV/PDF with emp #; workforce util uses per-employee mandatory hours.
 
 Per chunk: `dotnet test` → update handoff → commit → push.
 
@@ -124,7 +126,7 @@ PPE (employee-centric):
 | **R0** | Truth reset — this document, DoD, OPS_CORE_KICKOFF | **Done (docs)** |
 | **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Done (unit/web + E2E test)** |
 | **R2** | Partial shortfall, PPE register, multi-line + **non-catalog** REQ, negative stock **done**; GRV polish remaining | **In progress** |
-| **R3** | Full employee profile, payslip v1, payroll permissions | Not started |
+| **R3** | Full employee profile, payslip v1, payroll permissions | **Done (unit/UI)** |
 | **R4** | Billing polish (POP, retention UI, emergency job-first) | Not started |
 | **R5** | Reporting/export truth (wire or hide stubs) | Not started |
 | **R6** | Production hardening for pilot | Ongoing partial |

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Persistence;
@@ -46,12 +47,13 @@ public class PayrollEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("payroll-generate-button", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("payroll-period", body, StringComparison.OrdinalIgnoreCase);
         Assert.True(
             body.Contains("payroll-ready", StringComparison.OrdinalIgnoreCase)
             || body.Contains("payroll-empty", StringComparison.OrdinalIgnoreCase)
-            || body.Contains("payroll-loading", StringComparison.OrdinalIgnoreCase),
-            "Expected payroll-ready, payroll-empty, or payroll-loading marker.");
+            || body.Contains("payroll-loading", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("payroll-period-card", StringComparison.OrdinalIgnoreCase),
+            "Expected payroll page content markers.");
     }
 
     [Fact]
@@ -98,5 +100,6 @@ public class PayrollEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         };
         await userManager.CreateAsync(user, "TestPass123!");
         await userManager.AddClaimAsync(user, new Claim("TenantId", tenantId.ToString()));
+        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.PayrollView));
     }
 }

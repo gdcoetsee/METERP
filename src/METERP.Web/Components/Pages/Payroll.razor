@@ -3,23 +3,53 @@
 @using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
+@using METERP.Common
 @using METERP.Web.Reports
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize]
+@attribute [Authorize(Policy = "Payroll.View")]
 @inject IPayrollService PayrollService
 @inject ITenantService TenantService
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
 @inject IJSRuntime JS
 
-<PageTitle>Payroll & HR</PageTitle>
+<PageTitle>Payroll</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <h1>Payroll & HR <span class="badge bg-secondary">Employee Management</span></h1>
-        <p class="text-muted mb-0">Monthly pay summaries from linked <strong>JobLabor</strong> entries (crew scheduling → job costing → payroll).</p>
+        <h1 class="h4 mb-1">Payroll <span class="badge bg-secondary">JobLabor</span></h1>
+        <p class="text-muted small mb-0">
+            Contractor payslips from linked <strong>JobLabor</strong>. Simple configurable deductions — not full SARS payroll.
+        </p>
     </div>
-    <button class="btn btn-primary" data-testid="payroll-generate-button" @onclick="GeneratePayslips" disabled="@_loading">Generate Monthly Payslips (Stub)</button>
+    @if (CanManage)
+    {
+        <button class="btn btn-primary" data-testid="payroll-generate-button" @onclick="RefreshPayslipsAsync" disabled="@_loading">
+            Refresh period payslips
+        </button>
+    }
+</div>
+
+<div class="card mb-3" data-testid="payroll-period-card">
+    <div class="card-body row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Period (month)</label>
+            <input type="month" class="form-control" value="@_periodMonth" @onchange="OnMonthInputChanged" data-testid="payroll-period" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Deduction % of gross</label>
+            <input type="number" min="0" max="100" step="0.1" class="form-control" @bind="_deductionPercent" data-testid="payroll-deduction-pct" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Fixed deductions (R)</label>
+            <input type="number" min="0" step="1" class="form-control" @bind="_fixedDeductions" data-testid="payroll-deduction-fixed" />
+        </div>
+        <div class="col-md-3">
+            <button type="button" class="btn btn-outline-primary w-100" data-testid="payroll-apply-deductions" @onclick="RefreshPayslipsAsync" disabled="@_loading">
+                Apply
+            </button>
+        </div>
+    </div>
 </div>
 
 @if (_loading)
@@ -36,12 +66,14 @@ else
         <table class="table table-hover" data-testid="payroll-table">
             <thead>
                 <tr>
+                    <th>#</th>
                     <th>Employee</th>
                     <th>Role / Rate</th>
-                    <th>Hours This Month</th>
-                    <th>Gross Pay</th>
-                    <th>Labor Entries</th>
-                    <th>Status</th>
+                    <th class="text-end">Hours</th>
+                    <th class="text-end">Gross</th>
+                    <th class="text-end">Deductions</th>
+                    <th class="text-end">Net</th>
+                    <th>Entries</th>
                     <th></th>
                 </tr>
             </thead>
@@ -49,21 +81,14 @@ else
                 @foreach (var e in employees)
                 {
                     <tr data-testid="payroll-row">
+                        <td>@e.EmployeeNumber</td>
                         <td><strong>@e.Name</strong></td>
-                        <td>@(e.JobTitle ?? "Technician")<br /><small>R @e.DefaultHourlyRate.ToString("N0")/hr default</small></td>
-                        <td>@e.Hours.ToString("N1")</td>
-                        <td>R @e.GrossPay.ToString("N0")</td>
+                        <td>@(e.JobTitle ?? "Technician")<br /><small>R @e.DefaultHourlyRate.ToString("N0")/hr</small></td>
+                        <td class="text-end">@e.Hours.ToString("N1") <small class="text-muted">/ @e.MandatoryHoursPerMonth.ToString("N0")</small></td>
+                        <td class="text-end">R @e.GrossPay.ToString("N2")</td>
+                        <td class="text-end">R @e.Deductions.ToString("N2")</td>
+                        <td class="text-end"><strong>R @e.NetPay.ToString("N2")</strong></td>
                         <td>@e.LaborEntryCount</td>
-                        <td>
-                            @if (e.IsActive)
-                            {
-                                <span class="badge bg-success">Active</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Inactive</span>
-                            }
-                        </td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary" data-testid="payroll-view-payslip" @onclick="() => ViewPayslip(e)">View Payslip</button>
                         </td>
@@ -71,21 +96,26 @@ else
                 }
             </tbody>
         </table>
-        <p class="small text-muted">Period: @_periodLabel (UTC). Only labor with a linked employee is included.</p>
+        <p class="small text-muted mb-0">Period: @_periodLabel (UTC). Only labor with a linked employee is included. Deductions: @_deductionPercent% + R @_fixedDeductions.ToString("N0") fixed.</p>
     </div>
 }
 
 @if (selectedEmp != null)
 {
     <div class="card mt-4 border-primary" data-testid="payroll-payslip-card">
-        <div class="card-header bg-primary text-white">Payslip for @selectedEmp.Name - @_periodLabel</div>
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <span>Payslip — @selectedEmp.EmployeeNumber @selectedEmp.Name — @_periodLabel</span>
+            <button type="button" class="btn btn-sm btn-light" @onclick="() => selectedEmp = null">Close</button>
+        </div>
         <div class="card-body">
-            <p>Hours from JobLabor: @selectedEmp.Hours.ToString("N1") — Gross R @selectedEmp.GrossPay.ToString("N0")</p>
-            <p>Deductions (stub): R 1,200 (UIF, etc.)</p>
-            <p class="fs-5"><strong>Net Pay: R @((selectedEmp.GrossPay - 1200m) < 0 ? 0 : selectedEmp.GrossPay - 1200m).ToString("N0")</strong></p>
+            <p class="mb-1">Title: @(selectedEmp.JobTitle ?? "—")</p>
+            <p class="mb-1">Hours from JobLabor: @selectedEmp.Hours.ToString("N1") (mandatory capacity @selectedEmp.MandatoryHoursPerMonth.ToString("N0") h/mo)</p>
+            <p class="mb-1">Gross: R @selectedEmp.GrossPay.ToString("N2")</p>
+            <p class="mb-1">Deductions: R @selectedEmp.Deductions.ToString("N2")</p>
+            <p class="fs-5 mb-3"><strong>Net Pay: R @selectedEmp.NetPay.ToString("N2")</strong></p>
             <button class="btn btn-success btn-sm" data-testid="payroll-download-payslip" @onclick="DownloadPayslipCsv">Download Payslip CSV</button>
             <button class="btn btn-outline-success btn-sm ms-1" data-testid="payroll-download-payslip-pdf" @onclick="DownloadPayslipPdf">Download Payslip PDF</button>
-            <small class="text-muted d-block mt-2">@selectedEmp.LaborEntryCount JobLabor record(s) this month. Full SARS-compliant payroll in production.</small>
+            <small class="text-muted d-block mt-2">@selectedEmp.LaborEntryCount JobLabor record(s). Not a SARS IRP5 / statutory payroll run.</small>
         </div>
     </div>
 }
@@ -96,20 +126,48 @@ else
     private TenantBranding _branding = TenantBranding.Default;
     private bool _loading = true;
     private string _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
+    private string _periodMonth = DateTime.UtcNow.ToString("yyyy-MM");
+    private decimal _deductionPercent = 1m;
+    private decimal _fixedDeductions = 0m;
+
+    private bool CanManage =>
+        CurrentUserService.Permissions.Contains(Permissions.PayrollManage)
+        || CurrentUserService.Permissions.Contains(Permissions.EmployeesManage)
+        || CurrentUserService.Permissions.Contains(Permissions.TenantsManage);
 
     protected override async Task OnInitializedAsync()
     {
+        if (CurrentUserService.TenantId != Guid.Empty)
+        {
+            var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+            _branding = TenantBranding.From(tenant);
+        }
+
+        await RefreshPayslipsAsync(showToast: false);
+    }
+
+    private async Task OnMonthInputChanged(ChangeEventArgs e)
+    {
+        _periodMonth = e.Value?.ToString() ?? DateTime.UtcNow.ToString("yyyy-MM");
+        await RefreshPayslipsAsync(showToast: false);
+    }
+
+    private Task RefreshPayslipsAsync() => RefreshPayslipsAsync(showToast: true);
+
+    private async Task RefreshPayslipsAsync(bool showToast)
+    {
         _loading = true;
+        selectedEmp = null;
         try
         {
-            if (CurrentUserService.TenantId != Guid.Empty)
+            var month = ParsePeriodMonth();
+            _periodLabel = month.ToString("MMMM yyyy");
+            employees = (await PayrollService.GetMonthlySummariesAsync(month, _deductionPercent, _fixedDeductions)).ToList();
+            if (showToast && CanManage)
             {
-                var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
-                _branding = TenantBranding.From(tenant);
+                var withLabor = employees.Count(e => e.LaborEntryCount > 0);
+                ToastService.ShowSuccess($"Payslips loaded for {_periodLabel}: {withLabor} employee(s) with JobLabor.");
             }
-
-            employees = (await PayrollService.GetMonthlySummariesAsync()).ToList();
-            _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
         }
         finally
         {
@@ -117,29 +175,30 @@ else
         }
     }
 
-    private void ViewPayslip(PayrollEmployeeSummary e) => selectedEmp = e;
-
-    private void GeneratePayslips()
+    private DateTime ParsePeriodMonth()
     {
-        var withLabor = employees.Count(e => e.LaborEntryCount > 0);
-        ToastService.ShowSuccess($"Payslips ready for {withLabor} employee(s) with JobLabor this month.");
+        if (DateTime.TryParse($"{_periodMonth}-01", out var dt))
+            return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+        return DateTime.UtcNow;
     }
 
-    private const decimal StubDeductions = 1200m;
+    private void ViewPayslip(PayrollEmployeeSummary e) => selectedEmp = e;
 
     private async Task DownloadPayslipCsv()
     {
         if (selectedEmp == null) return;
 
-        var net = Math.Max(0m, selectedEmp.GrossPay - StubDeductions);
         var csv = string.Join(Environment.NewLine, new[]
         {
+            $"Employee Number,{selectedEmp.EmployeeNumber}",
             $"Employee,{selectedEmp.Name}",
+            $"Title,{selectedEmp.JobTitle}",
             $"Period,{_periodLabel}",
             $"Hours,{selectedEmp.Hours:N2}",
+            $"Mandatory Hours/Month,{selectedEmp.MandatoryHoursPerMonth:N0}",
             $"Gross Pay,R {selectedEmp.GrossPay:N2}",
-            $"Deductions (UIF etc),R {StubDeductions:N2}",
-            $"Net Pay,R {net:N2}",
+            $"Deductions,R {selectedEmp.Deductions:N2}",
+            $"Net Pay,R {selectedEmp.NetPay:N2}",
             $"Labor Entries,{selectedEmp.LaborEntryCount}"
         });
 
@@ -157,9 +216,11 @@ else
             _periodLabel,
             selectedEmp.Hours,
             selectedEmp.GrossPay,
-            StubDeductions,
+            selectedEmp.Deductions,
             selectedEmp.LaborEntryCount,
-            _branding);
+            _branding,
+            selectedEmp.EmployeeNumber,
+            selectedEmp.JobTitle);
 
         var safeName = selectedEmp.Name.Replace(' ', '-').ToLowerInvariant();
         await JS.InvokeVoidAsync("meterpUi.downloadBytes", $"payslip-{safeName}-{_periodLabel.Replace(' ', '-')}.pdf",

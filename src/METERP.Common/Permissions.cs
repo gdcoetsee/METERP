@@ -62,6 +62,10 @@ public static class Permissions
     public const string EmployeesView = "Employees.View";
     public const string EmployeesManage = "Employees.Manage";
 
+    // Payroll / payslips (JobLabor-based contractor pay — not full SARS)
+    public const string PayrollView = "Payroll.View";
+    public const string PayrollManage = "Payroll.Manage";
+
     // Sales Orders (Quote -> SO -> Job flow)
     public const string SalesOrdersView = "SalesOrders.View";
     public const string SalesOrdersManage = "SalesOrders.Manage";

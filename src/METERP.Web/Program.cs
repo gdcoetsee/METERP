@@ -374,6 +374,12 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Employees.Manage", policy =>
         policy.RequireClaim("Permission", Permissions.EmployeesManage));
 
+    options.AddPolicy("Payroll.View", policy =>
+        policy.RequireClaim("Permission", Permissions.PayrollView, Permissions.PayrollManage, Permissions.EmployeesManage, Permissions.TenantsManage));
+
+    options.AddPolicy("Payroll.Manage", policy =>
+        policy.RequireClaim("Permission", Permissions.PayrollManage, Permissions.EmployeesManage, Permissions.TenantsManage));
+
     // Sales Orders policies
     options.AddPolicy("SalesOrders.View", policy =>
         policy.RequireClaim("Permission", Permissions.SalesOrdersView, Permissions.SalesOrdersManage));

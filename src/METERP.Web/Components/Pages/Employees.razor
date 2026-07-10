@@ -4,13 +4,11 @@
 @using METERP.Domain
 @using METERP.Common
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.AspNetCore.Components
-@using Microsoft.JSInterop
 @attribute [Authorize(Policy = "Employees.View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IEmployeeService EmployeeService
+@inject IDivisionService DivisionService
 @inject ICurrentUserService CurrentUserService
-@inject IJSRuntime JS
 @inject ToastService ToastService
 
 <PageTitle>Employees</PageTitle>
@@ -20,22 +18,31 @@
     <span data-testid="employees-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Employees</h1>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Employees</h1>
+        <p class="text-muted small mb-0">HR master data for labor, leave, PPE, and payroll.</p>
+    </div>
     @if (UserCanManage)
     {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Employee</button>
+        <button class="btn btn-primary" data-testid="employees-new" @onclick="ShowCreateForm">+ New Employee</button>
     }
 </div>
 
-<div class="mb-3" style="max-width: 420px;">
-    <div class="input-group">
-        <input type="search" class="form-control" data-testid="employees-search" placeholder="Search name, number or title..."
-               @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
-        @if (!string.IsNullOrEmpty(searchTerm))
-        {
-            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
-        }
+<div class="d-flex flex-wrap gap-3 mb-3 align-items-end">
+    <div style="max-width: 420px; flex: 1;">
+        <div class="input-group">
+            <input type="search" class="form-control" data-testid="employees-search" placeholder="Search name, number, title, email..."
+                   @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
+            @if (!string.IsNullOrEmpty(searchTerm))
+            {
+                <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch">Clear</button>
+            }
+        </div>
+    </div>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="emp-include-inactive" @bind="_includeInactive" @bind:after="OnSearchChangedAsync" data-testid="employees-include-inactive" />
+        <label class="form-check-label" for="emp-include-inactive">Show inactive</label>
     </div>
 </div>
 
@@ -51,7 +58,7 @@ else if (employees == null || !employees.Any())
     }
     else
     {
-        <div class="alert alert-info">No employees yet. Add your technicians and staff for job labor tracking.</div>
+        <div class="alert alert-info">No employees yet. Add technicians and staff for labor, leave, and payroll.</div>
     }
 }
 else
@@ -63,23 +70,38 @@ else
                     <th>#</th>
                     <th>Name</th>
                     <th>Title</th>
-                    <th class="text-end">Default Rate</th>
+                    <th>Division</th>
+                    <th class="text-end">Rate</th>
+                    <th class="text-end">Hrs/mo</th>
+                    <th>Status</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var emp in employees)
                 {
-                    <tr>
+                    <tr data-testid="employee-row">
                         <td><strong>@emp.EmployeeNumber</strong></td>
                         <td>@emp.FirstName @emp.LastName</td>
-                        <td>@emp.JobTitle</td>
+                        <td>@(emp.JobTitle ?? "—")</td>
+                        <td>@(emp.Division?.Name ?? "—")</td>
                         <td class="text-end">R @emp.DefaultHourlyRate.ToString("N2")</td>
+                        <td class="text-end">@emp.MandatoryHoursPerMonth.ToString("N0")</td>
+                        <td>
+                            @if (emp.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                        </td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => View(emp)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="employee-view" @onclick="() => View(emp)">View</button>
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(emp)">Edit</button>
+                                <button class="btn btn-sm btn-outline-secondary" data-testid="employee-edit" @onclick="() => Edit(emp)">Edit</button>
                                 <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Delete(emp)">Delete</button>
                             }
                         </td>
@@ -98,56 +120,103 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit Employee" : "New Employee")</h5>
-        </div>
-        <div class="card-body">
-            <EditForm Model="currentEmployee" OnValidSubmit="SaveEmployee" FormName="EmployeeForm">
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Employee # *</label>
-                        <InputText class="form-control" @bind-Value="currentEmployee.EmployeeNumber" required />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">First Name *</label>
-                        <InputText class="form-control" @bind-Value="currentEmployee.FirstName" required />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Last Name *</label>
-                        <InputText class="form-control" @bind-Value="currentEmployee.LastName" required />
-                    </div>
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit Employee" : "New Employee")"
+               TestId="employee-form-modal"
+               OnClose="CancelForm">
+        <EditForm Model="currentEmployee" OnValidSubmit="SaveEmployee" FormName="EmployeeForm">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Employee # *</label>
+                    <InputText class="form-control" @bind-Value="currentEmployee.EmployeeNumber" required data-testid="employee-number" />
                 </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Job Title</label>
-                        <InputText class="form-control" @bind-Value="currentEmployee.JobTitle" />
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Default Hourly Rate (R)</label>
-                        <InputNumber class="form-control" @bind-Value="currentEmployee.DefaultHourlyRate" step="0.01" />
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="form-check mt-4">
-                            <InputCheckbox class="form-check-input" @bind-Value="currentEmployee.IsActive" />
-                            <label class="form-check-label">Active</label>
-                        </div>
-                    </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">First Name *</label>
+                    <InputText class="form-control" @bind-Value="currentEmployee.FirstName" required data-testid="employee-first-name" />
                 </div>
-
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save Employee</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Last Name *</label>
+                    <InputText class="form-control" @bind-Value="currentEmployee.LastName" required data-testid="employee-last-name" />
                 </div>
-            </EditForm>
-        </div>
-    </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Job Title</label>
+                    <InputText class="form-control" @bind-Value="currentEmployee.JobTitle" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Email</label>
+                    <InputText class="form-control" @bind-Value="currentEmployee.Email" data-testid="employee-email" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Phone</label>
+                    <InputText class="form-control" @bind-Value="currentEmployee.Phone" />
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Division</label>
+                    <InputSelect class="form-select" @bind-Value="currentEmployee.DivisionId" data-testid="employee-division">
+                        <option value="">— None —</option>
+                        @foreach (var d in _divisions)
+                        {
+                            <option value="@d.Id">@d.Name</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Manager</label>
+                    <InputSelect class="form-select" @bind-Value="currentEmployee.ManagerEmployeeId">
+                        <option value="">— None —</option>
+                        @foreach (var m in _managers.Where(x => x.Id != currentEmployee.Id))
+                        {
+                            <option value="@m.Id">@m.FirstName @m.LastName</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Hire date</label>
+                    <InputDate class="form-control" @bind-Value="currentEmployee.HireDate" />
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Hourly rate (R)</label>
+                    <InputNumber class="form-control" @bind-Value="currentEmployee.DefaultHourlyRate" step="0.01" data-testid="employee-rate" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Mandatory hrs / month</label>
+                    <InputNumber class="form-control" @bind-Value="currentEmployee.MandatoryHoursPerMonth" step="1" data-testid="employee-mandatory-hours" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Annual leave days</label>
+                    <InputNumber class="form-control" @bind-Value="currentEmployee.AnnualLeaveEntitlementDays" step="0.5" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Leave balance (days)</label>
+                    <InputNumber class="form-control" @bind-Value="currentEmployee.LeaveBalanceDays" step="0.5" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                <InputTextArea class="form-control" @bind-Value="currentEmployee.Notes" rows="2" />
+            </div>
+            <div class="form-check mb-3">
+                <InputCheckbox class="form-check-input" @bind-Value="currentEmployee.IsActive" id="emp-active" />
+                <label class="form-check-label" for="emp-active">Active</label>
+            </div>
+            <p class="small text-muted">Personal data is processed for employment and site safety (POPIA). Limit access to authorized HR roles.</p>
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                <button type="submit" class="btn btn-success" data-testid="employee-save">Save Employee</button>
+            </div>
+        </EditForm>
+    </FormModal>
 }
 
 @if (selectedEmployee != null)
 {
-    <div class="card mt-4 border-primary">
+    <div class="card mt-4 border-primary" data-testid="employee-detail">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">@selectedEmployee.EmployeeNumber — @selectedEmployee.FirstName @selectedEmployee.LastName</h5>
             <button class="btn btn-sm btn-light" @onclick="CloseEmployeeView">Close</button>
@@ -155,20 +224,33 @@ else
         <div class="card-body">
             <div class="row">
                 <div class="col-md-6">
-                    <strong>Title:</strong> @selectedEmployee.JobTitle<br />
-                    <strong>Rate:</strong> R @selectedEmployee.DefaultHourlyRate.ToString("N2") / hr
+                    <strong>Title:</strong> @(selectedEmployee.JobTitle ?? "—")<br />
+                    <strong>Email:</strong> @(selectedEmployee.Email ?? "—")<br />
+                    <strong>Phone:</strong> @(selectedEmployee.Phone ?? "—")<br />
+                    <strong>Division:</strong> @(selectedEmployee.Division?.Name ?? "—")
                 </div>
                 <div class="col-md-6">
+                    <strong>Rate:</strong> R @selectedEmployee.DefaultHourlyRate.ToString("N2") / hr<br />
+                    <strong>Mandatory hrs/mo:</strong> @selectedEmployee.MandatoryHoursPerMonth.ToString("N0")<br />
+                    <strong>Leave entitlement:</strong> @selectedEmployee.AnnualLeaveEntitlementDays.ToString("N1") days<br />
+                    <strong>Leave balance:</strong> @selectedEmployee.LeaveBalanceDays.ToString("N1") days<br />
+                    <strong>Hire date:</strong> @(selectedEmployee.HireDate?.ToString("yyyy-MM-dd") ?? "—")<br />
                     <strong>Status:</strong> @(selectedEmployee.IsActive ? "Active" : "Inactive")
                 </div>
             </div>
-            <p class="mt-3 text-muted small">Labor entries on jobs will use this employee's rate unless overridden.</p>
+            @if (!string.IsNullOrWhiteSpace(selectedEmployee.Notes))
+            {
+                <p class="mt-2 mb-0 small"><strong>Notes:</strong> @selectedEmployee.Notes</p>
+            }
+            <p class="mt-3 text-muted small mb-0">POPIA: employee personal data is for operational HR only. Job labor uses this rate unless overridden on the timesheet.</p>
         </div>
     </div>
 }
 
 @code {
     private List<Employee> employees = new();
+    private List<Division> _divisions = new();
+    private List<Employee> _managers = new();
     private Employee currentEmployee = new();
     private Employee? selectedEmployee;
     private bool showForm;
@@ -177,6 +259,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private bool _includeInactive;
     private int _employeesLoadGeneration;
     private readonly ComponentAsyncGate _dataGate = new();
 
@@ -187,6 +270,8 @@ else
         _loading = true;
         try
         {
+            _divisions = (await DivisionService.GetAllAsync()).ToList();
+            _managers = (await EmployeeService.GetAllAsync(pageSize: 200, includeInactive: false)).ToList();
             await LoadEmployees();
         }
         finally
@@ -199,7 +284,7 @@ else
     {
         var generation = ++_employeesLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        var loaded = (await EmployeeService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var loaded = (await EmployeeService.GetAllAsync(term, currentPage, PageSize, _includeInactive)).ToList();
         if (generation != _employeesLoadGeneration)
             return;
         employees = loaded;
@@ -239,24 +324,40 @@ else
         {
             EmployeeNumber = $"EMP-{DateTime.UtcNow:yyMMddHHmmss}",
             IsActive = true,
-            DefaultHourlyRate = 350m
+            DefaultHourlyRate = 350m,
+            MandatoryHoursPerMonth = 160m,
+            AnnualLeaveEntitlementDays = 15m,
+            HireDate = DateTime.UtcNow.Date
         };
         isEditing = false;
         showForm = true;
         selectedEmployee = null;
     }
 
-    private void Edit(Employee emp)
+    private async Task Edit(Employee emp)
     {
+        // Reload full entity so safe patch has all fields (and UI does not wipe HR data).
+        var full = await EmployeeService.GetByIdAsync(emp.Id) ?? emp;
         currentEmployee = new Employee
         {
-            Id = emp.Id,
-            EmployeeNumber = emp.EmployeeNumber,
-            FirstName = emp.FirstName,
-            LastName = emp.LastName,
-            JobTitle = emp.JobTitle,
-            DefaultHourlyRate = emp.DefaultHourlyRate,
-            IsActive = emp.IsActive
+            Id = full.Id,
+            TenantId = full.TenantId,
+            EmployeeNumber = full.EmployeeNumber,
+            FirstName = full.FirstName,
+            LastName = full.LastName,
+            JobTitle = full.JobTitle,
+            DefaultHourlyRate = full.DefaultHourlyRate,
+            IsActive = full.IsActive,
+            Notes = full.Notes,
+            DivisionId = full.DivisionId,
+            LinkedUserId = full.LinkedUserId,
+            ManagerEmployeeId = full.ManagerEmployeeId,
+            Email = full.Email,
+            Phone = full.Phone,
+            HireDate = full.HireDate,
+            AnnualLeaveEntitlementDays = full.AnnualLeaveEntitlementDays,
+            LeaveBalanceDays = full.LeaveBalanceDays,
+            MandatoryHoursPerMonth = full.MandatoryHoursPerMonth > 0 ? full.MandatoryHoursPerMonth : 160m
         };
         isEditing = true;
         showForm = true;
@@ -265,20 +366,28 @@ else
 
     private async Task SaveEmployee()
     {
-        if (isEditing)
+        try
         {
-            await EmployeeService.UpdateAsync(currentEmployee);
-            ToastService.ShowSuccess("Employee updated successfully.");
-        }
-        else
-        {
-            await EmployeeService.CreateAsync(currentEmployee);
-            ToastService.ShowSuccess("Employee created successfully.");
-        }
+            if (isEditing)
+            {
+                await EmployeeService.UpdateAsync(currentEmployee);
+                ToastService.ShowSuccess("Employee updated successfully.");
+            }
+            else
+            {
+                await EmployeeService.CreateAsync(currentEmployee);
+                ToastService.ShowSuccess("Employee created successfully.");
+            }
 
-        showForm = false;
-        await LoadEmployees();
-        currentEmployee = new();
+            showForm = false;
+            _managers = (await EmployeeService.GetAllAsync(pageSize: 200)).ToList();
+            await LoadEmployees();
+            currentEmployee = new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private void CancelForm()
@@ -293,10 +402,7 @@ else
         showForm = false;
     }
 
-    private void CloseEmployeeView()
-    {
-        selectedEmployee = null;
-    }
+    private void CloseEmployeeView() => selectedEmployee = null;
 
     private async Task Delete(Employee emp)
     {

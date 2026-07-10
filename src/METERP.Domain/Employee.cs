@@ -38,4 +38,7 @@ public class Employee : BaseEntity
 
     /// <summary>Running balance after approved leave (accrual minus taken).</summary>
     public decimal LeaveBalanceDays { get; set; }
+
+    /// <summary>Expected / mandatory billable hours per month for utilization (varies by role).</summary>
+    public decimal MandatoryHoursPerMonth { get; set; } = 160m;
 }

@@ -29,7 +29,7 @@ public class SchedulingService : ISchedulingService
     {
         var jobs = await _jobService.GetAllAsync(null, jobPage, jobPageSize, ct);
         var assets = await _assetService.GetAllAsync(null, 1, 1000, ct);
-        var employees = await _employeeService.GetAllAsync(null, 1, 1000, ct);
+        var employees = await _employeeService.GetAllAsync(null, 1, 1000, includeInactive: false, ct: ct);
 
         return new SchedulingBoard(jobs, assets, employees);
     }
@@ -46,7 +46,7 @@ public class SchedulingService : ISchedulingService
 
         job.AssetId = assetId;
 
-        var employees = await _employeeService.GetAllAsync(null, 1, 1000, ct);
+        var employees = await _employeeService.GetAllAsync(null, 1, 1000, includeInactive: false, ct: ct);
         var validEmployeeIds = employees.Select(e => e.Id).ToHashSet();
 
         if (leadEmployeeId.HasValue && leadEmployeeId.Value != Guid.Empty && validEmployeeIds.Contains(leadEmployeeId.Value))

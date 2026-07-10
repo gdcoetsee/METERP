@@ -19,7 +19,9 @@ public static class PayslipPdfGenerator
         decimal grossPay,
         decimal deductions,
         int laborEntryCount,
-        TenantBranding? branding = null)
+        TenantBranding? branding = null,
+        string? employeeNumber = null,
+        string? jobTitle = null)
     {
         branding ??= TenantBranding.Default;
         var net = Math.Max(0m, grossPay - deductions);
@@ -42,7 +44,11 @@ public static class PayslipPdfGenerator
 
                 page.Content().PaddingVertical(16).Column(col =>
                 {
+                    if (!string.IsNullOrWhiteSpace(employeeNumber))
+                        col.Item().Text($"Employee #: {employeeNumber}");
                     col.Item().Text($"Employee: {employeeName}").SemiBold();
+                    if (!string.IsNullOrWhiteSpace(jobTitle))
+                        col.Item().Text($"Title: {jobTitle}");
                     col.Item().Text($"Period: {periodLabel}");
                     col.Item().PaddingTop(12).Table(table =>
                     {
@@ -60,12 +66,13 @@ public static class PayslipPdfGenerator
 
                         Row("Hours (JobLabor)", hours.ToString("N2"));
                         Row("Gross pay", $"R {grossPay:N2}");
-                        Row("Deductions (stub)", $"R {deductions:N2}");
+                        Row("Deductions (simple)", $"R {deductions:N2}");
                         Row("Net pay", $"R {net:N2}");
                         Row("Labor entries", laborEntryCount.ToString());
                     });
 
-                    col.Item().PaddingTop(16).Text("Generated from linked JobLabor records. Full SARS-compliant payroll is a production extension.")
+                    col.Item().PaddingTop(16)
+                        .Text("Contractor payslip from linked JobLabor. Not a SARS IRP5 / full statutory payroll run.")
                         .FontSize(9).Italic().FontColor(Colors.Grey.Darken1);
                 });
 

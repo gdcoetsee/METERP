@@ -88,20 +88,46 @@ public class EmployeeServiceTests
             FirstName = "Lerato",
             LastName = "Dlamini",
             DefaultHourlyRate = 175m,
-            Email = "old@test.com"
+            Email = "old@test.com",
+            LinkedUserId = Guid.NewGuid(),
+            LeaveBalanceDays = 8m,
+            MandatoryHoursPerMonth = 140m
         });
 
         var employee = await service.GetByIdAsync(id);
         Assert.NotNull(employee);
-        employee!.DefaultHourlyRate = 210m;
+        var linked = employee!.LinkedUserId;
+        employee.DefaultHourlyRate = 210m;
         employee.Email = "lerato@field.demo";
         employee.JobTitle = "Senior Technician";
+        employee.Phone = "0820000000";
+        employee.MandatoryHoursPerMonth = 150m;
         await service.UpdateAsync(employee);
 
         var reloaded = await service.GetByIdAsync(id);
         Assert.Equal(210m, reloaded!.DefaultHourlyRate);
         Assert.Equal("lerato@field.demo", reloaded.Email);
         Assert.Equal("Senior Technician", reloaded.JobTitle);
+        Assert.Equal("0820000000", reloaded.Phone);
+        Assert.Equal(linked, reloaded.LinkedUserId);
+        Assert.Equal(8m, reloaded.LeaveBalanceDays);
+        Assert.Equal(150m, reloaded.MandatoryHoursPerMonth);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_IncludeInactive_ReturnsInactiveStaff()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        await service.CreateAsync(new Employee { EmployeeNumber = "E1", FirstName = "Active", LastName = "Tech", IsActive = true });
+        await service.CreateAsync(new Employee { EmployeeNumber = "E2", FirstName = "Former", LastName = "Tech", IsActive = false });
+
+        var activeOnly = await service.GetAllAsync();
+        var all = await service.GetAllAsync(includeInactive: true);
+
+        Assert.Single(activeOnly);
+        Assert.Equal(2, all.Count);
     }
 
     [Fact]

@@ -38,6 +38,7 @@ public static class RoleTemplates
             Permissions.PurchaseOrdersView, Permissions.PurchaseOrdersManage,
             Permissions.FinanceView, Permissions.FinanceManage,
             Permissions.EmployeesView, Permissions.EmployeesManage,
+            Permissions.PayrollView, Permissions.PayrollManage,
             Permissions.SalesOrdersView, Permissions.SalesOrdersManage,
             Permissions.OpportunitiesView, Permissions.OpportunitiesManage,
             Permissions.AuditView,
@@ -58,6 +59,7 @@ public static class RoleTemplates
             Permissions.SuppliersView, Permissions.PurchaseOrdersView,
             Permissions.FinanceView, Permissions.FinanceManage,
             Permissions.EmployeesView, Permissions.EmployeesManage,
+            Permissions.PayrollView, Permissions.PayrollManage,
             Permissions.SalesOrdersView, Permissions.SalesOrdersManage,
             Permissions.OpportunitiesView, Permissions.OpportunitiesManage,
             Permissions.AuditView,
@@ -80,6 +82,7 @@ public static class RoleTemplates
             Permissions.SuppliersView, Permissions.PurchaseOrdersView, Permissions.PurchaseOrdersManage,
             Permissions.FinanceView,
             Permissions.EmployeesView, Permissions.EmployeesManage,
+            Permissions.PayrollView,
             Permissions.SalesOrdersView, Permissions.SalesOrdersManage,
             Permissions.OpportunitiesView, Permissions.OpportunitiesManage,
             Permissions.AuditView,
@@ -114,12 +117,14 @@ public static class RoleTemplates
             Permissions.CustomersView,
             Permissions.InvoicesView, Permissions.InvoicesManage,
             Permissions.FinanceView, Permissions.FinanceManage,
+            Permissions.PayrollView, Permissions.PayrollManage,
             Permissions.JobsView,
             Permissions.AuditView
         ],
         "HrManager" =>
         [
             Permissions.EmployeesView, Permissions.EmployeesManage,
+            Permissions.PayrollView, Permissions.PayrollManage,
             Permissions.UsersView, Permissions.UsersManagePermissions,
             Permissions.LeaveView, Permissions.LeaveManage, Permissions.LeaveApprove,
             Permissions.DivisionsView,
