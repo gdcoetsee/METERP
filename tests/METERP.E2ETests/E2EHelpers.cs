@@ -631,18 +631,82 @@ public static class E2EHelpers
         string expectedRowText,
         int timeoutMs = 20000)
     {
-        // FillByTestId uses PressSequentially which fires Blazor @oninput handlers.
-        await page.FillByTestIdAsync(searchTestId, searchTerm);
-        await Task.Delay(500); // allow async server filter + re-render
-        await WaitForLoadingGoneAsync(page, InferLoadingTestId(tableTestId), timeoutMs / 2);
+        var search = page.Locator($"[data-testid='{searchTestId}']").First;
+        await search.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+        await search.ClickAsync();
+        await search.FillAsync("");
+        await search.PressSequentiallyAsync(searchTerm, new() { Delay = 60 });
+        await search.DispatchEventAsync("input");
+        await search.DispatchEventAsync("change");
+        await search.BlurAsync();
 
+        // Poll until the expected row is present (server-side filter + re-render).
         var tableBody = page.Locator($"[data-testid='{tableTestId}'] tbody");
-        await Microsoft.Playwright.Assertions.Expect(tableBody.Locator("tr"))
-            .Not.ToHaveCountAsync(0, new() { Timeout = timeoutMs });
-        // Allow multiple matching rows (demo seed may create duplicates over time).
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        Exception? last = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                await WaitForLoadingGoneAsync(page, InferLoadingTestId(tableTestId), 3000);
+                var matchCount = await tableBody.Locator("tr").Filter(new() { HasText = expectedRowText }).CountAsync();
+                if (matchCount > 0)
+                    return;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+            }
+
+            await Task.Delay(400);
+        }
+
         await Microsoft.Playwright.Assertions.Expect(
             tableBody.Locator("tr").Filter(new() { HasText = expectedRowText }))
-            .Not.ToHaveCountAsync(0, new() { Timeout = timeoutMs });
+            .Not.ToHaveCountAsync(0, new() { Timeout = 2000 });
+        if (last != null)
+            throw last;
+    }
+
+    /// <summary>Fills a quote line description+price and saves until a matching row appears.</summary>
+    public static async Task AddQuoteLineAsync(this IPage page, string description, string? unitPrice = null, int timeoutMs = 20000)
+    {
+        if (await page.Locator("[data-testid='quote-line-form']").CountAsync() == 0)
+        {
+            await page.ClickByTestIdAsync("quote-add-line-button");
+            await page.WaitForTestIdAsync("quote-line-form", timeoutMs);
+        }
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await page.FillByTestIdAsync("quote-line-description", description);
+            if (!string.IsNullOrEmpty(unitPrice))
+                await page.FillByTestIdAsync("quote-line-unit-price", unitPrice);
+
+            var descVal = await page.Locator("[data-testid='quote-line-description']").InputValueAsync();
+            if (!string.Equals(descVal, description, StringComparison.Ordinal))
+            {
+                await Task.Delay(300);
+                continue;
+            }
+
+            await page.ClickByTestIdAsync("quote-line-save-button");
+            try
+            {
+                await page.Locator($"[data-testid='quote-line-row']:has-text('{description}')")
+                    .First.WaitForAsync(new() { Timeout = Math.Max(5000, timeoutMs / 2) });
+                return;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                // reopen form if save did not stick
+                if (await page.Locator("[data-testid='quote-line-form']").CountAsync() == 0)
+                    await page.ClickByTestIdAsync("quote-add-line-button");
+            }
+        }
+
+        await page.Locator($"[data-testid='quote-line-row']:has-text('{description}')")
+            .First.WaitForAsync(new() { Timeout = timeoutMs });
     }
 
     public static async Task GotoRelativeAsync(this IPage page, string relativePath, string? baseUrl = null, bool waitForCommit = false)

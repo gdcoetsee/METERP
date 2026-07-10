@@ -27,7 +27,7 @@
     </div>
     @if (CanManage)
     {
-        <button class="btn btn-primary" data-testid="opportunity-create-button" @onclick="ShowCreate">+ New Opportunity</button>
+        <button type="button" class="btn btn-primary" data-testid="opportunity-create-button" @onclick="ShowCreate">+ New Opportunity</button>
     }
 </div>
 
@@ -246,6 +246,7 @@ else
         selectedCustomerId = Guid.Empty;
         showCreate = true;
         selectedOpp = null;
+        StateHasChanged();
     }
 
     private async Task CreateOpp()
