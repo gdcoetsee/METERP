@@ -165,16 +165,19 @@ else if (_aiQuotaExhausted)
                       </div>
                   }
 
-                @if (!string.IsNullOrWhiteSpace(lastResponse))
+                @if (!string.IsNullOrWhiteSpace(lastResponse) || _thinking)
                 {
                     <div class="border rounded p-3 bg-light" data-testid="ai-last-response">
                         <div class="d-flex justify-content-between mb-2">
-                            <strong>Latest AI Response</strong>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse" data-testid="ai-copy-response">Copy</button>
+                            <strong>@(string.IsNullOrWhiteSpace(lastResponse) ? "Thinking…" : "Latest AI Response")</strong>
+                            @if (!string.IsNullOrWhiteSpace(lastResponse))
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse" data-testid="ai-copy-response">Copy</button>
+                            }
                         </div>
-                        <div style="white-space: pre-wrap; font-size: 0.95rem;">@lastResponse</div>
+                        <div style="white-space: pre-wrap; font-size: 0.95rem;">@(lastResponse ?? "Working on your request…")</div>
 
-                        @if (UserCanManage)
+                        @if (UserCanManage && !string.IsNullOrWhiteSpace(lastResponse))
                         {
                             <div class="mt-2 d-flex gap-2 flex-wrap">
                                 <button class="btn btn-sm btn-success" @onclick="() => CreateQuoteFromAiText(lastResponse)" data-testid="ai-create-real-quote">🚀 Create Real Draft Quote</button>
@@ -476,9 +479,9 @@ else if (_aiQuotaExhausted)
         userQuestion = prompt;
         // Paint immediately so ai-last-response is visible before any service call.
         lastResponse = BuildImmediateOfflineAnswer(prompt);
-        StateHasChanged();
-        // Yield so Blazor flushes the render (ai-last-response) before the service call.
-        await Task.Yield();
+        await InvokeAsync(StateHasChanged);
+        // Brief delay so InteractiveServer flushes the paint before the longer AskCopilot path.
+        await Task.Delay(30);
         await AskCopilot();
     }
 

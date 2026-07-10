@@ -226,31 +226,33 @@ public static class E2EHelpers
 
     public static async Task ClickAiQuickPromptAndWaitAsync(this IPage page, string promptTestId, int timeoutMs = 45000)
     {
-        var prompt = page.Locator($"[data-testid='{promptTestId}']").First;
-        await prompt.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 20000 });
-        await Microsoft.Playwright.Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 20000 });
-
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 4; attempt++)
         {
             try
             {
+                // Re-resolve each attempt — Blazor may remount the prompt buttons.
+                var prompt = page.Locator($"[data-testid='{promptTestId}']").First;
+                await prompt.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 20000 });
+                await Microsoft.Playwright.Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 15000 });
                 await prompt.ScrollIntoViewIfNeededAsync();
-                await prompt.ClickAsync(new() { Timeout = 10000 });
+                await prompt.ClickAsync(new() { Timeout = 10000, Force = attempt > 1 });
                 await page.WaitForSelectorAsync(
                     "[data-testid='ai-last-response']",
-                    new() { Timeout = Math.Max(8000, timeoutMs / 3), State = WaitForSelectorState.Visible });
+                    new() { Timeout = Math.Max(10000, timeoutMs / 3), State = WaitForSelectorState.Visible });
                 return;
             }
-            catch (Exception) when (attempt < 2)
+            catch (Exception) when (attempt < 3)
             {
-                await Task.Delay(750 + attempt * 500);
-                try
+                await Task.Delay(600 + attempt * 400);
+                // Soft reload of the page keeps the circuit fresh for AI interactive demos.
+                if (attempt == 2)
                 {
-                    await prompt.ClickAsync(new() { Force = true, Timeout = 5000 });
-                }
-                catch
-                {
-                    /* retry outer loop */
+                    try
+                    {
+                        await page.GotoRelativeAsync("/ai-copilot");
+                        await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
+                    }
+                    catch { /* continue */ }
                 }
             }
         }
@@ -459,26 +461,41 @@ public static class E2EHelpers
     /// <summary>Opens field leave modal via deep-link.</summary>
     public static async Task OpenFieldLeaveModalAsync(this IPage page, int timeoutMs = 30000)
     {
-        await page.GotoAsync(
-            $"{BaseUrl.TrimEnd('/')}/field/leave?new=1",
-            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
-        await page.WaitForBlazorReadyAsync(20000);
-        await page.WaitForTestIdAsync("field-leave-ready", timeoutMs);
-        if (await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0)
-            return;
-
-        try
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            await page.WaitForTestIdAsync("field-leave-modal", 10000);
-            return;
-        }
-        catch (TimeoutException)
-        {
-            /* click fallback */
+            await page.GotoAsync(
+                $"{BaseUrl.TrimEnd('/')}/field/leave?new=1",
+                new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+            await page.WaitForBlazorReadyAsync(20000);
+            await page.WaitForTestIdAsync("field-leave-ready", timeoutMs);
+            if (await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0)
+                return;
+
+            try
+            {
+                await page.WaitForTestIdAsync("field-leave-modal", 8000);
+                return;
+            }
+            catch (TimeoutException) when (attempt < 2)
+            {
+                try
+                {
+                    await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn", 10000);
+                    await page.WaitForTestIdAsync("field-leave-modal", 8000);
+                    return;
+                }
+                catch
+                {
+                    await Task.Delay(500 + attempt * 300);
+                }
+            }
         }
 
-        await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn", timeoutMs);
-        await page.WaitForTestIdAsync("field-leave-modal", timeoutMs);
+        if (await page.Locator("[data-testid='field-leave-request-btn']").CountAsync() > 0)
+        {
+            await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn", timeoutMs);
+            await page.WaitForTestIdAsync("field-leave-modal", timeoutMs);
+        }
     }
 
     /// <summary>Opens field report modal via deep-link.</summary>

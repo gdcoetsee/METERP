@@ -98,11 +98,14 @@ else
     private DateTime _endDate = DateTime.Today.AddDays(9);
     private string _reason = "";
 
+    private bool _openFromQuery;
+
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
         try
         {
+            _openFromQuery = Nav.Uri.Contains("new=1", StringComparison.OrdinalIgnoreCase);
             if (CurrentUser.UserId is { } userId)
             {
                 _employee = await LeaveService.GetEmployeeForUserAsync(userId);
@@ -110,7 +113,7 @@ else
                 {
                     _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
                     _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
-                    if (Nav.Uri.Contains("new=1", StringComparison.OrdinalIgnoreCase))
+                    if (_openFromQuery)
                         await OpenForm();
                 }
             }
@@ -119,6 +122,13 @@ else
         {
             _loading = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Deep-link safety: ensure modal is open after first paint (circuit ready).
+        if (firstRender && _openFromQuery && _employee != null && !_open)
+            await OpenForm();
     }
 
     private void OnReasonInput(ChangeEventArgs e) =>
