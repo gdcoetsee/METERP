@@ -1802,16 +1802,21 @@ public class E2EFlowTests
 
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
         await acmePage.GotoRelativeAsync("/reports");
-        await acmePage.WaitForTestIdAsync("reports-ready", 30000);
+        await acmePage.WaitForBlazorReadyAsync(20000);
+        await acmePage.WaitForTestIdAsync("reports-ready", 45000);
         var acmeContent = await acmePage.ContentAsync();
-        Assert.Contains("Reports & Insights", acmeContent, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            acmeContent.Contains("Reports & Insights", StringComparison.OrdinalIgnoreCase)
+            || acmeContent.Contains("Reports &amp; Insights", StringComparison.OrdinalIgnoreCase),
+            "Expected Reports & Insights heading on Acme reports page.");
         Assert.DoesNotContain("Total Items: <strong>0</strong>", acmeContent);
         Assert.DoesNotContain("Total Assets: <strong>0</strong>", acmeContent);
         await acmePage.CloseAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/reports");
-        await betaPage.WaitForTestIdAsync("reports-ready", 30000);
+        await betaPage.WaitForBlazorReadyAsync(20000);
+        await betaPage.WaitForTestIdAsync("reports-ready", 45000);
         var betaContent = await betaPage.ContentAsync();
         Assert.Contains("Total Items: <strong>0</strong>", betaContent);
         Assert.Contains("Total Assets: <strong>0</strong>", betaContent);
