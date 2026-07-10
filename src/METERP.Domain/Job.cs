@@ -53,9 +53,21 @@ public class Job : BaseEntity
 
     public JobSignOffStatus SignOffStatus { get; set; } = JobSignOffStatus.None;
 
+    /// <summary>Manager work sign-off (first stage).</summary>
+    public DateTime? ManagerSignedOffAt { get; set; }
+
+    public Guid? ManagerSignedOffByUserId { get; set; }
+
+    /// <summary>Executive work sign-off (second stage — full SignedOff).</summary>
     public DateTime? SignedOffAt { get; set; }
 
     public Guid? SignedOffByUserId { get; set; }
+
+    public DateTime? CancelledAt { get; set; }
+
+    public Guid? CancelledByUserId { get; set; }
+
+    public string? CancellationReason { get; set; }
 
     /// <summary>Retention % applied on final invoices (e.g. 10 for construction).</summary>
     public decimal RetentionPercent { get; set; } = 10m;
@@ -123,9 +135,12 @@ public class Job : BaseEntity
 
     public bool IsClosed() => Status == JobStatus.Closed;
 
+    public bool IsCancelled() => Status == JobStatus.Cancelled;
+
     public bool IsOpenForOperations() =>
         Status is not (JobStatus.Closed or JobStatus.Cancelled);
 
+    /// <summary>Final/partial invoice cue: full dual work sign-off and job not closed/cancelled.</summary>
     public bool IsReadyToInvoice() =>
         SignOffStatus == JobSignOffStatus.SignedOff && IsOpenForOperations();
 

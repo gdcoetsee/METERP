@@ -45,13 +45,15 @@ else
                     @if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
                     {
                         <button type="button" class="btn btn-sm btn-warning" data-testid="job-sign-off-button"
-                                @onclick="SignOffAsync">Record sign-off</button>
+                                @onclick="AdvanceSignOffAsync">@SignOffButtonLabel</button>
                     }
                     @if (CanInvoice)
                     {
                         <button type="button" class="btn btn-sm btn-success" data-testid="job-cc-create-invoice"
                                 @onclick="() => _showInvoiceModal = true">Create invoice</button>
                     }
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-testid="job-cc-cancel"
+                            @onclick="() => _showCancelModal = true">Cancel job</button>
                     <button type="button" class="btn btn-sm btn-dark" data-testid="job-cc-executive-close"
                             @onclick="() => _showCloseModal = true">Executive close</button>
                 }
@@ -63,7 +65,17 @@ else
             </div>
         </div>
 
-        @if (_job.IsClosed())
+        @if (_job.IsCancelled())
+        {
+            <div class="alert alert-danger small" data-testid="job-cc-cancelled-banner">
+                <strong>Cancelled</strong> @_job.CancelledAt?.ToString("yyyy-MM-dd HH:mm") UTC
+                @if (!string.IsNullOrWhiteSpace(_job.CancellationReason))
+                {
+                    <span> — @_job.CancellationReason</span>
+                }
+            </div>
+        }
+        else if (_job.IsClosed())
         {
             <div class="alert alert-secondary small" data-testid="job-cc-closed-banner">
                 <strong>Closed</strong> @_job.ClosedAt?.ToString("yyyy-MM-dd HH:mm") UTC
@@ -71,6 +83,13 @@ else
                 {
                     <span> — @_job.CloseNotes</span>
                 }
+            </div>
+        }
+        else if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
+        {
+            <div class="alert alert-warning small py-2" data-testid="job-cc-signoff-banner">
+                Work sign-off: <strong>@SignOffStatusLabel</strong>
+                — manager then executive before final/partial invoices.
             </div>
         }
         else if (_summary.UnbilledResidual > 0 && _summary.BilledToDate > 0)
@@ -411,6 +430,22 @@ else
     </FormModal>
 }
 
+@if (_showCancelModal)
+{
+    <FormModal IsOpen="true" Title="Cancel / void job" TestId="job-cc-cancel-modal" OnClose="CloseCancelModal">
+        <p class="small text-muted">Cancels the job and blocks further costs, requisitions, and invoices. Reason is required for audit.</p>
+        <div class="mb-3">
+            <label class="form-label">Reason *</label>
+            <textarea class="form-control" rows="3" @bind="_cancelReason" data-testid="job-cc-cancel-reason" required></textarea>
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseCancelModal">Back</button>
+            <button type="button" class="btn btn-danger" data-testid="job-cc-cancel-confirm"
+                    disabled="@string.IsNullOrWhiteSpace(_cancelReason)" @onclick="CancelJobAsync">Confirm cancel</button>
+        </div>
+    </FormModal>
+}
+
 @code {
     private sealed class ReqDraftLine
     {
@@ -431,6 +466,7 @@ else
     private bool _showLaborModal;
     private bool _showCloseModal;
     private bool _showReopenModal;
+    private bool _showCancelModal;
     private bool _showInvoiceModal;
     private bool _showReqModal;
     private List<ReqDraftLine> _reqLines = new();
@@ -453,6 +489,7 @@ else
     private DateTime _laborDate = DateTime.Today;
     private string _closeNotes = "";
     private string _reopenReason = "";
+    private string _cancelReason = "";
     private InvoiceDocumentType _invoiceDocType = InvoiceDocumentType.Deposit;
     private decimal _invoicePercent = 30m;
 
@@ -462,6 +499,23 @@ else
     private bool InvoiceConfirmDisabled =>
         _invoiceDocType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial
         && _job?.SignOffStatus != JobSignOffStatus.SignedOff;
+
+    private string SignOffButtonLabel => _job?.SignOffStatus switch
+    {
+        JobSignOffStatus.None => "Submit for manager sign-off",
+        JobSignOffStatus.PendingManager or JobSignOffStatus.Pending => "Manager approve sign-off",
+        JobSignOffStatus.PendingExecutive => "Executive approve sign-off",
+        _ => "Sign-off"
+    };
+
+    private string SignOffStatusLabel => _job?.SignOffStatus switch
+    {
+        JobSignOffStatus.None => "Not started",
+        JobSignOffStatus.PendingManager or JobSignOffStatus.Pending => "Pending manager",
+        JobSignOffStatus.PendingExecutive => "Pending executive",
+        JobSignOffStatus.SignedOff => "Complete",
+        _ => _job?.SignOffStatus.ToString() ?? "—"
+    };
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -479,16 +533,50 @@ else
         }
     }
 
-    private async Task SignOffAsync()
+    private async Task AdvanceSignOffAsync()
     {
         if (CurrentUser.UserId is not { } userId) return;
-        if (!await JobService.SignOffAsync(JobId, userId))
+        try
         {
-            Toast.ShowError("Could not record sign-off.");
-            return;
+            if (!await JobService.AdvanceWorkSignOffAsync(JobId, userId))
+            {
+                Toast.ShowError("Could not advance work sign-off.");
+                return;
+            }
+
+            await LoadAsync();
+            Toast.ShowSuccess(_job?.SignOffStatus == JobSignOffStatus.SignedOff
+                ? "Work sign-off complete (manager + executive)."
+                : $"Work sign-off advanced — {SignOffStatusLabel}.");
         }
-        Toast.ShowSuccess("Client sign-off recorded.");
-        await LoadAsync();
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseCancelModal() => _showCancelModal = false;
+
+    private async Task CancelJobAsync()
+    {
+        if (CurrentUser.UserId is not { } userId || string.IsNullOrWhiteSpace(_cancelReason)) return;
+        try
+        {
+            if (!await JobService.CancelAsync(JobId, userId, _cancelReason))
+            {
+                Toast.ShowError("Could not cancel job.");
+                return;
+            }
+
+            Toast.ShowSuccess("Job cancelled.");
+            CloseCancelModal();
+            _cancelReason = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
     }
 
     private void CloseInvoiceModal() => _showInvoiceModal = false;

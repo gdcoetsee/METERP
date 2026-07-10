@@ -35,15 +35,17 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. Dual work sign-off (mgr → exec); job cancel/void  
-2. GRV polish / multi-supplier RFQ (P1)  
-3. Certifications CRUD, leave admin polish  
+1. GRV polish / multi-supplier RFQ (P1)  
+2. Certifications CRUD, leave admin polish  
+3. Production hardening (rate limits, secrets, observability)
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
 
 **R2b non-catalog requisitions (2026-07-09):** REQ lines may be free-text (no stock code). Flow: submit → approve → always procurement for non-catalog → PO (description) → GRV → fulfill → issue as job material cost (no stock SKU required). Catalog lines unchanged.
 
 **R3 delivered (2026-07-10):** Full employee profile (contact, division, manager, hire, leave, mandatory hours); load-then-patch `UpdateAsync` (no field wipe); `Payroll.View`/`Manage`; period + simple %/fixed deductions; payslip CSV/PDF with emp #; workforce util uses per-employee mandatory hours.
+
+**Dual sign-off + cancel (2026-07-10):** Work sign-off chain None → PendingManager → PendingExecutive → SignedOff (`AdvanceWorkSignOffAsync`); `SignOffAsync` still completes full chain for E2E/spine. Job `CancelAsync` with reason; cancelled blocks ops. Command Center UI for both.
 
 Per chunk: `dotnet test` → update handoff → commit → push.
 

@@ -20,11 +20,23 @@ public interface IJobService
 
     Task UpdateStatusAsync(Guid jobId, JobStatus newStatus, CancellationToken ct = default);
 
+    /// <summary>
+    /// Advances dual work sign-off one step:
+    /// None → PendingManager → PendingExecutive → SignedOff.
+    /// </summary>
+    Task<bool> AdvanceWorkSignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Completes full work sign-off in one step (demo/E2E/spine). Prefer <see cref="AdvanceWorkSignOffAsync"/> in UI.
+    /// </summary>
     Task<bool> SignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default);
 
     Task<bool> CloseAsync(Guid jobId, Guid executiveUserId, string? notes, CancellationToken ct = default);
 
     Task<bool> ReopenAsync(Guid jobId, Guid executiveUserId, string reason, CancellationToken ct = default);
+
+    /// <summary>Voids an open job (not closed). Blocks further ops; reason required.</summary>
+    Task<bool> CancelAsync(Guid jobId, Guid userId, string reason, CancellationToken ct = default);
 
     /// <summary>Recomputes <see cref="Job.ActualCost"/> from active <see cref="JobCost"/> rows (labor is tracked separately).</summary>
     Task RecalculateActualCostAsync(Guid jobId, CancellationToken ct = default);

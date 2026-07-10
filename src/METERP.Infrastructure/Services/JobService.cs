@@ -270,6 +270,16 @@ public class JobService : IJobService
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null) return;
 
+        if (job.Status is JobStatus.Closed or JobStatus.Cancelled
+            && newStatus is not (JobStatus.Closed or JobStatus.Cancelled))
+        {
+            throw new InvalidOperationException(
+                $"Job {job.JobNumber} is {job.Status}; use Reopen (if closed) or create a new job instead of changing status.");
+        }
+
+        if (newStatus == JobStatus.Cancelled)
+            throw new InvalidOperationException("Use CancelAsync with a reason to cancel a job.");
+
         job.Status = newStatus;
 
         if (newStatus == JobStatus.Completed || newStatus == JobStatus.Invoiced)
@@ -284,7 +294,7 @@ public class JobService : IJobService
     public async Task<bool> CloseAsync(Guid jobId, Guid executiveUserId, string? notes, CancellationToken ct = default)
     {
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job == null || job.IsClosed())
+        if (job == null || job.IsClosed() || job.IsCancelled())
             return false;
 
         job.Status = JobStatus.Closed;
@@ -359,7 +369,7 @@ public class JobService : IJobService
         await InvalidateListCachesAsync(ct);
     }
 
-    public async Task<bool> SignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default)
+    public async Task<bool> AdvanceWorkSignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default)
     {
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null)
@@ -367,16 +377,116 @@ public class JobService : IJobService
 
         await EnsureJobOpenAsync(job, ct);
 
-        job.SignOffStatus = JobSignOffStatus.SignedOff;
-        job.SignedOffAt = DateTime.UtcNow;
-        job.SignedOffByUserId = userId;
+        switch (job.SignOffStatus)
+        {
+            case JobSignOffStatus.None:
+                job.SignOffStatus = JobSignOffStatus.PendingManager;
+                await _dbContext.SaveChangesAsync(ct);
+                await InvalidateListCachesAsync(ct);
+                if (_audit != null)
+                    await _audit.LogAsync("SIGNOFF_REQUEST", "Job", job.JobNumber, "Submitted for manager work sign-off", ct);
+                return true;
 
-        if (job.Status is JobStatus.Scheduled or JobStatus.InProgress)
-            job.Status = JobStatus.Completed;
+            case JobSignOffStatus.PendingManager: // includes legacy Pending (same value)
+                job.SignOffStatus = JobSignOffStatus.PendingExecutive;
+                job.ManagerSignedOffAt = DateTime.UtcNow;
+                job.ManagerSignedOffByUserId = userId;
+                await _dbContext.SaveChangesAsync(ct);
+                await InvalidateListCachesAsync(ct);
+                if (_audit != null)
+                    await _audit.LogAsync("SIGNOFF_MANAGER", "Job", job.JobNumber, "Manager work sign-off approved", ct);
+                return true;
 
+            case JobSignOffStatus.PendingExecutive:
+                job.SignOffStatus = JobSignOffStatus.SignedOff;
+                job.SignedOffAt = DateTime.UtcNow;
+                job.SignedOffByUserId = userId;
+                if (job.Status is JobStatus.Scheduled or JobStatus.InProgress)
+                    job.Status = JobStatus.Completed;
+                job.CompletedDate ??= DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(ct);
+                await InvalidateListCachesAsync(ct);
+                if (_audit != null)
+                    await _audit.LogAsync("SIGNOFF_EXECUTIVE", "Job", job.JobNumber, "Executive work sign-off complete", ct);
+                return true;
+
+            case JobSignOffStatus.SignedOff:
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    public async Task<bool> SignOffAsync(Guid jobId, Guid userId, CancellationToken ct = default)
+    {
+        // Full dual chain complete in one call (demo, E2E, spine tests).
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null)
+            return false;
+
+        await EnsureJobOpenAsync(job, ct);
+
+        if (job.SignOffStatus != JobSignOffStatus.SignedOff)
+        {
+            if (job.ManagerSignedOffAt == null)
+            {
+                job.ManagerSignedOffAt = DateTime.UtcNow;
+                job.ManagerSignedOffByUserId = userId;
+            }
+
+            job.SignOffStatus = JobSignOffStatus.SignedOff;
+            job.SignedOffAt = DateTime.UtcNow;
+            job.SignedOffByUserId = userId;
+
+            if (job.Status is JobStatus.Scheduled or JobStatus.InProgress)
+                job.Status = JobStatus.Completed;
+
+            job.CompletedDate ??= DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(ct);
+            await InvalidateListCachesAsync(ct);
+
+            if (_audit != null)
+                await _audit.LogAsync("SIGNOFF_COMPLETE", "Job", job.JobNumber, "Full work sign-off (manager+executive)", ct);
+        }
+
+        return true;
+    }
+
+    public async Task<bool> CancelAsync(Guid jobId, Guid userId, string reason, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Cancellation reason is required.", nameof(reason));
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null)
+            return false;
+
+        if (job.IsClosed())
+            throw new InvalidOperationException($"Job {job.JobNumber} is closed; reopen before cancelling if needed.");
+
+        if (job.IsCancelled())
+            return false;
+
+        job.Status = JobStatus.Cancelled;
+        job.CancelledAt = DateTime.UtcNow;
+        job.CancelledByUserId = userId;
+        job.CancellationReason = reason.Trim();
         job.CompletedDate ??= DateTime.UtcNow;
+
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+
+        if (_audit != null)
+        {
+            await _audit.LogAsync(
+                "CANCEL",
+                "Job",
+                job.JobNumber,
+                job.CancellationReason,
+                ct);
+        }
+
         return true;
     }
 

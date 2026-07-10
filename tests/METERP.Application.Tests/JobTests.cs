@@ -82,13 +82,70 @@ public class JobTests
     {
         var ready = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Completed };
         var notSigned = new Job { SignOffStatus = JobSignOffStatus.Pending, Status = JobStatus.Completed };
+        var pendingExec = new Job { SignOffStatus = JobSignOffStatus.PendingExecutive, Status = JobStatus.Completed };
         var invoicedLegacy = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Invoiced };
         var closed = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Closed };
+        var cancelled = new Job { SignOffStatus = JobSignOffStatus.SignedOff, Status = JobStatus.Cancelled };
 
         Assert.True(ready.IsReadyToInvoice());
         Assert.False(notSigned.IsReadyToInvoice());
+        Assert.False(pendingExec.IsReadyToInvoice());
         Assert.True(invoicedLegacy.IsReadyToInvoice());
         Assert.False(closed.IsReadyToInvoice());
+        Assert.False(cancelled.IsReadyToInvoice());
+    }
+
+    [Fact]
+    public async Task JobService_AdvanceWorkSignOff_DualChain()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, audit: audit.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var manager = Guid.NewGuid();
+        var exec = Guid.NewGuid();
+
+        Assert.True(await service.AdvanceWorkSignOffAsync(jobId, manager));
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobSignOffStatus.PendingManager, job.SignOffStatus);
+
+        Assert.True(await service.AdvanceWorkSignOffAsync(jobId, manager));
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobSignOffStatus.PendingExecutive, job.SignOffStatus);
+        Assert.Equal(manager, job.ManagerSignedOffByUserId);
+
+        Assert.True(await service.AdvanceWorkSignOffAsync(jobId, exec));
+        job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobSignOffStatus.SignedOff, job.SignOffStatus);
+        Assert.Equal(exec, job.SignedOffByUserId);
+        Assert.True(job.IsReadyToInvoice());
+    }
+
+    [Fact]
+    public async Task JobService_CancelAsync_BlocksOperations()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        Assert.True(await service.CancelAsync(jobId, Guid.NewGuid(), "Client cancelled scope"));
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.False(job.IsOpenForOperations());
+        Assert.Contains("Client cancelled", job.CancellationReason);
+
+        await Assert.ThrowsAsync<JobClosedException>(() => service.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Description = "Blocked",
+            Amount = 10m,
+            CostType = "Other",
+            CostDate = DateTime.UtcNow
+        }));
     }
 
     [Fact]
