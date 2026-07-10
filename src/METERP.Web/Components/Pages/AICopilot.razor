@@ -70,22 +70,22 @@ else if (_aiQuotaExhausted)
                 <strong>Quick Actions & Bid Optimizer</strong>
             </div>
             <div class="card-body">
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Analyze my 3 jobs with the highest variance. Focus on travel and labor costs.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-variance">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Analyze my 3 jobs with the highest variance. Focus on travel and labor costs.")' disabled="@_thinking" data-testid="ai-quick-prompt-variance">
                     Analyze worst variance jobs (travel & labor focus)
                 </button>
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("What are realistic ways to reduce travel costs on site jobs in mining areas? Give 4 practical tips with cost impact examples in R.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-travel">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("What are realistic ways to reduce travel costs on site jobs in mining areas? Give 4 practical tips with cost impact examples in R.")' disabled="@_thinking" data-testid="ai-quick-prompt-travel">
                     Travel cost reduction ideas for mining sites
                 </button>
-                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Suggest a complete quote line item structure (incl. travel) for installing a new 11kV/400V transformer at a remote site. Use realistic SA rates and quantities.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-transformer">
+                <button class="btn btn-outline-primary w-100 mb-2" @onclick='() => RunQuickPrompt("Suggest a complete quote line item structure (incl. travel) for installing a new 11kV/400V transformer at a remote site. Use realistic SA rates and quantities.")' disabled="@_thinking" data-testid="ai-quick-prompt-transformer">
                     Generate transformer install quote template
                 </button>
-                <button class="btn btn-outline-primary w-100" @onclick='() => RunQuickPrompt("Based on current data, which employee types or skills are over/under utilized? Any recommendations?")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-utilization">
+                <button class="btn btn-outline-primary w-100" @onclick='() => RunQuickPrompt("Based on current data, which employee types or skills are over/under utilized? Any recommendations?")' disabled="@_thinking" data-testid="ai-quick-prompt-utilization">
                     Workforce utilization insights
                 </button>
-                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("What-if: if we reduce travel costs by 20% on upcoming jobs, what is the estimated margin impact? Use realistic numbers from data.")' disabled="@(AiCopilotBlocked || _thinking)">
+                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("What-if: if we reduce travel costs by 20% on upcoming jobs, what is the estimated margin impact? Use realistic numbers from data.")' disabled="@_thinking">
                     What-if travel cost reduction impact
                 </button>
-                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.")' disabled="@(AiCopilotBlocked || _thinking)" data-testid="ai-quick-prompt-lowstock">
+                <button class="btn btn-outline-primary w-100 mt-2" @onclick='() => RunQuickPrompt("Identify low-stock items and any scheduled/in-progress jobs that could be delayed by material shortages. Include realistic travel or expediting cost impact in R and suggest 2-3 mitigation actions.")' disabled="@_thinking" data-testid="ai-quick-prompt-lowstock">
                     🔮 Low-stock risk for scheduled jobs (travel impact)
                 </button>
 
