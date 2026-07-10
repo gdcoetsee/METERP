@@ -59,6 +59,8 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 **R5 export/report truth (2026-07-10):** `ExportToolbar` only shows CSV/Excel/PDF when handlers are wired (no “will be available” stub buttons). Reports page labels honest (live GL snapshot, no fake Excel/Power BI claim).
 
+**R6 increment (2026-07-10):** Production refuses `CHANGE_ME` / default `postgres` DB password; `.env.example` secrets checklist + security headers note. (Observability stack already optional via compose profile.)
+
 Per chunk: `dotnet test` → update handoff → commit → push.
 
 ---
@@ -140,7 +142,7 @@ PPE (employee-centric):
 | **R3** | Full employee profile, payslip v1, payroll permissions, certs + leave admin | **Done (unit/UI)** |
 | **R4** | Billing polish (POP download, retention UI, emergency job-first, deposit flag) | **Done (unit/UI)** |
 | **R5** | Reporting/export truth (wire or hide stubs) | **Done (UI honesty)** |
-| **R6** | Production hardening for pilot | Ongoing partial (headers + health + rate limits) |
+| **R6** | Production hardening for pilot | **Ongoing partial** (headers + health + rate limits + prod secret guard) |
 
 ### Historical phases 0–11
 

@@ -244,6 +244,18 @@ builder.Services.AddRateLimiter(options =>
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
                        ?? "Host=localhost;Database=METERP;Username=postgres;Password=CHANGE_ME;Port=5432";
 
+// Production hardening: refuse placeholder secrets (must use env/secrets manager).
+if (builder.Environment.IsProduction())
+{
+    if (string.IsNullOrWhiteSpace(connectionString)
+        || connectionString.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+        || connectionString.Contains("Password=postgres", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            "Production requires ConnectionStrings:DefaultConnection with a real password (not CHANGE_ME / default postgres).");
+    }
+}
+
 builder.Services.AddScoped<CircuitDbContextGate>();
 builder.Services.AddScoped<CircuitDbCommandGateInterceptor>();
 

@@ -4,7 +4,7 @@
 
 This document is the **execution contract** for the Ops Core sprint. Do not invent product rules that contradict it.
 
-**Status (2026-07-10):** Ops Core through R5 done (incl. export honesty). **Next: R6 production hardening remainder.** Primary implementer: **Grok**.  
+**Status (2026-07-10):** Ops Core through R5 done; R6 partial (headers, rate limits, health, prod secret guard). Remaining R6: deeper OTel/Serilog pilot polish, quota UX. Primary implementer: **Grok**.  
 **Advisory:** Flag plan risks and consult the user before changing product rules or roadmap order. Update `COMPLETION_PLAN.md` whenever product rules change.
 
 ---
