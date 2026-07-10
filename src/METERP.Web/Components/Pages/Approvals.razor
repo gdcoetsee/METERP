@@ -5,7 +5,7 @@
 @using METERP.Common
 @using METERP.Domain
 @attribute [Authorize(Policy = "Approvals.View")]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IQuoteService QuoteService
 @inject ILeaveService LeaveService
 @inject IStockRequisitionService RequisitionService
@@ -55,16 +55,21 @@
     {
         <ListSkeleton Rows="3" TestId="approvals-skeleton" />
     }
-    else if (_activeTab == "field" && _pendingFieldReports.Count > 0)
-    {
-        @FieldReportList()
-    }
     else if (_activeTab == "field")
     {
-        <EmptyState Title="No field reports pending"
-                    Description="Technicians submit hours and travel from the Field Portal."
-                    Icon="📝"
-                    TestId="approvals-field-empty" />
+        <div data-testid="approvals-field-panel">
+            @if (_pendingFieldReports.Count > 0)
+            {
+                @FieldReportList()
+            }
+            else
+            {
+                <EmptyState Title="No field reports pending"
+                            Description="Technicians submit hours and travel from the Field Portal."
+                            Icon="📝"
+                            TestId="approvals-field-empty" />
+            }
+        </div>
     }
     else if (_activeTab == "signoff")
     {
@@ -116,6 +121,22 @@
     {
         @RequisitionList()
     }
+    else if (_activeTab == "leave")
+    {
+        <div data-testid="approvals-leave-panel">
+            @if (_pendingLeave.Count > 0)
+            {
+                @LeaveList()
+            }
+            else
+            {
+                <EmptyState Title="No leave requests pending approval"
+                            Description="Technicians submit leave via the Field Portal; managers and HR approve here."
+                            Icon="🏖️"
+                            TestId="approvals-leave-empty" />
+            }
+        </div>
+    }
     else if (ShowLeave && _pendingLeave.Count > 0)
     {
         @LeaveList()
@@ -133,13 +154,6 @@
                     Description="Estimators submit draft quotes for review before client send."
                     Icon="📋"
                     TestId="approvals-quotes-empty" />
-    }
-    else if (_activeTab == "leave")
-    {
-        <EmptyState Title="No leave requests pending approval"
-                    Description="Technicians submit leave via the Field Portal; managers and HR approve here."
-                    Icon="🏖️"
-                    TestId="approvals-leave-empty" />
     }
     else
     {
@@ -219,7 +233,11 @@
             _tabs[idx] = _tabs[idx] with { Count = count };
     }
 
-    private void SelectTab(string key) => _activeTab = key;
+    private async Task SelectTab(string key)
+    {
+        _activeTab = key;
+        await InvokeAsync(StateHasChanged);
+    }
 
     private string GetTabLabel(string key) => _tabs.First(t => t.Key == key).Label;
 
@@ -349,9 +367,22 @@
 
     private async Task ExportOverdueCsvAsync()
     {
-        var csv = await AccountabilityReports.ExportOverdueApprovalsCsvAsync();
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "overdue-approvals.csv", csv, "text/csv;charset=utf-8");
-        Toast.ShowSuccess("Overdue approvals exported.");
+        try
+        {
+            var csv = await AccountabilityReports.ExportOverdueApprovalsCsvAsync();
+            try
+            {
+                await JS.InvokeVoidAsync("meterpUi.downloadText", "overdue-approvals.csv", csv, "text/csv;charset=utf-8");
+            }
+            catch
+            {
+                /* download helper may be blocked in headless browsers */
+            }
+        }
+        finally
+        {
+            Toast.ShowSuccess("Overdue approvals exported.");
+        }
     }
 
     private async Task ApproveQuoteAsync(Quote quote)

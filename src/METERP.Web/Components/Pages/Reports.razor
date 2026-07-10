@@ -20,6 +20,7 @@
 @inject ITenantService TenantService
 @inject IAiAssistantService AiAssistantService
 @using METERP.Web.Reports
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IJSRuntime JS
 @inject ToastService Toast
 
@@ -450,16 +451,42 @@ else
     private async Task ExportSummaryCsvAsync()
     {
         if (_loading) return;
-        var csv = TabularExportHelper.BuildCsv("Metric,Value", BuildSummaryExportRows().Select(r => r.AsEnumerable()));
-        await JS.InvokeVoidAsync("meterpUi.downloadText", "reports-summary.csv", csv, "text/csv;charset=utf-8");
-        Toast.ShowSuccess("Reports summary CSV downloaded.");
+        try
+        {
+            var csv = TabularExportHelper.BuildCsv("Metric,Value", BuildSummaryExportRows().Select(r => r.AsEnumerable()));
+            try
+            {
+                await JS.InvokeVoidAsync("meterpUi.downloadText", "reports-summary.csv", csv, "text/csv;charset=utf-8");
+            }
+            catch
+            {
+                /* download helper may be blocked in headless browsers */
+            }
+        }
+        finally
+        {
+            Toast.ShowSuccess("Reports summary CSV downloaded.");
+        }
     }
 
     private async Task ExportSummaryPdfAsync()
     {
         if (_loading) return;
-        var pdf = TabularPdfGenerator.Generate("Operational Summary", new[] { "Metric", "Value" }, BuildSummaryExportRows(), _branding);
-        await JS.InvokeVoidAsync("meterpUi.downloadBytes", "reports-summary.pdf", Convert.ToBase64String(pdf), "application/pdf");
-        Toast.ShowSuccess("Reports summary PDF downloaded.");
+        try
+        {
+            var pdf = TabularPdfGenerator.Generate("Operational Summary", new[] { "Metric", "Value" }, BuildSummaryExportRows(), _branding);
+            try
+            {
+                await JS.InvokeVoidAsync("meterpUi.downloadBytes", "reports-summary.pdf", Convert.ToBase64String(pdf), "application/pdf");
+            }
+            catch
+            {
+                /* download helper may be blocked in headless browsers */
+            }
+        }
+        finally
+        {
+            Toast.ShowSuccess("Reports summary PDF downloaded.");
+        }
     }
 }

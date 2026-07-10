@@ -54,6 +54,9 @@ public sealed class FieldReportService : IFieldReportService
 
         report.Status = FieldReportStatus.PendingApproval;
         report.SubmittedAt = DateTime.UtcNow;
+        // Stamp tenant from job so field-portal circuits never insert Guid.Empty TenantId.
+        if (report.TenantId == Guid.Empty)
+            report.TenantId = job.TenantId;
 
         _dbContext.Set<FieldReport>().Add(report);
         await _dbContext.SaveChangesAsync(ct);

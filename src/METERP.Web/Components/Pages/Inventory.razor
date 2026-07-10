@@ -42,7 +42,9 @@
         }
     </div>
     <div class="form-check form-switch align-self-center">
-        <input class="form-check-input" type="checkbox" data-testid="inventory-low-stock-filter" @bind="lowStockOnly" @bind:after="LoadItems" id="lowStockCheck">
+        <input class="form-check-input" type="checkbox" data-testid="inventory-low-stock-filter"
+               checked="@lowStockOnly" @onchange="OnLowStockFilterChanged" id="lowStockCheck"
+               data-low-stock-active="@(lowStockOnly ? "true" : "false")">
         <label class="form-check-label" for="lowStockCheck">Low stock only</label>
     </div>
 
@@ -307,6 +309,9 @@ else
         _loading = true;
         try
         {
+            var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+            if (uri.Query.Contains("lowStock=1", StringComparison.OrdinalIgnoreCase))
+                lowStockOnly = true;
             await LoadItems();
         }
         finally
@@ -319,11 +324,30 @@ else
     {
         var generation = ++_itemsLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        var loaded = (await InventoryService.GetAllItemsAsync(term, lowStockOnly, currentPage, PageSize)).ToList();
+        // Request a larger page when filtering low stock so filter is meaningful on demo data.
+        var pageSize = lowStockOnly ? Math.Max(PageSize, 50) : PageSize;
+        var loaded = (await InventoryService.GetAllItemsAsync(term, lowStockOnly, currentPage, pageSize)).ToList();
         if (generation != _itemsLoadGeneration)
             return;
-        items = loaded;
+        // Defensive client filter (covers cache edge cases / stale Redis entries).
+        items = lowStockOnly
+            ? loaded.Where(i => i.QuantityOnHand <= i.ReorderLevel).ToList()
+            : loaded;
     });
+
+    private async Task OnLowStockFilterChanged(ChangeEventArgs e)
+    {
+        lowStockOnly = e.Value switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase)
+                        || s.Equals("on", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+        currentPage = 1;
+        await LoadItems();
+        await InvokeAsync(StateHasChanged);
+    }
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {

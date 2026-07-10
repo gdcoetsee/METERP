@@ -4,7 +4,7 @@
 @using METERP.Common
 @using METERP.Domain
 @attribute [Authorize(Policy = "Requisitions.View")]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IStockRequisitionService RequisitionService
 @inject IPurchaseOrderService PurchaseOrderService
 @inject IProcurementQuoteService QuoteService

@@ -4,10 +4,11 @@
 @using METERP.Application.Services
 @using METERP.Domain
 @attribute [Authorize(Policy = "Field.View")]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IJobService JobService
 @inject IFieldReportService FieldReportService
 @inject ICurrentUserService CurrentUser
+@inject NavigationManager Nav
 @inject ToastService Toast
 
 <PageTitle>My Jobs — Field</PageTitle>
@@ -55,12 +56,12 @@ else
 }
 </div>
 
-@if (_showModal && _reportJob != null)
-{
-    <FormModal IsOpen="true"
-               Title="Field report"
-               TestId="field-report-modal"
-               OnClose="CloseModal">
+<FormModal IsOpen="@(_showModal && _reportJob != null)"
+           Title="Field report"
+           TestId="field-report-modal"
+           OnClose="CloseModal">
+    @if (_reportJob != null)
+    {
         <p class="small text-muted mb-3">Job: <strong>@_reportJob.JobNumber</strong> — @_reportJob.Title</p>
         <div class="mb-3">
             <label class="form-label">Work date</label>
@@ -86,8 +87,8 @@ else
             <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
             <button type="button" class="btn btn-success" data-testid="field-report-modal-save" @onclick="SubmitReportAsync">Submit</button>
         </div>
-    </FormModal>
-}
+    }
+</FormModal>
 
 @code {
     private List<Job> _jobs = new();
@@ -110,6 +111,24 @@ else
                 .Where(j => j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold)
                 .OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue)
                 .ToList();
+
+            // Deep-link: /field/jobs?report=1 or ?report={jobId}
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            if (uri.Query.Contains("report=", StringComparison.OrdinalIgnoreCase) && _jobs.Count > 0)
+            {
+                var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                if (q.TryGetValue("report", out var reportVal)
+                    && Guid.TryParse(reportVal, out var jobId)
+                    && jobId != Guid.Empty
+                    && _jobs.Any(j => j.Id == jobId))
+                {
+                    await ShowReportForm(jobId);
+                }
+                else
+                {
+                    await ShowReportForm(_jobs[0].Id);
+                }
+            }
         }
         finally
         {
@@ -141,7 +160,17 @@ else
 
     private async Task SubmitReportAsync()
     {
-        if (_reportJob == null || CurrentUser.UserId is not { } userId) return;
+        if (_reportJob == null)
+        {
+            Toast.ShowError("No job selected for field report.");
+            return;
+        }
+
+        if (CurrentUser.UserId is not { } userId)
+        {
+            Toast.ShowError("Not signed in — reload the field portal and try again.");
+            return;
+        }
 
         try
         {
@@ -158,10 +187,12 @@ else
 
             Toast.ShowSuccess($"Field report submitted for {_reportJob.JobNumber} — awaiting manager approval.");
             await CloseModal();
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            Toast.ShowError(ex.Message);
+            Toast.ShowError($"Field report failed: {ex.Message}");
+            await InvokeAsync(StateHasChanged);
         }
     }
 }

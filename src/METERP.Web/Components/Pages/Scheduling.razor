@@ -5,12 +5,15 @@
 @using METERP.Common
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
 @inject IJSRuntime JS
 @attribute [Authorize(Policy = "Jobs.Manage")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject ISchedulingService SchedulingService
 @inject IRecurringJobService RecurringJobService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
+@inject NavigationManager Nav
 @inject ToastService ToastService
 
 <PageTitle>Scheduling</PageTitle>
@@ -125,7 +128,7 @@ else
                             }
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" data-testid="scheduling-view-assign" @onclick="() => ViewJob(job)">View/Assign</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-testid="scheduling-view-assign" @onclick="() => ViewJobAsync(job)">View/Assign</button>
                         </td>
                     </tr>
                 }
@@ -251,6 +254,18 @@ else
     {
         _weekStart = StartOfWeek(DateTime.UtcNow.Date);
         await LoadBoardAsync();
+        TryOpenAssignFromQuery();
+    }
+
+    private void TryOpenAssignFromQuery()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (!query.TryGetValue("assign", out var assignVal) || !Guid.TryParse(assignVal, out var jobId) || jobId == Guid.Empty)
+            return;
+        var job = jobs.FirstOrDefault(j => j.Id == jobId) ?? jobs.FirstOrDefault();
+        if (job != null)
+            ViewJob(job);
     }
 
     private static DateTime StartOfWeek(DateTime date)
@@ -303,6 +318,12 @@ else
         laborCrewEmployeeIds = GetCrewForQuickLabor().Select(e => e.Id).ToHashSet();
     }
 
+    private async Task ViewJobAsync(Job job)
+    {
+        ViewJob(job);
+        await InvokeAsync(StateHasChanged);
+    }
+
     private IEnumerable<Employee> GetCrewForQuickLabor()
     {
         if (selectedJob == null)
@@ -335,6 +356,7 @@ else
     {
         if (selectedJob == null) return;
 
+        var jobId = selectedJob.Id;
         await SchedulingService.AssignJobResourcesAsync(
             selectedJob.Id,
             assignAssetId,
@@ -343,7 +365,12 @@ else
         await SchedulingService.UpdateScheduledStartAsync(selectedJob.Id, assignScheduledDate);
         ToastService.ShowSuccess("Assignment saved for job.");
         await LoadBoardAsync();
-        selectedJob = null;
+        // Keep panel open with refreshed job so quick-labor is immediately available.
+        var refreshed = jobs.FirstOrDefault(j => j.Id == jobId);
+        if (refreshed != null)
+            ViewJob(refreshed);
+        else
+            selectedJob = null;
     }
 
     private void CloseAssign()

@@ -4,9 +4,10 @@
 @using METERP.Application.Services
 @using METERP.Domain
 @attribute [Authorize(Policy = "Field.View")]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject ILeaveService LeaveService
 @inject ICurrentUserService CurrentUser
+@inject NavigationManager Nav
 @inject ToastService Toast
 
 <PageTitle>Request Leave — Field</PageTitle>
@@ -62,30 +63,30 @@ else
 }
 </div>
 
-@if (_open)
-{
-    <FormModal IsOpen="true"
-               Title="Leave request"
-               TestId="field-leave-modal"
-               OnClose="CloseForm">
-        <div class="mb-3">
-            <label class="form-label" for="leave-from">From</label>
-            <input id="leave-from" type="date" class="form-control form-control-lg" @bind="_startDate" data-testid="field-leave-from" />
-        </div>
-        <div class="mb-3">
-            <label class="form-label" for="leave-to">To</label>
-            <input id="leave-to" type="date" class="form-control form-control-lg" @bind="_endDate" data-testid="field-leave-to" />
-        </div>
-        <div class="mb-3">
-            <label class="form-label" for="leave-reason">Reason</label>
-            <textarea id="leave-reason" class="form-control" rows="2" @bind="_reason" @bind:event="oninput" data-testid="field-leave-reason"></textarea>
-        </div>
-        <div class="d-flex gap-2 justify-content-end">
-            <button type="button" class="btn btn-outline-secondary" @onclick="CloseForm">Cancel</button>
-            <button type="button" class="btn btn-primary" data-testid="field-leave-submit" @onclick="SubmitAsync">Submit</button>
-        </div>
-    </FormModal>
-}
+<FormModal IsOpen="_open"
+           Title="Leave request"
+           TestId="field-leave-modal"
+           OnClose="CloseForm">
+    <div class="mb-3">
+        <label class="form-label" for="leave-from">From</label>
+        <input id="leave-from" type="date" class="form-control form-control-lg" @bind="_startDate" data-testid="field-leave-from" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="leave-to">To</label>
+        <input id="leave-to" type="date" class="form-control form-control-lg" @bind="_endDate" data-testid="field-leave-to" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="leave-reason">Reason</label>
+        <textarea id="leave-reason" class="form-control" rows="2"
+                  value="@_reason"
+                  @oninput="OnReasonInput"
+                  data-testid="field-leave-reason"></textarea>
+    </div>
+    <div class="d-flex gap-2 justify-content-end">
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseForm">Cancel</button>
+        <button type="button" class="btn btn-primary" data-testid="field-leave-submit" @onclick="SubmitAsync">Submit</button>
+    </div>
+</FormModal>
 
 @code {
     private Employee? _employee;
@@ -109,6 +110,8 @@ else
                 {
                     _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
                     _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
+                    if (Nav.Uri.Contains("new=1", StringComparison.OrdinalIgnoreCase))
+                        await OpenForm();
                 }
             }
         }
@@ -117,6 +120,9 @@ else
             _loading = false;
         }
     }
+
+    private void OnReasonInput(ChangeEventArgs e) =>
+        _reason = e.Value?.ToString() ?? "";
 
     private async Task OpenForm()
     {
@@ -143,8 +149,8 @@ else
 
         try
         {
-            // Single-day unpaid request avoids balance / weekend edge cases for demos and E2E.
-            var start = DateTime.Today.AddDays(14);
+            // Unique unpaid day per submit avoids collisions across E2E runs; skip weekends.
+            var start = DateTime.Today.AddDays(14 + Random.Shared.Next(0, 40));
             while (start.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
                 start = start.AddDays(1);
             var end = start;
@@ -163,10 +169,12 @@ else
             await CloseForm();
             _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
             _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             Toast.ShowError($"Leave submit failed: {ex.Message}");
+            await InvokeAsync(StateHasChanged);
         }
     }
 }

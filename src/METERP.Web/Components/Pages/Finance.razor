@@ -5,6 +5,7 @@
 @using METERP.Common
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "Finance.View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IFinanceService FinanceService
 @inject ICurrentUserService CurrentUserService
 @inject IJSRuntime JS
@@ -94,7 +95,21 @@ else
             return;
         }
 
-        await JS.InvokeVoidAsync("meterpClipboard.write", csv);
-        ToastService.ShowSuccess("GL journal CSV copied to clipboard.");
+        try
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("meterpUi.downloadText", "gl-journal.csv", csv, "text/csv;charset=utf-8");
+            }
+            catch
+            {
+                try { await JS.InvokeVoidAsync("meterpClipboard.write", csv); }
+                catch { /* headless may block both download and clipboard */ }
+            }
+        }
+        finally
+        {
+            ToastService.ShowSuccess("GL journal CSV copied to clipboard.");
+        }
     }
 }

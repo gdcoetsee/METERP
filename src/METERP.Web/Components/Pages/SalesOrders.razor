@@ -6,12 +6,14 @@
 @using METERP.Infrastructure.Seeding
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.JSInterop
 @attribute [Authorize(Policy = "SalesOrders.View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject ISalesOrderService SalesOrderService
 @inject IQuoteService QuoteService
 @inject ICurrentUserService CurrentUserService
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject ToastService ToastService
 
@@ -65,7 +67,7 @@ else
                         <td>@GetStatusBadge(so.Status)</td>
                         <td class="text-end">R @so.Total.ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="sales-order-view" @onclick="() => ViewSO(so)">View</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary me-1" data-testid="sales-order-view" @onclick="() => ViewSO(so)">View</button>
                             @if (UserCanManage && so.Status == SalesOrderStatus.Draft)
                             {
                                 <button class="btn btn-sm btn-success" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(so)">Convert to Job</button>
@@ -156,11 +158,23 @@ else
         try
         {
             await LoadSOs();
+            await TryOpenFromQueryAsync();
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private async Task TryOpenFromQueryAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (!query.TryGetValue("panel", out var panelVal) || !Guid.TryParse(panelVal, out var soId) || soId == Guid.Empty)
+            return;
+        selectedSO = await SalesOrderService.GetByIdAsync(soId);
+        if (selectedSO == null && sos.Count > 0)
+            selectedSO = await SalesOrderService.GetByIdAsync(sos[0].Id);
     }
 
     private Task LoadSOs() => _dataGate.RunAsync(async () =>

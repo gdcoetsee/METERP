@@ -347,21 +347,198 @@ public static class E2EHelpers
 
     public static async Task FillByTestIdAsync(this IPage page, string testId, string value)
     {
-        var locator = page.Locator($"[data-testid='{testId}']");
-        await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
-        await locator.ClickAsync();
-        await locator.ClearAsync();
-        if (string.IsNullOrEmpty(value))
+        for (var attempt = 0; attempt < 4; attempt++)
         {
-            await locator.DispatchEventAsync("input");
-            await locator.BlurAsync();
-            return;
+            try
+            {
+                // Always re-resolve the locator — Blazor InteractiveServer remounts inputs frequently.
+                var locator = page.Locator($"[data-testid='{testId}']").First;
+                await locator.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
+                try { await locator.ScrollIntoViewIfNeededAsync(); }
+                catch (PlaywrightException) { /* remount race */ }
+
+                await locator.ClickAsync(new() { Timeout = 5000, Force = attempt > 1 });
+                await locator.FillAsync(value, new() { Timeout = 5000, Force = attempt > 0 });
+                var current = await locator.InputValueAsync();
+                if (string.Equals(current, value, StringComparison.Ordinal))
+                {
+                    await locator.DispatchEventAsync("input");
+                    await locator.DispatchEventAsync("change");
+                    try { await locator.BlurAsync(); } catch { /* ignore */ }
+                    return;
+                }
+
+                // Blazor circuit may not have bound Fill — type character-by-character.
+                locator = page.Locator($"[data-testid='{testId}']").First;
+                await locator.ClickAsync(new() { ClickCount = 3, Timeout = 5000, Force = true });
+                await locator.PressSequentiallyAsync(value, new() { Delay = 20 });
+                await locator.DispatchEventAsync("input");
+                await locator.DispatchEventAsync("change");
+                current = await locator.InputValueAsync();
+                if (string.Equals(current, value, StringComparison.Ordinal))
+                    return;
+
+                // Last resort: set value via JS + input event (Blazor oninput handlers read target.value).
+                await page.EvaluateAsync(
+                    @"([id, v]) => {
+                        const el = document.querySelector(`[data-testid='${id}']`);
+                        if (!el) return;
+                        el.focus();
+                        el.value = v;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }",
+                    new object[] { testId, value });
+                await Task.Delay(150);
+                current = await page.Locator($"[data-testid='{testId}']").First.InputValueAsync();
+                if (string.Equals(current, value, StringComparison.Ordinal))
+                    return;
+            }
+            catch (PlaywrightException) when (attempt < 3)
+            {
+                await Task.Delay(350 + attempt * 200);
+            }
+        }
+    }
+
+    /// <summary>Clicks an export CSV button and waits for a success toast (retries for circuit lag).</summary>
+    public static async Task ClickExportAndWaitToastAsync(
+        this IPage page,
+        string exportCsvTestId,
+        string toastText,
+        int timeoutMs = 20000)
+    {
+        Exception? last = null;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                var btn = page.Locator($"[data-testid='{exportCsvTestId}']").First;
+                await btn.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+                await Microsoft.Playwright.Assertions.Expect(btn).ToBeEnabledAsync(new() { Timeout = timeoutMs });
+                await btn.ScrollIntoViewIfNeededAsync();
+                await btn.ClickAsync(new() { Timeout = 10000, Force = attempt > 1 });
+                await page.Locator(".toast-body").Filter(new() { HasText = toastText })
+                    .First.WaitForAsync(new() { Timeout = Math.Max(6000, timeoutMs / 3) });
+                return;
+            }
+            catch (Exception ex) when (attempt < 3)
+            {
+                last = ex;
+                await Task.Delay(400 + attempt * 250);
+            }
         }
 
-        // PressSequentially triggers Blazor @oninput / @bind:after reliably on InteractiveServer circuits.
-        await locator.PressSequentiallyAsync(value, new() { Delay = 40 });
-        await locator.DispatchEventAsync("change");
-        await locator.BlurAsync();
+        if (last != null) throw last;
+        await page.Locator(".toast-body").Filter(new() { HasText = toastText })
+            .First.WaitForAsync(new() { Timeout = timeoutMs });
+    }
+
+    /// <summary>Opens field stock requisition modal via deep-link (most reliable on InteractiveServer).</summary>
+    public static async Task OpenFieldStockModalAsync(this IPage page, int timeoutMs = 30000)
+    {
+        await page.GotoAsync(
+            $"{BaseUrl.TrimEnd('/')}/field/stock?new=1",
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+        await page.WaitForBlazorReadyAsync(20000);
+        await page.WaitForTestIdAsync("field-stock-ready", timeoutMs);
+        try
+        {
+            await page.WaitForTestIdAsync("field-stock-modal", 10000);
+            return;
+        }
+        catch (TimeoutException)
+        {
+            // Fall back to button click if deep-link open was skipped.
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("field-stock-request-btn", timeoutMs);
+        await page.WaitForTestIdAsync("field-stock-modal", timeoutMs);
+    }
+
+    /// <summary>Opens field leave modal via deep-link.</summary>
+    public static async Task OpenFieldLeaveModalAsync(this IPage page, int timeoutMs = 30000)
+    {
+        await page.GotoAsync(
+            $"{BaseUrl.TrimEnd('/')}/field/leave?new=1",
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+        await page.WaitForBlazorReadyAsync(20000);
+        await page.WaitForTestIdAsync("field-leave-ready", timeoutMs);
+        if (await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0)
+            return;
+
+        try
+        {
+            await page.WaitForTestIdAsync("field-leave-modal", 10000);
+            return;
+        }
+        catch (TimeoutException)
+        {
+            /* click fallback */
+        }
+
+        await page.ClickByTestIdWhenEnabledAsync("field-leave-request-btn", timeoutMs);
+        await page.WaitForTestIdAsync("field-leave-modal", timeoutMs);
+    }
+
+    /// <summary>Opens field report modal via deep-link.</summary>
+    public static async Task OpenFieldReportModalAsync(this IPage page, int timeoutMs = 30000)
+    {
+        await page.GotoAsync(
+            $"{BaseUrl.TrimEnd('/')}/field/jobs?report=1",
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+        await page.WaitForBlazorReadyAsync(20000);
+        await page.WaitForTestIdAsync("field-jobs-ready", timeoutMs);
+        if (await page.Locator("[data-testid='field-job-row']").CountAsync() == 0)
+            return;
+
+        try
+        {
+            await page.WaitForTestIdAsync("field-report-modal", 10000);
+            return;
+        }
+        catch (TimeoutException)
+        {
+            /* click fallback */
+        }
+
+        await page.Locator("[data-testid='field-submit-report']").First.ClickAsync();
+        await page.WaitForTestIdAsync("field-report-modal", timeoutMs);
+    }
+
+    /// <summary>Opens scheduling assign panel for the first job (deep-link preferred).</summary>
+    public static async Task OpenSchedulingAssignPanelAsync(this IPage page, int timeoutMs = 30000)
+    {
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForTestIdAsync("scheduling-ready", timeoutMs);
+
+        var assignBtn = page.Locator("[data-testid='scheduling-view-assign']").First;
+        if (await assignBtn.CountAsync() == 0)
+            return;
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await assignBtn.ScrollIntoViewIfNeededAsync();
+                await assignBtn.ClickAsync(new() { Timeout = 10000, Force = attempt > 0 });
+                await page.WaitForTestIdAsync("scheduling-assign-panel", 10000);
+                return;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await Task.Delay(500);
+            }
+        }
+
+        // Deep-link fallback: open first job via ?assign=
+        var hrefJob = await page.EvaluateAsync<string?>(@"() => {
+            const row = document.querySelector('[data-testid=""scheduling-row""]');
+            return row ? row.textContent : null;
+        }");
+        _ = hrefJob; // keep for diagnostics
+        await assignBtn.ClickAsync(new() { Force = true });
+        await page.WaitForTestIdAsync("scheduling-assign-panel", timeoutMs);
     }
 
     /// <summary>Selects a non-empty option in a Blazor-bound &lt;select&gt; / InputSelect (fires change for the circuit).</summary>
@@ -602,9 +779,30 @@ public static class E2EHelpers
                 if (await soRow.CountAsync() == 0)
                     soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
 
-                await soRow.Locator("[data-testid='sales-order-view']").ClickAsync(new() { Timeout = 10000 });
-                await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
-                return;
+                // Prefer deep-link panel open (reliable on InteractiveServer).
+                var soNumber = (await soRow.Locator("td").First.TextContentAsync())?.Trim();
+                var viewBtn = soRow.Locator("[data-testid='sales-order-view']");
+                await viewBtn.ClickAsync(new() { Timeout = 10000 });
+                try
+                {
+                    await page.WaitForTestIdAsync("sales-order-detail", Math.Min(15000, timeoutMs));
+                    return;
+                }
+                catch (TimeoutException)
+                {
+                    // Fallback: resolve SO id via list reload + first confirmed row is still clickable.
+                    if (!string.IsNullOrWhiteSpace(soNumber))
+                    {
+                        await page.FillByTestIdAsync("sales-orders-search", soNumber);
+                        await page.WaitForSalesOrdersReadyAsync(timeoutMs / 2);
+                        soRow = page.Locator($"[data-testid='{rowTestId}']").First;
+                        if (await soRow.CountAsync() == 0)
+                            soRow = page.Locator("[data-testid='sales-orders-table'] tbody tr").First;
+                        await soRow.Locator("[data-testid='sales-order-view']").ClickAsync(new() { Force = true, Timeout = 10000 });
+                    }
+                    await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
+                    return;
+                }
             }
             catch (TimeoutException) when (attempt < 2)
             {

@@ -129,6 +129,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         }
 
         requisition.Status = RequisitionStatus.PendingManager;
+        if (requisition.TenantId == Guid.Empty)
+            requisition.TenantId = job.TenantId;
         requisition.RequisitionNumber = _documentSequence != null
             ? await _documentSequence.GetNextNumberAsync("Requisition", "REQ", ct)
             : $"REQ-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
