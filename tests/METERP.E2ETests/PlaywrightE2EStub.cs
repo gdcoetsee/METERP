@@ -3266,6 +3266,8 @@ public class E2EFlowTests : IAsyncLifetime
         await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
         await techPage.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
         await techPage.FillByTestIdAsync("field-stock-qty", "1");
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-add-line");
+        await techPage.WaitForTestIdAsync("field-stock-line", 10000);
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
         await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
             .First.WaitForAsync(new() { Timeout = 20000 });
@@ -3360,6 +3362,8 @@ public class E2EFlowTests : IAsyncLifetime
         await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
         await techPage.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
         await techPage.FillByTestIdAsync("field-stock-qty", "1");
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-add-line");
+        await techPage.WaitForTestIdAsync("field-stock-line", 10000);
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
         await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
             .First.WaitForAsync(new() { Timeout = 20000 });
@@ -3465,6 +3469,8 @@ public class E2EFlowTests : IAsyncLifetime
         await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
         await techPage.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
         await techPage.FillByTestIdAsync("field-stock-qty", "1");
+        await techPage.ClickByTestIdWhenEnabledAsync("field-stock-add-line");
+        await techPage.WaitForTestIdAsync("field-stock-line", 10000);
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
         await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
             .First.WaitForAsync(new() { Timeout = 20000 });
@@ -3851,6 +3857,8 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
 
         await page.FillByTestIdAsync("field-stock-qty", "2");
+        await page.ClickByTestIdWhenEnabledAsync("field-stock-add-line");
+        await page.WaitForTestIdAsync("field-stock-line", 10000);
         await page.ClickByTestIdWhenEnabledAsync("field-stock-submit");
 
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" });

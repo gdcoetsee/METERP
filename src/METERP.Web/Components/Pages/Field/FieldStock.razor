@@ -13,7 +13,7 @@
 
 <PageTitle>Request Stock — Field</PageTitle>
 
-<div data-testid="field-stock-ready">
+<div>
 <h1 class="h5 mb-3">Request Stock</h1>
 
 @if (_loading)
@@ -22,6 +22,7 @@
 }
 else
 {
+    <div data-testid="field-stock-ready">
     <button type="button" class="btn btn-primary w-100 mb-3" data-testid="field-stock-request-btn" @onclick="OpenForm">
         New requisition
     </button>
@@ -42,14 +43,16 @@ else
             }
         </div>
     }
+    </div>
 }
 </div>
 
-<FormModal IsOpen="_open"
-           Title="Stock requisition"
-           TestId="field-stock-modal"
-           OnClose="CloseForm">
-    <ChildContent>
+@if (_open)
+{
+    <FormModal IsOpen="true"
+               Title="Stock requisition"
+               TestId="field-stock-modal"
+               OnClose="CloseForm">
         <div class="mb-3">
             <label class="form-label" for="field-stock-job">Job</label>
             <select id="field-stock-job" class="form-select form-control-lg" @bind="_jobId" data-testid="field-stock-job">
@@ -140,12 +143,12 @@ else
             <label class="form-label" for="field-stock-notes">Notes</label>
             <textarea id="field-stock-notes" class="form-control" rows="2" @bind="_notes" data-testid="field-stock-notes"></textarea>
         </div>
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-outline-secondary" @onclick="CloseForm">Cancel</button>
-        <button type="button" class="btn btn-primary" data-testid="field-stock-submit" @onclick="SubmitAsync">Submit for approval</button>
-    </Footer>
-</FormModal>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseForm">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="field-stock-submit" @onclick="SubmitAsync">Submit for approval</button>
+        </div>
+    </FormModal>
+}
 
 @code {
     private sealed class DraftLine
@@ -203,7 +206,7 @@ else
         await LoadItemsAsync();
     }
 
-    private void OpenForm()
+    private async Task OpenForm()
     {
         _jobId = _jobs.FirstOrDefault()?.Id ?? Guid.Empty;
         _quantity = 1;
@@ -214,9 +217,14 @@ else
         _freeTextCost = 0;
         _lines = new();
         _open = true;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void CloseForm() => _open = false;
+    private async Task CloseForm()
+    {
+        _open = false;
+        await InvokeAsync(StateHasChanged);
+    }
 
     private void AddLine()
     {

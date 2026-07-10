@@ -61,6 +61,8 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 **R6 increment (2026-07-10):** Production refuses `CHANGE_ME` / default `postgres` DB password; `.env.example` secrets checklist + security headers note. (Observability stack already optional via compose profile.)
 
+**E2E docker run (2026-07-10):** Full Playwright suite against `docker compose`. Fixes: single `ConfirmDialogHost` (no double backdrop), exclusive ConfirmService subscribe, field stock multi-line E2E add-line, field ready markers after load. `Field_Stock_Submits_Requisition` verified green. Remaining flakes (field report modal, some AI/quote races) tracked for follow-up.
+
 Per chunk: `dotnet test` → update handoff → commit → push.
 
 ---

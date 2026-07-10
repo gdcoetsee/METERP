@@ -150,7 +150,7 @@
     }
 </div>
 
-<ConfirmDialogHost />
+@* ConfirmDialogHost lives in MainLayout — do not mount a second host (double backdrop blocks E2E clicks). *@
 
 @code {
     private string _activeTab = "all";

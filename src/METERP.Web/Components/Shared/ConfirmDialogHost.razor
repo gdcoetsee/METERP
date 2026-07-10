@@ -3,10 +3,17 @@
 
 @code {
     private ConfirmRequest? _request;
+    private readonly Action<ConfirmRequest> _handler;
+
+    public ConfirmDialogHost()
+    {
+        _handler = HandleShow;
+    }
 
     protected override void OnInitialized()
     {
-        ConfirmService.OnShow += HandleShow;
+        // Last-mounted host wins (layout hosts mount first; avoid page-level duplicates).
+        ConfirmService.Subscribe(_handler);
     }
 
     private void HandleShow(ConfirmRequest request)
@@ -33,7 +40,7 @@
 
     public void Dispose()
     {
-        ConfirmService.OnShow -= HandleShow;
+        ConfirmService.Unsubscribe(_handler);
     }
 }
 

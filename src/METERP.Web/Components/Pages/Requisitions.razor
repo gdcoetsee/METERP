@@ -206,7 +206,7 @@ else
     </FormModal>
 }
 
-<ConfirmDialogHost />
+@* ConfirmDialogHost lives in MainLayout — avoid duplicate hosts. *@
 
 @code {
     private List<StockRequisition> _requisitions = new();

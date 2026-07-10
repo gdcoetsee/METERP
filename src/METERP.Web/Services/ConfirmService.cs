@@ -12,10 +12,21 @@ public sealed class ConfirmRequest
 
 /// <summary>
 /// Branded confirm dialogs — replaces window.confirm() across the app.
+/// Only one host should be mounted (MainLayout or FieldLayout). Subscribe replaces prior handler
+/// so a stray second host cannot stack double backdrops that block clicks.
 /// </summary>
 public sealed class ConfirmService
 {
-    public event Action<ConfirmRequest>? OnShow;
+    private Action<ConfirmRequest>? _handler;
+
+    /// <summary>Register the active dialog host (replaces any previous host).</summary>
+    public void Subscribe(Action<ConfirmRequest> handler) => _handler = handler;
+
+    public void Unsubscribe(Action<ConfirmRequest> handler)
+    {
+        if (_handler == handler)
+            _handler = null;
+    }
 
     public Task<bool> ConfirmAsync(
         string message,
@@ -25,7 +36,7 @@ public sealed class ConfirmService
         string confirmVariant = "primary")
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        OnShow?.Invoke(new ConfirmRequest
+        var request = new ConfirmRequest
         {
             Title = title,
             Message = message,
@@ -33,7 +44,16 @@ public sealed class ConfirmService
             CancelLabel = cancelLabel,
             ConfirmVariant = confirmVariant,
             Completion = tcs
-        });
+        };
+
+        if (_handler == null)
+        {
+            // No UI host — fail closed rather than hang forever.
+            tcs.TrySetResult(false);
+            return tcs.Task;
+        }
+
+        _handler.Invoke(request);
         return tcs.Task;
     }
 }

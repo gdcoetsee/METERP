@@ -12,7 +12,7 @@
 
 <PageTitle>My Jobs — Field</PageTitle>
 
-<div data-testid="field-jobs-ready">
+<div>
 <h1 class="h5 mb-3">My Jobs</h1>
 
 @if (_loading)
@@ -21,71 +21,73 @@
 }
 else if (_jobs.Count == 0)
 {
-    <EmptyState Title="No jobs assigned"
-                Description="When you are assigned to jobs, they will appear here for field reporting."
-                Icon="🔧"
-                TestId="field-jobs-empty" />
+    <div data-testid="field-jobs-ready">
+        <EmptyState Title="No jobs assigned"
+                    Description="When you are assigned to jobs, they will appear here for field reporting."
+                    Icon="🔧"
+                    TestId="field-jobs-empty" />
+    </div>
 }
 else
 {
-    <div class="list-group" data-testid="field-jobs-list">
-        @foreach (var job in _jobs)
-        {
-            <div class="list-group-item" data-testid="field-job-row">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <strong>@job.JobNumber</strong>
-                        <div class="small">@job.Title</div>
-                        <div class="small text-muted">@(job.Customer?.Name ?? "—")</div>
+    <div data-testid="field-jobs-ready">
+        <div class="list-group" data-testid="field-jobs-list">
+            @foreach (var job in _jobs)
+            {
+                <div class="list-group-item" data-testid="field-job-row">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>@job.JobNumber</strong>
+                            <div class="small">@job.Title</div>
+                            <div class="small text-muted">@(job.Customer?.Name ?? "—")</div>
+                        </div>
+                        <span class="badge bg-secondary">@job.Status</span>
                     </div>
-                    <span class="badge bg-secondary">@job.Status</span>
+                    <button type="button" class="btn btn-primary btn-sm mt-2 w-100"
+                            data-testid="field-submit-report"
+                            @onclick="() => ShowReportForm(job.Id)">
+                        Submit field report
+                    </button>
                 </div>
-                <button type="button" class="btn btn-primary btn-sm mt-2 w-100"
-                        data-testid="field-submit-report"
-                        @onclick="() => ShowReportForm(job)">
-                    Submit field report
-                </button>
-            </div>
-        }
+            }
+        </div>
     </div>
 }
 </div>
 
-<FormModal IsOpen="_showModal"
-           Title="Field report"
-           TestId="field-report-modal"
-           OnClose="CloseModal">
-    <ChildContent>
-        @if (_reportJob != null)
-        {
-            <p class="small text-muted mb-3">Job: <strong>@_reportJob.JobNumber</strong> — @_reportJob.Title</p>
-            <div class="mb-3">
-                <label class="form-label">Work date</label>
-                <InputDate class="form-control" @bind-Value="_workDate" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Hours worked</label>
-                <InputNumber class="form-control" @bind-Value="_hoursWorked" step="0.5" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Travel cost (R)</label>
-                <InputNumber class="form-control" @bind-Value="_travelCost" step="0.01" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Materials used</label>
-                <InputTextArea class="form-control" @bind-Value="_materialsUsed" rows="2" />
-            </div>
-            <div class="mb-0">
-                <label class="form-label">Comments</label>
-                <InputTextArea class="form-control" @bind-Value="_comments" rows="2" />
-            </div>
-        }
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
-        <button type="button" class="btn btn-success" data-testid="field-report-modal-save" @onclick="SubmitReportAsync">Submit</button>
-    </Footer>
-</FormModal>
+@if (_showModal && _reportJob != null)
+{
+    <FormModal IsOpen="true"
+               Title="Field report"
+               TestId="field-report-modal"
+               OnClose="CloseModal">
+        <p class="small text-muted mb-3">Job: <strong>@_reportJob.JobNumber</strong> — @_reportJob.Title</p>
+        <div class="mb-3">
+            <label class="form-label">Work date</label>
+            <input type="date" class="form-control" @bind="_workDate" data-testid="field-report-work-date" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Hours worked</label>
+            <input type="number" step="0.5" class="form-control" @bind="_hoursWorked" data-testid="field-report-hours" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Travel cost (R)</label>
+            <input type="number" step="0.01" class="form-control" @bind="_travelCost" data-testid="field-report-travel" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Materials used</label>
+            <textarea class="form-control" rows="2" @bind="_materialsUsed" data-testid="field-report-materials"></textarea>
+        </div>
+        <div class="mb-0">
+            <label class="form-label">Comments</label>
+            <textarea class="form-control" rows="2" @bind="_comments" data-testid="field-report-comments"></textarea>
+        </div>
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
+            <button type="button" class="btn btn-success" data-testid="field-report-modal-save" @onclick="SubmitReportAsync">Submit</button>
+        </div>
+    </FormModal>
+}
 
 @code {
     private List<Job> _jobs = new();
@@ -115,21 +117,26 @@ else
         }
     }
 
-    private void ShowReportForm(Job job)
+    private async Task ShowReportForm(Guid jobId)
     {
-        _reportJob = job;
+        _reportJob = _jobs.FirstOrDefault(j => j.Id == jobId);
+        if (_reportJob == null)
+            return;
+
         _workDate = DateTime.UtcNow.Date;
         _hoursWorked = 8m;
         _travelCost = 0m;
         _materialsUsed = null;
         _comments = null;
         _showModal = true;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void CloseModal()
+    private async Task CloseModal()
     {
         _showModal = false;
         _reportJob = null;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task SubmitReportAsync()
