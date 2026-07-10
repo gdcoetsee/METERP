@@ -73,7 +73,13 @@ public static class E2EHelpers
 
             try
             {
-                await page.GotoAsync($"{url}/login-complete?email={Uri.EscapeDataString(loginEmail)}", new() { Timeout = 60000 });
+                // Drop prior tenant cookies so multi-tenant E2E never reuses the wrong session.
+                try { await page.Context.ClearCookiesAsync(); }
+                catch { /* ignore */ }
+
+                await page.GotoAsync(
+                    $"{url}/login-complete?email={Uri.EscapeDataString(loginEmail)}&_={DateTime.UtcNow.Ticks}",
+                    new() { Timeout = 60000, WaitUntil = WaitUntilState.Load });
                 await page.WaitForURLAsync(
                     u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
                     new() { Timeout = 60000 });
@@ -629,18 +635,24 @@ public static class E2EHelpers
         string tableTestId,
         string searchTerm,
         string expectedRowText,
-        int timeoutMs = 20000)
+        int timeoutMs = 20000,
+        string? excludeRowText = null)
     {
         var search = page.Locator($"[data-testid='{searchTestId}']").First;
         await search.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
         await search.ClickAsync();
+        // Clear + type character-by-character so Blazor @oninput handlers fire on the circuit.
         await search.FillAsync("");
-        await search.PressSequentiallyAsync(searchTerm, new() { Delay = 60 });
+        await search.DispatchEventAsync("input");
+        await Task.Delay(150);
+        await search.PressSequentiallyAsync(searchTerm, new() { Delay = 45 });
         await search.DispatchEventAsync("input");
         await search.DispatchEventAsync("change");
         await search.BlurAsync();
+        // Confirm the input retained the typed value (catches non-interactive circuits).
+        await Microsoft.Playwright.Assertions.Expect(search).ToHaveValueAsync(searchTerm, new() { Timeout = 5000 });
 
-        // Poll until the expected row is present (server-side filter + re-render).
+        // Poll until the expected row is present and optional excluded rows are gone.
         var tableBody = page.Locator($"[data-testid='{tableTestId}'] tbody");
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         Exception? last = null;
@@ -650,7 +662,10 @@ public static class E2EHelpers
             {
                 await WaitForLoadingGoneAsync(page, InferLoadingTestId(tableTestId), 3000);
                 var matchCount = await tableBody.Locator("tr").Filter(new() { HasText = expectedRowText }).CountAsync();
-                if (matchCount > 0)
+                var excludeCount = string.IsNullOrWhiteSpace(excludeRowText)
+                    ? 0
+                    : await tableBody.Locator("tr").Filter(new() { HasText = excludeRowText }).CountAsync();
+                if (matchCount > 0 && excludeCount == 0)
                     return;
             }
             catch (Exception ex)
@@ -664,6 +679,12 @@ public static class E2EHelpers
         await Microsoft.Playwright.Assertions.Expect(
             tableBody.Locator("tr").Filter(new() { HasText = expectedRowText }))
             .Not.ToHaveCountAsync(0, new() { Timeout = 2000 });
+        if (!string.IsNullOrWhiteSpace(excludeRowText))
+        {
+            await Microsoft.Playwright.Assertions.Expect(
+                tableBody.Locator("tr").Filter(new() { HasText = excludeRowText }))
+                .ToHaveCountAsync(0, new() { Timeout = 2000 });
+        }
         if (last != null)
             throw last;
     }

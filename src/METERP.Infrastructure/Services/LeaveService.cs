@@ -74,6 +74,16 @@ public sealed class LeaveService : ILeaveService
         }
 
         request.Status = LeaveRequestStatus.PendingManager;
+
+        // Stamp tenant from employee so field-portal circuits never insert Guid.Empty TenantId.
+        if (request.TenantId == Guid.Empty)
+        {
+            var emp = await _dbContext.Set<Employee>().AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct);
+            if (emp != null)
+                request.TenantId = emp.TenantId;
+        }
+
         _dbContext.Set<LeaveRequest>().Add(request);
         await _dbContext.SaveChangesAsync(ct);
         return request.Id;

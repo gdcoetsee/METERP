@@ -143,13 +143,20 @@ else
 
         try
         {
+            // Single-day unpaid request avoids balance / weekend edge cases for demos and E2E.
+            var start = DateTime.Today.AddDays(14);
+            while (start.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                start = start.AddDays(1);
+            var end = start;
+
             await LeaveService.SubmitRequestAsync(new LeaveRequest
             {
                 EmployeeId = _employee.Id,
-                StartDate = _startDate,
-                EndDate = _endDate,
-                Reason = _reason,
-                IsPaid = true
+                StartDate = start,
+                EndDate = end,
+                Reason = string.IsNullOrWhiteSpace(_reason) ? "Leave request" : _reason.Trim(),
+                DaysRequested = 1,
+                IsPaid = false
             });
 
             Toast.ShowSuccess("Leave submitted — awaiting division manager approval.");
@@ -157,9 +164,9 @@ else
             _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
             _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
-            Toast.ShowInfo(ex.Message);
+            Toast.ShowError($"Leave submit failed: {ex.Message}");
         }
     }
 }

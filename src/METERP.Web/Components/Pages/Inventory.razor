@@ -450,18 +450,19 @@ else
 
     private async Task ExportCsvAsync()
     {
-        if (items == null || !items.Any()) return;
-
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Sku,Name,Category,OnHand,Reserved,Available,UnitCost,ReorderLevel");
-        foreach (var item in items)
-        {
-            sb.AppendLine($"{item.Sku},{item.Name},{item.Category},{item.QuantityOnHand},{item.QuantityReserved},{item.QuantityAvailable},{item.UnitCost},{item.ReorderLevel}");
-        }
-
         try
         {
-            await JS.InvokeVoidAsync("meterpUi.downloadText", "inventory.csv", sb.ToString(), "text/csv;charset=utf-8");
+            if (items != null && items.Any())
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("Sku,Name,Category,OnHand,Reserved,Available,UnitCost,ReorderLevel");
+                foreach (var item in items)
+                {
+                    sb.AppendLine($"{item.Sku},{item.Name},{item.Category},{item.QuantityOnHand},{item.QuantityReserved},{item.QuantityAvailable},{item.UnitCost},{item.ReorderLevel}");
+                }
+
+                await JS.InvokeVoidAsync("meterpUi.downloadText", "inventory.csv", sb.ToString(), "text/csv;charset=utf-8");
+            }
         }
         catch
         {
