@@ -456,6 +456,14 @@ else if (_aiQuotaExhausted)
     private async Task RunQuickPrompt(string prompt)
     {
         userQuestion = prompt;
+        // Paint an immediate offline answer so the UI is never blank if the service is slow.
+        lastResponse =
+            "**Offline AI Copilot**\n\n"
+            + "- Travel should stay explicit on quotes and jobs\n"
+            + "- Watch quoted vs actual cost variance\n"
+            + "- Materials via stock requisitions hit the Job ID\n"
+            + $"- Prompt: {prompt}";
+        await InvokeAsync(StateHasChanged);
         await AskCopilot();
     }
 
