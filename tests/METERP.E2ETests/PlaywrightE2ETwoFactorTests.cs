@@ -8,27 +8,9 @@ namespace METERP.E2ETests;
 /// </summary>
 [Trait("Category", "E2E")]
 [Collection("E2E")]
-public class E2ETwoFactorFlowTests : IAsyncLifetime
+public class E2ETwoFactorFlowTests
 {
-    private IPlaywright _playwright = null!;
     private IBrowser Browser => E2EHelpers.GetBrowser();
-
-    public async Task InitializeAsync()
-    {
-        await E2EHelpers.EnsureAppReadyAsync();
-        await E2EHelpers.ResetDemoStateAsync();
-        await E2EHelpers.DisableBetaTwoFactorAsync();
-        _playwright = await Playwright.CreateAsync();
-        E2EHelpers.TrackBrowser(_playwright, await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true }));
-    }
-
-    public async Task DisposeAsync()
-    {
-        await E2EHelpers.DisableBetaTwoFactorAsync();
-        try { await E2EHelpers.GetBrowser().DisposeAsync(); }
-        catch (InvalidOperationException) { /* already disposed */ }
-        _playwright?.Dispose();
-    }
 
     [Fact]
     public async Task AccountSecurity_Enables_TwoFactor_And_Login_Challenge()

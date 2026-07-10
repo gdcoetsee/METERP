@@ -152,7 +152,7 @@ else
             });
 
             Toast.ShowSuccess("Leave submitted — awaiting division manager approval.");
-            CloseForm();
+            await CloseForm();
             _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
             _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
         }

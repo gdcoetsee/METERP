@@ -92,6 +92,6 @@ public class AiCopilotEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         };
         await userManager.CreateAsync(user, "TestPass123!");
         await userManager.AddClaimAsync(user, new Claim("TenantId", tenantId.ToString()));
-        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.JobsView));
+        await userManager.AddClaimAsync(user, new Claim("Permission", Permissions.QuotesManage));
     }
 }

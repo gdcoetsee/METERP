@@ -157,7 +157,7 @@ else
             });
 
             Toast.ShowSuccess($"Field report submitted for {_reportJob.JobNumber} — awaiting manager approval.");
-            CloseModal();
+            await CloseModal();
         }
         catch (Exception ex)
         {

@@ -73,14 +73,30 @@ public class AiAssistantServiceTests
     }
 
     [Fact]
-    public async Task SuggestQuoteLinesAsync_ReturnsNull_When_NotConfigured()
+    public async Task SuggestQuoteLinesAsync_ReturnsOfflineSuggestion_When_NotConfigured()
     {
         var config = CreateConfig(apiKey: null);
         var service = CreateService(config);
 
         var result = await service.SuggestQuoteLinesAsync("some scope", 0.15m);
 
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.NotEmpty(result!.SuggestedLines);
+        Assert.Contains("Offline", result.Reasoning, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(result.SuggestedLines, l => l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AskCopilotAsync_ReturnsOfflineResponse_When_NotConfigured()
+    {
+        var config = CreateConfig(apiKey: null);
+        var service = CreateService(config);
+
+        var result = await service.AskCopilotAsync("What travel cost risks should I watch?");
+
+        Assert.NotNull(result);
+        Assert.Contains("Offline", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("travel", result, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

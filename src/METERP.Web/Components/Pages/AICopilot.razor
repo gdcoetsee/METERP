@@ -1,4 +1,5 @@
 @page "/ai-copilot"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
@@ -7,8 +8,8 @@
 @inject ITenantProvider TenantProvider
 @inject IAiJobApplyService AiJobApplyService
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Policy = "Jobs.View")]
-@* Broad access for now; tighten per permissions in real use *@
+@attribute [Authorize(Policy = "Quotes.Manage")]
+@* Office AI — not field tech; Quotes.Manage keeps technicians off the copilot. *@
 @inject IAiAssistantService AiAssistantService
 @inject IAiConfigurationResolver AiConfigResolver
 @inject IAiQuoteApplyService AiQuoteApplyService
@@ -29,7 +30,7 @@
 
 @if (_copilotReady)
 {
-    <span data-testid="ai-copilot-ready" class="visually-hidden">ready</span>
+    <div data-testid="ai-copilot-ready" class="visually-hidden" aria-hidden="true">ready</div>
 }
 
 @if (!_aiFeatureEnabled)
@@ -91,8 +92,9 @@ else if (_aiQuotaExhausted)
                 <hr />
 
                 <div class="input-group mb-2">
-                    <input type="text" class="form-control" placeholder="Enter scope for bid optimization (e.g. '11kV transformer install at mine site')" @bind="bidScope" />
-                    <button class="btn btn-outline-primary" @onclick="OptimizeBid" disabled="@_thinking || string.IsNullOrWhiteSpace(bidScope)" data-testid="ai-optimize-bid">Optimize Bid</button>
+                    <input type="text" class="form-control" placeholder="Enter scope for bid optimization (e.g. '11kV transformer install at mine site')"
+                           value="@bidScope" @oninput="OnBidScopeInput" data-testid="ai-bid-scope" />
+                    <button class="btn btn-outline-primary" @onclick="OptimizeBid" disabled="@_thinking" data-testid="ai-optimize-bid">Optimize Bid</button>
                 </div>
                 <small class="text-muted">Uses live data for realistic pricing, labor, travel suggestions.</small>
             </div>
@@ -123,7 +125,7 @@ else if (_aiQuotaExhausted)
             <div class="card-body">
                 <div class="input-group mb-3">
                     <input type="text" class="form-control" placeholder="Ask anything... e.g. 'How can I improve my quoting accuracy on electrical maintenance contracts?' or 'Why are my travel costs 40% over on the last 5 jobs?'"
-                           @bind="userQuestion" @onkeyup="OnQuestionKeyUp" data-testid="ai-prompt-input" />
+                           value="@userQuestion" @oninput="OnQuestionInput" @onkeyup="OnQuestionKeyUp" data-testid="ai-prompt-input" />
                     <button class="btn btn-primary" @onclick="AskCopilot" disabled="@(string.IsNullOrWhiteSpace(userQuestion) || _thinking)" data-testid="ai-ask-button">
                         Ask AI
                     </button>
@@ -355,6 +357,16 @@ else if (_aiQuotaExhausted)
         catch { }
     }
 
+    private void OnBidScopeInput(ChangeEventArgs e)
+    {
+        bidScope = e.Value?.ToString() ?? "";
+    }
+
+    private void OnQuestionInput(ChangeEventArgs e)
+    {
+        userQuestion = e.Value?.ToString() ?? "";
+    }
+
     private async Task OnQuestionKeyUp(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(userQuestion))
@@ -369,17 +381,42 @@ else if (_aiQuotaExhausted)
 
         _thinking = true;
         lastResponse = null;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         try
         {
-            // Gather rich context
-            string context = await BuildRichContextAsync();
+            string context;
+            try
+            {
+                context = await BuildRichContextAsync();
+            }
+            catch
+            {
+                context = "(context unavailable)";
+            }
 
-            var result = await AiAssistantService.AskCopilotAsync(userQuestion, context);
+            // Cap wait so demos/E2E never hang 60s+ on a bad API key.
+            var askTask = AiAssistantService.AskCopilotAsync(userQuestion, context);
+            var finished = await Task.WhenAny(askTask, Task.Delay(TimeSpan.FromSeconds(12)));
+            string? result;
+            if (finished == askTask)
+            {
+                result = await askTask;
+            }
+            else
+            {
+                result =
+                    "**Offline AI Copilot** (response timed out waiting for provider)\n\n"
+                    + "- Keep **travel** explicit on quotes and jobs\n"
+                    + "- Review quoted vs actual cost variance\n"
+                    + "- Use stock requisitions so materials hit the Job ID\n"
+                    + $"- Your question was: {userQuestion}";
+            }
+
             lastResponse = result ?? "The AI did not return a response. Please refine your question or check configuration.";
             chatHistory.Add((userQuestion, lastResponse));
-            await SaveChatHistory();
+            try { await SaveChatHistory(); }
+            catch { /* localStorage optional */ }
         }
         catch (Exception ex)
         {
@@ -389,7 +426,7 @@ else if (_aiQuotaExhausted)
         finally
         {
             _thinking = false;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -593,7 +630,12 @@ else if (_aiQuotaExhausted)
 
     private async Task OptimizeBid()
     {
-        if (string.IsNullOrWhiteSpace(bidScope)) return;
+        if (string.IsNullOrWhiteSpace(bidScope))
+        {
+            ToastService.ShowError("Enter a bid scope first.");
+            return;
+        }
+
         await RunQuickPrompt($"Optimize bid for: {bidScope}. Suggest realistic pricing, labor hours, travel, materials using current market and historical data from the system. Include total estimate and margin tips.");
         bidScope = "";
     }

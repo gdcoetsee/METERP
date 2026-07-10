@@ -1987,12 +1987,26 @@ public class DatabaseSeeder : IHostedService
         var role = await roleManager.FindByNameAsync(roleName);
         if (role == null) return;
 
-        var roleClaims = await roleManager.GetClaimsAsync(role);
+        var desired = (await roleManager.GetClaimsAsync(role))
+            .Where(c => c.Type == "Permission")
+            .Select(c => c.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        // Prefer template when role claims lag behind RoleTemplates (existing DBs).
+        foreach (var p in RoleTemplates.GetPermissions(roleName))
+            desired.Add(p);
+
         var userClaims = await userManager.GetClaimsAsync(user);
-        foreach (var claim in roleClaims.Where(c => c.Type == "Permission"))
+        foreach (var claim in userClaims.Where(c => c.Type == "Permission").ToList())
         {
-            if (!userClaims.Any(c => c.Type == claim.Type && c.Value == claim.Value))
-                await userManager.AddClaimAsync(user, claim);
+            if (!desired.Contains(claim.Value))
+                await userManager.RemoveClaimAsync(user, claim);
+        }
+
+        userClaims = await userManager.GetClaimsAsync(user);
+        foreach (var perm in desired)
+        {
+            if (!userClaims.Any(c => c.Type == "Permission" && c.Value == perm))
+                await userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Permission", perm));
         }
     }
 
@@ -2029,14 +2043,19 @@ public class DatabaseSeeder : IHostedService
 
         if (role == null) return;
 
-        // Add permission claims to the role
+        var desired = permissions.ToHashSet(StringComparer.Ordinal);
         var existingClaims = await roleManager.GetClaimsAsync(role);
+        foreach (var claim in existingClaims.Where(c => c.Type == "Permission").ToList())
+        {
+            if (!desired.Contains(claim.Value))
+                await roleManager.RemoveClaimAsync(role, claim);
+        }
+
+        existingClaims = await roleManager.GetClaimsAsync(role);
         foreach (var perm in permissions)
         {
             if (!existingClaims.Any(c => c.Type == "Permission" && c.Value == perm))
-            {
                 await roleManager.AddClaimAsync(role, new System.Security.Claims.Claim("Permission", perm));
-            }
         }
     }
 

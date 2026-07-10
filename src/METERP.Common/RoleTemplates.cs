@@ -132,12 +132,11 @@ public static class RoleTemplates
             Permissions.AuditView,
             Permissions.CompanyDocsView, Permissions.CompanyDocsManage
         ],
+        // Field portal only — office Jobs/AI/Scheduling stay manager-level (E2E access-denied suite).
         "Technician" =>
         [
             Permissions.FieldView,
-            Permissions.JobsView,
-            Permissions.LeaveView,
-            Permissions.RequisitionsManage
+            Permissions.LeaveView
         ],
         "Auditor" =>
         [

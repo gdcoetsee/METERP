@@ -323,7 +323,7 @@ else
             await RequisitionService.SubmitAsync(req);
             Toast.ShowSuccess($"Requisition submitted ({_lines.Count} line(s)) — manager then executive approval.");
             _recent = (await RequisitionService.GetAllAsync(pageSize: 10)).ToList();
-            CloseForm();
+            await CloseForm();
         }
         catch (Exception ex)
         {

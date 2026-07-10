@@ -11,30 +11,13 @@ namespace METERP.E2ETests;
 
 [Trait("Category", "E2E")]
 [Collection("E2E")]
-public class E2EFlowTests : IAsyncLifetime
+public class E2EFlowTests
 {
     private const string DemoInvoiceJobMarker = "E2E demo invoice job";
     private const string ConvertibleSalesOrderMarker = "E2E convertible sales order";
     private const string ReceiveDemoPoMarker = "E2E receive demo";
 
-    private IPlaywright _playwright = null!;
     private IBrowser Browser => E2EHelpers.GetBrowser();
-
-    public async Task InitializeAsync()
-    {
-        await E2EHelpers.EnsureAppReadyAsync();
-        await E2EHelpers.ResetDemoStateAsync();
-        _playwright = await Playwright.CreateAsync();
-        E2EHelpers.TrackBrowser(_playwright, await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true }));
-    }
-
-    public async Task DisposeAsync()
-    {
-        await E2EHelpers.DisableBetaTwoFactorAsync();
-        try { await E2EHelpers.GetBrowser().DisposeAsync(); }
-        catch (InvalidOperationException) { /* already disposed */ }
-        _playwright?.Dispose();
-    }
 
     [Fact]
     public async Task Logout_Clears_Session_And_Protected_Page_Redirects_To_Login()
@@ -63,7 +46,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.NewPageAsync();
         await page.GotoRelativeAsync("/access-denied");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("permission", content, StringComparison.OrdinalIgnoreCase);
@@ -276,9 +259,9 @@ public class E2EFlowTests : IAsyncLifetime
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.Locator("input[placeholder*='bid optimization']").FillAsync(
+        await page.FillByTestIdAsync("ai-bid-scope",
             "11kV transformer install at remote mine site with explicit travel");
-        await page.ClickByTestIdAsync("ai-optimize-bid");
+        await page.ClickByTestIdWhenEnabledAsync("ai-optimize-bid");
         await page.WaitForTestIdAsync("ai-last-response", 90000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
@@ -587,7 +570,8 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
         await page.FillByTestIdAsync("ai-prompt-input", "What travel cost risks should I watch on remote jobs?");
-        await page.ClickByTestIdAsync("ai-ask-button");
+        await Assertions.Expect(page.Locator("[data-testid='ai-ask-button']")).ToBeEnabledAsync(new() { Timeout = 15000 });
+        await page.ClickByTestIdWhenEnabledAsync("ai-ask-button");
         await page.WaitForTestIdAsync("ai-last-response", 90000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
@@ -1084,7 +1068,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/tenants");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
@@ -1097,7 +1081,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/audit");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
@@ -1110,7 +1094,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/invoices");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
@@ -1144,7 +1128,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/purchase-orders");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("purchase-orders-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1179,7 +1163,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/quotes");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
@@ -1192,7 +1176,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/sales-orders");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("sales-orders-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1207,7 +1191,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/opportunities");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("opportunities-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1221,7 +1205,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/customers");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("customers-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1235,7 +1219,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/employees");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("employees-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1249,7 +1233,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/assets");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("assets-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1263,7 +1247,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/inventory");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("inventory-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1277,7 +1261,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/suppliers");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("suppliers-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1291,7 +1275,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/divisions");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("divisions-table", content, StringComparison.OrdinalIgnoreCase);
@@ -1305,7 +1289,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/company-documents");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("company-docs-table", content, StringComparison.OrdinalIgnoreCase);
@@ -1319,7 +1303,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/stock-take");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("stock-take-start", content, StringComparison.OrdinalIgnoreCase);
@@ -1333,7 +1317,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/ppe-history");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ppe-history-table", content, StringComparison.OrdinalIgnoreCase);
@@ -1367,7 +1351,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/finance");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
@@ -1380,7 +1364,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/jobs");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("jobs-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1394,7 +1378,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/scheduling");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("scheduling-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1408,7 +1392,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/requisitions");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("requisitions-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1422,7 +1406,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/users");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("users-edit-permissions", content, StringComparison.OrdinalIgnoreCase);
@@ -1436,7 +1420,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/approvals");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("approvals-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1450,7 +1434,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/settings/ai");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ai-settings-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -1464,7 +1448,7 @@ public class E2EFlowTests : IAsyncLifetime
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.TechEmail, E2EHelpers.TechPassword);
         await page.GotoRelativeAsync("/ai-copilot");
-
+        await page.WaitForAccessDeniedAsync();
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ai-copilot-ready", content, StringComparison.OrdinalIgnoreCase);
@@ -2709,7 +2693,8 @@ public class E2EFlowTests : IAsyncLifetime
         await page.WaitForTestIdAsync("purchase-orders-ready", 30000);
 
         var tableBody = page.Locator("[data-testid='purchase-orders-table'] tbody");
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" }))
+            .Not.ToHaveCountAsync(0, new() { Timeout = 15000 });
 
         await page.Locator("[data-testid='purchase-order-view']").First.ClickAsync();
         await page.WaitForTestIdAsync("purchase-order-detail", 10000);

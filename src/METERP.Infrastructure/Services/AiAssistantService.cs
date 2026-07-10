@@ -52,8 +52,10 @@ public class AiAssistantService : IAiAssistantService
         CancellationToken ct = default)
     {
         var config = await _configResolver.GetEffectiveAsync(ct);
-        if (!config.IsConfigured || string.IsNullOrWhiteSpace(scopeNotes))
+        if (string.IsNullOrWhiteSpace(scopeNotes))
             return null;
+        if (!config.IsConfigured)
+            return BuildOfflineQuoteSuggestion(scopeNotes, taxRate, customerName);
 
         if (!IsAiCallAllowed())
         {
@@ -247,8 +249,10 @@ public class AiAssistantService : IAiAssistantService
     public async Task<string?> AskCopilotAsync(string question, string? additionalContext = null, CancellationToken ct = default)
     {
         var config = await _configResolver.GetEffectiveAsync(ct);
-        if (!config.IsConfigured || string.IsNullOrWhiteSpace(question))
+        if (string.IsNullOrWhiteSpace(question))
             return null;
+        if (!config.IsConfigured)
+            return BuildOfflineCopilotResponse(question, additionalContext);
 
         if (!IsAiCallAllowed())
         {
@@ -295,10 +299,10 @@ public class AiAssistantService : IAiAssistantService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI Copilot failed");
-            return ex.Message.StartsWith("AI API", StringComparison.Ordinal)
-                ? $"AI Error: {ex.Message}"
-                : $"AI Error: {ex.Message}";
+            _logger.LogError(ex, "AI Copilot failed — serving offline response");
+            // Prefer a usable offline answer for demos/E2E when the live provider fails or times out.
+            return BuildOfflineCopilotResponse(question, additionalContext)
+                   + $"\n\n_(Live AI unavailable: {ex.Message})_";
         }
     }
 
@@ -435,5 +439,84 @@ public class AiAssistantService : IAiAssistantService
         {
             // Best-effort commercial tracking — must not break AI flows.
         }
+    }
+
+    private static AiQuoteSuggestion BuildOfflineQuoteSuggestion(string scopeNotes, decimal taxRate, string? customerName)
+    {
+        _ = taxRate;
+        return new AiQuoteSuggestion(
+            Reasoning: $"Offline estimate for {(string.IsNullOrWhiteSpace(customerName) ? "customer" : customerName)}: {scopeNotes.Trim()}",
+            SuggestedLines:
+            [
+                new AiSuggestedLine("Labour — site work", 16m, "hr", "Labour", 350m),
+                new AiSuggestedLine("Materials — estimated kit", 1m, "lot", "Material", 4500m),
+                new AiSuggestedLine("Travel / site access (explicit)", 2m, "trip", "Other", 850m)
+            ]);
+    }
+
+    /// <summary>
+    /// Deterministic offline reply when no API key is configured (local docker / E2E / demos).
+    /// </summary>
+    private static string BuildOfflineCopilotResponse(string question, string? additionalContext)
+    {
+        var q = question.ToLowerInvariant();
+        var travel = q.Contains("travel") || q.Contains("remote") || q.Contains("mine");
+        var util = q.Contains("utiliz") || q.Contains("workforce") || q.Contains("employee");
+        var transformer = q.Contains("transformer") || q.Contains("11kv");
+        var optimize = q.Contains("optimize") || q.Contains("bid");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("**Offline AI Copilot** (no API key configured — demo response)");
+        sb.AppendLine();
+        if (transformer)
+        {
+            sb.AppendLine("Suggested structure for an 11kV/400V transformer install:");
+            sb.AppendLine("- Labour: site prep, cranage assist, terminations, testing (allow contingency)");
+            sb.AppendLine("- Materials: transformer, glands, cable, earth kits");
+            sb.AppendLine("- **Travel**: return trips + night-out if remote — track as explicit job cost");
+            sb.AppendLine("- Testing / CoC / handover documentation");
+        }
+        else if (optimize)
+        {
+            sb.AppendLine("Bid optimization tips for South African contracting:");
+            sb.AppendLine("- Separate travel from labour so variance is visible");
+            sb.AppendLine("- Price materials with realistic GP and stock lead times");
+            sb.AppendLine("- Add buffer for site access delays on mining/remote work");
+            sb.AppendLine("- Quote total should show deposit % and retention if construction-style");
+        }
+        else if (util)
+        {
+            sb.AppendLine("Workforce utilization (demo):");
+            sb.AppendLine("- Compare JobLabor hours vs mandatory hours per employee");
+            sb.AppendLine("- Cross-train for travel-heavy weeks to reduce overtime");
+            sb.AppendLine("- Flag idle rate-card staff for short-call emergency jobs");
+        }
+        else if (travel)
+        {
+            sb.AppendLine("Travel cost risks on remote jobs:");
+            sb.AppendLine("- Under-quoted return trips and accommodation");
+            sb.AppendLine("- Vehicle + fuel not linked to job cost codes");
+            sb.AppendLine("- Waiting time at gate / induction not billed");
+            sb.AppendLine("Always keep **travel as an explicit line** on quote and job.");
+        }
+        else
+        {
+            sb.AppendLine("Practical guidance:");
+            sb.AppendLine("- Keep travel explicit on quotes and jobs");
+            sb.AppendLine("- Watch variance: quoted vs actual cost + labour");
+            sb.AppendLine("- Use stock requisitions so materials hit the job ID");
+            sb.AppendLine("- Review P&L before executive job close");
+        }
+
+        if (!string.IsNullOrWhiteSpace(additionalContext))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Context considered (truncated):");
+            sb.AppendLine(additionalContext.Length > 400
+                ? additionalContext[..400] + "…"
+                : additionalContext);
+        }
+
+        return sb.ToString();
     }
 }

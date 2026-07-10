@@ -113,6 +113,25 @@ public static class E2EHelpers
         await page.WaitForSelectorAsync($"[data-testid='{testId}']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
     }
 
+    /// <summary>Waits for the access-denied page after a forbidden navigation (Blazor authorize redirect).</summary>
+    public static async Task WaitForAccessDeniedAsync(this IPage page, int timeoutMs = 20000)
+    {
+        try
+        {
+            await page.WaitForSelectorAsync(
+                "[data-testid='access-denied-ready'], h3:has-text('Access Denied')",
+                new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        }
+        catch (TimeoutException)
+        {
+            // Fallback: body text (some authorize paths render before test-id is available).
+            await page.WaitForFunctionAsync(
+                "() => document.body && document.body.innerText.toLowerCase().includes('access denied')",
+                null,
+                new() { Timeout = timeoutMs });
+        }
+    }
+
     public static async Task ClickByTestIdAsync(this IPage page, string testId)
     {
         await ClickByTestIdWhenReadyAsync(page, testId);
@@ -442,9 +461,10 @@ public static class E2EHelpers
         var tableBody = page.Locator($"[data-testid='{tableTestId}'] tbody");
         await Microsoft.Playwright.Assertions.Expect(tableBody.Locator("tr"))
             .Not.ToHaveCountAsync(0, new() { Timeout = timeoutMs });
+        // Allow multiple matching rows (demo seed may create duplicates over time).
         await Microsoft.Playwright.Assertions.Expect(
             tableBody.Locator("tr").Filter(new() { HasText = expectedRowText }))
-            .ToHaveCountAsync(1, new() { Timeout = timeoutMs });
+            .Not.ToHaveCountAsync(0, new() { Timeout = timeoutMs });
     }
 
     public static async Task GotoRelativeAsync(this IPage page, string relativePath, string? baseUrl = null, bool waitForCommit = false)

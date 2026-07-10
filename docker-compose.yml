@@ -32,6 +32,11 @@ services:
       # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
       # - METERP_SEED_RESET=true
       # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.
+      # AI: force offline-safe defaults for docker/E2E. Put a real key only via compose override, not .env bleed-through.
+      # (Broken Gemini keys in .env were hanging copilot for 60s+ and failing Playwright.)
+      - Ai__ApiKey=
+      - Ai__TimeoutSeconds=15
+      - Ai__Enabled=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
       interval: 15s

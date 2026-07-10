@@ -6,7 +6,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @inject IJSRuntime JS
-@attribute [Authorize(Policy = "Jobs.View")]
+@attribute [Authorize(Policy = "Jobs.Manage")]
 @inject ISchedulingService SchedulingService
 @inject IRecurringJobService RecurringJobService
 @inject ICurrentUserService CurrentUserService
