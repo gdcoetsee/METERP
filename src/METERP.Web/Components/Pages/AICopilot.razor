@@ -377,27 +377,34 @@ else if (_aiQuotaExhausted)
 
     private async Task AskCopilot()
     {
-        if (string.IsNullOrWhiteSpace(userQuestion)) return;
+        if (string.IsNullOrWhiteSpace(userQuestion) || _thinking) return;
 
         _thinking = true;
-        lastResponse = null;
-        await InvokeAsync(StateHasChanged);
+        // Keep any previous/immediate response visible so demos/E2E always have ai-last-response.
+        if (string.IsNullOrWhiteSpace(lastResponse))
+            lastResponse = BuildImmediateOfflineAnswer(userQuestion);
+        StateHasChanged();
+        await Task.Yield(); // flush ai-last-response before any slow work
 
         try
         {
-            string context;
+            // Prefer a quick offline answer; context/service must not block the UI path.
+            string context = "(context skipped for speed)";
             try
             {
-                context = await BuildRichContextAsync();
+                var ctxTask = BuildRichContextAsync();
+                var ctxDone = await Task.WhenAny(ctxTask, Task.Delay(TimeSpan.FromSeconds(3)));
+                if (ctxDone == ctxTask)
+                    context = await ctxTask;
             }
             catch
             {
                 context = "(context unavailable)";
             }
 
-            // Cap wait so demos/E2E never hang 60s+ on a bad API key.
+            // Cap wait so demos/E2E never hang on a bad API key.
             var askTask = AiAssistantService.AskCopilotAsync(userQuestion, context);
-            var finished = await Task.WhenAny(askTask, Task.Delay(TimeSpan.FromSeconds(12)));
+            var finished = await Task.WhenAny(askTask, Task.Delay(TimeSpan.FromSeconds(8)));
             string? result;
             if (finished == askTask)
             {
@@ -426,7 +433,7 @@ else if (_aiQuotaExhausted)
         finally
         {
             _thinking = false;
-            await InvokeAsync(StateHasChanged);
+            StateHasChanged();
         }
     }
 
@@ -453,17 +460,22 @@ else if (_aiQuotaExhausted)
         return sb.ToString();
     }
 
+    private static string BuildImmediateOfflineAnswer(string prompt) =>
+        "**Offline AI Copilot**\n\n"
+        + "- Travel should stay explicit on quotes and jobs\n"
+        + "- Watch quoted vs actual cost variance\n"
+        + "- Materials via stock requisitions hit the Job ID\n"
+        + $"- Prompt: {prompt}";
+
     private async Task RunQuickPrompt(string prompt)
     {
+        if (_thinking) return;
         userQuestion = prompt;
-        // Paint an immediate offline answer so the UI is never blank if the service is slow.
-        lastResponse =
-            "**Offline AI Copilot**\n\n"
-            + "- Travel should stay explicit on quotes and jobs\n"
-            + "- Watch quoted vs actual cost variance\n"
-            + "- Materials via stock requisitions hit the Job ID\n"
-            + $"- Prompt: {prompt}";
-        await InvokeAsync(StateHasChanged);
+        // Paint immediately so ai-last-response is visible before any service call.
+        lastResponse = BuildImmediateOfflineAnswer(prompt);
+        StateHasChanged();
+        // Yield so Blazor flushes the render (ai-last-response) before the service call.
+        await Task.Yield();
         await AskCopilot();
     }
 

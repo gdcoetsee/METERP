@@ -97,13 +97,13 @@ else
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Customer *</label>
-                            <select class="form-select" value="@editorQuote.CustomerId" @onchange="OnCustomerChanged" data-testid="quote-customer-select">
+                            <InputSelect class="form-select" @bind-Value="editorQuote.CustomerId" data-testid="quote-customer-select">
                                 <option value="@Guid.Empty">-- Select customer --</option>
                                 @foreach (var c in availableCustomers)
                                 {
                                     <option value="@c.Id">@c.Name</option>
                                 }
-                            </select>
+                            </InputSelect>
                             <button type="button" class="btn btn-link btn-sm p-0 mt-1" @onclick="ToggleNewCustomer" data-testid="quote-new-customer-toggle">
                                 @(showNewCustomer ? "Hide new customer" : "+ Create new customer")
                             </button>
@@ -423,6 +423,7 @@ else
             await LoadCustomers();
             await LoadQuotes();
             HandleCreateQuery();
+            await HandleOpenQueryAsync();
         }
         finally
         {
@@ -509,6 +510,24 @@ else
             editorQuote!.CustomerId = customerId;
         if (query.TryGetValue("notes", out var notes) && !string.IsNullOrWhiteSpace(notes))
             editorQuote!.Notes = notes.ToString();
+        // Open the line form immediately on create deep-links (better UX + reliable E2E).
+        ShowAddLineForm();
+    }
+
+    /// <summary>Opens an existing quote from ?open={id} (stable path for E2E / deep links).</summary>
+    private async Task HandleOpenQueryAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (!query.TryGetValue("open", out var openVal) || !Guid.TryParse(openVal, out var quoteId) || quoteId == Guid.Empty)
+            return;
+        var quote = await QuoteService.GetByIdAsync(quoteId);
+        if (quote == null) return;
+        SetEditorQuote(quote);
+        editorIsNew = false;
+        editorReadOnly = false;
+        draftLines = new();
+        CancelLineForm();
     }
 
     private async Task LoadCustomers()
@@ -569,6 +588,7 @@ else
         draftLines = new();
         // Ensure InteractiveServer paints the editor after button click / create query.
         CancelLineForm();
+        StateHasChanged();
     }
 
     private void SetEditorQuote(Quote? quote) =>
@@ -580,15 +600,30 @@ else
         editorQuote.CustomerId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : Guid.Empty;
     }
 
-    private Task OpenEditor(Quote q, bool readOnly) => RunGuardedAsync(async () =>
+    private async Task OpenEditor(Quote q, bool readOnly)
     {
-        SetEditorQuote(await QuoteService.GetByIdAsync(q.Id));
-        if (editorQuote == null) return;
-        editorIsNew = false;
-        editorReadOnly = readOnly;
-        draftLines = new();
-        CancelLineForm();
-    });
+        // Do not use the page-busy gate for open/view — E2E and users need the editor
+        // even if a list refresh is in flight.
+        try
+        {
+            var full = await QuoteService.GetByIdAsync(q.Id);
+            SetEditorQuote(full);
+            if (editorQuote == null)
+            {
+                ToastService.ShowError("Quote could not be loaded.");
+                return;
+            }
+            editorIsNew = false;
+            editorReadOnly = readOnly;
+            draftLines = new();
+            CancelLineForm();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to open quote: {ex.Message}");
+        }
+    }
 
     private Task ViewQuote(Quote q) => OpenEditor(q, true);
     private Task EditQuote(Quote q) => OpenEditor(q, false);
@@ -732,6 +767,7 @@ else
     {
         ResetLineFormFields();
         showLineForm = true;
+        StateHasChanged();
     }
 
     private void EditDraftLine(QuoteLineDraft line)

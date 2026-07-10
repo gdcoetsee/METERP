@@ -155,6 +155,10 @@ else
     [SupplyParameterFromQuery(Name = "job")]
     public Guid? OpenJobId { get; set; }
 
+    /// <summary>Open list detail panel for this job id (stable for E2E deep links).</summary>
+    [SupplyParameterFromQuery(Name = "panel")]
+    public Guid? PanelJobId { get; set; }
+
     protected override Task OnInitializedAsync() => _dataGate.RunAsync(async () =>
     {
         if (CurrentUserService.TenantId != Guid.Empty)
@@ -166,6 +170,12 @@ else
         _customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
         await LoadJobsCore();
         _initialLoadComplete = true;
+
+        if (PanelJobId is { } panelId && panelId != Guid.Empty)
+        {
+            await OpenJobCore(panelId);
+            return;
+        }
 
         if (OpenJobId is { } jobId && jobId != Guid.Empty)
             Nav.NavigateTo($"/jobs/{jobId}");
@@ -236,10 +246,19 @@ else
         currentPage++; await LoadJobsCore();
     });
 
-    private Task ViewJob(Job j)
+    private async Task ViewJob(Job j)
     {
-        Nav.NavigateTo($"/jobs/{j.Id}");
-        return Task.CompletedTask;
+        // Do not use _dataGate here — list refreshes must not block opening the detail panel (E2E/UX).
+        try
+        {
+            await OpenJobCore(j.Id);
+            if (selectedJob == null)
+                ToastService.ShowError("Job could not be loaded.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to open job: {ex.Message}");
+        }
     }
 
     private Task OpenJobAsync(Guid jobId) => _dataGate.RunAsync(() => OpenJobCore(jobId));

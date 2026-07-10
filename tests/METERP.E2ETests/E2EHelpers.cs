@@ -113,6 +113,147 @@ public static class E2EHelpers
         await page.WaitForSelectorAsync($"[data-testid='{testId}']", new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
     }
 
+    /// <summary>
+    /// Clicks an AI quick-prompt and waits for ai-last-response (retries if the circuit missed the first click).
+    /// </summary>
+    /// <summary>Opens the quote create editor via deep link (most reliable on InteractiveServer).</summary>
+    public static async Task OpenNewQuoteEditorAsync(this IPage page, int timeoutMs = 30000)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                // Load once to discover a real customer id, then reopen with customer preselected
+                // (Playwright select binding is unreliable with Blazor InputSelect/Guid).
+                await page.GotoAsync(
+                    $"{BaseUrl.TrimEnd('/')}/quotes?create=1",
+                    new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                await page.WaitForBlazorReadyAsync(20000);
+                await page.WaitForSelectorAsync(
+                    "[data-testid='quote-editor']",
+                    new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+
+                var customerId = await page.Locator("[data-testid='quote-customer-select'] option")
+                    .Nth(1)
+                    .GetAttributeAsync("value");
+                if (!string.IsNullOrWhiteSpace(customerId)
+                    && !string.Equals(customerId, Guid.Empty.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    await page.GotoAsync(
+                        $"{BaseUrl.TrimEnd('/')}/quotes?create=1&customerId={Uri.EscapeDataString(customerId)}",
+                        new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                    await page.WaitForBlazorReadyAsync(20000);
+                    await page.WaitForSelectorAsync(
+                        "[data-testid='quote-editor']",
+                        new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+                }
+
+                return;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await Task.Delay(750 + attempt * 400);
+            }
+        }
+
+        await page.WaitForTestIdAsync("quote-editor", timeoutMs);
+    }
+
+    /// <summary>Opens the jobs list detail panel via ?panel= deep link.</summary>
+    public static async Task OpenJobDetailPanelAsync(this IPage page, ILocator jobRow, int timeoutMs = 30000)
+    {
+        var href = await jobRow.Locator("[data-testid='job-command-center-button'], [data-testid='job-command-center-link']")
+            .First
+            .GetAttributeAsync("href");
+        if (string.IsNullOrWhiteSpace(href))
+            throw new InvalidOperationException("Job row has no command-center link to extract job id.");
+
+        var idPart = href.TrimEnd('/').Split('/').LastOrDefault();
+        if (!Guid.TryParse(idPart, out var jobId) || jobId == Guid.Empty)
+            throw new InvalidOperationException($"Could not parse job id from href '{href}'.");
+
+        await page.GotoAsync(
+            $"{BaseUrl.TrimEnd('/')}/jobs?panel={jobId}",
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+        await page.WaitForBlazorReadyAsync(20000);
+        await page.WaitForTestIdAsync("job-detail-panel", timeoutMs);
+    }
+
+    /// <summary>Opens a quote row's editor via Edit/View, falling back to ?open= deep link.</summary>
+    public static async Task OpenQuoteRowEditorAsync(this IPage page, ILocator row, int timeoutMs = 30000)
+    {
+        var quoteId = await row.Locator("[data-testid='quote-view-button']").GetAttributeAsync("data-quote-id");
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                var edit = row.Locator("[data-testid='quote-edit-button']");
+                if (await edit.CountAsync() > 0)
+                    await edit.ClickAsync(new() { Force = true, Timeout = 10000 });
+                else
+                    await row.Locator("[data-testid='quote-view-button']").ClickAsync(new() { Force = true, Timeout = 10000 });
+
+                await page.WaitForSelectorAsync(
+                    "[data-testid='quote-editor']",
+                    new() { Timeout = Math.Max(8000, timeoutMs / 2), State = WaitForSelectorState.Visible });
+                return;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await Task.Delay(400);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(quoteId))
+        {
+            await page.GotoAsync(
+                $"{BaseUrl.TrimEnd('/')}/quotes?open={quoteId}",
+                new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+            await page.WaitForBlazorReadyAsync(20000);
+            await page.WaitForTestIdAsync("quote-editor", timeoutMs);
+            return;
+        }
+
+        await page.WaitForTestIdAsync("quote-editor", timeoutMs);
+    }
+
+    public static async Task ClickAiQuickPromptAndWaitAsync(this IPage page, string promptTestId, int timeoutMs = 45000)
+    {
+        var prompt = page.Locator($"[data-testid='{promptTestId}']").First;
+        await prompt.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 20000 });
+        await Microsoft.Playwright.Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 20000 });
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await prompt.ScrollIntoViewIfNeededAsync();
+                await prompt.ClickAsync(new() { Timeout = 10000 });
+                await page.WaitForSelectorAsync(
+                    "[data-testid='ai-last-response']",
+                    new() { Timeout = Math.Max(8000, timeoutMs / 3), State = WaitForSelectorState.Visible });
+                return;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await Task.Delay(750 + attempt * 500);
+                try
+                {
+                    await prompt.ClickAsync(new() { Force = true, Timeout = 5000 });
+                }
+                catch
+                {
+                    /* retry outer loop */
+                }
+            }
+        }
+
+        await page.WaitForSelectorAsync(
+            "[data-testid='ai-last-response']",
+            new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+    }
+
     /// <summary>Waits for the access-denied page after a forbidden navigation (Blazor authorize redirect).</summary>
     public static async Task WaitForAccessDeniedAsync(this IPage page, int timeoutMs = 20000)
     {
@@ -172,11 +313,15 @@ public static class E2EHelpers
 
     public static async Task OpenFirstOpportunityDetailAsync(this IPage page, int timeoutMs = 30000)
     {
+        // Prefer seeded opportunities that have a linked customer (manual quote convert needs it).
         for (var attempt = 0; attempt < 4; attempt++)
         {
             try
             {
-                var card = page.Locator("[data-testid='opportunity-card']").First;
+                var withCustomer = page.Locator("[data-testid='opportunity-card-with-customer']");
+                var card = await withCustomer.CountAsync() > 0
+                    ? withCustomer.First
+                    : page.Locator("[data-testid='opportunity-card'], [data-testid='opportunity-card-with-customer']").First;
                 await card.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
                 await card.ScrollIntoViewIfNeededAsync();
                 await card.ClickAsync(new() { Timeout = 10000 });
@@ -189,7 +334,8 @@ public static class E2EHelpers
             }
         }
 
-        await page.Locator("[data-testid='opportunity-card']").First.ClickAsync(new() { Force = true });
+        var fallback = page.Locator("[data-testid='opportunity-card-with-customer'], [data-testid='opportunity-card']").First;
+        await fallback.ClickAsync(new() { Force = true });
         await page.WaitForTestIdAsync("opportunity-detail", timeoutMs);
     }
 
@@ -210,6 +356,36 @@ public static class E2EHelpers
         await locator.PressSequentiallyAsync(value, new() { Delay = 40 });
         await locator.DispatchEventAsync("change");
         await locator.BlurAsync();
+    }
+
+    /// <summary>Selects a non-empty option in a Blazor-bound &lt;select&gt; / InputSelect (fires change for the circuit).</summary>
+    public static async Task SelectFirstRealOptionAsync(this IPage page, string selectTestId, int timeoutMs = 15000)
+    {
+        var select = page.Locator($"[data-testid='{selectTestId}']").First;
+        await select.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs });
+        var options = select.Locator("option");
+        var count = await options.CountAsync();
+        string? value = null;
+        for (var i = 0; i < count; i++)
+        {
+            var v = await options.Nth(i).GetAttributeAsync("value");
+            if (!string.IsNullOrWhiteSpace(v)
+                && !string.Equals(v, Guid.Empty.ToString(), StringComparison.OrdinalIgnoreCase)
+                && v != "0")
+            {
+                value = v;
+                break;
+            }
+        }
+
+        if (value == null)
+            throw new InvalidOperationException($"No selectable option found for {selectTestId}");
+
+        await select.SelectOptionAsync(new[] { value });
+        await select.DispatchEventAsync("change");
+        await select.DispatchEventAsync("input");
+        // Blazor InputSelect listens for change; give the circuit a beat.
+        await Task.Delay(200);
     }
 
     /// <summary>

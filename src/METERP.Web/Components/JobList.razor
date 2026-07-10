@@ -44,10 +44,13 @@ else
                         <td class="text-end">R @(GetActualTotal(j).ToString("N2"))</td>
                         <td class="text-end @(GetVariance(j) > 0 ? "text-danger" : GetVariance(j) < 0 ? "text-success" : "")">R @GetVariance(j).ToString("N2")</td>
                         <td class="text-end">
-                            <a class="btn btn-sm btn-outline-primary me-1" href="@($"/jobs/{j.Id}")" data-testid="job-view-button">Command center</a>
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-1"
+                                    @onclick="() => OnView.InvokeAsync(j)" @onclick:stopPropagation="true"
+                                    data-testid="job-view-button">View</button>
+                            <a class="btn btn-sm btn-outline-primary me-1" href="@($"/jobs/{j.Id}")" data-testid="job-command-center-button">Command center</a>
                             @if (CanManage)
                             {
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(j)">Delete</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(j)" @onclick:stopPropagation="true">Delete</button>
                             }
                         </td>
                     </tr>

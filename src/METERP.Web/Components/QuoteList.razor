@@ -35,11 +35,14 @@ else
                         <td class="text-end">R @q.Total.ToString("N2")</td>
                         <td class="text-center"><span class="badge bg-secondary">@(q.Lines?.Count(l => !l.IsDeleted) ?? 0)</span></td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(q)" data-testid="quote-view-button">View</button>
+                            @{
+                                var quoteId = q.Id;
+                            }
+                            <button type="button" class="btn btn-sm btn-outline-primary me-1" @onclick="() => OnView.InvokeAsync(q)" @onclick:stopPropagation="true" data-testid="quote-view-button" data-quote-id="@quoteId">View</button>
                             @if (CanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OnEdit.InvokeAsync(q)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(q)">Delete</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OnEdit.InvokeAsync(q)" @onclick:stopPropagation="true" data-testid="quote-edit-button">Edit</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(q)" @onclick:stopPropagation="true" data-testid="quote-delete-button">Delete</button>
                             }
                         </td>
                     </tr>

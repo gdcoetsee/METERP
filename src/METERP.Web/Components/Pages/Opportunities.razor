@@ -60,7 +60,8 @@ else
                 <div class="card-body p-2">
                     @foreach (var opp in GetByStage(stage))
                     {
-                        <div class="card mb-2 shadow-sm" style="cursor:pointer;" data-testid="opportunity-card"
+                        <div class="card mb-2 shadow-sm" style="cursor:pointer;"
+                             data-testid="@(opp.CustomerId.HasValue && opp.CustomerId != Guid.Empty ? "opportunity-card-with-customer" : "opportunity-card")"
                              @onclick="() => ViewOpp(opp)">
                             <div class="card-body p-2 small">
                                 <strong>@opp.Title</strong><br />
@@ -279,7 +280,8 @@ else
         var scope = OpportunityService.BuildAiScopeText(selectedOpp);
         var notes = Uri.EscapeDataString(scope);
         ToastService.ShowSuccess($"Opening quote form for {selectedOpp.Title}.");
-        Nav.NavigateTo($"/quotes?create=1&customerId={selectedOpp.CustomerId}&notes={notes}");
+        // forceLoad ensures Quotes OnInitializedAsync re-runs and HandleCreateQuery opens the editor.
+        Nav.NavigateTo($"/quotes?create=1&customerId={selectedOpp.CustomerId}&notes={notes}", forceLoad: true);
     }
 
     private async Task ConvertToQuote()

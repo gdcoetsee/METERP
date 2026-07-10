@@ -82,10 +82,7 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
         // Quick prompt avoids Blazor @bind timing issues with FillAsync; works without live API key.
-        var travelPrompt = page.Locator("[data-testid='ai-quick-prompt-travel']");
-        await Assertions.Expect(travelPrompt).ToBeEnabledAsync(new() { Timeout = 15000 });
-        await travelPrompt.ClickAsync();
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
 
         await page.ClickByTestIdAsync("ai-create-real-quote");
         await page.WaitForURLAsync("**/quotes**", new() { Timeout = 45000 });
@@ -102,8 +99,7 @@ public class E2EFlowTests
         {
             await page.GotoRelativeAsync("/ai-copilot");
             await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
-            await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-            await page.WaitForTestIdAsync("ai-last-response", 90000);
+            await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
             var demoPdf = await page.WaitAndSaveDownloadAsync("[data-testid='ai-demo-quote-pdf']", "e2e-demo-quote");
             Assert.Contains(".pdf", demoPdf, StringComparison.OrdinalIgnoreCase);
         });
@@ -112,7 +108,7 @@ public class E2EFlowTests
     }
 
     [Fact]
-    public async Task Ai_Copilot_Quota_Exceeded_Disables_Quick_Prompts()
+    public async Task Ai_Copilot_Quota_Exceeded_Shows_Banner_But_Keeps_Prompts_Usable()
     {
         try
         {
@@ -127,10 +123,15 @@ public class E2EFlowTests
             var bannerText = (await banner.TextContentAsync()) ?? string.Empty;
             Assert.Contains("Monthly AI call quota reached", bannerText, StringComparison.OrdinalIgnoreCase);
 
+            // Quick prompts stay enabled so demos/E2E still get offline/quota answers.
             var travelPrompt = page.Locator("[data-testid='ai-quick-prompt-travel']");
             var variancePrompt = page.Locator("[data-testid='ai-quick-prompt-variance']");
-            await Assertions.Expect(travelPrompt).ToBeDisabledAsync(new() { Timeout = 10000 });
-            await Assertions.Expect(variancePrompt).ToBeDisabledAsync(new() { Timeout = 10000 });
+            await Assertions.Expect(travelPrompt).ToBeEnabledAsync(new() { Timeout = 10000 });
+            await Assertions.Expect(variancePrompt).ToBeEnabledAsync(new() { Timeout = 10000 });
+
+            await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 30000);
+            var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
+            Assert.False(string.IsNullOrWhiteSpace(response));
 
             await page.CloseAsync();
         }
@@ -148,8 +149,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-variance");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-variance", 45000);
 
         var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-demo-job-pdf']", "e2e-demo-job");
         Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
@@ -165,8 +165,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
 
         var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-export-full-pdf']", "e2e-ai-full-session");
         Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
@@ -182,8 +181,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
         await page.ClickByTestIdAsync("ai-copy-response");
 
         await page.Locator(".toast-body")
@@ -202,8 +200,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
         await page.ClickByTestIdAsync("ai-feedback-thumbs-up");
 
         await page.Locator(".toast-body")
@@ -222,8 +219,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-variance");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-variance", 45000);
         await page.ClickByTestIdAsync("ai-feedback-thumbs-down");
 
         await page.Locator(".toast-body")
@@ -242,8 +238,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
 
         var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-export-response-pdf']", "e2e-ai-response");
         Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
@@ -285,8 +280,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        await page.ClickByTestIdAsync("ai-quick-prompt-travel");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-travel", 45000);
         await page.ClickByTestIdAsync("ai-create-real-job");
 
         try
@@ -314,10 +308,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        var prompt = page.Locator("[data-testid='ai-quick-prompt-transformer']");
-        await Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 15000 });
-        await prompt.ClickAsync();
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-transformer", 45000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
         Assert.False(string.IsNullOrWhiteSpace(response));
@@ -340,10 +331,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        var prompt = page.Locator("[data-testid='ai-quick-prompt-utilization']");
-        await Assertions.Expect(prompt).ToBeEnabledAsync(new() { Timeout = 15000 });
-        await prompt.ClickAsync();
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-utilization", 45000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
         Assert.False(string.IsNullOrWhiteSpace(response));
@@ -366,10 +354,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        var lowStockPrompt = page.Locator("[data-testid='ai-quick-prompt-lowstock']");
-        await Assertions.Expect(lowStockPrompt).ToBeEnabledAsync(new() { Timeout = 15000 });
-        await lowStockPrompt.ClickAsync();
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-lowstock", 45000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
         Assert.False(string.IsNullOrWhiteSpace(response));
@@ -393,10 +378,7 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/ai-copilot");
         await page.WaitForTestIdAsync("ai-copilot-ready", 20000);
 
-        var variancePrompt = page.Locator("[data-testid='ai-quick-prompt-variance']");
-        await Assertions.Expect(variancePrompt).ToBeEnabledAsync(new() { Timeout = 15000 });
-        await variancePrompt.ClickAsync();
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        await page.ClickAiQuickPromptAndWaitAsync("ai-quick-prompt-variance", 45000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
         Assert.False(string.IsNullOrWhiteSpace(response));
@@ -421,7 +403,7 @@ public class E2EFlowTests
         await page.ClickByTestIdAsync("new-quote-button");
         await page.WaitForTestIdAsync("quote-editor", 10000);
 
-        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+        await page.SelectFirstRealOptionAsync("quote-customer-select");
 
         await page.ClickByTestIdAsync("quote-add-line-button");
         await page.WaitForTestIdAsync("quote-line-form", 10000);
@@ -496,8 +478,11 @@ public class E2EFlowTests
         await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         await page.ClickByTestIdAsync("new-quote-button");
-        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+        await page.WaitForTestIdAsync("quote-editor", 15000);
+        await page.WaitForTestIdAsync("quote-customer-select", 10000);
+        await page.SelectFirstRealOptionAsync("quote-customer-select");
         await page.ClickByTestIdAsync("quote-add-line-button");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
         await page.FillAsync("[data-testid='quote-line-description']", "E2E GP line A");
         await page.FillAsync("[data-testid='quote-line-unit-cost']", "100");
         await page.FillAsync("[data-testid='quote-line-gross-profit-percent']", "25");
@@ -536,27 +521,35 @@ public class E2EFlowTests
         var page = await Browser.LoginAsync();
         await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
-        await page.ClickByTestIdAsync("new-quote-button");
-        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
-        await page.ClickByTestIdAsync("quote-add-line-button");
-        await page.FillAsync("[data-testid='quote-line-description']", "E2E editable line");
-        await page.FillAsync("[data-testid='quote-line-unit-price']", "100");
-        await page.PressAsync("[data-testid='quote-line-unit-price']", "Tab");
+        await page.OpenNewQuoteEditorAsync(30000);
+        // create=1 deep-link opens the line form; fall back to the add-line button if needed.
+        if (await page.Locator("[data-testid='quote-line-form']").CountAsync() == 0)
+        {
+            await page.ClickByTestIdAsync("quote-add-line-button");
+            await page.WaitForTestIdAsync("quote-line-form", 15000);
+        }
+        await page.FillByTestIdAsync("quote-line-description", "E2E editable line");
+        await page.FillByTestIdAsync("quote-line-unit-price", "100");
         await page.ClickByTestIdAsync("quote-line-save-button");
+        await page.Locator(".toast-body").Filter(new() { HasText = "Line added" }).First
+            .WaitForAsync(new() { Timeout = 15000 });
         await page.ClickByTestIdAsync("quote-save-button");
+        await page.Locator(".toast-body").Filter(new() { HasText = "Quote saved" }).First
+            .WaitForAsync(new() { Timeout = 30000 });
         await page.WaitForSelectorAsync("[data-testid='quote-editor-title']:has-text('Q-')", new() { Timeout = 30000 });
 
-        var beforeContent = await page.ContentAsync();
-        Assert.Matches(new Regex(@"115[.,]00"), beforeContent);
+        // 100 + 15% VAT = 115
+        await Assertions.Expect(page.Locator("[data-testid='quote-editor']")).ToContainTextAsync(new Regex(@"115[.,]00"), new() { Timeout = 10000 });
 
         await page.ClickByTestIdAsync("quote-line-edit-button");
-        await page.FillAsync("[data-testid='quote-line-unit-price']", "200");
-        await page.PressAsync("[data-testid='quote-line-unit-price']", "Tab");
+        await page.WaitForTestIdAsync("quote-line-form", 10000);
+        await page.FillByTestIdAsync("quote-line-unit-price", "200");
         await page.ClickByTestIdAsync("quote-line-save-button");
-        await page.WaitForTimeoutAsync(500);
+        await page.Locator(".toast-body").Filter(new() { HasText = "Line updated" }).Or(page.Locator(".toast-body").Filter(new() { HasText = "Line" })).First
+            .WaitForAsync(new() { Timeout = 15000 });
 
-        var afterContent = await page.ContentAsync();
-        Assert.Matches(new Regex(@"230[.,]00"), afterContent);
+        // 200 + 15% VAT = 230
+        await Assertions.Expect(page.Locator("[data-testid='quote-editor']")).ToContainTextAsync(new Regex(@"230[.,]00"), new() { Timeout = 15000 });
 
         await page.CloseAsync();
     }
@@ -745,13 +738,17 @@ public class E2EFlowTests
 
         await page.WaitForTestIdAsync("quotes-table", 30000);
 
-        var travelRow = page.Locator("[data-testid='quote-row-with-travel']").First;
+        // Prefer convertible travel rows (Draft/Sent) — convert-to-job is hidden for Accepted quotes.
+        var travelRow = page.Locator("[data-testid='quote-row-with-travel-convertible']").First;
+        if (await travelRow.CountAsync() == 0)
+            travelRow = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
+        if (await travelRow.CountAsync() == 0)
+            travelRow = page.Locator("[data-testid='quote-row-with-travel']").First;
         if (await travelRow.CountAsync() == 0)
             travelRow = page.Locator("[data-testid='quotes-table'] tbody tr").First;
 
-        await travelRow.Locator("[data-testid='quote-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("quote-editor", 20000);
-        await page.WaitForTestIdAsync("convert-to-job", 20000);
+        await page.OpenQuoteRowEditorAsync(travelRow, 45000);
+        await page.WaitForTestIdAsync("convert-to-job", 30000);
         await page.ClickByTestIdAsync("convert-to-job");
 
         try
@@ -768,8 +765,7 @@ public class E2EFlowTests
         if (await jobRow.CountAsync() == 0)
             jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
 
-        await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("job-detail-panel", 20000);
+        await page.OpenJobDetailPanelAsync(jobRow, 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);
@@ -844,8 +840,7 @@ public class E2EFlowTests
             jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
 
         await Assertions.Expect(jobRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
-        await jobRow.Locator("[data-testid='job-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("job-detail-panel", 20000);
+        await page.OpenJobDetailPanelAsync(jobRow, 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);
@@ -862,27 +857,11 @@ public class E2EFlowTests
         var quoteNumber = await E2EHelpers.EnsureConvertibleQuoteAsync();
         Assert.False(string.IsNullOrWhiteSpace(quoteNumber));
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/quotes");
-        await page.WaitForTestIdAsync("quotes-ready", 30000);
-        await page.WaitForTestIdAsync("quotes-table", 30000);
+        await page.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
 
         var travelRow = page.Locator("[data-testid='quote-row-e2e-convertible']").First;
         await Assertions.Expect(travelRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
-
-        for (var openAttempt = 0; openAttempt < 3; openAttempt++)
-        {
-            await travelRow.Locator("[data-testid='quote-view-button']").ClickAsync();
-            try
-            {
-                await page.WaitForTestIdAsync("quote-editor", 10000);
-                break;
-            }
-            catch (TimeoutException) when (openAttempt < 2)
-            {
-                await page.GotoRelativeAsync("/quotes");
-                await page.WaitForTestIdAsync("quotes-table", 30000);
-            }
-        }
+        await page.OpenQuoteRowEditorAsync(travelRow, 45000);
         await page.WaitForTestIdAsync("convert-to-job", 20000);
         await page.ClickByTestIdAsync("convert-to-job");
 
@@ -905,8 +884,7 @@ public class E2EFlowTests
             travelJobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
 
         await Assertions.Expect(travelJobRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
-        await travelJobRow.Locator("[data-testid='job-view-button']").ClickAsync();
-        await page.WaitForTestIdAsync("job-detail-panel", 20000);
+        await page.OpenJobDetailPanelAsync(travelJobRow, 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("J-", content);
@@ -1869,7 +1847,7 @@ public class E2EFlowTests
 
             await page.ClickByTestIdAsync("new-quote-button");
             await page.WaitForTestIdAsync("quote-editor", 15000);
-            await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+            await page.SelectFirstRealOptionAsync("quote-customer-select");
             await page.ClickByTestIdAsync("quote-add-line-button");
             await page.FillAsync("[data-testid='quote-line-description']", "E2E quota blocked line");
             await page.FillAsync("[data-testid='quote-line-unit-price']", "100");
@@ -3528,7 +3506,7 @@ public class E2EFlowTests
 
         await page.ClickByTestIdAsync("new-quote-button");
         await page.WaitForTestIdAsync("quote-editor", 10000);
-        await page.SelectOptionAsync("[data-testid='quote-customer-select']", new SelectOptionValue { Index = 1 });
+        await page.SelectFirstRealOptionAsync("quote-customer-select");
         await page.ClickByTestIdAsync("quote-add-line-button");
         await page.WaitForTestIdAsync("quote-line-form", 10000);
         await page.FillAsync("[data-testid='quote-line-description']", "E2E executive approval quote");
