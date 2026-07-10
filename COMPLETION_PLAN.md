@@ -37,9 +37,9 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. **R5** Reporting/export truth (wire or hide stubs)  
-2. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)  
-3. Optional RFQ depth (line-level) / SKU from free-text GRV
+1. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)  
+2. Optional RFQ depth (line-level) / SKU from free-text GRV  
+3. E2E against docker when validating release
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
 
@@ -56,6 +56,8 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 **Hardening increment (2026-07-10):** Response headers `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` (alongside existing health + rate limits).
 
 **R4 billing polish (2026-07-10):** POP download on invoice payments; deposit full-pay sets `Job.DepositReceived`; Command Center edit deposit/retention %; emergency job-first (`IsEmergency`, create without quote, InProgress).
+
+**R5 export/report truth (2026-07-10):** `ExportToolbar` only shows CSV/Excel/PDF when handlers are wired (no “will be available” stub buttons). Reports page labels honest (live GL snapshot, no fake Excel/Power BI claim).
 
 Per chunk: `dotnet test` → update handoff → commit → push.
 
@@ -89,7 +91,6 @@ Per chunk: `dotnet test` → update handoff → commit → push.
 
 ### Critical gaps (remaining)
 
-- R5 report/export stubs still need wire-or-hide honesty
 - R6 secrets/observability depth for pilot
 - Multi-supplier RFQ is lite (header total only; not line-level RFQ)
 - Optional: create SKU from free-text non-catalog after GRV
@@ -138,7 +139,7 @@ PPE (employee-centric):
 | **R2** | Partial shortfall, PPE, multi-line + non-catalog, GRV polish + RFQ lite | **Done (DoD met)** |
 | **R3** | Full employee profile, payslip v1, payroll permissions, certs + leave admin | **Done (unit/UI)** |
 | **R4** | Billing polish (POP download, retention UI, emergency job-first, deposit flag) | **Done (unit/UI)** |
-| **R5** | Reporting/export truth (wire or hide stubs) | Not started |
+| **R5** | Reporting/export truth (wire or hide stubs) | **Done (UI honesty)** |
 | **R6** | Production hardening for pilot | Ongoing partial (headers + health + rate limits) |
 
 ### Historical phases 0–11

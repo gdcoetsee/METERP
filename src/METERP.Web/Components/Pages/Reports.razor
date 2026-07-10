@@ -280,7 +280,9 @@ else
     private int _totalSOs;
     private int _confirmedSOs;
     private int _totalEmployees;
-    private decimal _sampleGLBalance; // demo from finance service
+    private decimal _sampleGLBalance;
+    private int _glAccountCount;
+    private string _glFirstAccountCode = "";
     private List<TechnicianUtilizationSummary> _technicianUtilization = new();
     private JobProfitabilitySummary _jobProfitability = new(0m, 0, null);
     private CashflowForecastSummary _cashflowForecast = new(0m, 0, 0m, 0, 0m, 0, 0m, 0m);
@@ -345,9 +347,12 @@ else
             _cashflowForecast = await CashflowReportService.GetCashflowForecastAsync();
 
             var accounts = await FinanceService.GetAccountsAsync();
+            _glAccountCount = accounts.Count;
             if (accounts.Any())
             {
-                _sampleGLBalance = await FinanceService.GetAccountBalanceAsync(accounts.First().Id);
+                var first = accounts.First();
+                _glFirstAccountCode = string.IsNullOrWhiteSpace(first.AccountCode) ? first.Name : $"{first.AccountCode} {first.Name}";
+                _sampleGLBalance = await FinanceService.GetAccountBalanceAsync(first.Id);
             }
         }
         finally

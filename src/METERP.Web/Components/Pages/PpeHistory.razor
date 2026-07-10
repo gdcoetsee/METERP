@@ -11,6 +11,7 @@
 @inject IJobService JobService
 @inject ICurrentUserService CurrentUser
 @inject ToastService Toast
+@inject IJSRuntime JS
 
 <PageTitle>PPE Register</PageTitle>
 
@@ -26,7 +27,7 @@
         {
             <button type="button" class="btn btn-primary" data-testid="ppe-issue-btn" @onclick="OpenIssueModal">Issue PPE</button>
         }
-        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="ppe-history-export" />
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="ppe-history-export" OnExportCsv="ExportCsvAsync" />
     </div>
 </div>
 
@@ -190,6 +191,28 @@ else
     {
         _itemSearch = e.Value?.ToString() ?? "";
         await LoadItemsAsync();
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_issues.Count == 0)
+        {
+            Toast.ShowInfo("No PPE issues to export.");
+            return;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("IssuedAt,Employee,Sku,Item,Quantity,Job,Requisition,Notes");
+        foreach (var i in _issues)
+        {
+            var emp = i.Employee != null ? $"{i.Employee.FirstName} {i.Employee.LastName}" : "";
+            var sku = i.InventoryItem?.Sku ?? "";
+            var name = i.InventoryItem?.Name ?? "";
+            sb.AppendLine($"{i.IssuedAt:yyyy-MM-dd},{emp},{sku},{name},{i.Quantity},{i.Job?.JobNumber},{i.StockRequisition?.RequisitionNumber},{i.Notes}");
+        }
+
+        await JS.InvokeVoidAsync("meterpUi.downloadText", "ppe-register.csv", sb.ToString(), "text/csv;charset=utf-8");
+        Toast.ShowSuccess("PPE register CSV downloaded.");
     }
 
     private void OpenIssueModal()

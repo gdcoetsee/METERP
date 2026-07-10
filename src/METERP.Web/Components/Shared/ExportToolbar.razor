@@ -1,36 +1,39 @@
 @inject IJSRuntime JS
 @inject ToastService Toast
 
-<div class="btn-group btn-group-sm meterp-export-toolbar" role="group" aria-label="Export options" data-testid="@TestId">
-    @if (ShowPrint)
-    {
-        <button type="button" class="btn btn-outline-secondary" title="Print" data-testid="@($"{TestId}-print")"
-                @onclick="PrintAsync" disabled="@Disabled">
-            <i class="bi bi-printer" aria-hidden="true"></i> Print
-        </button>
-    }
-    @if (ShowCsv)
-    {
-        <button type="button" class="btn btn-outline-secondary" title="Download CSV" data-testid="@($"{TestId}-csv")"
-                @onclick="ExportCsvAsync" disabled="@Disabled">
-            <i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV
-        </button>
-    }
-    @if (ShowExcel)
-    {
-        <button type="button" class="btn btn-outline-secondary" title="Download Excel" data-testid="@($"{TestId}-excel")"
-                @onclick="ExportExcelAsync" disabled="@Disabled">
-            <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Excel
-        </button>
-    }
-    @if (ShowPdf)
-    {
-        <button type="button" class="btn btn-outline-secondary" title="Download PDF" data-testid="@($"{TestId}-pdf")"
-                @onclick="ExportPdfAsync" disabled="@Disabled">
-            <i class="bi bi-filetype-pdf" aria-hidden="true"></i> PDF
-        </button>
-    }
-</div>
+@if (ShowPrint || ShowCsvWired || ShowExcelWired || ShowPdfWired)
+{
+    <div class="btn-group btn-group-sm meterp-export-toolbar" role="group" aria-label="Export options" data-testid="@TestId">
+        @if (ShowPrint)
+        {
+            <button type="button" class="btn btn-outline-secondary" title="Print" data-testid="@($"{TestId}-print")"
+                    @onclick="PrintAsync" disabled="@Disabled">
+                <i class="bi bi-printer" aria-hidden="true"></i> Print
+            </button>
+        }
+        @if (ShowCsvWired)
+        {
+            <button type="button" class="btn btn-outline-secondary" title="Download CSV" data-testid="@($"{TestId}-csv")"
+                    @onclick="ExportCsvAsync" disabled="@Disabled">
+                <i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV
+            </button>
+        }
+        @if (ShowExcelWired)
+        {
+            <button type="button" class="btn btn-outline-secondary" title="Download Excel" data-testid="@($"{TestId}-excel")"
+                    @onclick="ExportExcelAsync" disabled="@Disabled">
+                <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Excel
+            </button>
+        }
+        @if (ShowPdfWired)
+        {
+            <button type="button" class="btn btn-outline-secondary" title="Download PDF" data-testid="@($"{TestId}-pdf")"
+                    @onclick="ExportPdfAsync" disabled="@Disabled">
+                <i class="bi bi-filetype-pdf" aria-hidden="true"></i> PDF
+            </button>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public bool ShowPrint { get; set; } = true;
@@ -42,6 +45,11 @@
     [Parameter] public EventCallback OnExportCsv { get; set; }
     [Parameter] public EventCallback OnExportExcel { get; set; }
     [Parameter] public EventCallback OnExportPdf { get; set; }
+
+    // Honest UI: never show export buttons that only toast "will be available".
+    private bool ShowCsvWired => ShowCsv && OnExportCsv.HasDelegate;
+    private bool ShowExcelWired => ShowExcel && OnExportExcel.HasDelegate;
+    private bool ShowPdfWired => ShowPdf && OnExportPdf.HasDelegate;
 
     private async Task PrintAsync()
     {
@@ -59,23 +67,17 @@
     {
         if (OnExportCsv.HasDelegate)
             await OnExportCsv.InvokeAsync();
-        else
-            Toast.ShowInfo("CSV export will be available when this report is wired.");
     }
 
     private async Task ExportExcelAsync()
     {
         if (OnExportExcel.HasDelegate)
             await OnExportExcel.InvokeAsync();
-        else
-            Toast.ShowInfo("Excel export will be available when this report is wired.");
     }
 
     private async Task ExportPdfAsync()
     {
         if (OnExportPdf.HasDelegate)
             await OnExportPdf.InvokeAsync();
-        else
-            Toast.ShowInfo("PDF export will be available when this document is wired.");
     }
 }
