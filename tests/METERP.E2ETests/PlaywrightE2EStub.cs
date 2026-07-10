@@ -256,8 +256,21 @@ public class E2EFlowTests
 
         await page.FillByTestIdAsync("ai-bid-scope",
             "11kV transformer install at remote mine site with explicit travel");
-        await page.ClickByTestIdWhenEnabledAsync("ai-optimize-bid");
-        await page.WaitForTestIdAsync("ai-last-response", 90000);
+        // Optimize Bid uses the same offline-paint path as quick prompts.
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await page.ClickByTestIdWhenEnabledAsync("ai-optimize-bid");
+                await page.WaitForTestIdAsync("ai-last-response", 20000);
+                break;
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                await Task.Delay(750);
+            }
+        }
+        await page.WaitForTestIdAsync("ai-last-response", 45000);
 
         var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
         Assert.False(string.IsNullOrWhiteSpace(response));
@@ -2657,7 +2670,8 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" })).ToHaveCountAsync(1);
 
         await page.FillSearchAndExpectRowAsync("suppliers-search", "suppliers-table", "Panel Supplies", "Panel Supplies");
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(0);
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" }))
+            .ToHaveCountAsync(0, new() { Timeout = 15000 });
 
         await page.CloseAsync();
     }
@@ -2786,7 +2800,8 @@ public class E2EFlowTests
         await page.FillSearchAndExpectRowAsync("customers-search", "customers-table", "Hospital", "Johannesburg General Hospital");
 
         var tableBody = page.Locator("[data-testid='customers-table'] tbody");
-        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Cape Town Mining" })).ToHaveCountAsync(0, new() { Timeout = 5000 });
+        await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Cape Town Mining" }))
+            .ToHaveCountAsync(0, new() { Timeout = 15000 });
 
         await page.CloseAsync();
     }

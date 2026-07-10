@@ -31,7 +31,7 @@
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
         <input type="search" class="form-control" data-testid="suppliers-search" placeholder="Search name, contact or email..."
-               @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
+               value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
             <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
@@ -225,8 +225,9 @@ else
         suppliers = loaded;
     });
 
-    private async Task OnSearchChangedAsync()
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
         currentPage = 1;
         await LoadSuppliers();
     }

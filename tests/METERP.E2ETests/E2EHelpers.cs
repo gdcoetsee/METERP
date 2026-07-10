@@ -631,7 +631,9 @@ public static class E2EHelpers
         string expectedRowText,
         int timeoutMs = 20000)
     {
+        // FillByTestId uses PressSequentially which fires Blazor @oninput handlers.
         await page.FillByTestIdAsync(searchTestId, searchTerm);
+        await Task.Delay(500); // allow async server filter + re-render
         await WaitForLoadingGoneAsync(page, InferLoadingTestId(tableTestId), timeoutMs / 2);
 
         var tableBody = page.Locator($"[data-testid='{tableTestId}'] tbody");
