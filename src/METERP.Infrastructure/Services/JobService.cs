@@ -205,6 +205,69 @@ public class JobService : IJobService
         return job.Id;
     }
 
+    public async Task<Guid> CreateEmergencyAsync(
+        Guid customerId,
+        string title,
+        string? description,
+        decimal quotedEstimate,
+        decimal depositPercent = 30m,
+        decimal retentionPercent = 10m,
+        CancellationToken ct = default)
+    {
+        if (customerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for an emergency job.");
+        if (string.IsNullOrWhiteSpace(title))
+            throw new InvalidOperationException("Title is required.");
+        if (quotedEstimate < 0)
+            throw new InvalidOperationException("Quoted estimate cannot be negative.");
+        if (depositPercent is < 0 or > 100)
+            throw new InvalidOperationException("Deposit % must be between 0 and 100.");
+        if (retentionPercent is < 0 or > 100)
+            throw new InvalidOperationException("Retention % must be between 0 and 100.");
+
+        var customerExists = await _dbContext.Set<Customer>().AnyAsync(c => c.Id == customerId, ct);
+        if (!customerExists)
+            throw new InvalidOperationException("Customer not found.");
+
+        var job = new Job
+        {
+            CustomerId = customerId,
+            Title = title.Trim(),
+            Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
+            QuotedTotal = quotedEstimate,
+            DepositPercent = depositPercent,
+            RetentionPercent = retentionPercent,
+            IsEmergency = true,
+            Status = JobStatus.InProgress,
+            Notes = "Emergency / callout job (created without quote)."
+        };
+
+        return await CreateAsync(job, ct);
+    }
+
+    public async Task UpdateBillingTermsAsync(
+        Guid jobId,
+        decimal depositPercent,
+        decimal retentionPercent,
+        CancellationToken ct = default)
+    {
+        if (depositPercent is < 0 or > 100)
+            throw new InvalidOperationException("Deposit % must be between 0 and 100.");
+        if (retentionPercent is < 0 or > 100)
+            throw new InvalidOperationException("Retention % must be between 0 and 100.");
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct)
+            ?? throw new InvalidOperationException("Job not found.");
+
+        if (job.IsClosed() || job.IsCancelled())
+            throw new InvalidOperationException("Cannot change billing terms on a closed or cancelled job.");
+
+        job.DepositPercent = depositPercent;
+        job.RetentionPercent = retentionPercent;
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
     public async Task UpdateAsync(Job job, CancellationToken ct = default)
     {
         _dbContext.Set<Job>().Update(job);

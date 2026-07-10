@@ -37,9 +37,9 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. **R4** Billing polish (POP, retention UI, emergency job-first)  
-2. **R5** Reporting/export truth (wire or hide stubs)  
-3. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)
+1. **R5** Reporting/export truth (wire or hide stubs)  
+2. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)  
+3. Optional RFQ depth (line-level) / SKU from free-text GRV
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
 
@@ -54,6 +54,8 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 **Certs + leave admin (2026-07-10):** `/certifications` CRUD (expiry filter); `/leave-admin` recent requests + balance adjust with reason (audit note on employee).
 
 **Hardening increment (2026-07-10):** Response headers `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` (alongside existing health + rate limits).
+
+**R4 billing polish (2026-07-10):** POP download on invoice payments; deposit full-pay sets `Job.DepositReceived`; Command Center edit deposit/retention %; emergency job-first (`IsEmergency`, create without quote, InProgress).
 
 Per chunk: `dotnet test` → update handoff → commit → push.
 
@@ -87,7 +89,6 @@ Per chunk: `dotnet test` → update handoff → commit → push.
 
 ### Critical gaps (remaining)
 
-- R4 billing polish (POP, retention, emergency job-first)
 - R5 report/export stubs still need wire-or-hide honesty
 - R6 secrets/observability depth for pilot
 - Multi-supplier RFQ is lite (header total only; not line-level RFQ)
@@ -136,7 +137,7 @@ PPE (employee-centric):
 | **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Done (unit/web + E2E test)** |
 | **R2** | Partial shortfall, PPE, multi-line + non-catalog, GRV polish + RFQ lite | **Done (DoD met)** |
 | **R3** | Full employee profile, payslip v1, payroll permissions, certs + leave admin | **Done (unit/UI)** |
-| **R4** | Billing polish (POP, retention UI, emergency job-first) | Not started |
+| **R4** | Billing polish (POP download, retention UI, emergency job-first, deposit flag) | **Done (unit/UI)** |
 | **R5** | Reporting/export truth (wire or hide stubs) | Not started |
 | **R6** | Production hardening for pilot | Ongoing partial (headers + health + rate limits) |
 

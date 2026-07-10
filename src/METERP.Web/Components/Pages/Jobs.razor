@@ -10,6 +10,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IJobService JobService
 @inject IInvoiceService InvoiceService
+@inject ICustomerService CustomerService
 @inject ITenantService TenantService
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
@@ -26,6 +27,10 @@
     </div>
     <div class="d-flex gap-2 align-items-center">
         <ExportToolbar TestId="jobs-export" OnExportCsv="ExportJobsCsvAsync" OnExportExcel="ExportJobsExcelAsync" OnExportPdf="ExportJobsPdfAsync" />
+        @if (UserCanManage)
+        {
+            <button type="button" class="btn btn-danger" data-testid="jobs-emergency-create" @onclick="OpenEmergencyModal">+ Emergency job</button>
+        }
     </div>
 </div>
 
@@ -79,7 +84,48 @@ else
     OnCloseView="CloseJobView" />
 }
 
-
+@if (_showEmergencyModal)
+{
+    <FormModal IsOpen="true" Title="Emergency / callout job" TestId="jobs-emergency-modal" OnClose="CloseEmergencyModal">
+        <p class="small text-muted">Create a job without a quote (job-first). Use for callouts and urgent work — bill deposit from the Command Center.</p>
+        <div class="mb-3">
+            <label class="form-label">Customer *</label>
+            <select class="form-select" @bind="_emergencyCustomerId" data-testid="jobs-emergency-customer">
+                <option value="@Guid.Empty">— Select —</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Title *</label>
+            <input class="form-control" @bind="_emergencyTitle" data-testid="jobs-emergency-title" placeholder="e.g. After-hours cable fault" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" rows="2" @bind="_emergencyDescription" data-testid="jobs-emergency-description"></textarea>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-4">
+                <label class="form-label">Estimate (R)</label>
+                <input type="number" min="0" step="0.01" class="form-control" @bind="_emergencyQuoted" data-testid="jobs-emergency-quoted" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Deposit %</label>
+                <input type="number" min="0" max="100" step="1" class="form-control" @bind="_emergencyDeposit" data-testid="jobs-emergency-deposit" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Retention %</label>
+                <input type="number" min="0" max="100" step="1" class="form-control" @bind="_emergencyRetention" data-testid="jobs-emergency-retention" />
+            </div>
+        </div>
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button type="button" class="btn btn-secondary" @onclick="CloseEmergencyModal">Cancel</button>
+            <button type="button" class="btn btn-danger" data-testid="jobs-emergency-save" @onclick="SaveEmergencyAsync">Create job</button>
+        </div>
+    </FormModal>
+}
 
 @code {
     private List<Job> demoJobs = new();
@@ -95,6 +141,15 @@ else
     private const int PageSize = 10;
     private readonly ComponentAsyncGate _dataGate = new();
 
+    private bool _showEmergencyModal;
+    private List<Customer> _customers = new();
+    private Guid _emergencyCustomerId;
+    private string _emergencyTitle = "";
+    private string _emergencyDescription = "";
+    private decimal _emergencyQuoted;
+    private decimal _emergencyDeposit = 50m;
+    private decimal _emergencyRetention = 0m;
+
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage);
 
     [SupplyParameterFromQuery(Name = "job")]
@@ -108,12 +163,47 @@ else
             _branding = TenantBranding.From(tenant);
         }
 
+        _customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
         await LoadJobsCore();
         _initialLoadComplete = true;
 
         if (OpenJobId is { } jobId && jobId != Guid.Empty)
             Nav.NavigateTo($"/jobs/{jobId}");
     });
+
+    private void OpenEmergencyModal()
+    {
+        _emergencyCustomerId = _customers.FirstOrDefault()?.Id ?? Guid.Empty;
+        _emergencyTitle = "";
+        _emergencyDescription = "";
+        _emergencyQuoted = 0;
+        _emergencyDeposit = 50m;
+        _emergencyRetention = 0m;
+        _showEmergencyModal = true;
+    }
+
+    private void CloseEmergencyModal() => _showEmergencyModal = false;
+
+    private async Task SaveEmergencyAsync()
+    {
+        try
+        {
+            var jobId = await JobService.CreateEmergencyAsync(
+                _emergencyCustomerId,
+                _emergencyTitle,
+                _emergencyDescription,
+                _emergencyQuoted,
+                _emergencyDeposit,
+                _emergencyRetention);
+            ToastService.ShowSuccess("Emergency job created — open Command Center to mobilise and bill deposit.");
+            CloseEmergencyModal();
+            Nav.NavigateTo($"/jobs/{jobId}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
 
     private async Task LoadJobs() => await LoadJobsCore();
 

@@ -76,6 +76,82 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_OnDeposit_MarksJobDepositReceivedWhenFullyPaid()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Dep Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = "Site work",
+                QuotedTotal = 10000m,
+                DepositPercent = 30m,
+                DepositReceived = false,
+                Status = JobStatus.InProgress
+            };
+            db.Set<Job>().Add(job);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobId = job.Id,
+                InvoiceNumber = "DEP-1",
+                DocumentType = InvoiceDocumentType.Deposit,
+                Status = InvoiceStatus.Sent,
+                Subtotal = 3000,
+                Tax = 0,
+                Total = 3000
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            await service.RecordPaymentAsync(invoice.Id, 1500m, DateTime.UtcNow, "half", Guid.NewGuid(), null);
+            var mid = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == job.Id);
+            Assert.False(mid.DepositReceived);
+
+            await service.RecordPaymentAsync(invoice.Id, 1500m, DateTime.UtcNow, "rest", Guid.NewGuid(), null);
+            var done = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == job.Id);
+            Assert.True(done.DepositReceived);
+        }
+    }
+
+    [Fact]
+    public async Task OpenPaymentPopAsync_ReturnsNull_WhenNoPop()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "No Pop" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-NP",
+                Status = InvoiceStatus.Sent,
+                Total = 100
+            };
+            db.Set<Invoice>().Add(invoice);
+            var payment = new InvoicePayment
+            {
+                TenantId = tenantId,
+                InvoiceId = invoice.Id,
+                Amount = 50,
+                PaymentDate = DateTime.UtcNow
+            };
+            db.Set<InvoicePayment>().Add(payment);
+            await db.SaveChangesAsync();
+
+            var result = await service.OpenPaymentPopAsync(payment.Id);
+            Assert.Null(result);
+        }
+    }
+
+    [Fact]
     public async Task CreateCreditNoteAsync_CreatesNegativeLines()
     {
         var (service, db, tenantId) = Create();

@@ -49,6 +49,11 @@ public interface IInvoiceService
         string? notes,
         CancellationToken ct = default);
 
+    /// <summary>Opens POP attachment for a payment, if stored.</summary>
+    Task<(Stream Content, string FileName, string ContentType)?> OpenPaymentPopAsync(
+        Guid paymentId,
+        CancellationToken ct = default);
+
     Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default);
 
     Task<Invoice> CreateBillingDocumentAsync(

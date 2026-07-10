@@ -297,7 +297,17 @@ else
                                     <td>@p.PaymentDate.ToString("yyyy-MM-dd")</td>
                                     <td>R @p.Amount.ToString("N2")</td>
                                     <td>@(p.Reference ?? "—")</td>
-                                    <td>@(p.PopFileName ?? "—")</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(p.PopStorageKey))
+                                        {
+                                            <button type="button" class="btn btn-link btn-sm p-0" data-testid="invoice-pop-download"
+                                                    @onclick="() => DownloadPopAsync(p)">@(p.PopFileName ?? "Download")</button>
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -640,6 +650,29 @@ else
     }
 
     private void OnPopSelected(InputFileChangeEventArgs e) => _popFile = e.File;
+
+    private async Task DownloadPopAsync(InvoicePayment payment)
+    {
+        try
+        {
+            var pop = await InvoiceService.OpenPaymentPopAsync(payment.Id);
+            if (pop == null)
+            {
+                ToastService.ShowError("POP file not available.");
+                return;
+            }
+
+            await using var stream = pop.Value.Content;
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            await JS.InvokeVoidAsync("meterpUi.downloadBytes", pop.Value.FileName, base64, pop.Value.ContentType);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
 
     private async Task RecordPaymentAsync()
     {

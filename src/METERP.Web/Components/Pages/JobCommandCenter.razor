@@ -33,7 +33,13 @@ else
             <div>
                 <a href="/jobs" class="small text-muted text-decoration-none">← Jobs list</a>
                 <h1 class="h4 mb-1" data-testid="job-command-center-title">@_job.JobNumber — @_job.Title</h1>
-                <p class="text-muted small mb-0">@(_job.Customer?.Name ?? "—") · @((MarkupString)GetStatusBadge(_job.Status))</p>
+                <p class="text-muted small mb-0">
+                    @(_job.Customer?.Name ?? "—") · @((MarkupString)GetStatusBadge(_job.Status))
+                    @if (_job.IsEmergency)
+                    {
+                        <span class="badge bg-danger ms-1">Emergency</span>
+                    }
+                </p>
             </div>
             <div class="d-flex flex-wrap gap-2">
                 @if (CanManage && _job.IsOpenForOperations())
@@ -175,6 +181,35 @@ else
                         }
                     </div>
                 </div>
+
+                <div class="card mt-3" data-testid="job-cc-billing-terms">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Billing terms</span>
+                        @if (_job.IsEmergency)
+                        {
+                            <span class="badge bg-danger">Emergency</span>
+                        }
+                    </div>
+                    <div class="card-body small">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Deposit %</span>
+                            <strong data-testid="job-cc-deposit-pct">@_job.DepositPercent.ToString("N0")%</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Retention %</span>
+                            <strong data-testid="job-cc-retention-pct">@_job.RetentionPercent.ToString("N0")%</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Deposit received</span>
+                            <strong>@(_job.DepositReceived ? "Yes" : "No")</strong>
+                        </div>
+                        @if (CanManage && _job.IsOpenForOperations())
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-testid="job-cc-edit-billing-terms"
+                                    @onclick="OpenBillingTermsModal">Edit terms</button>
+                        }
+                    </div>
+                </div>
             </div>
 
             <div class="col-lg-6">
@@ -233,6 +268,27 @@ else
             </div>
         </div>
     </div>
+}
+
+@if (_showBillingTermsModal)
+{
+    <FormModal IsOpen="true" Title="Billing terms" TestId="job-cc-billing-terms-modal" OnClose="() => _showBillingTermsModal = false">
+        <p class="small text-muted">Deposit % drives deposit invoices. Retention % is held on partial/final invoices.</p>
+        <div class="mb-3">
+            <label class="form-label">Deposit %</label>
+            <input type="number" min="0" max="100" step="1" class="form-control" @bind="_editDepositPercent"
+                   data-testid="job-cc-deposit-input" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Retention %</label>
+            <input type="number" min="0" max="100" step="1" class="form-control" @bind="_editRetentionPercent"
+                   data-testid="job-cc-retention-input" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="() => _showBillingTermsModal = false">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="job-cc-billing-terms-save" @onclick="SaveBillingTermsAsync">Save</button>
+        </div>
+    </FormModal>
 }
 
 @if (_showInvoiceModal)
@@ -468,6 +524,9 @@ else
     private bool _showReopenModal;
     private bool _showCancelModal;
     private bool _showInvoiceModal;
+    private bool _showBillingTermsModal;
+    private decimal _editDepositPercent = 30m;
+    private decimal _editRetentionPercent = 10m;
     private bool _showReqModal;
     private List<ReqDraftLine> _reqLines = new();
     private List<InventoryItem> _reqItems = new();
@@ -580,6 +639,29 @@ else
     }
 
     private void CloseInvoiceModal() => _showInvoiceModal = false;
+
+    private void OpenBillingTermsModal()
+    {
+        if (_job == null) return;
+        _editDepositPercent = _job.DepositPercent;
+        _editRetentionPercent = _job.RetentionPercent;
+        _showBillingTermsModal = true;
+    }
+
+    private async Task SaveBillingTermsAsync()
+    {
+        try
+        {
+            await JobService.UpdateBillingTermsAsync(JobId, _editDepositPercent, _editRetentionPercent);
+            Toast.ShowSuccess("Billing terms updated.");
+            _showBillingTermsModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
 
     private void OnInvoiceTypeChanged(ChangeEventArgs e)
     {

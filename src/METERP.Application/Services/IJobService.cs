@@ -14,6 +14,26 @@ public interface IJobService
     Task<IReadOnlyList<Job>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
 
     Task<Guid> CreateAsync(Job job, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates an emergency/callout job without a quote (job-first). Starts <see cref="JobStatus.InProgress"/>.
+    /// </summary>
+    Task<Guid> CreateEmergencyAsync(
+        Guid customerId,
+        string title,
+        string? description,
+        decimal quotedEstimate,
+        decimal depositPercent = 30m,
+        decimal retentionPercent = 10m,
+        CancellationToken ct = default);
+
+    /// <summary>Updates deposit/retention % while job is open (not closed/cancelled).</summary>
+    Task UpdateBillingTermsAsync(
+        Guid jobId,
+        decimal depositPercent,
+        decimal retentionPercent,
+        CancellationToken ct = default);
+
     Task UpdateAsync(Job job, CancellationToken ct = default);
     Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);

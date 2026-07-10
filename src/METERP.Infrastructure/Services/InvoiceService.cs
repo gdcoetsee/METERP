@@ -407,6 +407,30 @@ public class InvoiceService : IInvoiceService
             ct);
     }
 
+    public async Task<(Stream Content, string FileName, string ContentType)?> OpenPaymentPopAsync(
+        Guid paymentId,
+        CancellationToken ct = default)
+    {
+        if (_documentStorage == null)
+            return null;
+
+        var payment = await _dbContext.Set<InvoicePayment>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == paymentId, ct);
+        if (payment == null || string.IsNullOrWhiteSpace(payment.PopStorageKey))
+            return null;
+
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? payment.TenantId;
+        var stream = await _documentStorage.OpenReadAsync(tenantId, payment.PopStorageKey, ct);
+        if (stream == null)
+            return null;
+
+        return (
+            stream,
+            payment.PopFileName ?? "pop.bin",
+            payment.PopContentType ?? "application/octet-stream");
+    }
+
     public async Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
@@ -581,6 +605,16 @@ public class InvoiceService : IInvoiceService
             invoice.DueDate,
             DateTime.UtcNow);
 
+        // Deposit invoices: mark job deposit received once fully paid.
+        if (invoice.DocumentType == InvoiceDocumentType.Deposit
+            && invoice.JobId.HasValue
+            && invoice.AmountPaid >= invoice.Total)
+        {
+            var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == invoice.JobId.Value, ct);
+            if (job != null && !job.DepositReceived)
+                job.DepositReceived = true;
+        }
+
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
 
@@ -590,7 +624,8 @@ public class InvoiceService : IInvoiceService
                 "PAYMENT",
                 "Invoice",
                 invoice.InvoiceNumber,
-                $"Recorded payment R {amount:N2}" + (reference != null ? $" ref {reference}" : ""),
+                $"Recorded payment R {amount:N2}" + (reference != null ? $" ref {reference}" : "")
+                + (popFileName != null ? $" POP {popFileName}" : ""),
                 ct);
         }
 

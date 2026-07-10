@@ -78,6 +78,11 @@ public class Job : BaseEntity
     public bool DepositReceived { get; set; }
 
     /// <summary>
+    /// Emergency / callout job created without a quote (job-first billing path).
+    /// </summary>
+    public bool IsEmergency { get; set; }
+
+    /// <summary>
     /// Snapshot of the quote total at time of conversion.
     /// </summary>
     public decimal QuotedTotal { get; set; }
