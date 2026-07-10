@@ -145,4 +145,35 @@ public sealed class LeaveService : ILeaveService
         await _dbContext.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<IReadOnlyList<LeaveRequest>> GetRecentRequestsAsync(int take = 100, CancellationToken ct = default)
+    {
+        return await _dbContext.Set<LeaveRequest>()
+            .AsNoTracking()
+            .Include(r => r.Employee)
+            .OrderByDescending(r => r.CreatedDate)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task AdjustLeaveBalanceAsync(
+        Guid employeeId,
+        decimal newBalanceDays,
+        string reason,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Reason is required for leave balance adjustment.", nameof(reason));
+
+        var emp = await _dbContext.Set<Employee>().FirstOrDefaultAsync(e => e.Id == employeeId, ct)
+            ?? throw new InvalidOperationException("Employee not found.");
+
+        var previous = emp.LeaveBalanceDays;
+        emp.LeaveBalanceDays = newBalanceDays;
+        emp.Notes = string.IsNullOrWhiteSpace(emp.Notes)
+            ? $"[Leave adj] {reason.Trim()} (was {previous:N1})"
+            : emp.Notes + $"\n[Leave adj {DateTime.UtcNow:yyyy-MM-dd}] {reason.Trim()} (was {previous:N1})";
+
+        await _dbContext.SaveChangesAsync(ct);
+    }
 }

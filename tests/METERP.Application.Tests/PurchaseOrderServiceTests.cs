@@ -386,6 +386,117 @@ public class PurchaseOrderServiceTests
         }
     }
 
+    [Fact]
+    public async Task ReceiveAsync_PartialQuantities_SetsPartiallyReceived()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Partial Sup" });
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "PART-01",
+                Name = "Partial part",
+                QuantityOnHand = 0,
+                ReorderLevel = 1,
+                UnitCost = 10m
+            });
+
+            var line = new PurchaseOrderLine
+            {
+                Description = "Partial part",
+                Quantity = 10,
+                UnitPrice = 10m,
+                InventoryItemId = itemId
+            };
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines = { line }
+            });
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+            var grv = await service.ReceiveAsync(
+                poId,
+                TestUserId,
+                supplierDeliveryNote: "DN-PARTIAL-1",
+                lineQuantities: new Dictionary<Guid, decimal> { [line.Id] = 4m });
+
+            Assert.NotNull(grv);
+            Assert.Equal("DN-PARTIAL-1", grv!.SupplierDeliveryNote);
+
+            var loaded = await service.GetByIdAsync(poId);
+            Assert.Equal(PurchaseOrderStatus.PartiallyReceived, loaded!.Status);
+            Assert.Equal(4m, loaded.Lines.First().QuantityReceived);
+
+            var item = await inventory.GetItemByIdAsync(itemId);
+            Assert.Equal(4m, item!.QuantityOnHand);
+
+            // Second GRV completes receipt
+            var grv2 = await service.ReceiveAsync(
+                poId,
+                TestUserId,
+                supplierDeliveryNote: "DN-PARTIAL-2",
+                lineQuantities: new Dictionary<Guid, decimal> { [line.Id] = 6m });
+
+            Assert.NotNull(grv2);
+            loaded = await service.GetByIdAsync(poId);
+            Assert.Equal(PurchaseOrderStatus.Received, loaded!.Status);
+            Assert.Equal(10m, loaded.Lines.First().QuantityReceived);
+            item = await inventory.GetItemByIdAsync(itemId);
+            Assert.Equal(10m, item!.QuantityOnHand);
+        }
+    }
+
+    [Fact]
+    public async Task GetRecentGrvsAsync_ReturnsDeliveryNote()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "DN Sup" });
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "DN-1",
+                Name = "DN item",
+                QuantityOnHand = 0,
+                ReorderLevel = 1,
+                UnitCost = 5m
+            });
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new PurchaseOrderLine
+                    {
+                        Description = "DN item",
+                        Quantity = 2,
+                        UnitPrice = 5m,
+                        InventoryItemId = itemId
+                    }
+                }
+            });
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+            await service.ReceiveAsync(poId, TestUserId, "WAYBILL-99");
+
+            var grvs = await service.GetRecentGrvsAsync(10);
+            Assert.Contains(grvs, g => g.SupplierDeliveryNote == "WAYBILL-99");
+
+            var forPo = await service.GetGrvsForPurchaseOrderAsync(poId);
+            Assert.Single(forPo);
+            Assert.Equal("WAYBILL-99", forPo[0].SupplierDeliveryNote);
+        }
+    }
+
     private static async Task<GoodsReceiptVoucher?> ReceiveSentPoAsync(PurchaseOrderService service, Guid poId)
     {
         await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);

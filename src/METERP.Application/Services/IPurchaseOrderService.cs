@@ -27,5 +27,17 @@ public interface IPurchaseOrderService
     /// </summary>
     Task<Guid> CreateFromRequisitionAsync(Guid requisitionId, Guid supplierId, CancellationToken ct = default);
 
-    Task<GoodsReceiptVoucher?> ReceiveAsync(Guid poId, Guid receivedByUserId, CancellationToken ct = default);
+    /// <summary>
+    /// Create GRV. Optional per-line receive quantities (defaults to full outstanding).
+    /// </summary>
+    Task<GoodsReceiptVoucher?> ReceiveAsync(
+        Guid poId,
+        Guid receivedByUserId,
+        string? supplierDeliveryNote = null,
+        IReadOnlyDictionary<Guid, decimal>? lineQuantities = null,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default);
+
+    Task<IReadOnlyList<GoodsReceiptVoucher>> GetGrvsForPurchaseOrderAsync(Guid poId, CancellationToken ct = default);
 }

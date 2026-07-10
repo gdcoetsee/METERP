@@ -1,0 +1,143 @@
+@page "/leave-admin"
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@using METERP.Web.Services
+@attribute [Authorize(Policy = "Employees.Manage")]
+@rendermode InteractiveServer
+@inject ILeaveService LeaveService
+@inject IEmployeeService EmployeeService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+
+<PageTitle>Leave Admin</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Leave administration</h1>
+        <p class="text-muted small mb-0">Office view of leave requests and balance adjustments (HR).</p>
+    </div>
+    <button type="button" class="btn btn-primary" data-testid="leave-admin-adjust-btn" @onclick="OpenAdjust">Adjust balance</button>
+</div>
+
+@if (_loading)
+{
+    <p data-testid="leave-admin-loading"><em>Loading…</em></p>
+}
+else
+{
+    <div class="table-responsive" data-testid="leave-admin-ready">
+        <table class="table table-hover" data-testid="leave-admin-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Dates</th>
+                    <th class="text-end">Days</th>
+                    <th>Status</th>
+                    <th>Paid</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _requests)
+                {
+                    <tr data-testid="leave-admin-row">
+                        <td>@(r.Employee != null ? $"{r.Employee.FirstName} {r.Employee.LastName}" : "—")</td>
+                        <td>@r.StartDate.ToString("yyyy-MM-dd") → @r.EndDate.ToString("yyyy-MM-dd")</td>
+                        <td class="text-end">@r.DaysRequested.ToString("N1")</td>
+                        <td><span class="badge bg-secondary">@r.Status</span></td>
+                        <td>@(r.IsPaid ? "Yes" : "Unpaid")</td>
+                        <td class="small">@(r.Reason ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (_requests.Count == 0)
+        {
+            <p class="text-muted">No leave requests yet.</p>
+        }
+    </div>
+}
+
+@if (_showAdjust)
+{
+    <FormModal IsOpen="true" Title="Adjust leave balance" TestId="leave-admin-adjust-modal" OnClose="() => _showAdjust = false">
+        <div class="mb-3">
+            <label class="form-label">Employee *</label>
+            <select class="form-select" @bind="_adjustEmployeeId" data-testid="leave-admin-employee">
+                <option value="@Guid.Empty">— Select —</option>
+                @foreach (var e in _employees)
+                {
+                    <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName (bal @e.LeaveBalanceDays.ToString("N1"))</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">New balance (days)</label>
+            <input type="number" step="0.5" class="form-control" @bind="_adjustBalance" data-testid="leave-admin-balance" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Reason *</label>
+            <input class="form-control" @bind="_adjustReason" data-testid="leave-admin-reason" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="() => _showAdjust = false">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="leave-admin-adjust-save" @onclick="SaveAdjustAsync">Save</button>
+        </div>
+    </FormModal>
+}
+
+@code {
+    private List<LeaveRequest> _requests = new();
+    private List<Employee> _employees = new();
+    private bool _loading = true;
+    private bool _showAdjust;
+    private Guid _adjustEmployeeId;
+    private decimal _adjustBalance;
+    private string _adjustReason = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _employees = (await EmployeeService.GetAllAsync(pageSize: 200, includeInactive: false)).ToList();
+            _requests = (await LeaveService.GetRecentRequestsAsync(100)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenAdjust()
+    {
+        _adjustEmployeeId = _employees.FirstOrDefault()?.Id ?? Guid.Empty;
+        var emp = _employees.FirstOrDefault(e => e.Id == _adjustEmployeeId);
+        _adjustBalance = emp?.LeaveBalanceDays ?? 0;
+        _adjustReason = "";
+        _showAdjust = true;
+    }
+
+    private async Task SaveAdjustAsync()
+    {
+        if (_adjustEmployeeId == Guid.Empty || string.IsNullOrWhiteSpace(_adjustReason))
+        {
+            Toast.ShowError("Employee and reason are required.");
+            return;
+        }
+
+        try
+        {
+            await LeaveService.AdjustLeaveBalanceAsync(_adjustEmployeeId, _adjustBalance, _adjustReason);
+            Toast.ShowSuccess("Leave balance updated.");
+            _showAdjust = false;
+            _employees = (await EmployeeService.GetAllAsync(pageSize: 200)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+}

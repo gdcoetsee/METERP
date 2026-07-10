@@ -104,6 +104,15 @@
                 <i class="bi bi-file-earmark-plus me-2" aria-hidden="true"></i> Purchase Orders
             </NavLink>
         </div>
+        <AuthorizeView Policy="PurchaseOrders.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="grv">
+                        <i class="bi bi-box-seam me-2" aria-hidden="true"></i> GRV Register
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
 
         <div class="nav-section-label px-3 mt-2">Finance & HR</div>
         <div class="nav-item px-3">
@@ -116,6 +125,24 @@
                 <i class="bi bi-calculator me-2" aria-hidden="true"></i> Finance
             </NavLink>
         </div>
+        <AuthorizeView Policy="Employees.Manage">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="leave-admin">
+                        <i class="bi bi-calendar-check me-2" aria-hidden="true"></i> Leave Admin
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Policy="Employees.View">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="certifications">
+                        <i class="bi bi-award me-2" aria-hidden="true"></i> Certifications
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="employees">
                 <i class="bi bi-person-badge me-2" aria-hidden="true"></i> Employees

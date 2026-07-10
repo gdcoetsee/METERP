@@ -4,7 +4,7 @@
 
 ---
 
-## Handoff (current — 2026-07-09, Grok takeover)
+## Handoff (current — 2026-07-10, Grok)
 
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
@@ -14,10 +14,12 @@
 | R0 Truth reset (plan + kickoff) | **Done (docs)** |
 | R2 partial-REQ hotfix (Chunk 1) | **Done (DoD met)** — unit verified 2026-07-09 |
 | R1 cost integrity + billing≠close + Command Center (Chunks 2–5) | **Done (unit/web)** — Chunk 5 E2E test added; run Playwright when app up |
-| R2 remainder | **In progress** — PPE register + multi-line REQ + **non-catalog REQ lines** (2026-07-09) |
+| R2 remainder | **Done (DoD met)** — PPE, multi-line, non-catalog, GRV polish, multi-supplier RFQ lite (2026-07-10) |
 | R3 Employee + payslip | **Done (unit/UI)** — full profile, safe update, payslip v1, payroll permissions (2026-07-10) |
+| Certs + leave admin | **Done (unit/UI)** — certifications CRUD page + leave admin list/adjust (2026-07-10) |
+| R6 Production hardening | **Ongoing partial** — health, AI/global rate limits, response security headers |
 
-**Tests verified (2026-07-10 R3):** Employee + payroll unit tests green; full suite run at commit.
+**Tests verified (2026-07-10 batch):** GRV partial/DN, RFQ select→PO, certifications, leave adjust unit tests; full suite at commit.
 
 ### Advisory duty
 
@@ -35,9 +37,9 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. GRV polish / multi-supplier RFQ (P1)  
-2. Certifications CRUD, leave admin polish  
-3. Production hardening (rate limits, secrets, observability)
+1. **R4** Billing polish (POP, retention UI, emergency job-first)  
+2. **R5** Reporting/export truth (wire or hide stubs)  
+3. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
 
@@ -46,6 +48,12 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 **R3 delivered (2026-07-10):** Full employee profile (contact, division, manager, hire, leave, mandatory hours); load-then-patch `UpdateAsync` (no field wipe); `Payroll.View`/`Manage`; period + simple %/fixed deductions; payslip CSV/PDF with emp #; workforce util uses per-employee mandatory hours.
 
 **Dual sign-off + cancel (2026-07-10):** Work sign-off chain None → PendingManager → PendingExecutive → SignedOff (`AdvanceWorkSignOffAsync`); `SignOffAsync` still completes full chain for E2E/spine. Job `CancelAsync` with reason; cancelled blocks ops. Command Center UI for both.
+
+**GRV + RFQ lite (2026-07-10):** `ReceiveAsync` supports supplier delivery note + per-line qty (partial → `PartiallyReceived`); GRV register page; PO receive modal. Multi-supplier `ProcurementSupplierQuote` on requisitions: add quotes → select → create PO from selected supplier.
+
+**Certs + leave admin (2026-07-10):** `/certifications` CRUD (expiry filter); `/leave-admin` recent requests + balance adjust with reason (audit note on employee).
+
+**Hardening increment (2026-07-10):** Response headers `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` (alongside existing health + rate limits).
 
 Per chunk: `dotnet test` → update handoff → commit → push.
 
@@ -69,22 +77,21 @@ Per chunk: `dotnet test` → update handoff → commit → push.
 |------|----------|
 | Commercial spine (Quote → SO → Job → Invoice, travel) | **Strong** |
 | Multi-tenancy, permissions skeleton, quotas | **Strong** |
-| Stock REQ → approve → reserve → issue / PO → GRV | **Partial** (happy path real; partial shortfall broken) |
-| Job Command Center / closeout | **Surface only** (list side-panel; single-step sign-off; Invoiced conflates billing) |
-| PPE | **Wrong model** (job-REQ side-effect; should be employee register) |
-| Employee / leave / payroll | **Partial / Stub payslip** |
-| Executive reports / AI / exports | **Partial** (AI over-invested vs ops) |
+| Stock REQ → approve → reserve → issue / PO → GRV / RFQ | **Strong** (partial shortfall, non-catalog, GRV partial+DN, RFQ lite) |
+| Job Command Center / closeout | **Strong** (dedicated page; dual sign-off; exec close ≠ invoice; cancel) |
+| PPE | **Strong** (employee register; optional JobId) |
+| Employee / leave / payroll / certs | **Partial → Strong** (profile + payslip v1 + certs + leave admin; not SARS) |
+| Executive reports / AI / exports | **Partial** (AI frozen for ops focus; export truth still R5) |
 
-**Tests:** High volume but uneven quality. Web tests often auth-only. Full stores E2E not proven.
+**Tests:** High volume; ops spine unit coverage much stronger. Full stores E2E still CI/demo dependent.
 
-### Critical gaps
+### Critical gaps (remaining)
 
-- No dedicated `/jobs/{id}` Command Center
-- Invoice must not close job; no executive close review
-- Partial stock shortfall orphans procurement
-- PPE requires JobId; not employee register
-- Employee UI is rate-card only; payslip labeled Stub
-- Job cancel/void missing; dual work sign-off missing
+- R4 billing polish (POP, retention, emergency job-first)
+- R5 report/export stubs still need wire-or-hide honesty
+- R6 secrets/observability depth for pilot
+- Multi-supplier RFQ is lite (header total only; not line-level RFQ)
+- Optional: create SKU from free-text non-catalog after GRV
 
 ## Locked architecture
 
@@ -127,11 +134,11 @@ PPE (employee-centric):
 |-------|--------|--------|
 | **R0** | Truth reset — this document, DoD, OPS_CORE_KICKOFF | **Done (docs)** |
 | **R1** | Job Command Center, cost integrity, billing≠close, exec close/reopen | **Done (unit/web + E2E test)** |
-| **R2** | Partial shortfall, PPE register, multi-line + **non-catalog** REQ, negative stock **done**; GRV polish remaining | **In progress** |
-| **R3** | Full employee profile, payslip v1, payroll permissions | **Done (unit/UI)** |
+| **R2** | Partial shortfall, PPE, multi-line + non-catalog, GRV polish + RFQ lite | **Done (DoD met)** |
+| **R3** | Full employee profile, payslip v1, payroll permissions, certs + leave admin | **Done (unit/UI)** |
 | **R4** | Billing polish (POP, retention UI, emergency job-first) | Not started |
 | **R5** | Reporting/export truth (wire or hide stubs) | Not started |
-| **R6** | Production hardening for pilot | Ongoing partial |
+| **R6** | Production hardening for pilot | Ongoing partial (headers + health + rate limits) |
 
 ### Historical phases 0–11
 

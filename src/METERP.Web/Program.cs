@@ -159,6 +159,8 @@ builder.Services.AddScoped<IComplianceAlertService, ComplianceAlertService>();
 builder.Services.AddScoped<IStockRequisitionService, StockRequisitionService>();
 builder.Services.AddScoped<IStockTakeService, StockTakeService>();
 builder.Services.AddScoped<IPpeIssueService, PpeIssueService>();
+builder.Services.AddScoped<IProcurementQuoteService, ProcurementQuoteService>();
+builder.Services.AddScoped<IEmployeeCertificationService, EmployeeCertificationService>();
 builder.Services.AddScoped<IFieldReportService, FieldReportService>();
 builder.Services.AddScoped<IExecutiveDashboardService, ExecutiveDashboardService>();
 builder.Services.AddScoped<IAccountabilityReportService, AccountabilityReportService>();
@@ -446,6 +448,16 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    // Lightweight production hardening headers (safe defaults for Blazor Server).
+    var headers = context.Response.Headers;
+    headers.TryAdd("X-Content-Type-Options", "nosniff");
+    headers.TryAdd("X-Frame-Options", "SAMEORIGIN");
+    headers.TryAdd("Referrer-Policy", "strict-origin-when-cross-origin");
+    headers.TryAdd("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+    await next();
+});
 app.UseStaticFiles();
 app.UseAntiforgery();
 app.UseRateLimiter();

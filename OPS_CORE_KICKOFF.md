@@ -4,7 +4,7 @@
 
 This document is the **execution contract** for the Ops Core sprint. Do not invent product rules that contradict it.
 
-**Status (2026-07-10):** Ops Core 1–5, R2a/R2b, R3, **dual work sign-off + job cancel** done. Next: GRV polish / RFQ or certifications. Primary implementer: **Grok**.  
+**Status (2026-07-10):** Ops Core 1–5, R2 (incl. GRV + RFQ lite), R3 (incl. certs + leave admin), dual sign-off + cancel, hardening headers done. **Next: R4 billing polish.** Primary implementer: **Grok**.  
 **Advisory:** Flag plan risks and consult the user before changing product rules or roadmap order. Update `COMPLETION_PLAN.md` whenever product rules change.
 
 ---

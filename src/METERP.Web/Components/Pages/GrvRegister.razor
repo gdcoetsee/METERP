@@ -1,0 +1,70 @@
+@page "/grv"
+@using METERP.Application.Services
+@using METERP.Domain
+@attribute [Authorize(Policy = "PurchaseOrders.View")]
+@rendermode InteractiveServer
+@inject IPurchaseOrderService PurchaseOrderService
+
+<PageTitle>GRV register</PageTitle>
+
+<div class="mb-3">
+    <h1 class="h4 mb-1">Goods received vouchers</h1>
+    <p class="text-muted small mb-0">Recent GRVs — delivery notes and quantities received into stores or for non-catalog PO lines.</p>
+</div>
+
+@if (_loading)
+{
+    <p data-testid="grv-loading"><em>Loading GRVs…</em></p>
+}
+else if (_grvs.Count == 0)
+{
+    <div class="alert alert-info" data-testid="grv-empty">No GRVs yet. Receive a sent PO on Purchase Orders.</div>
+}
+else
+{
+    <div class="table-responsive" data-testid="grv-ready">
+        <table class="table table-hover" data-testid="grv-table">
+            <thead>
+                <tr>
+                    <th>GRV #</th>
+                    <th>PO</th>
+                    <th>Supplier</th>
+                    <th>Received</th>
+                    <th>Delivery note</th>
+                    <th class="text-end">Lines</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var g in _grvs)
+                {
+                    <tr data-testid="grv-row">
+                        <td><strong>@g.GrvNumber</strong></td>
+                        <td>@(g.PurchaseOrder?.PoNumber ?? "—")</td>
+                        <td>@(g.PurchaseOrder?.Supplier?.Name ?? "—")</td>
+                        <td>@g.ReceivedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@(g.SupplierDeliveryNote ?? "—")</td>
+                        <td class="text-end">@g.Lines.Count</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<GoodsReceiptVoucher> _grvs = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _grvs = (await PurchaseOrderService.GetRecentGrvsAsync(100)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

@@ -150,6 +150,72 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task AdjustLeaveBalanceAsync_UpdatesBalance_AndRequiresReason()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-ADJ",
+                FirstName = "Adjust",
+                LastName = "Me",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                LeaveBalanceDays = 5m,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.AdjustLeaveBalanceAsync(employee.Id, 12m, "  "));
+
+            await service.AdjustLeaveBalanceAsync(employee.Id, 12m, "HR correction Q1");
+
+            var reloaded = await db.Set<Employee>().AsNoTracking().FirstAsync(e => e.Id == employee.Id);
+            Assert.Equal(12m, reloaded.LeaveBalanceDays);
+            Assert.Contains("HR correction Q1", reloaded.Notes);
+            Assert.Contains("was 5", reloaded.Notes);
+        }
+    }
+
+    [Fact]
+    public async Task GetRecentRequestsAsync_IncludesEmployee()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-REC",
+                FirstName = "Recent",
+                LastName = "Leave",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            db.Set<LeaveRequest>().Add(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.AddDays(3),
+                EndDate = DateTime.UtcNow.AddDays(5),
+                DaysRequested = 3,
+                Status = LeaveRequestStatus.PendingManager,
+                Reason = "Trip"
+            });
+            await db.SaveChangesAsync();
+
+            var recent = await service.GetRecentRequestsAsync(50);
+            Assert.Single(recent);
+            Assert.NotNull(recent[0].Employee);
+            Assert.Equal("Recent", recent[0].Employee!.FirstName);
+        }
+    }
+
+    [Fact]
     public async Task GetAvailableLeaveDaysAsync_ReturnsAccruedMinusTaken()
     {
         var (service, db, tenantId) = Create();

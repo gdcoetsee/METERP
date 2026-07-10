@@ -321,7 +321,12 @@ public class PurchaseOrderService : IPurchaseOrderService
         return po.Id;
     }
 
-    public async Task<GoodsReceiptVoucher?> ReceiveAsync(Guid poId, Guid receivedByUserId, CancellationToken ct = default)
+    public async Task<GoodsReceiptVoucher?> ReceiveAsync(
+        Guid poId,
+        Guid receivedByUserId,
+        string? supplierDeliveryNote = null,
+        IReadOnlyDictionary<Guid, decimal>? lineQuantities = null,
+        CancellationToken ct = default)
     {
         var po = await _dbContext.Set<PurchaseOrder>()
             .Include(p => p.Lines)
@@ -347,7 +352,10 @@ public class PurchaseOrderService : IPurchaseOrderService
             PurchaseOrderId = po.Id,
             StockRequisitionId = linkedRequisitionId,
             ReceivedByUserId = receivedByUserId,
-            ReceivedAt = DateTime.UtcNow
+            ReceivedAt = DateTime.UtcNow,
+            SupplierDeliveryNote = string.IsNullOrWhiteSpace(supplierDeliveryNote)
+                ? null
+                : supplierDeliveryNote.Trim()
         };
 
         _dbContext.Set<GoodsReceiptVoucher>().Add(grv);
@@ -359,11 +367,18 @@ public class PurchaseOrderService : IPurchaseOrderService
             var outstanding = line.QuantityOutstanding;
             if (outstanding <= 0) continue;
 
+            var qty = outstanding;
+            if (lineQuantities != null && lineQuantities.TryGetValue(line.Id, out var requestedQty))
+            {
+                if (requestedQty <= 0) continue;
+                qty = Math.Min(outstanding, requestedQty);
+            }
+
             if (line.InventoryItemId.HasValue)
             {
                 await _inventoryService.RecordStockTransactionAsync(
                     line.InventoryItemId.Value,
-                    outstanding,
+                    qty,
                     StockTransactionType.Receipt,
                     grv.GrvNumber,
                     null,
@@ -376,15 +391,19 @@ public class PurchaseOrderService : IPurchaseOrderService
                 GoodsReceiptVoucherId = grv.Id,
                 PurchaseOrderLineId = line.Id,
                 InventoryItemId = line.InventoryItemId,
-                QuantityReceived = outstanding
+                QuantityReceived = qty
             });
 
-            line.QuantityReceived += outstanding;
+            line.QuantityReceived += qty;
             receivedAny = true;
         }
 
         if (!receivedAny)
+        {
+            grv.IsDeleted = true;
+            await _dbContext.SaveChangesAsync(ct);
             return null;
+        }
 
         var allReceived = po.Lines.Where(l => !l.IsDeleted).All(l => l.QuantityReceived >= l.Quantity);
         po.Status = allReceived ? PurchaseOrderStatus.Received : PurchaseOrderStatus.PartiallyReceived;
@@ -393,12 +412,37 @@ public class PurchaseOrderService : IPurchaseOrderService
         InvalidateListCaches();
 
         if (_audit != null)
-            await _audit.LogAsync("RECEIVE", "GRV", grv.GrvNumber, $"PO {po.PoNumber}", ct);
+        {
+            var note = $"PO {po.PoNumber}" +
+                       (grv.SupplierDeliveryNote != null ? $" — DN {grv.SupplierDeliveryNote}" : "");
+            await _audit.LogAsync("RECEIVE", "GRV", grv.GrvNumber, note, ct);
+        }
 
         if (_requisitionService != null)
             await _requisitionService.FulfillAfterPoReceiptAsync(po.Id, ct);
 
         return grv;
+    }
+
+    public async Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default)
+    {
+        return await _dbContext.Set<GoodsReceiptVoucher>()
+            .AsNoTracking()
+            .Include(g => g.PurchaseOrder).ThenInclude(p => p!.Supplier)
+            .Include(g => g.Lines)
+            .OrderByDescending(g => g.ReceivedAt)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<GoodsReceiptVoucher>> GetGrvsForPurchaseOrderAsync(Guid poId, CancellationToken ct = default)
+    {
+        return await _dbContext.Set<GoodsReceiptVoucher>()
+            .AsNoTracking()
+            .Include(g => g.Lines)
+            .Where(g => g.PurchaseOrderId == poId)
+            .OrderByDescending(g => g.ReceivedAt)
+            .ToListAsync(ct);
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.PurchaseOrders);

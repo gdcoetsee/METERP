@@ -63,6 +63,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<GoodsReceiptVoucher> GoodsReceiptVouchers { get; set; } = null!;
     public DbSet<GoodsReceiptLine> GoodsReceiptLines { get; set; } = null!;
     public DbSet<EmployeePpeIssue> EmployeePpeIssues { get; set; } = null!;
+    public DbSet<ProcurementSupplierQuote> ProcurementSupplierQuotes { get; set; } = null!;
     public DbSet<StockTakeSession> StockTakeSessions { get; set; } = null!;
     public DbSet<StockTakeLine> StockTakeLines { get; set; } = null!;
     public DbSet<FieldReport> FieldReports { get; set; } = null!;

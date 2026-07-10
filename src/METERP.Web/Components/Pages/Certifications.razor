@@ -1,0 +1,210 @@
+@page "/certifications"
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@using METERP.Web.Services
+@attribute [Authorize(Policy = "Employees.View")]
+@rendermode InteractiveServer
+@inject IEmployeeCertificationService CertService
+@inject IEmployeeService EmployeeService
+@inject ICurrentUserService CurrentUser
+@inject ToastService Toast
+
+<PageTitle>Employee certifications</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 mb-1">Employee certifications</h1>
+        <p class="text-muted small mb-0">Licences and tickets with expiry tracking (alerts via compliance scan).</p>
+    </div>
+    @if (CanManage)
+    {
+        <button type="button" class="btn btn-primary" data-testid="certs-add-btn" @onclick="OpenAdd">+ Add certification</button>
+    }
+</div>
+
+<div class="mb-3" style="max-width: 360px;">
+    <label class="form-label small">Employee filter</label>
+    <select class="form-select" @bind="_filterEmployeeId" @bind:after="ReloadAsync" data-testid="certs-filter-employee">
+        <option value="@Guid.Empty">All expiring (30 days)</option>
+        @foreach (var e in _employees)
+        {
+            <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName</option>
+        }
+    </select>
+</div>
+
+@if (_loading)
+{
+    <p data-testid="certs-loading"><em>Loading…</em></p>
+}
+else if (_certs.Count == 0)
+{
+    <div class="alert alert-info" data-testid="certs-empty">No certifications match this filter.</div>
+}
+else
+{
+    <div class="table-responsive" data-testid="certs-ready">
+        <table class="table table-hover" data-testid="certs-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th>Number</th>
+                    <th>Expiry</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _certs)
+                {
+                    <tr data-testid="certs-row">
+                        <td>@(c.Employee != null ? $"{c.Employee.FirstName} {c.Employee.LastName}" : c.EmployeeId.ToString("N")[..8])</td>
+                        <td>@c.CertificationType</td>
+                        <td>@(c.CertificateNumber ?? "—")</td>
+                        <td>
+                            @if (c.NoExpiry)
+                            {
+                                <span class="badge bg-success">No expiry</span>
+                            }
+                            else
+                            {
+                                @c.ExpiryDate?.ToString("yyyy-MM-dd")
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (CanManage)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c)">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_showForm)
+{
+    <FormModal IsOpen="true" Title="Add certification" TestId="certs-form-modal" OnClose="() => _showForm = false">
+        <div class="mb-3">
+            <label class="form-label">Employee *</label>
+            <select class="form-select" @bind="_formEmployeeId" data-testid="certs-form-employee">
+                <option value="@Guid.Empty">— Select —</option>
+                @foreach (var e in _employees)
+                {
+                    <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Type *</label>
+            <input class="form-control" @bind="_formType" placeholder="e.g. Electrical CoC, First Aid" data-testid="certs-form-type" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Certificate number</label>
+            <input class="form-control" @bind="_formNumber" />
+        </div>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" @bind="_formNoExpiry" id="certs-no-expiry" />
+            <label class="form-check-label" for="certs-no-expiry">No expiry</label>
+        </div>
+        @if (!_formNoExpiry)
+        {
+            <div class="mb-3">
+                <label class="form-label">Expiry date *</label>
+                <input type="date" class="form-control" @bind="_formExpiry" data-testid="certs-form-expiry" />
+            </div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="() => _showForm = false">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="certs-form-save" @onclick="SaveAsync">Save</button>
+        </div>
+    </FormModal>
+}
+
+@code {
+    private List<EmployeeCertification> _certs = new();
+    private List<Employee> _employees = new();
+    private bool _loading = true;
+    private Guid _filterEmployeeId = Guid.Empty;
+    private bool _showForm;
+    private Guid _formEmployeeId;
+    private string _formType = "";
+    private string _formNumber = "";
+    private bool _formNoExpiry;
+    private DateTime? _formExpiry = DateTime.UtcNow.Date.AddYears(1);
+
+    private bool CanManage => CurrentUser.Permissions.Contains(Permissions.EmployeesManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = (await EmployeeService.GetAllAsync(pageSize: 200)).ToList();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            if (_filterEmployeeId == Guid.Empty)
+            {
+                _certs = (await CertService.GetExpiringAsync(30)).ToList();
+            }
+            else
+            {
+                _certs = (await CertService.GetForEmployeeAsync(_filterEmployeeId)).ToList();
+                // Attach employee for display
+                var emp = _employees.FirstOrDefault(e => e.Id == _filterEmployeeId);
+                foreach (var c in _certs)
+                    c.Employee = emp;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenAdd()
+    {
+        _formEmployeeId = _employees.FirstOrDefault()?.Id ?? Guid.Empty;
+        _formType = "";
+        _formNumber = "";
+        _formNoExpiry = false;
+        _formExpiry = DateTime.UtcNow.Date.AddYears(1);
+        _showForm = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            await CertService.CreateAsync(new EmployeeCertification
+            {
+                EmployeeId = _formEmployeeId,
+                CertificationType = _formType,
+                CertificateNumber = string.IsNullOrWhiteSpace(_formNumber) ? null : _formNumber.Trim(),
+                NoExpiry = _formNoExpiry,
+                ExpiryDate = _formNoExpiry ? null : _formExpiry
+            });
+            Toast.ShowSuccess("Certification saved.");
+            _showForm = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task DeleteAsync(EmployeeCertification c)
+    {
+        await CertService.DeleteAsync(c.Id);
+        Toast.ShowSuccess("Certification removed.");
+        await ReloadAsync();
+    }
+}

@@ -85,7 +85,7 @@ else
                             }
                             @if (UserCanManage && (po.Status == PurchaseOrderStatus.Sent || po.Status == PurchaseOrderStatus.PartiallyReceived))
                             {
-                                <button class="btn btn-sm btn-success ms-1" data-testid="purchase-order-receive" @onclick="() => ReceivePO(po)">Receive</button>
+                                <button class="btn btn-sm btn-success ms-1" data-testid="purchase-order-receive" @onclick="() => OpenReceiveModal(po)">Receive</button>
                             }
                         </td>
                     </tr>
@@ -157,7 +157,7 @@ else
                 }
                 @if (UserCanManage && (selectedPO.Status == PurchaseOrderStatus.Sent || selectedPO.Status == PurchaseOrderStatus.PartiallyReceived))
                 {
-                    <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => ReceivePO(selectedPO)">Create GRV</button>
+                    <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => OpenReceiveModal(selectedPO)">Create GRV</button>
                 }
             </div>
         </div>
@@ -250,9 +250,66 @@ else
                 </div>
             }
 
-            <p class="mt-3 text-muted small">Mark the PO as Sent before receiving. Creating a GRV records a formal goods receipt, updates on-hand quantities for linked inventory items, and auto-reserves stock for linked requisitions.</p>
+            <p class="mt-3 text-muted small">Mark the PO as Sent before receiving. Creating a GRV records a formal goods receipt, updates on-hand quantities for linked inventory items, and auto-reserves stock for linked requisitions. Partial receipts are supported — enter qty per line and supplier delivery note.</p>
         </div>
     </div>
+}
+
+@if (_showReceiveModal && _receivePo != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"Receive GRV — {_receivePo.PoNumber}")"
+               TestId="purchase-order-grv-modal"
+               OnClose="CloseReceiveModal">
+        <div class="mb-3">
+            <label class="form-label">Supplier delivery note</label>
+            <input class="form-control" @bind="_deliveryNote" data-testid="purchase-order-grv-dn"
+                   placeholder="Optional — supplier DN / waybill #" maxlength="100" />
+        </div>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th class="text-end">Ordered</th>
+                        <th class="text-end">Already recv</th>
+                        <th class="text-end" style="min-width:7rem">Receive now</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in _receivePo.Lines.Where(l => !l.IsDeleted))
+                    {
+                        var outstanding = line.QuantityOutstanding;
+                        <tr>
+                            <td>@line.Description</td>
+                            <td class="text-end">@line.Quantity</td>
+                            <td class="text-end">@line.QuantityReceived</td>
+                            <td class="text-end">
+                                @if (outstanding > 0)
+                                {
+                                    <input type="number" class="form-control form-control-sm text-end"
+                                           min="0" max="@outstanding" step="0.01"
+                                           value="@GetReceiveQty(line.Id)"
+                                           @onchange="e => SetReceiveQty(line.Id, e)"
+                                           data-testid="purchase-order-grv-qty" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseReceiveModal">Cancel</button>
+            <button type="button" class="btn btn-success" data-testid="purchase-order-grv-confirm" @onclick="ConfirmReceiveAsync">
+                Create GRV
+            </button>
+        </div>
+    </FormModal>
 }
 
 @code {
@@ -271,6 +328,11 @@ else
 
     private bool showLineForm;
     private PurchaseOrderLine? editingLine;
+
+    private bool _showReceiveModal;
+    private PurchaseOrder? _receivePo;
+    private string _deliveryNote = "";
+    private Dictionary<Guid, decimal> _receiveQtys = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
 
@@ -407,28 +469,85 @@ else
         ToastService.ShowSuccess($"{po.PoNumber} marked as sent — ready for GRV.");
     }
 
-    private async Task ReceivePO(PurchaseOrder po)
+    private async Task OpenReceiveModal(PurchaseOrder po)
     {
+        var full = await PurchaseOrderService.GetByIdAsync(po.Id);
+        if (full == null)
+        {
+            ToastService.ShowError("Purchase order not found.");
+            return;
+        }
+
+        _receivePo = full;
+        _deliveryNote = "";
+        _receiveQtys = full.Lines
+            .Where(l => !l.IsDeleted && l.QuantityOutstanding > 0)
+            .ToDictionary(l => l.Id, l => l.QuantityOutstanding);
+        _showReceiveModal = true;
+        selectedPO = full;
+        showForm = false;
+    }
+
+    private void CloseReceiveModal()
+    {
+        _showReceiveModal = false;
+        _receivePo = null;
+        _deliveryNote = "";
+        _receiveQtys.Clear();
+    }
+
+    private decimal GetReceiveQty(Guid lineId) =>
+        _receiveQtys.TryGetValue(lineId, out var q) ? q : 0m;
+
+    private void SetReceiveQty(Guid lineId, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var q) && q >= 0)
+            _receiveQtys[lineId] = q;
+        else
+            _receiveQtys[lineId] = 0;
+    }
+
+    private async Task ConfirmReceiveAsync()
+    {
+        if (_receivePo == null) return;
+
         if (CurrentUserService.UserId is not { } userId)
         {
             ToastService.ShowError("User session required to record a GRV.");
             return;
         }
 
-        if (!await Confirm("Create a GRV and receive outstanding quantities into inventory?")) return;
+        var qtyMap = _receiveQtys
+            .Where(kv => kv.Value > 0)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
 
+        if (qtyMap.Count == 0)
+        {
+            ToastService.ShowError("Enter at least one quantity to receive.");
+            return;
+        }
+
+        var poId = _receivePo.Id;
         try
         {
-            var grv = await PurchaseOrderService.ReceiveAsync(po.Id, userId);
+            var grv = await PurchaseOrderService.ReceiveAsync(
+                poId,
+                userId,
+                string.IsNullOrWhiteSpace(_deliveryNote) ? null : _deliveryNote.Trim(),
+                qtyMap);
+
             if (grv == null)
             {
-                ToastService.ShowError("Nothing to receive — link inventory items to PO lines first.");
+                ToastService.ShowError("Nothing received — check outstanding quantities.");
                 return;
             }
 
-            selectedPO = await PurchaseOrderService.GetByIdAsync(po.Id);
+            CloseReceiveModal();
+            selectedPO = await PurchaseOrderService.GetByIdAsync(poId);
             await LoadPOs();
-            ToastService.ShowSuccess($"GRV {grv.GrvNumber} created — inventory updated.");
+            ToastService.ShowSuccess($"GRV {grv.GrvNumber} created" +
+                (string.IsNullOrEmpty(grv.SupplierDeliveryNote) ? "" : $" (DN {grv.SupplierDeliveryNote})") +
+                " — inventory updated.");
         }
         catch (Exception ex)
         {
