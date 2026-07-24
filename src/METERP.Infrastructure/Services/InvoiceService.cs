@@ -139,6 +139,11 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException(
                 $"Cannot edit invoice in status {existing.Status}. Only Draft invoices can be updated.");
 
+        if (invoice.TaxRate < 0 || invoice.TaxRate > 1m)
+            throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
+        if (invoice.InvoiceDate != default && invoice.DueDate.Date < invoice.InvoiceDate.Date)
+            throw new InvalidOperationException("Due date cannot be before the invoice date.");
+
         // Identity and payment state must not drift via free-form update payloads.
         invoice.InvoiceNumber = existing.InvoiceNumber;
         invoice.Status = existing.Status;
