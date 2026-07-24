@@ -20,9 +20,9 @@
 <div class="list-group" data-testid="notifications-list">
     @foreach (var n in notifications)
     {
-        <div class="list-group-item d-flex justify-content-between @(n.IsRead ? "text-muted" : "")"
-             style="cursor:pointer;" @onclick="() => MarkRead(n)" data-testid="notification-item">
-            <div>
+        <div class="list-group-item d-flex justify-content-between align-items-start @(n.IsRead ? "text-muted" : "")"
+             data-testid="notification-item">
+            <div style="cursor:pointer;" class="flex-grow-1" @onclick="() => MarkRead(n)">
                 <strong>@n.Title</strong>
                 @if (!string.IsNullOrEmpty(n.Category))
                 {
@@ -31,12 +31,16 @@
                 <br />
                 <small>@n.Message</small>
             </div>
-            <div class="text-end">
-                <small class="text-muted">@n.CreatedDate.ToString("MMM dd")</small>
+            <div class="text-end ms-2">
+                <small class="text-muted d-block">@n.CreatedDate.ToString("MMM dd")</small>
                 @if (!n.IsRead)
                 {
-                    <span class="badge bg-danger ms-2">New</span>
+                    <span class="badge bg-danger ms-1">New</span>
                 }
+                <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-decoration-none"
+                        data-testid="notification-dismiss"
+                        @onclick="() => DismissAsync(n)"
+                        @onclick:stopPropagation="true">Dismiss</button>
             </div>
         </div>
     }
@@ -76,5 +80,12 @@
             ToastService.ShowSuccess("All notifications marked read.");
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task DismissAsync(TenantNotification n)
+    {
+        await NotificationService.DismissAsync(n.Id);
+        notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
+        ToastService.ShowSuccess("Notification dismissed.");
     }
 }

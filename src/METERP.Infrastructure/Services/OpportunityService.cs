@@ -90,6 +90,14 @@ public class OpportunityService : IOpportunityService
 
     public async Task<Guid> CreateAsync(Opportunity opportunity, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(opportunity.Title))
+            throw new InvalidOperationException("Opportunity title is required.");
+
+        if (opportunity.Value < 0)
+            throw new InvalidOperationException("Opportunity value cannot be negative.");
+
+        opportunity.Title = opportunity.Title.Trim();
+
         if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty)
         {
             var customer = await _dbContext.Set<Customer>()
@@ -153,8 +161,11 @@ public class OpportunityService : IOpportunityService
         var opp = await _dbContext.Set<Opportunity>().FirstOrDefaultAsync(o => o.Id == id, ct);
         if (opp == null) return;
 
+        if (opp.Stage is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost)
+            throw new InvalidOperationException($"Opportunity is already {opp.Stage} and cannot be advanced.");
+
         var idx = Array.IndexOf(StageOrder, opp.Stage);
-        if (idx >= 0 && idx < StageOrder.Length - 1 && opp.Stage != OpportunityStage.ClosedLost)
+        if (idx >= 0 && idx < StageOrder.Length - 1)
             opp.Stage = StageOrder[idx + 1];
 
         await _dbContext.SaveChangesAsync(ct);

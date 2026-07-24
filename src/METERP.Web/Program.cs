@@ -10,6 +10,7 @@ using Serilog.Events;
 using METERP.Application.Integrations;
 using METERP.Application.Interfaces;
 using METERP.Application.Options;
+using METERP.Application.Production;
 using METERP.Application.Services;
 using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Integrations;
@@ -247,13 +248,14 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // Production hardening: refuse placeholder secrets (must use env/secrets manager).
 if (builder.Environment.IsProduction())
 {
-    if (string.IsNullOrWhiteSpace(connectionString)
-        || connectionString.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
-        || connectionString.Contains("Password=postgres", StringComparison.OrdinalIgnoreCase))
-    {
-        throw new InvalidOperationException(
-            "Production requires ConnectionStrings:DefaultConnection with a real password (not CHANGE_ME / default postgres).");
-    }
+    var emailUser = builder.Configuration["Email:Username"];
+    var emailPassword = builder.Configuration["Email:Password"];
+    ProductionSecretsValidator.EnsureValid(
+        connectionString,
+        billingWebhookSecret: builder.Configuration["Billing:WebhookSecret"],
+        stripeSecretKey: builder.Configuration["Billing:StripeSecretKey"],
+        emailPassword: emailPassword,
+        emailAuthConfigured: !string.IsNullOrWhiteSpace(emailUser));
 }
 
 builder.Services.AddScoped<CircuitDbContextGate>();

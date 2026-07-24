@@ -167,7 +167,7 @@ public class OpportunityServiceTests
     }
 
     [Fact]
-    public async Task AdvanceStageAsync_DoesNotAdvanceFromClosedLost()
+    public async Task AdvanceStageAsync_ThrowsFromClosedLost()
     {
         var tenantId = Guid.NewGuid();
         using var db = CreateContext(tenantId);
@@ -180,7 +180,7 @@ public class OpportunityServiceTests
             Stage = OpportunityStage.ClosedLost
         });
 
-        await service.AdvanceStageAsync(id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.AdvanceStageAsync(id));
 
         var loaded = await service.GetByIdAsync(id);
         Assert.Equal(OpportunityStage.ClosedLost, loaded!.Stage);

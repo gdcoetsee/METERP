@@ -42,9 +42,14 @@
         <ul class="list-group list-group-flush small">
             @foreach (var s in _recurringSchedules)
             {
-                <li class="list-group-item d-flex justify-content-between">
+                <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
                     <span><strong>@s.Title</strong> — @(s.Customer?.Name ?? "Customer") every @s.IntervalDays d</span>
-                    <span class="text-muted">Next: @s.NextRunDate.ToString("yyyy-MM-dd")</span>
+                    <span class="text-nowrap">
+                        <span class="text-muted me-2">Next: @s.NextRunDate.ToString("yyyy-MM-dd")</span>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0"
+                                data-testid="scheduling-recurring-deactivate"
+                                @onclick="() => DeactivateRecurringAsync(s.Id)">Deactivate</button>
+                    </span>
                 </li>
             }
         </ul>
@@ -445,14 +450,35 @@ else
 
     private async Task ProcessRecurringAsync()
     {
-        var spawned = await RecurringJobService.ProcessDueAsync();
-        if (spawned > 0)
+        try
         {
-            ToastService.ShowSuccess($"Spawned {spawned} recurring job(s).");
+            var spawned = await RecurringJobService.ProcessDueAsync();
+            if (spawned > 0)
+            {
+                ToastService.ShowSuccess($"Spawned {spawned} recurring job(s).");
+                await LoadBoardAsync();
+            }
+            else
+                ToastService.ShowInfo("No recurring schedules are due today.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task DeactivateRecurringAsync(Guid scheduleId)
+    {
+        try
+        {
+            await RecurringJobService.SetActiveAsync(scheduleId, false);
+            ToastService.ShowSuccess("Recurring schedule deactivated.");
             await LoadBoardAsync();
         }
-        else
-            ToastService.ShowInfo("No recurring schedules are due today.");
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private async Task ExportScheduleCsvAsync()

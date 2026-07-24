@@ -18,7 +18,7 @@
 | R3 Employee + payslip | **Done (unit/UI)** — full profile, safe update, payslip v1, payroll permissions (2026-07-10) |
 | Certs + leave admin | **Done (unit/UI)** — certifications CRUD page + leave admin list/adjust (2026-07-10) |
 | R2c SKU promote + RFQ lines | **Done (unit/UI)** — free-text → SKU after GRV; line-level RFQ prices (2026-07-24) |
-| R6 Production hardening | **Ongoing partial** — health, AI/global rate limits, response security headers |
+| R6 Production hardening | **Strong partial** — health, rate limits, headers, expanded production secrets validator |
 
 **Latest product batch (2026-07-24):**  
 - `CreateSkuFromPoLineAsync` — promote free-text PO lines to inventory SKUs (backfill received qty, link REQ lines, carry reservations).  
@@ -109,10 +109,13 @@ Per chunk: `dotnet test` → update handoff → commit → push.
 
 ### Critical gaps (remaining)
 
-- R6 secrets/observability depth for pilot
-- Supporting modules / pilot polish (quota UX depth, field reliability)
+- R6 observability depth for pilot (OTLP already optional; Seq optional)
+- Supporting modules / remaining surface depth
+- ~~R6 secrets guard expansion~~ **Done 2026-07-24**
+- ~~Quota UX / field reliability / stock take / scheduling closed guards~~ **Done 2026-07-24**
 - ~~Multi-supplier RFQ line-level~~ **Done 2026-07-24**
 - ~~Create SKU from free-text non-catalog after GRV~~ **Done 2026-07-24**
+- ~~Leave overlap + recurring resilience + notification dismiss~~ **Done 2026-07-24**
 
 ## Locked architecture
 

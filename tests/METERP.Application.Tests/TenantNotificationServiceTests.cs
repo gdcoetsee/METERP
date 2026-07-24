@@ -181,6 +181,52 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RequiresTitle()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                harness.Service.CreateAsync(new TenantNotification
+                {
+                    TenantId = harness.TenantId,
+                    Title = "  ",
+                    Message = "x"
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task DismissAsync_SoftDeletesVisibleNotification()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var notification = new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Dismiss me",
+                Message = "Bye",
+                TargetRoles = "Executive",
+                IsRead = false
+            };
+            harness.Db.Set<TenantNotification>().Add(notification);
+            await harness.Db.SaveChangesAsync();
+
+            await harness.Service.DismissAsync(notification.Id);
+
+            // Global soft-delete filter hides dismissed rows from queries.
+            var visible = await harness.Service.GetForCurrentUserAsync();
+            Assert.DoesNotContain(visible, n => n.Id == notification.Id);
+
+            var raw = await harness.Db.Set<TenantNotification>().IgnoreQueryFilters()
+                .FirstAsync(n => n.Id == notification.Id);
+            Assert.True(raw.IsDeleted);
+            Assert.True(raw.IsRead);
+        }
+    }
+
+    [Fact]
     public async Task GetUnreadCountAsync_ReturnsZero_AfterMarkAllRead()
     {
         using var harness = new Harness("Executive");

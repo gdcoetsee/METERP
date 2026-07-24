@@ -58,11 +58,32 @@ public sealed class LeaveService : ILeaveService
 
     public async Task<Guid> SubmitRequestAsync(LeaveRequest request, CancellationToken ct = default)
     {
+        request.StartDate = request.StartDate.Date;
+        request.EndDate = request.EndDate.Date;
+
+        if (request.EndDate < request.StartDate)
+            throw new InvalidOperationException("Leave end date cannot be before the start date.");
+
+        var emp = await _dbContext.Set<Employee>().AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct)
+            ?? throw new InvalidOperationException("Employee not found.");
+
+        if (!emp.IsActive)
+            throw new InvalidOperationException("Cannot submit leave for an inactive employee.");
+
         if (request.DaysRequested <= 0)
         {
             request.DaysRequested = LeaveAccrualCalculator.CalculateBusinessDays(
                 request.StartDate,
                 request.EndDate);
+        }
+
+        // Weekend-only ranges yield 0 business days — fall back to inclusive calendar days.
+        if (request.DaysRequested <= 0)
+        {
+            request.DaysRequested = Math.Max(
+                1m,
+                (decimal)(request.EndDate - request.StartDate).TotalDays + 1m);
         }
 
         if (request.IsPaid)
@@ -73,16 +94,25 @@ public sealed class LeaveService : ILeaveService
                     $"Insufficient leave balance. Available: {available:N1} days, requested: {request.DaysRequested:N1}.");
         }
 
+        // Block overlapping pending/approved leave for the same employee.
+        var hasOverlap = await _dbContext.Set<LeaveRequest>()
+            .AsNoTracking()
+            .AnyAsync(r =>
+                r.EmployeeId == request.EmployeeId
+                && r.Status != LeaveRequestStatus.Rejected
+                && r.Status != LeaveRequestStatus.Cancelled
+                && r.StartDate <= request.EndDate
+                && r.EndDate >= request.StartDate, ct);
+
+        if (hasOverlap)
+            throw new InvalidOperationException(
+                "This leave request overlaps an existing pending or approved leave request.");
+
         request.Status = LeaveRequestStatus.PendingManager;
 
         // Stamp tenant from employee so field-portal circuits never insert Guid.Empty TenantId.
         if (request.TenantId == Guid.Empty)
-        {
-            var emp = await _dbContext.Set<Employee>().AsNoTracking()
-                .FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct);
-            if (emp != null)
-                request.TenantId = emp.TenantId;
-        }
+            request.TenantId = emp.TenantId;
 
         _dbContext.Set<LeaveRequest>().Add(request);
         await _dbContext.SaveChangesAsync(ct);

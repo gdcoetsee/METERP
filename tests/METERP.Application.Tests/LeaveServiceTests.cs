@@ -471,6 +471,76 @@ public class LeaveServiceTests
         }
     }
 
+    [Fact]
+    public async Task SubmitRequestAsync_RejectsOverlappingPendingLeave()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-OVL",
+                FirstName = "Over",
+                LastName = "Lap",
+                HireDate = DateTime.UtcNow.AddYears(-2),
+                AnnualLeaveEntitlementDays = 25,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(10),
+                EndDate = DateTime.UtcNow.Date.AddDays(14),
+                IsPaid = true
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(12),
+                EndDate = DateTime.UtcNow.Date.AddDays(16),
+                IsPaid = true
+            }));
+            Assert.Contains("overlap", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitRequestAsync_RejectsEndBeforeStart()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-DATE",
+                FirstName = "Date",
+                LastName = "Guard",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 5
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(5),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                IsPaid = false
+            }));
+        }
+    }
+
     private sealed class TestCurrentUser : ICurrentUserService
     {
         public Guid? UserId => Guid.NewGuid();

@@ -13,4 +13,7 @@ public interface ITenantNotificationService
     Task MarkReadAsync(Guid id, CancellationToken ct = default);
 
     Task MarkAllReadAsync(CancellationToken ct = default);
+
+    /// <summary>Soft-delete a notification visible to the current user.</summary>
+    Task DismissAsync(Guid id, CancellationToken ct = default);
 }

@@ -48,6 +48,16 @@ public sealed class TenantNotificationService : ITenantNotificationService
 
     public async Task CreateAsync(TenantNotification notification, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(notification.Title))
+            throw new InvalidOperationException("Notification title is required.");
+
+        notification.Title = notification.Title.Trim();
+        notification.Message ??= string.Empty;
+        if (string.IsNullOrWhiteSpace(notification.TargetRoles))
+            notification.TargetRoles = "*";
+        if (string.IsNullOrWhiteSpace(notification.Category))
+            notification.Category = "general";
+
         _dbContext.Set<TenantNotification>().Add(notification);
         await _dbContext.SaveChangesAsync(ct);
     }
@@ -56,6 +66,11 @@ public sealed class TenantNotificationService : ITenantNotificationService
     {
         var item = await _dbContext.Set<TenantNotification>().FirstOrDefaultAsync(n => n.Id == id, ct);
         if (item == null) return;
+
+        var roles = await GetCurrentUserRolesAsync(ct);
+        if (!IsVisibleToRoles(item.TargetRoles, roles))
+            return;
+
         item.IsRead = true;
         await _dbContext.SaveChangesAsync(ct);
     }
@@ -67,6 +82,20 @@ public sealed class TenantNotificationService : ITenantNotificationService
         foreach (var item in items.Where(n => !n.IsRead && IsVisibleToRoles(n.TargetRoles, roles)))
             item.IsRead = true;
 
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task DismissAsync(Guid id, CancellationToken ct = default)
+    {
+        var item = await _dbContext.Set<TenantNotification>().FirstOrDefaultAsync(n => n.Id == id, ct);
+        if (item == null) return;
+
+        var roles = await GetCurrentUserRolesAsync(ct);
+        if (!IsVisibleToRoles(item.TargetRoles, roles))
+            return;
+
+        item.IsRead = true;
+        item.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
     }
 

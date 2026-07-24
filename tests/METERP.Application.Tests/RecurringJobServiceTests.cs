@@ -58,4 +58,111 @@ public class RecurringJobServiceTests
             Assert.Equal(DateTime.UtcNow.Date.AddDays(30), schedules[0].NextRunDate);
         }
     }
+
+    [Fact]
+    public async Task CreateAsync_ValidatesTitleCustomerAndInterval()
+    {
+        var (db, service, _, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Maint Co" });
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new RecurringJobSchedule
+                {
+                    CustomerId = customerId,
+                    Title = "  ",
+                    IntervalDays = 30
+                }));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new RecurringJobSchedule
+                {
+                    CustomerId = customerId,
+                    Title = "Valid",
+                    IntervalDays = 0
+                }));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new RecurringJobSchedule
+                {
+                    CustomerId = Guid.NewGuid(),
+                    Title = "No customer",
+                    IntervalDays = 7
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_ContinuesWhenOneScheduleFails()
+    {
+        var (db, service, jobs, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Maint Co" });
+            await db.SaveChangesAsync();
+
+            // Good schedule
+            await service.CreateAsync(new RecurringJobSchedule
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Good schedule",
+                IntervalDays = 14,
+                NextRunDate = DateTime.UtcNow.Date,
+                DefaultQuotedTotal = 1000m
+            });
+
+            // Bad schedule — missing customer will fail JobService.Create
+            db.Set<RecurringJobSchedule>().Add(new RecurringJobSchedule
+            {
+                TenantId = tenantId,
+                CustomerId = Guid.NewGuid(),
+                Title = "Broken schedule",
+                IntervalDays = 7,
+                NextRunDate = DateTime.UtcNow.Date,
+                DefaultQuotedTotal = 500m,
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+
+            var spawned = await service.ProcessDueAsync();
+            Assert.Equal(1, spawned);
+            var allJobs = await jobs.GetAllAsync(pageSize: 50);
+            Assert.Contains(allJobs, j => j.Title == "Good schedule");
+            Assert.DoesNotContain(allJobs, j => j.Title == "Broken schedule");
+        }
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_DeactivatesSchedule()
+    {
+        var (db, service, _, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Maint Co" });
+            await db.SaveChangesAsync();
+
+            var id = await service.CreateAsync(new RecurringJobSchedule
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Toggle me",
+                IntervalDays = 30,
+                NextRunDate = DateTime.UtcNow.Date.AddDays(1)
+            });
+
+            await service.SetActiveAsync(id, false);
+            var active = await service.GetAllAsync(activeOnly: true);
+            Assert.Empty(active);
+
+            await service.SetActiveAsync(id, true);
+            active = await service.GetAllAsync(activeOnly: true);
+            Assert.Single(active);
+        }
+    }
 }
