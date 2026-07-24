@@ -22,7 +22,7 @@
 
 **Latest product stream (2026-07-24 continuous):** continued integrity — invoice JobId link, stock issue-to-job, SO/quote/PO empty-line send/confirm/convert guards, leave cancel for approved future leave (+ field/admin UI), Closed Won requires customer/value, opportunity→quote link validation, customer unpaid-invoice delete guard, division employee deactivate guard.  
 
-**Unit tests:** **864 green** (Application.Tests). `main` pushed continuously (~90 commits this continuous stream).
+**Unit tests:** **875 green** (Application.Tests). `main` pushed continuously (~95 commits this continuous stream).
 
 **Tests verified (2026-07-24 continuous):** Full product integrity stream across commercial spine, CRM, field portal, inventory/PPE, finance, HR, and scheduling.
 
