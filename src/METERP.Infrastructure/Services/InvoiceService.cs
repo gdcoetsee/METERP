@@ -103,6 +103,9 @@ public class InvoiceService : IInvoiceService
         if (invoice.TaxRate < 0 || invoice.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
 
+        if (invoice.InvoiceDate != default && invoice.DueDate.Date < invoice.InvoiceDate.Date)
+            throw new InvalidOperationException("Due date cannot be before the invoice date.");
+
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? invoice.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
