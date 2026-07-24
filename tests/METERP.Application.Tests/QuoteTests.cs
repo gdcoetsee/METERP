@@ -454,7 +454,7 @@ public class QuoteTests
     }
 
     [Fact]
-    public async Task QuoteService_ConvertToJobAsync_WithAllLinesSoftDeleted_StillCreatesJob()
+    public async Task QuoteService_ConvertToJobAsync_WithAllLinesSoftDeleted_Throws()
     {
         var tenantId = Guid.NewGuid();
         using var db = CreateInMemoryContext(tenantId);
@@ -476,11 +476,9 @@ public class QuoteTests
         await db.SaveChangesAsync();
 
         var service = new QuoteService(db, null);
-        var job = await service.ConvertToJobAsync(quote.Id);
-
-        Assert.Equal(0m, job.QuotedTotal);
-        Assert.Empty(job.ActualCosts);
-        Assert.Equal(QuoteStatus.Accepted, (await db.Set<Quote>().FindAsync(quote.Id))!.Status);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConvertToJobAsync(quote.Id));
+        Assert.Contains("no lines", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

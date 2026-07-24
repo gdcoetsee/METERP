@@ -486,6 +486,9 @@ public class QuoteService : IQuoteService
         if (quote.Status is QuoteStatus.Rejected or QuoteStatus.Expired)
             throw new InvalidOperationException($"Cannot convert a {quote.Status} quote to a job.");
 
+        if (!quote.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Cannot convert a quote with no lines to a job.");
+
         var alreadyConverted = await _dbContext.Set<Job>()
             .AsNoTracking()
             .AnyAsync(j => j.QuoteId == quote.Id, ct);
