@@ -162,6 +162,17 @@ public class EmployeeService : IEmployeeService
         if (e.IsDeleted && isActive)
             throw new InvalidOperationException("Cannot reactivate a deleted employee. Restore first.");
 
+        if (!isActive && e.IsActive)
+        {
+            var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+                .AnyAsync(j => j.AssignedEmployeeId == id
+                    && j.Status != JobStatus.Cancelled
+                    && j.Status != JobStatus.Closed, ct);
+            if (hasOpenJobs)
+                throw new InvalidOperationException(
+                    "Cannot deactivate an employee assigned to open jobs. Reassign or close those jobs first.");
+        }
+
         e.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

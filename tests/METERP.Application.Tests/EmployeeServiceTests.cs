@@ -200,4 +200,35 @@ public class EmployeeServiceTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(empId));
         Assert.Contains("leave", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task SetActiveAsync_ThrowsWhenDeactivatingEmployeeOnOpenJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-DA",
+            FirstName = "Active",
+            LastName = "Lead"
+        });
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        db.Set<Job>().Add(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            AssignedEmployeeId = empId,
+            JobNumber = "J-DA",
+            Title = "Open",
+            Status = JobStatus.Scheduled
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SetActiveAsync(empId, false));
+        Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True((await service.GetByIdAsync(empId))!.IsActive);
+    }
 }
