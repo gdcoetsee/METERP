@@ -324,6 +324,17 @@ public class JobService : IJobService
                 throw new InvalidOperationException("Division not found or inactive.");
         }
 
+        if (job.AssetId is { } assetId && assetId != Guid.Empty
+            && job.AssetId != existing.AssetId)
+        {
+            var asset = await _dbContext.Set<Asset>().AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == assetId, ct);
+            if (asset == null)
+                throw new InvalidOperationException("Asset not found.");
+            if (asset.Status == AssetStatus.Decommissioned)
+                throw new InvalidOperationException("Cannot assign a decommissioned asset.");
+        }
+
         job.Title = job.Title.Trim();
         job.JobNumber = existing.JobNumber;
         job.Status = existing.Status;
