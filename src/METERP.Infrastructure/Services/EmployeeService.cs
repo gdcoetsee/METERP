@@ -82,6 +82,8 @@ public class EmployeeService : IEmployeeService
     {
         if (string.IsNullOrWhiteSpace(emp.FirstName) || string.IsNullOrWhiteSpace(emp.LastName))
             throw new InvalidOperationException("First and last name are required.");
+        if (emp.DefaultHourlyRate < 0)
+            throw new InvalidOperationException("Default hourly rate cannot be negative.");
         if (emp.MandatoryHoursPerMonth <= 0)
             emp.MandatoryHoursPerMonth = 160m;
 
@@ -117,6 +119,8 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("Employee number is required.");
         if (string.IsNullOrWhiteSpace(emp.FirstName) || string.IsNullOrWhiteSpace(emp.LastName))
             throw new InvalidOperationException("First and last name are required.");
+        if (emp.DefaultHourlyRate < 0)
+            throw new InvalidOperationException("Default hourly rate cannot be negative.");
 
         var number = emp.EmployeeNumber.Trim();
         var dup = await _dbContext.Set<Employee>()
