@@ -263,6 +263,28 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task SetAccountActiveAsync_DeactivatesAccount()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var service = new FinanceService(db);
+        var id = await service.CreateAccountAsync(new Account
+        {
+            TenantId = tenantId,
+            AccountCode = "1500",
+            Name = "Temp asset",
+            Type = AccountType.Asset
+        });
+
+        await service.SetAccountActiveAsync(id, false);
+
+        var accounts = await service.GetAccountsAsync();
+        Assert.DoesNotContain(accounts, a => a.Id == id);
+        var raw = await db.Set<Account>().FirstAsync(a => a.Id == id);
+        Assert.False(raw.IsActive);
+    }
+
+    [Fact]
     public async Task CreateAccountAsync_PersistsActiveAccount()
     {
         var tenantId = Guid.NewGuid();

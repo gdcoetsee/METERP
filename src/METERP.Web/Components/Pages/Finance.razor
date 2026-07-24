@@ -31,7 +31,16 @@ else
             <h5>Chart of Accounts</h5>
             <table class="table table-sm" data-testid="finance-accounts-table">
                 <thead>
-                    <tr><th>Code</th><th>Name</th><th>Type</th><th class="text-end">Balance (demo)</th></tr>
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th class="text-end">Balance (demo)</th>
+                        @if (CanManage)
+                        {
+                            <th></th>
+                        }
+                    </tr>
                 </thead>
                 <tbody>
                     @foreach (var row in accountRows)
@@ -41,6 +50,16 @@ else
                             <td>@row.Account.Name</td>
                             <td>@row.Account.Type</td>
                             <td class="text-end">R @row.Balance.ToString("N2")</td>
+                            @if (CanManage)
+                            {
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-link btn-sm p-0"
+                                            data-testid="finance-account-deactivate"
+                                            @onclick="() => DeactivateAccountAsync(row.Account.Id)">
+                                        Deactivate
+                                    </button>
+                                </td>
+                            }
                         </tr>
                     }
                 </tbody>
@@ -63,6 +82,8 @@ else
     private List<AccountBalanceRow> accountRows = new();
     private bool _loading = true;
 
+    private bool CanManage => CurrentUserService.Permissions.Contains(Permissions.FinanceManage);
+
     protected override async Task OnInitializedAsync()
     {
         await Load();
@@ -84,6 +105,20 @@ else
     private async Task Refresh()
     {
         await Load();
+    }
+
+    private async Task DeactivateAccountAsync(Guid accountId)
+    {
+        try
+        {
+            await FinanceService.SetAccountActiveAsync(accountId, false);
+            ToastService.ShowSuccess("Account deactivated.");
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private async Task ExportGlCsv()

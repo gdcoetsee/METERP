@@ -13,6 +13,8 @@ public interface IFinanceService
     Task<IReadOnlyList<AccountBalanceRow>> GetAccountsWithBalancesAsync(CancellationToken ct = default);
     Task<Guid> CreateAccountAsync(Account account, CancellationToken ct = default);
 
+    Task SetAccountActiveAsync(Guid accountId, bool isActive, CancellationToken ct = default);
+
     Task<Guid> PostJournalAsync(JournalEntry entry, CancellationToken ct = default);
 
     /// <summary>

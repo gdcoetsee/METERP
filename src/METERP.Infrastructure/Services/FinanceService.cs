@@ -103,6 +103,16 @@ public class FinanceService : IFinanceService
         return account.Id;
     }
 
+    public async Task SetAccountActiveAsync(Guid accountId, bool isActive, CancellationToken ct = default)
+    {
+        var account = await _dbContext.Set<Account>().FirstOrDefaultAsync(a => a.Id == accountId, ct)
+            ?? throw new InvalidOperationException("Account not found.");
+
+        account.IsActive = isActive;
+        await _dbContext.SaveChangesAsync(ct);
+        _cache?.InvalidateCategory(TenantCacheCategories.Finance);
+    }
+
     public async Task<Guid> PostJournalAsync(JournalEntry entry, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(entry.EntryNumber))
