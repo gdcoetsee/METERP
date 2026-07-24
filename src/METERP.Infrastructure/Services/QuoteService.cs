@@ -265,6 +265,16 @@ public class QuoteService : IQuoteService
 
         if (quote == null) return;
 
+        if (quote.Status is not (QuoteStatus.Draft or QuoteStatus.Rejected or QuoteStatus.Expired))
+            throw new InvalidOperationException(
+                $"Cannot delete quote in status {quote.Status}. Only Draft, Rejected, or Expired quotes can be deleted.");
+
+        var linkedJob = await _dbContext.Set<Job>().AsNoTracking()
+            .AnyAsync(j => j.QuoteId == quote.Id, ct);
+        if (linkedJob)
+            throw new InvalidOperationException(
+                $"Cannot delete quote {quote.QuoteNumber} — it is linked to a job.");
+
         foreach (var line in quote.Lines)
         {
             line.IsDeleted = true;
