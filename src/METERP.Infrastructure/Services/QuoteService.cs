@@ -433,6 +433,9 @@ public class QuoteService : IQuoteService
             throw new InvalidOperationException("Line unit price cannot be negative.");
         if (line.UnitCost < 0)
             throw new InvalidOperationException("Line unit cost cannot be negative.");
+        if (line.GrossProfitPercent < 0 || line.GrossProfitPercent >= 1m)
+            throw new InvalidOperationException(
+                "Line gross profit percent must be between 0 and 1 exclusive of 100%.");
 
         line.Description = line.Description.Trim();
         if (!string.IsNullOrWhiteSpace(line.Unit))
