@@ -297,8 +297,7 @@ public class QuoteService : IQuoteService
 
         EnsureQuoteLinesEditable(quote);
 
-        if (line.Quantity <= 0)
-            throw new InvalidOperationException("Line quantity must be positive.");
+        ValidateLine(line);
 
         _dbContext.Set<QuoteLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -323,8 +322,7 @@ public class QuoteService : IQuoteService
 
         EnsureQuoteLinesEditable(quote);
 
-        if (line.Quantity <= 0)
-            throw new InvalidOperationException("Line quantity must be positive.");
+        ValidateLine(line);
 
         existing.Description = line.Description;
         existing.LineType = line.LineType;
@@ -373,6 +371,24 @@ public class QuoteService : IQuoteService
         if (quote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
             throw new InvalidOperationException(
                 "Quote is pending executive approval — withdraw approval before editing lines.");
+    }
+
+    private static void ValidateLine(QuoteLine line)
+    {
+        if (string.IsNullOrWhiteSpace(line.Description))
+            throw new InvalidOperationException("Line description is required.");
+        if (line.Quantity <= 0)
+            throw new InvalidOperationException("Line quantity must be positive.");
+        if (line.UnitPrice < 0)
+            throw new InvalidOperationException("Line unit price cannot be negative.");
+        if (line.UnitCost < 0)
+            throw new InvalidOperationException("Line unit cost cannot be negative.");
+
+        line.Description = line.Description.Trim();
+        if (!string.IsNullOrWhiteSpace(line.Unit))
+            line.Unit = line.Unit.Trim();
+        if (!string.IsNullOrWhiteSpace(line.LineType))
+            line.LineType = line.LineType.Trim();
     }
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)

@@ -201,6 +201,57 @@ public class SchedulingServiceTests
     }
 
     [Fact]
+    public async Task AssignJobResourcesAsync_ThrowsWhenAssetMissing()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "Bad asset", QuotedTotal = 100m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobId, Guid.NewGuid(), null));
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_ThrowsWhenLeadEmployeeInactiveOrMissing()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "Bad lead", QuotedTotal = 100m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobId, null, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_ThrowsWhenAssetDecommissioned()
+    {
+        var (db, service, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobService.CreateAsync(new Job { CustomerId = customerId, Title = "Decom", QuotedTotal = 100m });
+            var assetId = await assetService.CreateAsync(new Asset { CustomerId = customerId, Name = "Old truck" });
+            await assetService.UpdateStatusAsync(assetId, AssetStatus.Decommissioned);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobId, assetId, null));
+            Assert.Contains("decommissioned", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AssignJobResourcesAsync_ClearsEmployeeWhenNull()
     {
         var (db, service, jobService, assetService, employeeService, tenantId) = CreateHarness();

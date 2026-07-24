@@ -48,15 +48,32 @@ public class SchedulingService : ISchedulingService
             throw new InvalidOperationException(
                 $"Cannot assign resources — job {job.JobNumber} is {job.Status}.");
 
-        job.AssetId = assetId;
+        if (assetId is { } aid && aid != Guid.Empty)
+        {
+            var asset = await _assetService.GetByIdAsync(aid, ct)
+                ?? throw new InvalidOperationException("Asset not found.");
+            if (asset.Status == AssetStatus.Decommissioned)
+                throw new InvalidOperationException("Cannot assign a decommissioned asset.");
+            job.AssetId = aid;
+        }
+        else
+        {
+            job.AssetId = null;
+        }
 
         var employees = await _employeeService.GetAllAsync(null, 1, 1000, includeInactive: false, ct: ct);
         var validEmployeeIds = employees.Select(e => e.Id).ToHashSet();
 
-        if (leadEmployeeId.HasValue && leadEmployeeId.Value != Guid.Empty && validEmployeeIds.Contains(leadEmployeeId.Value))
-            job.AssignedEmployeeId = leadEmployeeId.Value;
+        if (leadEmployeeId is { } lead && lead != Guid.Empty)
+        {
+            if (!validEmployeeIds.Contains(lead))
+                throw new InvalidOperationException("Lead employee not found or inactive.");
+            job.AssignedEmployeeId = lead;
+        }
         else
+        {
             job.AssignedEmployeeId = null;
+        }
 
         var crewIds = new HashSet<Guid>();
         if (job.AssignedEmployeeId.HasValue)
@@ -64,8 +81,13 @@ public class SchedulingService : ISchedulingService
 
         if (additionalCrewEmployeeIds != null)
         {
-            foreach (var id in additionalCrewEmployeeIds.Where(id => id != Guid.Empty && validEmployeeIds.Contains(id)))
+            foreach (var id in additionalCrewEmployeeIds)
+            {
+                if (id == Guid.Empty) continue;
+                if (!validEmployeeIds.Contains(id))
+                    throw new InvalidOperationException("Crew member not found or inactive.");
                 crewIds.Add(id);
+            }
         }
 
         await _jobService.UpdateAsync(job, ct);

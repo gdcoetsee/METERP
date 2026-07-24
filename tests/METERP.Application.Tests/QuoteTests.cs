@@ -147,6 +147,34 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_AddLineAsync_ThrowsWhenDescriptionMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0m,
+            Lines = new List<QuoteLine>()
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLineAsync(new QuoteLine
+            {
+                QuoteId = quote.Id,
+                Description = " ",
+                Quantity = 1,
+                UnitPrice = 100
+            }));
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_RecalculatesParentTotals()
     {
         var tenantId = Guid.NewGuid();
@@ -222,7 +250,7 @@ public class QuoteTests
         var tenantId = Guid.NewGuid();
         using var db = CreateInMemoryContext(tenantId);
 
-        var line = new QuoteLine { Quantity = 2, UnitPrice = 100, IsDeleted = false };
+        var line = new QuoteLine { Description = "Materials", Quantity = 2, UnitPrice = 100, IsDeleted = false };
         var quote = new Quote
         {
             TenantId = tenantId,

@@ -225,7 +225,7 @@ else
             _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
             await InvokeAsync(StateHasChanged);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // Overlap or balance failures: retry as unpaid single day to keep field UX resilient under E2E load.
             try
