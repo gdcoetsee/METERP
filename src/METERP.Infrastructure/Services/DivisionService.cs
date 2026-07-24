@@ -46,6 +46,11 @@ public sealed class DivisionService : IDivisionService
         if (duplicate)
             throw new InvalidOperationException($"Division code '{division.Code}' already exists.");
 
+        var nameTaken = await _dbContext.Set<Division>()
+            .AnyAsync(d => d.Name == division.Name, ct);
+        if (nameTaken)
+            throw new InvalidOperationException($"Division '{division.Name}' already exists.");
+
         _dbContext.Set<Division>().Add(division);
         await _dbContext.SaveChangesAsync(ct);
         return division.Id;
@@ -66,6 +71,11 @@ public sealed class DivisionService : IDivisionService
             .AnyAsync(d => d.Code == division.Code && d.Id != division.Id, ct);
         if (duplicate)
             throw new InvalidOperationException($"Division code '{division.Code}' already exists.");
+
+        var nameTaken = await _dbContext.Set<Division>()
+            .AnyAsync(d => d.Name == division.Name && d.Id != division.Id, ct);
+        if (nameTaken)
+            throw new InvalidOperationException($"Division '{division.Name}' already exists.");
 
         _dbContext.Set<Division>().Update(division);
         await _dbContext.SaveChangesAsync(ct);

@@ -106,6 +106,19 @@ public class DivisionServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsDuplicateName()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            await service.CreateAsync(new Division { TenantId = tenantId, Code = "E1", Name = "Electrical" });
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new Division { TenantId = tenantId, Code = "E2", Name = "Electrical" }));
+            Assert.Contains("Electrical", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task SetActiveAsync_TogglesVisibility()
     {
         var (service, db, tenantId) = Create();
