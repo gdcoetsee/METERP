@@ -112,6 +112,33 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task UpdateItemAsync_ThrowsWhenDeactivatingItemWithReservedStock()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "RSV-001",
+            Name = "Reserved cable",
+            QuantityOnHand = 20,
+            QuantityReserved = 5,
+            IsActive = true
+        });
+
+        // QuantityReserved is preserved from store; seed reserved via direct update after create.
+        var tracked = await db.Set<InventoryItem>().FirstAsync(i => i.Id == id);
+        tracked.QuantityReserved = 5;
+        await db.SaveChangesAsync();
+
+        var item = await service.GetItemByIdAsync(id);
+        Assert.NotNull(item);
+        item!.IsActive = false;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateItemAsync(item));
+        Assert.Contains("reserved", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GetAllItemsAsync_ExcludesInactiveItems()
     {
         using var db = CreateContext();

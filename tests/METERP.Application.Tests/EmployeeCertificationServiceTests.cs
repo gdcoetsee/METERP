@@ -120,4 +120,53 @@ public class EmployeeCertificationServiceTests
             Assert.True(deleted.IsDeleted);
         }
     }
+
+    [Fact]
+    public async Task CreateAsync_ThrowsWhenEmployeeInactive()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var inactive = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "CERT-OFF",
+                FirstName = "Off",
+                LastName = "Duty",
+                IsActive = false
+            };
+            db.Set<Employee>().Add(inactive);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new EmployeeCertification
+                {
+                    EmployeeId = inactive.Id,
+                    CertificationType = "First Aid",
+                    NoExpiry = true
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NormalizesExpiryDate()
+    {
+        var (service, db, _, employee) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new EmployeeCertification
+            {
+                EmployeeId = employee.Id,
+                CertificationType = "Working at heights",
+                ExpiryDate = DateTime.UtcNow.Date.AddMonths(6)
+            });
+
+            var cert = await db.Set<EmployeeCertification>().FirstAsync(c => c.Id == id);
+            cert.ExpiryDate = new DateTime(2027, 3, 15, 18, 45, 0, DateTimeKind.Utc);
+            await service.UpdateAsync(cert);
+
+            var reloaded = await db.Set<EmployeeCertification>().AsNoTracking().FirstAsync(c => c.Id == id);
+            Assert.Equal(new DateTime(2027, 3, 15), reloaded.ExpiryDate);
+        }
+    }
 }

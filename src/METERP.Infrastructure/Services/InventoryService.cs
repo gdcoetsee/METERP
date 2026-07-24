@@ -119,6 +119,10 @@ public class InventoryService : IInventoryService
             .FirstOrDefaultAsync(i => i.Id == item.Id, ct)
             ?? throw new InvalidOperationException("Inventory item not found.");
 
+        if (!item.IsActive && existing.IsActive && existing.QuantityReserved > 0)
+            throw new InvalidOperationException(
+                "Cannot deactivate an item with reserved stock. Release reservations first.");
+
         item.QuantityOnHand = existing.QuantityOnHand;
         item.QuantityReserved = existing.QuantityReserved;
 

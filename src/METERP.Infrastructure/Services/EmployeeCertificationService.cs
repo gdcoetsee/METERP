@@ -43,7 +43,7 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
 
     public async Task<Guid> CreateAsync(EmployeeCertification cert, CancellationToken ct = default)
     {
-        Validate(cert);
+        await ValidateAsync(cert, ct);
         if (string.IsNullOrWhiteSpace(cert.StorageKey))
             cert.StorageKey = $"cert-meta/{cert.EmployeeId:N}/{Guid.NewGuid():N}";
         if (string.IsNullOrWhiteSpace(cert.FileName))
@@ -71,11 +71,13 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
             .FirstOrDefaultAsync(c => c.Id == cert.Id, ct)
             ?? throw new InvalidOperationException("Certification not found.");
 
-        Validate(cert);
+        await ValidateAsync(cert, ct);
         existing.CertificationType = cert.CertificationType.Trim();
-        existing.CertificateNumber = cert.CertificateNumber;
+        existing.CertificateNumber = string.IsNullOrWhiteSpace(cert.CertificateNumber)
+            ? null
+            : cert.CertificateNumber.Trim();
         existing.NoExpiry = cert.NoExpiry;
-        existing.ExpiryDate = cert.NoExpiry ? null : cert.ExpiryDate;
+        existing.ExpiryDate = cert.NoExpiry ? null : cert.ExpiryDate?.Date;
         existing.FileName = string.IsNullOrWhiteSpace(cert.FileName) ? existing.FileName : cert.FileName;
         existing.ContentType = cert.ContentType;
         existing.SizeBytes = cert.SizeBytes;
@@ -91,13 +93,22 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
         await _dbContext.SaveChangesAsync(ct);
     }
 
-    private static void Validate(EmployeeCertification cert)
+    private async Task ValidateAsync(EmployeeCertification cert, CancellationToken ct)
     {
         if (cert.EmployeeId == Guid.Empty)
             throw new InvalidOperationException("Employee is required.");
         if (string.IsNullOrWhiteSpace(cert.CertificationType))
             throw new InvalidOperationException("Certification type is required.");
-        if (!cert.NoExpiry && cert.ExpiryDate == null)
+        if (!cert.NoExpiry && cert.ExpiryDate is null)
             throw new InvalidOperationException("Expiry date is required unless marked no expiry.");
+
+        cert.CertificationType = cert.CertificationType.Trim();
+        if (!cert.NoExpiry && cert.ExpiryDate.HasValue)
+            cert.ExpiryDate = cert.ExpiryDate.Value.Date;
+
+        var empExists = await _dbContext.Set<Employee>()
+            .AnyAsync(e => e.Id == cert.EmployeeId && e.IsActive, ct);
+        if (!empExists)
+            throw new InvalidOperationException("Employee not found or inactive.");
     }
 }
