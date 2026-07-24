@@ -133,6 +133,17 @@ public class EmployeeService : IEmployeeService
                 throw new InvalidOperationException("Division not found or inactive.");
         }
 
+        if (emp.HireDate is { } hireDate && hireDate.Date > DateTime.UtcNow.Date.AddDays(30))
+            throw new InvalidOperationException("Hire date cannot be more than 30 days in the future.");
+
+        if (emp.LinkedUserId is { } linkedUser && linkedUser != Guid.Empty)
+        {
+            var linkedTaken = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.LinkedUserId == linkedUser, ct);
+            if (linkedTaken)
+                throw new InvalidOperationException("That user is already linked to another employee.");
+        }
+
         _dbContext.Set<Employee>().Add(emp);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -198,6 +209,18 @@ public class EmployeeService : IEmployeeService
                 .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
             if (!divisionOk)
                 throw new InvalidOperationException("Division not found or inactive.");
+        }
+
+        if (emp.HireDate is { } hireDate && hireDate.Date > DateTime.UtcNow.Date.AddDays(30))
+            throw new InvalidOperationException("Hire date cannot be more than 30 days in the future.");
+
+        if (emp.LinkedUserId is { } linkedUser && linkedUser != Guid.Empty
+            && emp.LinkedUserId != existing.LinkedUserId)
+        {
+            var linkedTaken = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.LinkedUserId == linkedUser && e.Id != emp.Id, ct);
+            if (linkedTaken)
+                throw new InvalidOperationException("That user is already linked to another employee.");
         }
 
         existing.EmployeeNumber = number;

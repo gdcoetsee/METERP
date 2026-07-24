@@ -336,6 +336,49 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenHireDateTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-FUTURE",
+                FirstName = "Future",
+                LastName = "Hire",
+                HireDate = DateTime.UtcNow.Date.AddDays(60)
+            }));
+        Assert.Contains("Hire date", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ThrowsWhenLinkedUserAlreadyAssigned()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var userId = Guid.NewGuid();
+        await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-LINK1",
+            FirstName = "First",
+            LastName = "Link",
+            LinkedUserId = userId
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-LINK2",
+                FirstName = "Second",
+                LastName = "Link",
+                LinkedUserId = userId
+            }));
+        Assert.Contains("already linked", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CreateAsync_AssignsEmployeeNumber_WhenMissing()
     {
         var tenantId = Guid.NewGuid();
