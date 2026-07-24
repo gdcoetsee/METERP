@@ -219,6 +219,23 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenLeaveBalanceNegative()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-LVN",
+                FirstName = "Bad",
+                LastName = "Leave",
+                LeaveBalanceDays = -1m
+            }));
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenEmployeeNumberDuplicate()
     {
         var tenantId = Guid.NewGuid();

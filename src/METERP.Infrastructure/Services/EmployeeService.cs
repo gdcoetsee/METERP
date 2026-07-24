@@ -84,6 +84,10 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("First and last name are required.");
         if (emp.DefaultHourlyRate < 0)
             throw new InvalidOperationException("Default hourly rate cannot be negative.");
+        if (emp.LeaveBalanceDays < 0)
+            throw new InvalidOperationException("Leave balance cannot be negative.");
+        if (emp.AnnualLeaveEntitlementDays < 0)
+            throw new InvalidOperationException("Annual leave entitlement cannot be negative.");
         if (emp.MandatoryHoursPerMonth <= 0)
             emp.MandatoryHoursPerMonth = 160m;
 
@@ -121,6 +125,10 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("First and last name are required.");
         if (emp.DefaultHourlyRate < 0)
             throw new InvalidOperationException("Default hourly rate cannot be negative.");
+        if (emp.LeaveBalanceDays < 0)
+            throw new InvalidOperationException("Leave balance cannot be negative.");
+        if (emp.AnnualLeaveEntitlementDays < 0)
+            throw new InvalidOperationException("Annual leave entitlement cannot be negative.");
 
         var number = emp.EmployeeNumber.Trim();
         var dup = await _dbContext.Set<Employee>()
