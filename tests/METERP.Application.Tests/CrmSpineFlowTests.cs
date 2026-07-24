@@ -173,6 +173,10 @@ public class CrmSpineFlowTests
     public async Task OpportunityToQuote_Conversion_LogsAuditEntry()
     {
         using var harness = new Harness();
+        var customer = new Customer { TenantId = harness.TenantId, Name = "CRM Client" };
+        harness.Db.Set<Customer>().Add(customer);
+        await harness.Db.SaveChangesAsync();
+
         var oppId = await harness.Opportunities.CreateAsync(new Opportunity
         {
             TenantId = harness.TenantId,
@@ -181,7 +185,12 @@ public class CrmSpineFlowTests
             Value = 42000m,
             Stage = OpportunityStage.Negotiation
         });
-        var quoteId = Guid.NewGuid();
+        var quoteId = await harness.Quotes.CreateAsync(new Quote
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0.15m
+        });
 
         await harness.Opportunities.MarkConvertedToQuoteAsync(oppId, quoteId);
 
@@ -241,6 +250,10 @@ public class CrmSpineFlowTests
     public async Task OpportunityToQuote_ClosedWon_DoesNotDowngradeStageOnLink()
     {
         using var harness = new Harness();
+        var customer = new Customer { TenantId = harness.TenantId, Name = "Winner Co" };
+        harness.Db.Set<Customer>().Add(customer);
+        await harness.Db.SaveChangesAsync();
+
         var oppId = await harness.Opportunities.CreateAsync(new Opportunity
         {
             TenantId = harness.TenantId,
@@ -250,9 +263,17 @@ public class CrmSpineFlowTests
             Stage = OpportunityStage.ClosedWon
         });
 
-        await harness.Opportunities.MarkConvertedToQuoteAsync(oppId, Guid.NewGuid());
+        var quoteId = await harness.Quotes.CreateAsync(new Quote
+        {
+            TenantId = harness.TenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0.15m
+        });
+
+        await harness.Opportunities.MarkConvertedToQuoteAsync(oppId, quoteId);
 
         var loaded = await harness.Opportunities.GetByIdAsync(oppId);
         Assert.Equal(OpportunityStage.ClosedWon, loaded!.Stage);
+        Assert.Equal(quoteId, loaded.QuoteId);
     }
 }

@@ -24,6 +24,31 @@ public class OpportunityServiceTests
         return new AppDbContext(options, tenantProvider.Object, currentUser.Object);
     }
 
+    private static async Task<Guid> SeedQuoteAsync(AppDbContext db, Guid tenantId, Guid? customerId = null)
+    {
+        Guid custId;
+        if (customerId is { } existing && existing != Guid.Empty)
+        {
+            custId = existing;
+        }
+        else
+        {
+            custId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = custId, TenantId = tenantId, Name = "Quote Customer" });
+        }
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = custId,
+            QuoteNumber = $"Q-{Guid.NewGuid():N}"[..12],
+            Status = QuoteStatus.Draft
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+        return quote.Id;
+    }
+
     [Fact]
     public async Task GetByIdAsync_ReturnsNull_WhenNotFound()
     {
@@ -55,13 +80,31 @@ public class OpportunityServiceTests
             Stage = OpportunityStage.Qualified,
             Value = 50000m
         });
-        var firstQuote = Guid.NewGuid();
-        var secondQuote = Guid.NewGuid();
+        var firstQuote = await SeedQuoteAsync(db, tenantId);
+        var secondQuote = await SeedQuoteAsync(db, tenantId);
         await service.MarkConvertedToQuoteAsync(oppId, firstQuote);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.MarkConvertedToQuoteAsync(oppId, secondQuote));
         Assert.Contains("already linked", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_Throws_WhenQuoteMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var oppId = await service.CreateAsync(new Opportunity
+        {
+            Title = "No quote",
+            Stage = OpportunityStage.Qualified,
+            Value = 1000m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MarkConvertedToQuoteAsync(oppId, Guid.NewGuid()));
+        Assert.Contains("quote", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -302,7 +345,7 @@ public class OpportunityServiceTests
             Value = 42000m,
             Stage = OpportunityStage.Qualified
         });
-        var quoteId = Guid.NewGuid();
+        var quoteId = await SeedQuoteAsync(db, tenantId);
 
         await service.MarkConvertedToQuoteAsync(oppId, quoteId);
 
@@ -325,7 +368,7 @@ public class OpportunityServiceTests
             Value = 99000m,
             Stage = OpportunityStage.ClosedWon
         });
-        var quoteId = Guid.NewGuid();
+        var quoteId = await SeedQuoteAsync(db, tenantId);
 
         await service.MarkConvertedToQuoteAsync(oppId, quoteId);
 
@@ -348,7 +391,7 @@ public class OpportunityServiceTests
             Value = 80000m,
             Stage = OpportunityStage.Qualified
         });
-        var quoteId = Guid.NewGuid();
+        var quoteId = await SeedQuoteAsync(db, tenantId);
 
         await service.MarkConvertedToQuoteAsync(oppId, quoteId);
 
@@ -356,6 +399,34 @@ public class OpportunityServiceTests
         Assert.NotNull(loaded);
         Assert.Equal(quoteId, loaded!.QuoteId);
         Assert.Equal(OpportunityStage.Proposal, loaded.Stage);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ClosedWon_RequiresCustomerAndValue()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Almost won",
+            Stage = OpportunityStage.Negotiation,
+            Value = 0m
+        });
+
+        var opp = await service.GetByIdAsync(id);
+        opp!.Stage = OpportunityStage.ClosedWon;
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(opp));
+        Assert.Contains("Customer", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        opp.CustomerName = "Acme";
+        opp.Value = 0m;
+        ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(opp));
+        Assert.Contains("value", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        opp.Value = 5000m;
+        await service.UpdateAsync(opp);
+        Assert.Equal(OpportunityStage.ClosedWon, (await service.GetByIdAsync(id))!.Stage);
     }
 
     [Fact]

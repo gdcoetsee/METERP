@@ -205,6 +205,8 @@ public class OpportunityServiceCacheTests
         var (db, _, service) = CreateHarness(tenantId);
         using (db)
         {
+            var customer = new Customer { TenantId = tenantId, Name = "Deal Customer" };
+            db.Set<Customer>().Add(customer);
             var opp = new Opportunity
             {
                 TenantId = tenantId,
@@ -212,15 +214,23 @@ public class OpportunityServiceCacheTests
                 Value = 42000m,
                 Stage = OpportunityStage.Qualified
             };
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-CACHE-CONV",
+                TaxRate = 0.15m
+            };
             db.Set<Opportunity>().Add(opp);
+            db.Set<Quote>().Add(quote);
             await db.SaveChangesAsync();
 
             Assert.Null((await service.GetAllAsync())[0].QuoteId);
 
-            await service.MarkConvertedToQuoteAsync(opp.Id, Guid.NewGuid());
+            await service.MarkConvertedToQuoteAsync(opp.Id, quote.Id);
 
             var refreshed = await service.GetAllAsync();
-            Assert.NotNull(refreshed[0].QuoteId);
+            Assert.Equal(quote.Id, refreshed[0].QuoteId);
             Assert.Equal(OpportunityStage.Proposal, refreshed[0].Stage);
         }
     }

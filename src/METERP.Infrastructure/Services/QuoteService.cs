@@ -144,6 +144,14 @@ public class QuoteService : IQuoteService
 
         EnforceSendGate(existing, quote);
 
+        if (quote.Status == QuoteStatus.Sent && existing.Status != QuoteStatus.Sent)
+        {
+            var hasLines = await _dbContext.Set<QuoteLine>()
+                .AnyAsync(l => l.QuoteId == quote.Id && !l.IsDeleted, ct);
+            if (!hasLines)
+                throw new InvalidOperationException("Cannot send a quote with no lines.");
+        }
+
         if (quote.TaxRate < 0 || quote.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
         if (quote.GrossProfitPercent < 0 || quote.GrossProfitPercent >= 1m)

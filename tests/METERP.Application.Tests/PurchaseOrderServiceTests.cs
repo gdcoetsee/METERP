@@ -280,7 +280,8 @@ public class PurchaseOrderServiceTests
             {
                 SupplierId = supplierId,
                 TaxRate = 0.15m,
-                Notes = "Draft notes"
+                Notes = "Draft notes",
+                Lines = { new PurchaseOrderLine { Description = "Part", Quantity = 1, UnitPrice = 10m } }
             });
             await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
 
@@ -396,12 +397,34 @@ public class PurchaseOrderServiceTests
         {
             var supplierId = Guid.NewGuid();
             db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
-            var poId = await service.CreateAsync(new PurchaseOrder { SupplierId = supplierId, TaxRate = 0m });
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines = { new PurchaseOrderLine { Description = "Line", Quantity = 1, UnitPrice = 10m } }
+            });
 
             await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
 
             var loaded = await service.GetByIdAsync(poId);
             Assert.Equal(PurchaseOrderStatus.Sent, loaded!.Status);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_ThrowsWhenSendingEmptyPo()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder { SupplierId = supplierId, TaxRate = 0m });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent));
+            Assert.Contains("no lines", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -205,7 +205,11 @@ public class QuoteApprovalServiceTests
                 CustomerId = customer.Id,
                 QuoteNumber = "Q-TEST-003",
                 Status = QuoteStatus.Draft,
-                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                Lines =
+                {
+                    new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 1000m }
+                }
             };
             db.Set<Quote>().Add(quote);
             await db.SaveChangesAsync();
@@ -213,7 +217,7 @@ public class QuoteApprovalServiceTests
             var execId = Guid.NewGuid();
             await service.ExecutiveApproveAsync(quote.Id, execId);
 
-            quote = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            quote = await db.Set<Quote>().Include(q => q.Lines).FirstAsync(q => q.Id == quote.Id);
             quote.Status = QuoteStatus.Sent;
             await service.UpdateAsync(quote);
 

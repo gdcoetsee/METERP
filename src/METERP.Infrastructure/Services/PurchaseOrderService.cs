@@ -197,6 +197,10 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (newStatus == PurchaseOrderStatus.Sent && previous != PurchaseOrderStatus.Draft)
             throw new InvalidOperationException("Only draft POs can be marked Sent.");
 
+        if (newStatus == PurchaseOrderStatus.Sent
+            && !po.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Cannot send a purchase order with no lines.");
+
         // Received/PartiallyReceived should come from GRV ReceiveAsync, not manual flip.
         if (newStatus is PurchaseOrderStatus.Received or PurchaseOrderStatus.PartiallyReceived
             && previous is not (PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.Received))

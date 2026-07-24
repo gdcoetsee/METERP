@@ -146,6 +146,19 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException(
                 $"Closed opportunities cannot change stage from {existing.Stage}.");
 
+        if (opportunity.Stage == OpportunityStage.ClosedWon
+            && existing.Stage != OpportunityStage.ClosedWon)
+        {
+            var hasCustomer = (opportunity.CustomerId is { } cid && cid != Guid.Empty)
+                || !string.IsNullOrWhiteSpace(opportunity.CustomerName);
+            if (!hasCustomer)
+                throw new InvalidOperationException(
+                    "Customer is required to mark an opportunity Closed Won.");
+            if (opportunity.Value <= 0)
+                throw new InvalidOperationException(
+                    "Opportunity value must be greater than zero to mark Closed Won.");
+        }
+
         if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty
             && opportunity.CustomerId != existing.CustomerId)
         {
@@ -254,6 +267,15 @@ public class OpportunityService : IOpportunityService
         // Idempotent when already linked to the same quote.
         if (opp.QuoteId == quoteId)
             return;
+
+        var quote = await _dbContext.Set<Quote>().AsNoTracking()
+            .FirstOrDefaultAsync(q => q.Id == quoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        if (opp.CustomerId is { } oppCustomerId && oppCustomerId != Guid.Empty
+            && quote.CustomerId != oppCustomerId)
+            throw new InvalidOperationException(
+                "Quote customer must match the opportunity customer.");
 
         opp.QuoteId = quoteId;
         if (opp.Stage is OpportunityStage.Lead or OpportunityStage.Qualified or OpportunityStage.Proposal or OpportunityStage.Negotiation)
