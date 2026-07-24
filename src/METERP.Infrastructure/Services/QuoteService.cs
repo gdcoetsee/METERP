@@ -152,6 +152,15 @@ public class QuoteService : IQuoteService
         if (quote.QuoteDate != default && quote.ValidUntil.Date < quote.QuoteDate.Date)
             throw new InvalidOperationException("Valid-until date cannot be before the quote date.");
 
+        if (quote.CustomerId == Guid.Empty)
+            quote.CustomerId = existing.CustomerId;
+        else if (quote.CustomerId != existing.CustomerId)
+        {
+            var customer = await _dbContext.Set<Customer>().FindAsync([quote.CustomerId], ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException("Customer not found.");
+        }
+
         // Document number is assigned once; do not allow free-form renumbering.
         quote.QuoteNumber = existing.QuoteNumber;
         // Approval chain is controlled by submit/approve/reject methods.
