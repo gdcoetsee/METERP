@@ -82,6 +82,8 @@ public class SalesOrderService : ISalesOrderService
         if (customer == null || customer.IsDeleted)
             throw new InvalidOperationException("Customer not found.");
 
+        await ValidateQuoteLinkAsync(so.QuoteId, so.CustomerId, ct);
+
         if (so.TaxRate < 0 || so.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
 
@@ -127,6 +129,8 @@ public class SalesOrderService : ISalesOrderService
                 throw new InvalidOperationException("Customer not found.");
         }
 
+        // Quote link is set at create; free-form updates cannot re-point the SO.
+        so.QuoteId = existing.QuoteId;
         so.SoNumber = existing.SoNumber;
         so.Status = existing.Status;
 
@@ -309,6 +313,25 @@ public class SalesOrderService : ISalesOrderService
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.SalesOrders);
+
+    private async Task ValidateQuoteLinkAsync(Guid quoteId, Guid customerId, CancellationToken ct)
+    {
+        if (quoteId == Guid.Empty)
+            throw new InvalidOperationException("Quote is required for a sales order.");
+
+        var quote = await _dbContext.Set<Quote>().AsNoTracking()
+            .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
+        if (quote == null)
+            throw new InvalidOperationException("Linked quote not found.");
+
+        if (quote.CustomerId != customerId)
+            throw new InvalidOperationException(
+                "Sales order customer must match the linked quote's customer.");
+
+        if (quote.Status is QuoteStatus.Rejected or QuoteStatus.Expired)
+            throw new InvalidOperationException(
+                $"Cannot create a sales order from a {quote.Status.ToString().ToLowerInvariant()} quote.");
+    }
 
     private static void ValidateLine(SalesOrderLine line)
     {

@@ -263,6 +263,120 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenQuoteMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new SalesOrder
+                {
+                    QuoteId = Guid.NewGuid(),
+                    CustomerId = customerId,
+                    TaxRate = 0.15m
+                }));
+            Assert.Contains("quote", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_ThrowsWhenQuoteCustomerMismatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerA = Guid.NewGuid();
+            var customerB = Guid.NewGuid();
+            var quoteId = Guid.NewGuid();
+            db.Set<Customer>().AddRange(
+                new Customer { Id = customerA, TenantId = tenantId, Name = "A" },
+                new Customer { Id = customerB, TenantId = tenantId, Name = "B" });
+            db.Set<Quote>().Add(new Quote
+            {
+                Id = quoteId,
+                TenantId = tenantId,
+                CustomerId = customerA,
+                QuoteNumber = "Q-A",
+                Status = QuoteStatus.Accepted
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new SalesOrder
+                {
+                    QuoteId = quoteId,
+                    CustomerId = customerB,
+                    TaxRate = 0.15m
+                }));
+            Assert.Contains("customer", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_ThrowsWhenQuoteRejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            var quoteId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            db.Set<Quote>().Add(new Quote
+            {
+                Id = quoteId,
+                TenantId = tenantId,
+                CustomerId = customerId,
+                QuoteNumber = "Q-REJ",
+                Status = QuoteStatus.Rejected
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new SalesOrder
+                {
+                    QuoteId = quoteId,
+                    CustomerId = customerId,
+                    TaxRate = 0.15m
+                }));
+            Assert.Contains("rejected", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PreservesQuoteId()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                TaxRate = 0.15m,
+                Notes = "before"
+            });
+
+            var so = await service.GetByIdAsync(soId);
+            so!.Notes = "after";
+            so.QuoteId = Guid.NewGuid();
+            await service.UpdateAsync(so);
+
+            var reloaded = await service.GetByIdAsync(soId);
+            Assert.Equal(quoteId, reloaded!.QuoteId);
+            Assert.Equal("after", reloaded.Notes);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenDeliveryDateBeforeSoDate()
     {
         var tenantId = Guid.NewGuid();
