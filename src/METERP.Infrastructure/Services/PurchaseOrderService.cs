@@ -111,6 +111,24 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task UpdateAsync(PurchaseOrder po, CancellationToken ct = default)
     {
+        var existing = await _dbContext.Set<PurchaseOrder>().AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == po.Id, ct);
+        if (existing == null)
+            throw new InvalidOperationException("Purchase order not found.");
+        if (existing.Status != PurchaseOrderStatus.Draft)
+            throw new InvalidOperationException(
+                $"Cannot edit purchase order in status {existing.Status}. Only Draft POs can be edited.");
+
+        if (po.SupplierId == Guid.Empty)
+            throw new InvalidOperationException("Supplier is required for a purchase order.");
+        var supplier = await _dbContext.Set<Supplier>().FindAsync([po.SupplierId], ct);
+        if (supplier == null || supplier.IsDeleted)
+            throw new InvalidOperationException("Supplier not found.");
+
+        // Preserve identity fields that must not drift via free-form update payloads.
+        po.PoNumber = existing.PoNumber;
+        po.Status = existing.Status;
+
         RecalculateTotals(po);
         _dbContext.Set<PurchaseOrder>().Update(po);
         await _dbContext.SaveChangesAsync(ct);

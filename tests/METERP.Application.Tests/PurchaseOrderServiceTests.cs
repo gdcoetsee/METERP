@@ -268,6 +268,62 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ThrowsWhenPoNotDraft()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0.15m,
+                Notes = "Draft notes"
+            });
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            var po = await service.GetByIdAsync(poId);
+            Assert.NotNull(po);
+            po!.Notes = "Should not save";
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(po));
+        }
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AllowsDraftNotesAndPreservesPoNumber()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0.15m,
+                Notes = "Original"
+            });
+            var before = await service.GetByIdAsync(poId);
+            Assert.NotNull(before);
+            var number = before!.PoNumber;
+
+            before.Notes = "Updated notes";
+            before.PoNumber = "HACKED";
+            before.Status = PurchaseOrderStatus.Sent;
+            await service.UpdateAsync(before);
+
+            var after = await service.GetByIdAsync(poId);
+            Assert.Equal("Updated notes", after!.Notes);
+            Assert.Equal(number, after.PoNumber);
+            Assert.Equal(PurchaseOrderStatus.Draft, after.Status);
+        }
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenQuantityNotPositive()
     {
         var tenantId = Guid.NewGuid();
