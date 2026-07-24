@@ -315,6 +315,15 @@ public class JobService : IJobService
                 throw new InvalidOperationException("Assigned lead employee not found or inactive.");
         }
 
+        if (job.DivisionId is { } divisionId && divisionId != Guid.Empty
+            && job.DivisionId != existing.DivisionId)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
+        }
+
         job.Title = job.Title.Trim();
         job.JobNumber = existing.JobNumber;
         job.Status = existing.Status;
