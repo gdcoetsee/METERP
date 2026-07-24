@@ -22,9 +22,9 @@
 
 **Latest product stream (2026-07-24 continuous):** Field report history UI; SO/PO/invoice line integrity; master-data delete guards (customer/supplier/employee/asset); approvals reject-reason modal; scheduling assign validation; recurring create/update UI; leave/division/journal/cert/inventory reserved-stock guards.  
 
-**Unit tests:** **801 green** (Application.Tests). `main` pushed continuously.
+**Unit tests:** **807 green** (Application.Tests). `main` pushed continuously.
 
-**Tests verified (2026-07-24 continuous):** Document line validation, open-work delete blocks, approval reject reasons, scheduling asset/crew checks, recurring schedule CRUD, leave balance, division deactivate, journal active accounts, cert employee checks.
+**Tests verified (2026-07-24 continuous):** Document line validation, open-work delete blocks, approval reject reasons, scheduling asset/crew checks, recurring schedule CRUD, leave balance, division deactivate, journal active accounts, cert employee checks, job/PO update hardening, RFQ supplier/total guards.
 
 ### Advisory duty
 
