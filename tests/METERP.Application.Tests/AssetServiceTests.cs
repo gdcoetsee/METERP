@@ -180,4 +180,26 @@ public class AssetServiceTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(assetId));
         Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task UpdateAsync_PreservesAssetNumber()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "Genset" });
+        var asset = await service.GetByIdAsync(id);
+        Assert.NotNull(asset);
+        var number = asset!.AssetNumber;
+
+        asset.Name = "  Genset 50kVA  ";
+        asset.AssetNumber = "HACKED";
+        await service.UpdateAsync(asset);
+
+        var reloaded = await service.GetByIdAsync(id);
+        Assert.Equal("Genset 50kVA", reloaded!.Name);
+        Assert.Equal(number, reloaded.AssetNumber);
+    }
 }

@@ -87,7 +87,15 @@ public class AssetService : IAssetService
         if (string.IsNullOrWhiteSpace(asset.Name))
             throw new InvalidOperationException("Asset name is required.");
 
+        var existing = await _dbContext.Set<Asset>().AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == asset.Id, ct)
+            ?? throw new InvalidOperationException("Asset not found.");
+
         asset.Name = asset.Name.Trim();
+        asset.AssetNumber = existing.AssetNumber;
+        if (asset.CustomerId == Guid.Empty)
+            asset.CustomerId = existing.CustomerId;
+
         _dbContext.Set<Asset>().Update(asset);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
