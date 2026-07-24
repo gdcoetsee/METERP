@@ -57,6 +57,18 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNameDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        await service.CreateAsync(new Customer { Name = "Acme Mining" });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Customer { Name = "Acme Mining" }));
+    }
+
+    [Fact]
     public async Task DeleteAsync_SoftDeletesCustomerAndContacts()
     {
         var tenantId = Guid.NewGuid();
