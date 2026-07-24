@@ -110,5 +110,14 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
             .AnyAsync(e => e.Id == cert.EmployeeId && e.IsActive, ct);
         if (!empExists)
             throw new InvalidOperationException("Employee not found or inactive.");
+
+        // One open record per employee + type (avoid duplicate Red Cards / medicals).
+        var typeDup = await _dbContext.Set<EmployeeCertification>()
+            .AnyAsync(c => c.EmployeeId == cert.EmployeeId
+                && c.CertificationType == cert.CertificationType
+                && c.Id != cert.Id, ct);
+        if (typeDup)
+            throw new InvalidOperationException(
+                $"Employee already has a '{cert.CertificationType}' certification. Update the existing record.");
     }
 }

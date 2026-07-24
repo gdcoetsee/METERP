@@ -60,6 +60,30 @@ public class EmployeeCertificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsDuplicateTypeForSameEmployee()
+    {
+        var (service, db, _, employee) = Create();
+        await using (db)
+        {
+            await service.CreateAsync(new EmployeeCertification
+            {
+                EmployeeId = employee.Id,
+                CertificationType = "Red Card",
+                NoExpiry = true
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new EmployeeCertification
+                {
+                    EmployeeId = employee.Id,
+                    CertificationType = "Red Card",
+                    ExpiryDate = DateTime.UtcNow.Date.AddYears(1)
+                }));
+            Assert.Contains("already has", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_AndGetExpiring_ReturnsWithinWindow()
     {
         var (service, db, _, employee) = Create();
