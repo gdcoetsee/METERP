@@ -297,6 +297,15 @@ public class JobService : IJobService
             throw new InvalidOperationException(
                 "Use status, close, cancel, or reopen actions to change job status.");
 
+        if (job.CustomerId == Guid.Empty)
+            job.CustomerId = existing.CustomerId;
+        else if (job.CustomerId != existing.CustomerId)
+        {
+            var customer = await _dbContext.Set<Customer>().FindAsync([job.CustomerId], ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException("Customer not found.");
+        }
+
         job.Title = job.Title.Trim();
         job.JobNumber = existing.JobNumber;
         job.Status = existing.Status;
