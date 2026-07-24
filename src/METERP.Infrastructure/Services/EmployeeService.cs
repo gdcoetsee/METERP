@@ -93,6 +93,8 @@ public class EmployeeService : IEmployeeService
 
         emp.FirstName = emp.FirstName.Trim();
         emp.LastName = emp.LastName.Trim();
+        if (!string.IsNullOrWhiteSpace(emp.Email))
+            emp.Email = emp.Email.Trim();
 
         if (string.IsNullOrWhiteSpace(emp.EmployeeNumber))
         {
@@ -105,6 +107,14 @@ public class EmployeeService : IEmployeeService
                 .AnyAsync(e => e.EmployeeNumber == emp.EmployeeNumber, ct);
             if (dup)
                 throw new InvalidOperationException($"Employee number '{emp.EmployeeNumber}' already exists.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(emp.Email))
+        {
+            var emailDup = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.Email == emp.Email, ct);
+            if (emailDup)
+                throw new InvalidOperationException($"Employee email '{emp.Email}' is already in use.");
         }
 
         if (emp.ManagerEmployeeId is { } managerId && managerId != Guid.Empty)
@@ -151,6 +161,15 @@ public class EmployeeService : IEmployeeService
             .AnyAsync(e => e.EmployeeNumber == number && e.Id != emp.Id, ct);
         if (dup)
             throw new InvalidOperationException($"Employee number '{number}' already exists.");
+
+        if (!string.IsNullOrWhiteSpace(emp.Email))
+        {
+            emp.Email = emp.Email.Trim();
+            var emailDup = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.Email == emp.Email && e.Id != emp.Id, ct);
+            if (emailDup)
+                throw new InvalidOperationException($"Employee email '{emp.Email}' is already in use.");
+        }
 
         if (!emp.IsActive && existing.IsActive)
         {

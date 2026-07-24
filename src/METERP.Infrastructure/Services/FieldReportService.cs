@@ -67,6 +67,14 @@ public sealed class FieldReportService : IFieldReportService
 
         if (report.HoursWorked < 0 || report.TravelCost < 0)
             throw new InvalidOperationException("Hours and travel cost cannot be negative.");
+        if (report.HoursWorked > 24m)
+            throw new InvalidOperationException("Hours worked cannot exceed 24 in a single field report.");
+
+        report.WorkDate = report.WorkDate == default ? DateTime.UtcNow.Date : report.WorkDate.Date;
+        if (report.WorkDate > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Work date cannot be more than one day in the future.");
+        if (report.WorkDate < DateTime.UtcNow.Date.AddYears(-2))
+            throw new InvalidOperationException("Work date cannot be more than 2 years in the past.");
 
         var hasContent = report.HoursWorked > 0
             || report.TravelCost > 0
@@ -78,7 +86,6 @@ public sealed class FieldReportService : IFieldReportService
 
         report.Status = FieldReportStatus.PendingApproval;
         report.SubmittedAt = DateTime.UtcNow;
-        report.WorkDate = report.WorkDate == default ? DateTime.UtcNow.Date : report.WorkDate.Date;
         // Stamp tenant from job so field-portal circuits never insert Guid.Empty TenantId.
         if (report.TenantId == Guid.Empty)
             report.TenantId = job.TenantId;

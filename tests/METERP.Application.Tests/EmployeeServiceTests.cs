@@ -311,6 +311,31 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenEmailDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-MAIL1",
+            FirstName = "One",
+            LastName = "Tech",
+            Email = "shared@acme.demo"
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-MAIL2",
+                FirstName = "Two",
+                LastName = "Tech",
+                Email = "shared@acme.demo"
+            }));
+        Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CreateAsync_AssignsEmployeeNumber_WhenMissing()
     {
         var tenantId = Guid.NewGuid();

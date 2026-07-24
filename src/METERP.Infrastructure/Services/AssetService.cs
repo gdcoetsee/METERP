@@ -78,10 +78,21 @@ public class AssetService : IAssetService
         asset.Name = asset.Name.Trim();
         if (!string.IsNullOrWhiteSpace(asset.AssetType))
             asset.AssetType = asset.AssetType.Trim();
+        if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
+            asset.SerialNumber = asset.SerialNumber.Trim();
 
         if (string.IsNullOrWhiteSpace(asset.AssetNumber))
         {
             asset.AssetNumber = $"AST-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
+        {
+            var serialDup = await _dbContext.Set<Asset>()
+                .AnyAsync(a => a.SerialNumber == asset.SerialNumber, ct);
+            if (serialDup)
+                throw new InvalidOperationException(
+                    $"Asset serial number '{asset.SerialNumber}' is already registered.");
         }
 
         _dbContext.Set<Asset>().Add(asset);
@@ -101,6 +112,19 @@ public class AssetService : IAssetService
 
         asset.Name = asset.Name.Trim();
         asset.AssetNumber = existing.AssetNumber;
+        if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
+            asset.SerialNumber = asset.SerialNumber.Trim();
+
+        if (!string.IsNullOrWhiteSpace(asset.SerialNumber)
+            && !string.Equals(asset.SerialNumber, existing.SerialNumber, StringComparison.Ordinal))
+        {
+            var serialDup = await _dbContext.Set<Asset>()
+                .AnyAsync(a => a.SerialNumber == asset.SerialNumber && a.Id != asset.Id, ct);
+            if (serialDup)
+                throw new InvalidOperationException(
+                    $"Asset serial number '{asset.SerialNumber}' is already registered.");
+        }
+
         if (asset.CustomerId == Guid.Empty)
             asset.CustomerId = existing.CustomerId;
         else if (asset.CustomerId != existing.CustomerId)

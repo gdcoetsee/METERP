@@ -275,6 +275,49 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_ThrowsWhenHoursOver24()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 25m
+            }));
+            Assert.Contains("24", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenWorkDateTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m,
+                WorkDate = DateTime.UtcNow.Date.AddDays(10)
+            }));
+            Assert.Contains("future", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ApproveAsync_ThrowsWhenJobClosedAfterSubmit()
     {
         var tenantId = Guid.NewGuid();
