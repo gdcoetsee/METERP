@@ -249,6 +249,31 @@ public sealed class StockRequisitionService : IStockRequisitionService
         return true;
     }
 
+    public async Task<bool> CancelAsync(Guid requisitionId, Guid userId, string? reason = null, CancellationToken ct = default)
+    {
+        var req = await LoadForUpdateAsync(requisitionId, ct);
+        if (req == null)
+            return false;
+
+        if (req.Status is RequisitionStatus.Issued or RequisitionStatus.Cancelled or RequisitionStatus.Rejected)
+            return false;
+
+        // Do not cancel after goods have been partially issued.
+        if (req.Lines.Any(l => !l.IsDeleted && l.QuantityIssued > 0))
+            throw new InvalidOperationException(
+                "Cannot cancel a requisition that already has issued stock. Complete or reverse issues first.");
+
+        await ReleaseReservationsAsync(req, ct);
+        req.Status = RequisitionStatus.Cancelled;
+        req.RejectionReason = string.IsNullOrWhiteSpace(reason)
+            ? "Cancelled"
+            : reason.Trim();
+        req.LastModifiedBy = userId.ToString();
+        await _dbContext.SaveChangesAsync(ct);
+        await LogAsync("CANCEL", req, req.RejectionReason, ct);
+        return true;
+    }
+
     public async Task<bool> IssueAsync(Guid requisitionId, Guid issuedByUserId, CancellationToken ct = default)
     {
         var req = await LoadForUpdateAsync(requisitionId, ct);

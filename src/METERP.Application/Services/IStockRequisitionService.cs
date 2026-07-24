@@ -20,6 +20,9 @@ public interface IStockRequisitionService
 
     Task<bool> RejectAsync(Guid requisitionId, Guid approverUserId, string reason, CancellationToken ct = default);
 
+    /// <summary>Cancel a pending/approved requisition that has not been fully issued.</summary>
+    Task<bool> CancelAsync(Guid requisitionId, Guid userId, string? reason = null, CancellationToken ct = default);
+
     Task<bool> IssueAsync(Guid requisitionId, Guid issuedByUserId, CancellationToken ct = default);
 
     Task<bool> FulfillAfterPoReceiptAsync(Guid purchaseOrderId, CancellationToken ct = default);

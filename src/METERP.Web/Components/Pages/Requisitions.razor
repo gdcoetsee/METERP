@@ -82,6 +82,11 @@ else
                                 <button type="button" class="btn btn-sm btn-success" data-testid="requisition-issue-btn"
                                         @onclick="() => IssueAsync(req)">Issue to job</button>
                             }
+                            @if (CanManage && CanCancelRequisition(req))
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger ms-1" data-testid="requisition-cancel-btn"
+                                        @onclick="() => CancelReqAsync(req)">Cancel</button>
+                            }
                         </td>
                     </tr>
                 }
@@ -510,6 +515,34 @@ else
         }
     }
 
+    private async Task CancelReqAsync(StockRequisition req)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Cancel {req.RequisitionNumber}? Reserved stock will be released.",
+            "Cancel requisition",
+            confirmLabel: "Cancel REQ",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        try
+        {
+            if (!await RequisitionService.CancelAsync(req.Id, userId, "Cancelled from requisitions list"))
+            {
+                Toast.ShowError("Requisition could not be cancelled.");
+                return;
+            }
+
+            Toast.ShowSuccess($"{req.RequisitionNumber} cancelled.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
     private async Task ExportCsvAsync()
     {
         if (_requisitions.Count == 0) return;
@@ -539,6 +572,10 @@ else
             or RequisitionStatus.ProcurementOrdered
         && req.Lines.Any(l => !l.IsDeleted && l.QuantityReserved > l.QuantityIssued);
 
+    private static bool CanCancelRequisition(StockRequisition req) =>
+        req.Status is not (RequisitionStatus.Issued or RequisitionStatus.Cancelled or RequisitionStatus.Rejected)
+        && !req.Lines.Any(l => !l.IsDeleted && l.QuantityIssued > 0);
+
     private static string GetStatusBadge(RequisitionStatus status) => status switch
     {
         RequisitionStatus.PendingManager => "<span class=\"badge bg-secondary\">Manager</span>",
@@ -548,6 +585,7 @@ else
         RequisitionStatus.AwaitingProcurement => "<span class=\"badge bg-danger\">Procure</span>",
         RequisitionStatus.ProcurementOrdered => "<span class=\"badge bg-info text-dark\">PO Ordered</span>",
         RequisitionStatus.Rejected => "<span class=\"badge bg-dark\">Rejected</span>",
+        RequisitionStatus.Cancelled => "<span class=\"badge bg-secondary\">Cancelled</span>",
         _ => $"<span class=\"badge bg-light text-dark\">{status}</span>"
     };
 }

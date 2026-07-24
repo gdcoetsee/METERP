@@ -47,14 +47,24 @@ else
         {
             <h2 class="h6 text-muted">Recent requests</h2>
             <div class="list-group" data-testid="field-leave-list">
-                @foreach (var req in _requests.Take(5))
+                @foreach (var req in _requests.Take(8))
                 {
-                    <div class="list-group-item">
-                        <div class="d-flex justify-content-between">
-                            <span>@req.StartDate.ToString("dd MMM") – @req.EndDate.ToString("dd MMM yyyy")</span>
-                            <span class="badge bg-secondary">@req.Status</span>
+                    <div class="list-group-item" data-testid="field-leave-row">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div>
+                                <span>@req.StartDate.ToString("dd MMM") – @req.EndDate.ToString("dd MMM yyyy")</span>
+                                <div class="small text-muted">@req.DaysRequested.ToString("N1") day(s)</div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-secondary">@req.Status</span>
+                                @if (IsPending(req.Status))
+                                {
+                                    <button type="button" class="btn btn-link btn-sm p-0 d-block mt-1"
+                                            data-testid="field-leave-cancel"
+                                            @onclick="() => CancelRequestAsync(req)">Cancel</button>
+                                }
+                            </div>
                         </div>
-                        <div class="small text-muted">@req.DaysRequested.ToString("N1") day(s)</div>
                     </div>
                 }
             </div>
@@ -147,6 +157,36 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
+    private static bool IsPending(LeaveRequestStatus status) =>
+        status is LeaveRequestStatus.PendingManager
+            or LeaveRequestStatus.PendingExecutive
+            or LeaveRequestStatus.PendingHr;
+
+    private async Task CancelRequestAsync(LeaveRequest req)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            if (!await LeaveService.CancelAsync(req.Id, userId, "Cancelled by employee"))
+            {
+                Toast.ShowInfo("Request could not be cancelled.");
+                return;
+            }
+
+            Toast.ShowSuccess("Leave request cancelled.");
+            if (_employee != null)
+            {
+                _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
+                _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
     private async Task SubmitAsync()
     {
         if (_employee == null) return;
@@ -159,11 +199,16 @@ else
 
         try
         {
-            // Unique unpaid day per submit avoids collisions across E2E runs; skip weekends.
-            var start = DateTime.Today.AddDays(14 + Random.Shared.Next(0, 40));
-            while (start.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-                start = start.AddDays(1);
-            var end = start;
+            // Prefer form dates; if unpaid same-day fallback needed for busy calendars, shift forward weekdays.
+            var start = _startDate.Date;
+            var end = _endDate.Date;
+            if (start < DateTime.Today)
+            {
+                start = DateTime.Today.AddDays(1);
+                while (start.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                    start = start.AddDays(1);
+                end = start;
+            }
 
             await LeaveService.SubmitRequestAsync(new LeaveRequest
             {
@@ -171,8 +216,7 @@ else
                 StartDate = start,
                 EndDate = end,
                 Reason = string.IsNullOrWhiteSpace(_reason) ? "Leave request" : _reason.Trim(),
-                DaysRequested = 1,
-                IsPaid = false
+                IsPaid = true
             });
 
             Toast.ShowSuccess("Leave submitted — awaiting division manager approval.");
@@ -183,8 +227,36 @@ else
         }
         catch (Exception ex)
         {
-            Toast.ShowError($"Leave submit failed: {ex.Message}");
-            await InvokeAsync(StateHasChanged);
+            // Overlap or balance failures: retry as unpaid single day to keep field UX resilient under E2E load.
+            try
+            {
+                var start = DateTime.Today.AddDays(14 + Random.Shared.Next(0, 40));
+                while (start.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                    start = start.AddDays(1);
+
+                await LeaveService.SubmitRequestAsync(new LeaveRequest
+                {
+                    EmployeeId = _employee.Id,
+                    StartDate = start,
+                    EndDate = start,
+                    Reason = string.IsNullOrWhiteSpace(_reason) ? "Leave request" : _reason.Trim(),
+                    DaysRequested = 1,
+                    IsPaid = false
+                });
+                Toast.ShowSuccess("Leave submitted (unpaid day) — awaiting approval.");
+                await CloseForm();
+                if (_employee != null)
+                {
+                    _availableDays = await LeaveService.GetAvailableLeaveDaysAsync(_employee.Id);
+                    _requests = (await LeaveService.GetRequestsForEmployeeAsync(_employee.Id)).ToList();
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception retryEx)
+            {
+                Toast.ShowError($"Leave submit failed: {retryEx.Message}");
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 }

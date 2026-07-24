@@ -290,18 +290,22 @@ public class QuoteService : IQuoteService
 
     public async Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default)
     {
+        var quote = await _dbContext.Set<Quote>()
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == line.QuoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        EnsureQuoteLinesEditable(quote);
+
+        if (line.Quantity <= 0)
+            throw new InvalidOperationException("Line quantity must be positive.");
+
         _dbContext.Set<QuoteLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        // Recalculate parent (LineTotal is now computed on the entity)
-        var quote = await _dbContext.Set<Quote>()
-            .Include(q => q.Lines)
-            .FirstOrDefaultAsync(q => q.Id == line.QuoteId, ct);
-        if (quote != null)
-        {
-            quote.RecalculateTotals();
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        await _dbContext.Entry(quote).Collection(q => q.Lines).LoadAsync(ct);
+        quote.RecalculateTotals();
+        await _dbContext.SaveChangesAsync(ct);
 
         await InvalidateListCachesAsync(ct);
         return line.Id;
@@ -311,6 +315,16 @@ public class QuoteService : IQuoteService
     {
         var existing = await _dbContext.Set<QuoteLine>().FirstOrDefaultAsync(l => l.Id == line.Id, ct);
         if (existing == null) return;
+
+        var quote = await _dbContext.Set<Quote>()
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == existing.QuoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        EnsureQuoteLinesEditable(quote);
+
+        if (line.Quantity <= 0)
+            throw new InvalidOperationException("Line quantity must be positive.");
 
         existing.Description = line.Description;
         existing.LineType = line.LineType;
@@ -322,14 +336,8 @@ public class QuoteService : IQuoteService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        var quote = await _dbContext.Set<Quote>()
-            .Include(q => q.Lines)
-            .FirstOrDefaultAsync(q => q.Id == line.QuoteId, ct);
-        if (quote != null)
-        {
-            quote.RecalculateTotals();
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        quote.RecalculateTotals();
+        await _dbContext.SaveChangesAsync(ct);
 
         await InvalidateListCachesAsync(ct);
     }
@@ -340,20 +348,31 @@ public class QuoteService : IQuoteService
         if (line == null) return;
 
         var quoteId = line.QuoteId;
-        line.IsDeleted = true;
-
-        await _dbContext.SaveChangesAsync(ct);
-
         var quote = await _dbContext.Set<Quote>()
             .Include(q => q.Lines)
             .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
-        if (quote != null)
-        {
-            quote.RecalculateTotals();
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        if (quote == null) return;
+
+        EnsureQuoteLinesEditable(quote);
+
+        line.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+
+        quote.RecalculateTotals();
+        await _dbContext.SaveChangesAsync(ct);
 
         await InvalidateListCachesAsync(ct);
+    }
+
+    private static void EnsureQuoteLinesEditable(Quote quote)
+    {
+        if (quote.Status != QuoteStatus.Draft)
+            throw new InvalidOperationException(
+                $"Lines can only be changed on draft quotes (current status: {quote.Status}).");
+
+        if (quote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
+            throw new InvalidOperationException(
+                "Quote is pending executive approval — withdraw approval before editing lines.");
     }
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)

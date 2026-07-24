@@ -178,6 +178,30 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task CancelAsync_SetsCancelled_AndReleasesReservations()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 10m);
+            var reqId = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 3 }]
+            });
+            await service.ApproveManagerAsync(reqId, Guid.NewGuid());
+            await service.ApproveExecutiveAsync(reqId, Guid.NewGuid());
+
+            Assert.True(await service.CancelAsync(reqId, Guid.NewGuid(), "Job postponed"));
+            var req = await service.GetByIdAsync(reqId);
+            Assert.Equal(RequisitionStatus.Cancelled, req!.Status);
+            Assert.All(req.Lines, l => Assert.Equal(0m, l.QuantityReserved));
+        }
+    }
+
+    [Fact]
     public async Task RejectAsync_ReleasesReservations()
     {
         var (service, db, tenantId, _) = Create();
