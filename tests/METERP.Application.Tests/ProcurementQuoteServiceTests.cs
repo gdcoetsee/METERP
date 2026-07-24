@@ -130,6 +130,19 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_ThrowsWhenSupplierAlreadyQuoted()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 90m));
+            Assert.Contains("already has a quote", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_WhenNotAwaitingProcurement_Throws()
     {
         var tenantId = Guid.NewGuid();

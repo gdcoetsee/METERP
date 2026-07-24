@@ -57,6 +57,12 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId && s.IsActive, ct)
             ?? throw new InvalidOperationException("Supplier not found or inactive.");
 
+        var alreadyQuoted = await _dbContext.Set<ProcurementSupplierQuote>()
+            .AnyAsync(q => q.StockRequisitionId == requisitionId && q.SupplierId == supplierId, ct);
+        if (alreadyQuoted)
+            throw new InvalidOperationException(
+                $"Supplier '{supplier.Name}' already has a quote on this requisition. Update or select it instead.");
+
         var quote = new ProcurementSupplierQuote
         {
             StockRequisitionId = requisitionId,

@@ -52,9 +52,15 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
     {
         if (string.IsNullOrWhiteSpace(documentType) || string.IsNullOrWhiteSpace(title))
             throw new InvalidOperationException("Document type and title are required.");
+        if (string.IsNullOrWhiteSpace(fileName))
+            throw new InvalidOperationException("File name is required.");
+        if (content is null || !content.CanRead)
+            throw new InvalidOperationException("Document content stream is required.");
 
         if (!noExpiry && expiryDate is null)
             throw new InvalidOperationException("Expiry date is required unless marked as no expiry.");
+        if (!noExpiry && expiryDate.HasValue && expiryDate.Value.Date < DateTime.UtcNow.Date)
+            throw new InvalidOperationException("Expiry date cannot be in the past for new uploads.");
 
         var tenantId = _tenantProvider.GetCurrentTenantId();
         var stored = await _storage.SaveAsync(tenantId, "company-docs", fileName, content, contentType, ct);

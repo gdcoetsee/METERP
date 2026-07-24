@@ -81,6 +81,40 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_RejectsPastExpiryDate()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UploadAsync(
+                    "Insurance",
+                    "Policy",
+                    "policy.pdf",
+                    content,
+                    "application/pdf",
+                    false,
+                    DateTime.UtcNow.Date.AddDays(-1),
+                    null));
+            Assert.Contains("past", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task UploadAsync_RequiresFileName()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UploadAsync("COID", "Title", "  ", content, "application/pdf", true, null, null));
+            Assert.Contains("File name", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task GetExpiringAsync_ReturnsDocumentsWithinWindow()
     {
         var (service, db, tenantId, _) = Create();
