@@ -348,13 +348,33 @@ public class JobService : IJobService
     {
         var job = await _dbContext.Set<Job>()
             .Include(j => j.ActualCosts)
+            .Include(j => j.Labors)
             .FirstOrDefaultAsync(j => j.Id == id, ct);
 
         if (job == null) return;
 
+        if (job.Status is JobStatus.Closed)
+            throw new InvalidOperationException(
+                $"Cannot delete closed job {job.JobNumber}. Keep it for audit history.");
+
+        if (job.Status is not (JobStatus.Scheduled or JobStatus.Cancelled)
+            && (job.ActualCosts.Any(c => !c.IsDeleted) || job.Labors.Any(l => !l.IsDeleted)))
+            throw new InvalidOperationException(
+                $"Cannot delete job {job.JobNumber} with costs or labor. Cancel it instead.");
+
+        var hasInvoices = await _dbContext.Set<Invoice>().AsNoTracking()
+            .AnyAsync(i => i.JobId == job.Id, ct);
+        if (hasInvoices)
+            throw new InvalidOperationException(
+                $"Cannot delete job {job.JobNumber} — invoices exist. Cancel the job instead.");
+
         foreach (var cost in job.ActualCosts)
         {
             cost.IsDeleted = true;
+        }
+        foreach (var labor in job.Labors)
+        {
+            labor.IsDeleted = true;
         }
         job.IsDeleted = true;
 

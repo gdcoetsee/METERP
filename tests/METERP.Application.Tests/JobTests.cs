@@ -420,6 +420,40 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_DeleteAsync_ThrowsWhenClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Done"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(jobId));
+    }
+
+    [Fact]
+    public async Task JobService_DeleteAsync_ThrowsWhenInvoicesExist()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await service.GetByIdAsync(jobId);
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = job!.CustomerId,
+            JobId = jobId,
+            InvoiceNumber = "INV-DEL",
+            Status = InvoiceStatus.Draft
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(jobId));
+        Assert.Contains("invoice", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task JobService_UpdateStatusAsync_SetsCompletedDate_WhenCompleted()
     {
         var tenantId = Guid.NewGuid();
