@@ -88,6 +88,14 @@ public class RecurringJobServiceTests
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.CreateAsync(new RecurringJobSchedule
                 {
+                    CustomerId = customerId,
+                    Title = "Too far",
+                    IntervalDays = 4000
+                }));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new RecurringJobSchedule
+                {
                     CustomerId = Guid.NewGuid(),
                     Title = "No customer",
                     IntervalDays = 7

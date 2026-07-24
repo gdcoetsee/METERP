@@ -47,6 +47,8 @@ public sealed class RecurringJobService : IRecurringJobService
 
         if (schedule.IntervalDays < 1)
             throw new InvalidOperationException("Interval must be at least 1 day.");
+        if (schedule.IntervalDays > 3650)
+            throw new InvalidOperationException("Interval cannot exceed 10 years (3650 days).");
 
         if (schedule.DefaultQuotedTotal < 0)
             throw new InvalidOperationException("Default quoted total cannot be negative.");
@@ -83,6 +85,8 @@ public sealed class RecurringJobService : IRecurringJobService
             throw new InvalidOperationException("Recurring job title is required.");
         if (schedule.IntervalDays < 1)
             throw new InvalidOperationException("Interval must be at least 1 day.");
+        if (schedule.IntervalDays > 3650)
+            throw new InvalidOperationException("Interval cannot exceed 10 years (3650 days).");
         if (schedule.DefaultQuotedTotal < 0)
             throw new InvalidOperationException("Default quoted total cannot be negative.");
 
