@@ -146,6 +146,17 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException(
                 $"Closed opportunities cannot change stage from {existing.Stage}.");
 
+        if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty
+            && opportunity.CustomerId != existing.CustomerId)
+        {
+            var customer = await _dbContext.Set<Customer>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == opportunity.CustomerId, ct);
+            if (customer == null)
+                throw new InvalidOperationException("Customer not found.");
+            opportunity.CustomerName ??= customer.Name;
+        }
+
         _dbContext.Set<Opportunity>().Update(opportunity);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
