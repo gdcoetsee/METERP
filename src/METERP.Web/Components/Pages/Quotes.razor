@@ -160,6 +160,14 @@ else
                                 Submit for executive approval
                             </button>
                         }
+                        @if (!editorIsNew && editorQuote.Status == QuoteStatus.Draft
+                             && editorQuote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
+                        {
+                            <button type="button" class="btn btn-outline-secondary" disabled="@_pageBusy"
+                                    data-testid="quote-withdraw-approval" @onclick="WithdrawFromApproval">
+                                Withdraw for edits
+                            </button>
+                        }
                         @if (!editorIsNew)
                         {
                             <span>@((MarkupString)GetApprovalBadge(editorQuote.ApprovalStatus))</span>
@@ -712,6 +720,26 @@ else
                 await QuoteService.SubmitForExecutiveApprovalAsync(editorQuote.Id, userId);
                 SetEditorQuote(await QuoteService.GetByIdAsync(editorQuote.Id));
                 ToastService.ShowSuccess("Submitted for executive approval — check Approvals hub.");
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError(ex.Message);
+            }
+        });
+    }
+
+    private Task WithdrawFromApproval()
+    {
+        if (editorQuote == null || CurrentUserService.UserId is not { } userId)
+            return Task.CompletedTask;
+
+        return RunGuardedAsync(async () =>
+        {
+            try
+            {
+                await QuoteService.WithdrawFromApprovalAsync(editorQuote.Id, userId, "Withdrawn to edit lines");
+                SetEditorQuote(await QuoteService.GetByIdAsync(editorQuote.Id));
+                ToastService.ShowSuccess("Quote withdrawn — lines can be edited again.");
             }
             catch (Exception ex)
             {

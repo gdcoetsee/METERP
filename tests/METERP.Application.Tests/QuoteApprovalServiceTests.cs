@@ -108,6 +108,67 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task WithdrawFromApprovalAsync_ReturnsToNoneAndAllowsLineEdits()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-WD",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = DateTime.UtcNow,
+                SubmittedForApprovalByUserId = Guid.NewGuid()
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.WithdrawFromApprovalAsync(quote.Id, Guid.NewGuid(), "Need to fix travel line");
+
+            var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(QuoteApprovalStatus.None, saved.ApprovalStatus);
+            Assert.Null(saved.SubmittedForApprovalAt);
+            Assert.Contains("fix travel", saved.ExecutiveRejectionReason);
+
+            // Lines editable again once withdrawn.
+            await service.AddLineAsync(new QuoteLine
+            {
+                QuoteId = quote.Id,
+                Description = "Travel",
+                Quantity = 1,
+                UnitPrice = 500m
+            });
+            var withLines = await service.GetByIdAsync(quote.Id);
+            Assert.Single(withLines!.Lines, l => !l.IsDeleted);
+        }
+    }
+
+    [Fact]
+    public async Task WithdrawFromApprovalAsync_ThrowsWhenNotPending()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-WD2",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.None
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.WithdrawFromApprovalAsync(quote.Id, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveApprove_ReturnsFalse_WhenNotPending()
     {
         var (service, db, tenantId, customer) = Create();

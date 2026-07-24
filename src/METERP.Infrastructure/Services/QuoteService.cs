@@ -246,6 +246,38 @@ public class QuoteService : IQuoteService
         }
     }
 
+    public async Task WithdrawFromApprovalAsync(Guid quoteId, Guid userId, string? reason = null, CancellationToken ct = default)
+    {
+        var quote = await _dbContext.Set<Quote>().FirstOrDefaultAsync(q => q.Id == quoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        if (quote.ApprovalStatus != QuoteApprovalStatus.PendingExecutive)
+            throw new InvalidOperationException("Only quotes pending executive approval can be withdrawn.");
+
+        if (quote.Status != QuoteStatus.Draft)
+            throw new InvalidOperationException("Only draft quotes can be withdrawn from approval.");
+
+        quote.ApprovalStatus = QuoteApprovalStatus.None;
+        quote.SubmittedForApprovalAt = null;
+        quote.SubmittedForApprovalByUserId = null;
+        quote.ExecutiveRejectionReason = string.IsNullOrWhiteSpace(reason)
+            ? "Withdrawn by estimator"
+            : reason.Trim();
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "WITHDRAW_APPROVAL",
+                "Quote",
+                quote.QuoteNumber,
+                $"Withdrawn by {userId:N}: {quote.ExecutiveRejectionReason}",
+                ct);
+        }
+    }
+
     public async Task<IReadOnlyList<Quote>> GetPendingExecutiveApprovalAsync(CancellationToken ct = default)
     {
         return await _dbContext.Set<Quote>()

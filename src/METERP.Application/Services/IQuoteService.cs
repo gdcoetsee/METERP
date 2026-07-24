@@ -20,6 +20,9 @@ public interface IQuoteService
 
     Task ExecutiveRejectAsync(Guid quoteId, Guid approverUserId, string reason, CancellationToken ct = default);
 
+    /// <summary>Estimator withdraws a pending quote from the executive queue so lines can be edited again.</summary>
+    Task WithdrawFromApprovalAsync(Guid quoteId, Guid userId, string? reason = null, CancellationToken ct = default);
+
     Task<IReadOnlyList<Quote>> GetPendingExecutiveApprovalAsync(CancellationToken ct = default);
 
     // Line item management (inline like Contacts on Customer)
