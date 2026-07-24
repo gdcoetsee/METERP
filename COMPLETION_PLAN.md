@@ -22,9 +22,9 @@
 
 **Latest product stream (2026-07-24 continuous):** SKU promote + RFQ lines; quota UX; field/scheduling/stock-take guards; production secrets validator; leave overlap; recurring resilience; notification dismiss; PPE return; finance/asset/customer/supplier/SO/quote/division/inventory create guards.  
 
-**Unit tests:** **768 green** (Application.Tests). `main` pushed continuously.
+**Unit tests:** **771 green** (Application.Tests). `main` pushed continuously.
 
-**Tests verified (2026-07-24):** Full Application.Tests suite green after each batch. Invoice payment/credit/contact/user guards; job/PO/tenant create validation; leave cancel; quote/SO customer required.
+**Tests verified (2026-07-24 continuous):** Invoice/SO/PO lifecycle locks, payment integrity, master-data validation, leave cancel, employee deactivate, compliance tenant stamps, job cost/labor guards.
 
 ### Advisory duty
 

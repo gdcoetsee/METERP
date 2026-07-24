@@ -564,6 +564,15 @@ public class JobService : IJobService
 
     public async Task<Guid> AddCostAsync(JobCost cost, CancellationToken ct = default)
     {
+        if (cost.Amount < 0)
+            throw new InvalidOperationException("Cost amount cannot be negative.");
+
+        cost.Description = string.IsNullOrWhiteSpace(cost.Description)
+            ? "Job cost"
+            : cost.Description.Trim();
+        if (string.IsNullOrWhiteSpace(cost.CostType))
+            cost.CostType = "Other";
+
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == cost.JobId, ct)
             ?? throw new InvalidOperationException($"Job {cost.JobId} was not found.");
 
@@ -592,11 +601,19 @@ public class JobService : IJobService
 
     public async Task<Guid> AddLaborAsync(JobLabor labor, CancellationToken ct = default)
     {
+        if (labor.Hours <= 0)
+            throw new InvalidOperationException("Labor hours must be positive.");
+        if (labor.HourlyRate < 0)
+            throw new InvalidOperationException("Hourly rate cannot be negative.");
+
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == labor.JobId, ct)
             ?? throw new InvalidOperationException($"Job {labor.JobId} was not found.");
 
         await EnsureJobOpenAsync(job, ct);
         await ApplyEmployeeDefaultsAsync(labor, ct);
+
+        if (labor.Hours <= 0)
+            throw new InvalidOperationException("Labor hours must be positive.");
 
         _dbContext.Set<JobLabor>().Add(labor);
         await _dbContext.SaveChangesAsync(ct);

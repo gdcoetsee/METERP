@@ -84,6 +84,10 @@ public class AssetService : IAssetService
 
     public async Task UpdateAsync(Asset asset, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(asset.Name))
+            throw new InvalidOperationException("Asset name is required.");
+
+        asset.Name = asset.Name.Trim();
         _dbContext.Set<Asset>().Update(asset);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -93,6 +97,9 @@ public class AssetService : IAssetService
     {
         var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == id, ct);
         if (asset == null) return;
+
+        if (asset.Status == AssetStatus.Operational)
+            asset.Status = AssetStatus.Decommissioned;
 
         asset.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
