@@ -332,7 +332,19 @@ public class JobService : IJobService
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct)
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
 
+        if (!job.IsOpenForOperations())
+            throw new InvalidOperationException(
+                $"Cannot change crew — job {job.JobNumber} is {job.Status}.");
+
         var distinctIds = employeeIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        if (distinctIds.Count > 0)
+        {
+            var activeCount = await _dbContext.Set<Employee>()
+                .CountAsync(e => distinctIds.Contains(e.Id) && e.IsActive, ct);
+            if (activeCount != distinctIds.Count)
+                throw new InvalidOperationException("One or more crew members are missing or inactive.");
+        }
+
         var existing = await _dbContext.Set<JobCrewAssignment>()
             .IgnoreQueryFilters()
             .Where(a => a.JobId == jobId && a.TenantId == job.TenantId)
