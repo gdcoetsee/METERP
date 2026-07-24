@@ -103,6 +103,12 @@ public class AssetService : IAssetService
         asset.AssetNumber = existing.AssetNumber;
         if (asset.CustomerId == Guid.Empty)
             asset.CustomerId = existing.CustomerId;
+        else if (asset.CustomerId != existing.CustomerId)
+        {
+            var customer = await _dbContext.Set<Customer>().FindAsync([asset.CustomerId], ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException("Customer not found.");
+        }
 
         _dbContext.Set<Asset>().Update(asset);
         await _dbContext.SaveChangesAsync(ct);
