@@ -80,12 +80,26 @@ public class EmployeeService : IEmployeeService
 
     public async Task<Guid> CreateAsync(Employee emp, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(emp.EmployeeNumber))
-            emp.EmployeeNumber = $"EMP-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
         if (string.IsNullOrWhiteSpace(emp.FirstName) || string.IsNullOrWhiteSpace(emp.LastName))
             throw new InvalidOperationException("First and last name are required.");
         if (emp.MandatoryHoursPerMonth <= 0)
             emp.MandatoryHoursPerMonth = 160m;
+
+        emp.FirstName = emp.FirstName.Trim();
+        emp.LastName = emp.LastName.Trim();
+
+        if (string.IsNullOrWhiteSpace(emp.EmployeeNumber))
+        {
+            emp.EmployeeNumber = $"EMP-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+        }
+        else
+        {
+            emp.EmployeeNumber = emp.EmployeeNumber.Trim();
+            var dup = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.EmployeeNumber == emp.EmployeeNumber, ct);
+            if (dup)
+                throw new InvalidOperationException($"Employee number '{emp.EmployeeNumber}' already exists.");
+        }
 
         _dbContext.Set<Employee>().Add(emp);
         await _dbContext.SaveChangesAsync(ct);
@@ -104,7 +118,24 @@ public class EmployeeService : IEmployeeService
         if (string.IsNullOrWhiteSpace(emp.FirstName) || string.IsNullOrWhiteSpace(emp.LastName))
             throw new InvalidOperationException("First and last name are required.");
 
-        existing.EmployeeNumber = emp.EmployeeNumber.Trim();
+        var number = emp.EmployeeNumber.Trim();
+        var dup = await _dbContext.Set<Employee>()
+            .AnyAsync(e => e.EmployeeNumber == number && e.Id != emp.Id, ct);
+        if (dup)
+            throw new InvalidOperationException($"Employee number '{number}' already exists.");
+
+        if (!emp.IsActive && existing.IsActive)
+        {
+            var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+                .AnyAsync(j => j.AssignedEmployeeId == emp.Id
+                    && j.Status != JobStatus.Cancelled
+                    && j.Status != JobStatus.Closed, ct);
+            if (hasOpenJobs)
+                throw new InvalidOperationException(
+                    "Cannot deactivate an employee assigned to open jobs. Reassign or close those jobs first.");
+        }
+
+        existing.EmployeeNumber = number;
         existing.FirstName = emp.FirstName.Trim();
         existing.LastName = emp.LastName.Trim();
         existing.JobTitle = emp.JobTitle;

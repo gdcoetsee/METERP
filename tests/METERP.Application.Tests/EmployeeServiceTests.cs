@@ -202,6 +202,45 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenEmployeeNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-DUP",
+            FirstName = "One",
+            LastName = "Tech"
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-DUP",
+                FirstName = "Two",
+                LastName = "Tech"
+            }));
+    }
+
+    [Fact]
+    public async Task CreateAsync_AssignsEmployeeNumber_WhenMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var id = await service.CreateAsync(new Employee
+        {
+            FirstName = "Auto",
+            LastName = "Number"
+        });
+
+        var emp = await service.GetByIdAsync(id);
+        Assert.False(string.IsNullOrWhiteSpace(emp!.EmployeeNumber));
+        Assert.StartsWith("EMP-", emp.EmployeeNumber);
+    }
+
+    [Fact]
     public async Task SetActiveAsync_ThrowsWhenDeactivatingEmployeeOnOpenJob()
     {
         var tenantId = Guid.NewGuid();
