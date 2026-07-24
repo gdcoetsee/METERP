@@ -93,6 +93,9 @@ public class QuoteService : IQuoteService
         if (customer == null || customer.IsDeleted)
             throw new InvalidOperationException("Customer not found.");
 
+        if (quote.TaxRate < 0 || quote.TaxRate > 1m)
+            throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
+
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? quote.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Quote, ct);

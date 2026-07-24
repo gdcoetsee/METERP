@@ -147,6 +147,25 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_ThrowsWhenTaxRateOutOfRange()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Tax Co" });
+        await db.SaveChangesAsync();
+        var service = new QuoteService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                TaxRate = 15m
+            }));
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_ThrowsWhenDescriptionMissing()
     {
         var tenantId = Guid.NewGuid();
