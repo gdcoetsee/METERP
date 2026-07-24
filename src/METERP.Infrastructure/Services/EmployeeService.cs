@@ -129,7 +129,23 @@ public class EmployeeService : IEmployeeService
     {
         var e = await _dbContext.Set<Employee>().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (e == null) return;
+
+        // Soft-delete and deactivate so scheduling/payroll pickers hide the person.
+        e.IsActive = false;
         e.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+    }
+
+    public async Task SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
+    {
+        var e = await _dbContext.Set<Employee>().FirstOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new InvalidOperationException("Employee not found.");
+
+        if (e.IsDeleted && isActive)
+            throw new InvalidOperationException("Cannot reactivate a deleted employee. Restore first.");
+
+        e.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
     }

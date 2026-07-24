@@ -233,16 +233,19 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
     public async Task<bool> RejectAsync(Guid requisitionId, Guid approverUserId, string reason, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Rejection reason is required.", nameof(reason));
+
         var req = await LoadForUpdateAsync(requisitionId, ct);
         if (req == null || req.Status is RequisitionStatus.Issued or RequisitionStatus.Rejected or RequisitionStatus.Cancelled)
             return false;
 
         await ReleaseReservationsAsync(req, ct);
         req.Status = RequisitionStatus.Rejected;
-        req.RejectionReason = reason;
+        req.RejectionReason = reason.Trim();
         req.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
-        await LogAsync("REJECT", req, reason, ct);
+        await LogAsync("REJECT", req, req.RejectionReason, ct);
         return true;
     }
 

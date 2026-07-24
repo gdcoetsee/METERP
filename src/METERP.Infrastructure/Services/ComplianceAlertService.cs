@@ -61,6 +61,7 @@ public sealed class ComplianceAlertService : IComplianceAlertService
 
             await _notifications.CreateAsync(new TenantNotification
             {
+                TenantId = doc.TenantId,
                 Title = $"Company document expiring in {days} day(s)",
                 Message = $"{doc.Title} ({doc.DocumentType}) expires on {doc.ExpiryDate:yyyy-MM-dd}. Renew before work is delayed.",
                 Category = "compliance",
@@ -101,6 +102,7 @@ public sealed class ComplianceAlertService : IComplianceAlertService
 
             await _notifications.CreateAsync(new TenantNotification
             {
+                TenantId = cert.TenantId != Guid.Empty ? cert.TenantId : (cert.Employee?.TenantId ?? Guid.Empty),
                 Title = $"Employee certification expiring in {days} day(s)",
                 Message = $"{employeeName}: {cert.CertificationType} expires on {cert.ExpiryDate:yyyy-MM-dd}.",
                 Category = "compliance",

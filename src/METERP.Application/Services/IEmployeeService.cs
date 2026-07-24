@@ -20,4 +20,7 @@ public interface IEmployeeService
     Task UpdateAsync(Employee emp, CancellationToken ct = default);
 
     Task DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Activate or deactivate without soft-delete (scheduling/payroll visibility).</summary>
+    Task SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
 }
