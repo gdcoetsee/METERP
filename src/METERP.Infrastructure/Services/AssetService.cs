@@ -98,6 +98,14 @@ public class AssetService : IAssetService
         var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == id, ct);
         if (asset == null) return;
 
+        var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+            .AnyAsync(j => j.AssetId == id
+                && j.Status != JobStatus.Cancelled
+                && j.Status != JobStatus.Closed, ct);
+        if (hasOpenJobs)
+            throw new InvalidOperationException(
+                "Cannot delete an asset assigned to open jobs. Unassign or close those jobs first.");
+
         if (asset.Status == AssetStatus.Operational)
             asset.Status = AssetStatus.Decommissioned;
 

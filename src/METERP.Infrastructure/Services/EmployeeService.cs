@@ -130,6 +130,23 @@ public class EmployeeService : IEmployeeService
         var e = await _dbContext.Set<Employee>().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (e == null) return;
 
+        var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+            .AnyAsync(j => j.AssignedEmployeeId == id
+                && j.Status != JobStatus.Cancelled
+                && j.Status != JobStatus.Closed, ct);
+        if (hasOpenJobs)
+            throw new InvalidOperationException(
+                "Cannot delete an employee assigned to open jobs. Reassign or close those jobs first.");
+
+        var hasPendingLeave = await _dbContext.Set<LeaveRequest>().AsNoTracking()
+            .AnyAsync(r => r.EmployeeId == id
+                && r.Status != LeaveRequestStatus.Rejected
+                && r.Status != LeaveRequestStatus.Cancelled
+                && r.Status != LeaveRequestStatus.Approved, ct);
+        if (hasPendingLeave)
+            throw new InvalidOperationException(
+                "Cannot delete an employee with pending leave requests. Resolve leave first.");
+
         // Soft-delete and deactivate so scheduling/payroll pickers hide the person.
         e.IsActive = false;
         e.IsDeleted = true;

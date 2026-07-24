@@ -144,4 +144,60 @@ public class EmployeeServiceTests
         var deleted = await db.Set<Employee>().IgnoreQueryFilters().FirstAsync(e => e.Id == id);
         Assert.True(deleted.IsDeleted);
     }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenEmployeeAssignedToOpenJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-JOB",
+            FirstName = "Busy",
+            LastName = "Tech"
+        });
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        db.Set<Job>().Add(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            AssignedEmployeeId = empId,
+            JobNumber = "J-1",
+            Title = "Open",
+            Status = JobStatus.InProgress
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(empId));
+        Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenEmployeeHasPendingLeave()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-LV",
+            FirstName = "Leave",
+            LastName = "Tech"
+        });
+        db.Set<LeaveRequest>().Add(new LeaveRequest
+        {
+            TenantId = tenantId,
+            EmployeeId = empId,
+            StartDate = DateTime.UtcNow.Date.AddDays(7),
+            EndDate = DateTime.UtcNow.Date.AddDays(10),
+            DaysRequested = 3,
+            Status = LeaveRequestStatus.PendingManager
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(empId));
+        Assert.Contains("leave", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

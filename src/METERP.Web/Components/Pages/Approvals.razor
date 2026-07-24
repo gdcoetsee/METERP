@@ -164,6 +164,32 @@
     }
 </div>
 
+@if (_rejectOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)" data-testid="approvals-reject-modal" role="dialog" aria-modal="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@_rejectTitle</h5>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseRejectModal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">@_rejectMessage</p>
+                    <label class="form-label" for="approvals-reject-reason">Reason <span class="text-danger">*</span></label>
+                    <textarea id="approvals-reject-reason" class="form-control" rows="3"
+                              data-testid="approvals-reject-reason"
+                              @bind="_rejectReason" placeholder="Explain why this is being rejected"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseRejectModal">Cancel</button>
+                    <button type="button" class="btn btn-danger" data-testid="approvals-reject-confirm"
+                            disabled="@_rejectBusy" @onclick="ConfirmRejectAsync">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ConfirmDialogHost lives in MainLayout — do not mount a second host (double backdrop blocks E2E clicks). *@
 
 @code {
@@ -174,6 +200,13 @@
     private List<StockRequisition> _pendingRequisitions = new();
     private List<FieldReport> _pendingFieldReports = new();
     private List<OverdueApprovalRow> _overdueApprovals = new();
+
+    private bool _rejectOpen;
+    private bool _rejectBusy;
+    private string _rejectTitle = "Reject";
+    private string _rejectMessage = "";
+    private string _rejectReason = "";
+    private Func<string, Task>? _rejectAction;
 
     private readonly List<ApprovalTab> _tabs =
     [
@@ -408,27 +441,20 @@
         }
     }
 
-    private async Task RejectQuoteAsync(Quote quote)
+    private Task RejectQuoteAsync(Quote quote)
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
 
-        var ok = await Confirm.ConfirmAsync(
-            "Reject this quote and return it to the estimator?",
+        OpenRejectModal(
             "Reject quote",
-            confirmLabel: "Reject",
-            confirmVariant: "danger");
-        if (!ok) return;
-
-        try
-        {
-            await QuoteService.ExecutiveRejectAsync(quote.Id, userId, "Rejected via Approvals hub");
-            Toast.ShowInfo($"{quote.QuoteNumber} rejected.");
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Toast.ShowError(ex.Message);
-        }
+            $"Reject {quote.QuoteNumber} and return it to the estimator.",
+            async reason =>
+            {
+                await QuoteService.ExecutiveRejectAsync(quote.Id, userId, reason);
+                Toast.ShowInfo($"{quote.QuoteNumber} rejected.");
+                await LoadAsync();
+            });
+        return Task.CompletedTask;
     }
 
     private async Task ApproveLeaveAsync(LeaveRequest request)
@@ -468,32 +494,25 @@
         }
     }
 
-    private async Task RejectLeaveAsync(LeaveRequest request)
+    private Task RejectLeaveAsync(LeaveRequest request)
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
 
-        var ok = await Confirm.ConfirmAsync(
-            "Reject this leave request?",
+        OpenRejectModal(
             "Reject leave",
-            confirmLabel: "Reject",
-            confirmVariant: "danger");
-        if (!ok) return;
-
-        try
-        {
-            if (!await LeaveService.RejectAsync(request.Id, userId, "Rejected via Approvals hub"))
+            "Provide a reason for rejecting this leave request.",
+            async reason =>
             {
-                Toast.ShowError("Leave request could not be rejected.");
-                return;
-            }
+                if (!await LeaveService.RejectAsync(request.Id, userId, reason))
+                {
+                    Toast.ShowError("Leave request could not be rejected.");
+                    return;
+                }
 
-            Toast.ShowInfo("Leave request rejected.");
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Toast.ShowError(ex.Message);
-        }
+                Toast.ShowInfo("Leave request rejected.");
+                await LoadAsync();
+            });
+        return Task.CompletedTask;
     }
 
     private async Task ApproveRequisitionAsync(StockRequisition req)
@@ -536,32 +555,25 @@
         }
     }
 
-    private async Task RejectRequisitionAsync(StockRequisition req)
+    private Task RejectRequisitionAsync(StockRequisition req)
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
 
-        var ok = await Confirm.ConfirmAsync(
-            $"Reject {req.RequisitionNumber} and return to requester?",
+        OpenRejectModal(
             "Reject requisition",
-            confirmLabel: "Reject",
-            confirmVariant: "danger");
-        if (!ok) return;
-
-        try
-        {
-            if (!await RequisitionService.RejectAsync(req.Id, userId, "Rejected via Approvals hub"))
+            $"Reject {req.RequisitionNumber} and return to the requester.",
+            async reason =>
             {
-                Toast.ShowError("Requisition could not be rejected.");
-                return;
-            }
+                if (!await RequisitionService.RejectAsync(req.Id, userId, reason))
+                {
+                    Toast.ShowError("Requisition could not be rejected.");
+                    return;
+                }
 
-            Toast.ShowInfo($"{req.RequisitionNumber} rejected.");
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Toast.ShowError(ex.Message);
-        }
+                Toast.ShowInfo($"{req.RequisitionNumber} rejected.");
+                await LoadAsync();
+            });
+        return Task.CompletedTask;
     }
 
     private async Task ApproveFieldReportAsync(FieldReport report)
@@ -593,31 +605,67 @@
         }
     }
 
-    private async Task RejectFieldReportAsync(FieldReport report)
+    private Task RejectFieldReportAsync(FieldReport report)
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
 
-        var ok = await Confirm.ConfirmAsync(
-            "Reject this field report?",
+        OpenRejectModal(
             "Reject field report",
-            confirmLabel: "Reject",
-            confirmVariant: "danger");
-        if (!ok) return;
+            $"Reject field report for {report.Job?.JobNumber ?? "job"} — technician will need to resubmit.",
+            async reason =>
+            {
+                if (!await FieldReportService.RejectAsync(report.Id, userId, reason))
+                {
+                    Toast.ShowError("Field report could not be rejected.");
+                    return;
+                }
 
+                Toast.ShowInfo("Field report rejected.");
+                await LoadAsync();
+            });
+        return Task.CompletedTask;
+    }
+
+    private void OpenRejectModal(string title, string message, Func<string, Task> action)
+    {
+        _rejectTitle = title;
+        _rejectMessage = message;
+        _rejectReason = "";
+        _rejectAction = action;
+        _rejectBusy = false;
+        _rejectOpen = true;
+    }
+
+    private void CloseRejectModal()
+    {
+        _rejectOpen = false;
+        _rejectBusy = false;
+        _rejectAction = null;
+        _rejectReason = "";
+    }
+
+    private async Task ConfirmRejectAsync()
+    {
+        if (_rejectAction is null) return;
+        if (string.IsNullOrWhiteSpace(_rejectReason))
+        {
+            Toast.ShowError("Rejection reason is required.");
+            return;
+        }
+
+        _rejectBusy = true;
         try
         {
-            if (!await FieldReportService.RejectAsync(report.Id, userId, "Rejected via Approvals hub"))
-            {
-                Toast.ShowError("Field report could not be rejected.");
-                return;
-            }
-
-            Toast.ShowInfo("Field report rejected.");
-            await LoadAsync();
+            await _rejectAction(_rejectReason.Trim());
+            CloseRejectModal();
         }
         catch (Exception ex)
         {
             Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _rejectBusy = false;
         }
     }
 
