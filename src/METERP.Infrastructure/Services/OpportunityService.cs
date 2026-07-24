@@ -97,6 +97,8 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException("Opportunity value cannot be negative.");
 
         opportunity.Title = opportunity.Title.Trim();
+        if (opportunity.ExpectedClose == default)
+            opportunity.ExpectedClose = DateTime.UtcNow.Date.AddDays(30);
 
         if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty)
         {
