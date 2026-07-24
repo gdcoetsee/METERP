@@ -112,6 +112,12 @@ public class SalesOrderService : ISalesOrderService
             throw new InvalidOperationException(
                 $"Cannot edit sales order in status {existing.Status}.");
 
+        if (so.TaxRate < 0 || so.TaxRate > 1m)
+            throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
+        if (so.DeliveryDate.HasValue && so.SoDate != default
+            && so.DeliveryDate.Value.Date < so.SoDate.Date)
+            throw new InvalidOperationException("Delivery date cannot be before the sales order date.");
+
         so.SoNumber = existing.SoNumber;
         so.Status = existing.Status;
 
