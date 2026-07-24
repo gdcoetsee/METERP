@@ -504,6 +504,167 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateSkuFromPoLineAsync_LinksInventory_AndBackfillsReceivedQty()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new PurchaseOrderLine
+                    {
+                        Description = "50mm galvanised conduit special",
+                        Quantity = 10,
+                        UnitPrice = 42.5m,
+                        Unit = "m"
+                    }
+                }
+            });
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+            await service.ReceiveAsync(poId, TestUserId);
+
+            var po = await service.GetByIdAsync(poId);
+            var line = po!.Lines.Single();
+            Assert.Null(line.InventoryItemId);
+            Assert.Equal(10m, line.QuantityReceived);
+
+            var itemId = await service.CreateSkuFromPoLineAsync(line.Id, sku: "COND-50-GALV", category: "Electrical");
+            var item = await inventory.GetItemByIdAsync(itemId);
+            Assert.NotNull(item);
+            Assert.Equal("COND-50-GALV", item!.Sku);
+            Assert.Equal("50mm galvanised conduit special", item.Name);
+            Assert.Equal(10m, item.QuantityOnHand);
+            Assert.Equal(42.5m, item.UnitCost);
+            Assert.Equal("Electrical", item.Category);
+
+            po = await service.GetByIdAsync(poId);
+            Assert.Equal(itemId, po!.Lines.Single().InventoryItemId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateSkuFromPoLineAsync(line.Id));
+        }
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_CreateSkuForFreeText_PostsStockOnReceive()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new PurchaseOrderLine
+                    {
+                        Description = "Custom bracket plate",
+                        Quantity = 4,
+                        UnitPrice = 120m,
+                        Unit = "ea"
+                    }
+                }
+            });
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+            var grv = await service.ReceiveAsync(
+                poId,
+                TestUserId,
+                createSkuForFreeTextLines: true);
+
+            Assert.NotNull(grv);
+            var po = await service.GetByIdAsync(poId);
+            var line = po!.Lines.Single();
+            Assert.NotNull(line.InventoryItemId);
+
+            var item = await inventory.GetItemByIdAsync(line.InventoryItemId!.Value);
+            Assert.Equal(4m, item!.QuantityOnHand);
+            Assert.Equal("Custom bracket plate", item.Name);
+            Assert.Equal("Non-catalog", item.Category);
+
+            var txs = await inventory.GetRecentTransactionsAsync(5);
+            Assert.Contains(txs, t => t.InventoryItemId == item.Id && t.Quantity == 4m);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSkuFromPoLineAsync_LinksMatchingRequisitionLine_AndCarriesReservation()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var inventory = new InventoryService(db);
+        var requisitions = new StockRequisitionService(db, inventory);
+        var service = new PurchaseOrderService(db, inventory, requisitions);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Cust" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job { TenantId = tenantId, CustomerId = customer.Id, Title = "Job", QuotedTotal = 1000m };
+        db.Set<Job>().Add(job);
+        var supplier = new Supplier { TenantId = tenantId, Name = "Sup" };
+        db.Set<Supplier>().Add(supplier);
+        await db.SaveChangesAsync();
+
+        var freeText = "Special flange adapter";
+        var reqId = await requisitions.SubmitAsync(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequestedByUserId = TestUserId,
+            Lines =
+            {
+                new StockRequisitionLine
+                {
+                    Description = freeText,
+                    QuantityRequested = 2,
+                    EstimatedUnitCost = 250m,
+                    Unit = "ea"
+                }
+            }
+        });
+        await requisitions.ApproveManagerAsync(reqId, TestUserId);
+        await requisitions.ApproveExecutiveAsync(reqId, TestUserId);
+
+        var poId = await service.CreateFromRequisitionAsync(reqId, supplier.Id);
+        await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+        await service.ReceiveAsync(poId, TestUserId);
+
+        var po = await service.GetByIdAsync(poId);
+        var lineId = po!.Lines.Single().Id;
+
+        var itemId = await service.CreateSkuFromPoLineAsync(lineId, sku: "FLANGE-ADAPT");
+        var item = await inventory.GetItemByIdAsync(itemId);
+        Assert.Equal(2m, item!.QuantityOnHand);
+        // Reserved for open requisition after GRV fulfill + promote
+        Assert.True(item.QuantityReserved >= 2m);
+
+        var req = await requisitions.GetByIdAsync(reqId);
+        var reqLine = req!.Lines.Single();
+        Assert.Equal(itemId, reqLine.InventoryItemId);
+        Assert.False(reqLine.IsNonCatalog);
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_Sent_CreatesProcurementNotification()
     {
         var tenantId = Guid.NewGuid();

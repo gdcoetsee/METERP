@@ -4,7 +4,7 @@
 
 ---
 
-## Handoff (current — 2026-07-10, Grok)
+## Handoff (current — 2026-07-24, Grok)
 
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
@@ -17,9 +17,17 @@
 | R2 remainder | **Done (DoD met)** — PPE, multi-line, non-catalog, GRV polish, multi-supplier RFQ lite (2026-07-10) |
 | R3 Employee + payslip | **Done (unit/UI)** — full profile, safe update, payslip v1, payroll permissions (2026-07-10) |
 | Certs + leave admin | **Done (unit/UI)** — certifications CRUD page + leave admin list/adjust (2026-07-10) |
+| R2c SKU promote + RFQ lines | **Done (unit/UI)** — free-text → SKU after GRV; line-level RFQ prices (2026-07-24) |
 | R6 Production hardening | **Ongoing partial** — health, AI/global rate limits, response security headers |
 
-**Tests verified (2026-07-10 batch):** GRV partial/DN, RFQ select→PO, certifications, leave adjust unit tests; full suite at commit.
+**Latest product batch (2026-07-24):**  
+- `CreateSkuFromPoLineAsync` — promote free-text PO lines to inventory SKUs (backfill received qty, link REQ lines, carry reservations).  
+- GRV option `createSkuForFreeTextLines` + PO UI “Create SKU” / receive checkbox.  
+- Line-level RFQ: `ProcurementSupplierQuoteLine`, `AddQuoteAsync(... lines)`, PO unit prices applied from selected quote.  
+- Migration: `AddProcurementQuoteLinesAndSkuPromote`.  
+- Unit tests: **736 green** (Application.Tests).
+
+**Tests verified (2026-07-24):** PurchaseOrder + ProcurementQuote suites (SKU promote, GRV+SKU, REQ link, line RFQ→PO prices); full unit suite green.
 
 ### Advisory duty
 
@@ -38,8 +46,10 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 ### Next priorities
 
 1. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)  
-2. Optional RFQ depth (line-level) / SKU from free-text GRV  
-3. E2E against docker when validating release
+2. Supporting-module sellable depth (scheduling/notifications polish, field report reliability)  
+3. E2E against docker when validating release (not a development blocker)
+
+**R2c SKU promote + RFQ lines (2026-07-24):** Free-text PO/GRV lines can become stock master SKUs; multi-supplier RFQ supports per-line unit prices that roll into header total and apply to the created PO.
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
 
@@ -85,7 +95,7 @@ Per chunk: `dotnet test` → update handoff → commit → push.
 |------|----------|
 | Commercial spine (Quote → SO → Job → Invoice, travel) | **Strong** |
 | Multi-tenancy, permissions skeleton, quotas | **Strong** |
-| Stock REQ → approve → reserve → issue / PO → GRV / RFQ | **Strong** (partial shortfall, non-catalog, GRV partial+DN, RFQ lite) |
+| Stock REQ → approve → reserve → issue / PO → GRV / RFQ | **Strong** (partial shortfall, non-catalog, GRV partial+DN, RFQ line prices, SKU promote) |
 | Job Command Center / closeout | **Strong** (dedicated page; dual sign-off; exec close ≠ invoice; cancel) |
 | PPE | **Strong** (employee register; optional JobId) |
 | Employee / leave / payroll / certs | **Partial → Strong** (profile + payslip v1 + certs + leave admin; not SARS) |
@@ -96,8 +106,9 @@ Per chunk: `dotnet test` → update handoff → commit → push.
 ### Critical gaps (remaining)
 
 - R6 secrets/observability depth for pilot
-- Multi-supplier RFQ is lite (header total only; not line-level RFQ)
-- Optional: create SKU from free-text non-catalog after GRV
+- Supporting modules / pilot polish (quota UX depth, field reliability)
+- ~~Multi-supplier RFQ line-level~~ **Done 2026-07-24**
+- ~~Create SKU from free-text non-catalog after GRV~~ **Done 2026-07-24**
 
 ## Locked architecture
 

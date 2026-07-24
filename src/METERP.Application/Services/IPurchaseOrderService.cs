@@ -29,12 +29,27 @@ public interface IPurchaseOrderService
 
     /// <summary>
     /// Create GRV. Optional per-line receive quantities (defaults to full outstanding).
+    /// When <paramref name="createSkuForFreeTextLines"/> is true, free-text (non-catalog) lines
+    /// are promoted to inventory SKUs before stock is received.
     /// </summary>
     Task<GoodsReceiptVoucher?> ReceiveAsync(
         Guid poId,
         Guid receivedByUserId,
         string? supplierDeliveryNote = null,
         IReadOnlyDictionary<Guid, decimal>? lineQuantities = null,
+        bool createSkuForFreeTextLines = false,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Promote a free-text (non-catalog) PO line into a stock master SKU.
+    /// Links the PO line (and matching requisition line when present), backfills on-hand
+    /// for any quantity already received, and carries open reservations onto the new item.
+    /// </summary>
+    Task<Guid> CreateSkuFromPoLineAsync(
+        Guid poLineId,
+        string? sku = null,
+        string? name = null,
+        string? category = null,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default);

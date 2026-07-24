@@ -123,7 +123,7 @@ else
                Title="@($"Supplier quotes — {_rfqRequisition.RequisitionNumber}")"
                TestId="requisition-rfq-modal"
                OnClose="CloseRfqModal">
-        <p class="text-muted small">Add quotes from multiple suppliers, select the winner, then create the PO from the selected quote.</p>
+        <p class="text-muted small">Add quotes from multiple suppliers (header total or per-line unit prices), select the winner, then create the PO from the selected quote.</p>
 
         @if (_rfqQuotes.Count > 0)
         {
@@ -133,6 +133,7 @@ else
                         <tr>
                             <th>Supplier</th>
                             <th class="text-end">Quoted total</th>
+                            <th>Detail</th>
                             <th>Notes</th>
                             <th></th>
                         </tr>
@@ -143,6 +144,16 @@ else
                             <tr class="@(q.IsSelected ? "table-success" : null)" data-testid="requisition-rfq-row">
                                 <td>@(q.Supplier?.Name ?? "—")</td>
                                 <td class="text-end">R @q.QuotedTotal.ToString("N2")</td>
+                                <td class="small">
+                                    @if (q.Lines is { Count: > 0 })
+                                    {
+                                        <span class="badge bg-info text-dark" data-testid="requisition-rfq-line-count">@q.Lines.Count line(s)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Header only</span>
+                                    }
+                                </td>
                                 <td class="small">@(q.Notes ?? "—")</td>
                                 <td class="text-end">
                                     @if (q.IsSelected)
@@ -183,13 +194,58 @@ else
                     </div>
                     <div class="col-md-3">
                         <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                               @bind="_rfqTotal" placeholder="Total" data-testid="requisition-rfq-total" />
+                               @bind="_rfqTotal" placeholder="Header total"
+                               data-testid="requisition-rfq-total"
+                               disabled="@_rfqUseLines" />
                     </div>
                     <div class="col-md-4">
                         <input class="form-control form-control-sm" @bind="_rfqNotes" placeholder="Notes (optional)"
                                data-testid="requisition-rfq-notes" />
                     </div>
                 </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="rfq-use-lines"
+                           @bind="_rfqUseLines" data-testid="requisition-rfq-use-lines" />
+                    <label class="form-check-label" for="rfq-use-lines">Price per shortfall line (total calculated from lines)</label>
+                </div>
+                @if (_rfqUseLines && _rfqLineDrafts.Count > 0)
+                {
+                    <div class="table-responsive mt-2" data-testid="requisition-rfq-line-editor">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Line</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end" style="min-width:7rem">Unit price</th>
+                                    <th class="text-end">Line total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var draft in _rfqLineDrafts)
+                                {
+                                    <tr>
+                                        <td class="small">@draft.Description</td>
+                                        <td class="text-end">@draft.Quantity.ToString("N2")</td>
+                                        <td>
+                                            <input type="number" step="0.01" min="0"
+                                                   class="form-control form-control-sm text-end"
+                                                   value="@draft.UnitPrice"
+                                                   @onchange="e => SetRfqLinePrice(draft.StockRequisitionLineId, e)"
+                                                   data-testid="requisition-rfq-line-price" />
+                                        </td>
+                                        <td class="text-end">R @((draft.Quantity * draft.UnitPrice).ToString("N2"))</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th colspan="3" class="text-end">Calculated total</th>
+                                    <th class="text-end" data-testid="requisition-rfq-lines-total">R @_rfqLineDrafts.Sum(d => d.Quantity * d.UnitPrice).ToString("N2")</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
                 <button type="button" class="btn btn-sm btn-primary mt-2" data-testid="requisition-rfq-add"
                         @onclick="AddQuoteAsync">Add quote</button>
             </div>
@@ -222,6 +278,16 @@ else
     private Guid _rfqSupplierId;
     private decimal _rfqTotal;
     private string _rfqNotes = "";
+    private bool _rfqUseLines;
+    private List<RfqLineDraft> _rfqLineDrafts = new();
+
+    private sealed class RfqLineDraft
+    {
+        public Guid? StockRequisitionLineId { get; set; }
+        public string Description { get; set; } = "";
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+    }
 
     [Inject] private ConfirmService Confirm { get; set; } = default!;
 
@@ -281,12 +347,40 @@ else
 
     private async Task OpenRfqAsync(StockRequisition req)
     {
-        _rfqRequisition = req;
+        // Reload full requisition with lines for line-level RFQ editor.
+        var full = await RequisitionService.GetByIdAsync(req.Id) ?? req;
+        _rfqRequisition = full;
         _rfqSupplierId = _suppliers.FirstOrDefault()?.Id ?? Guid.Empty;
         _rfqTotal = 0;
         _rfqNotes = "";
+        _rfqUseLines = false;
+        BuildRfqLineDrafts(full);
         _showRfqModal = true;
         await ReloadRfqQuotesAsync();
+    }
+
+    private void BuildRfqLineDrafts(StockRequisition req)
+    {
+        _rfqLineDrafts = req.Lines
+            .Where(l => !l.IsDeleted && l.QuantityRequested > l.QuantityReserved)
+            .Select(l => new RfqLineDraft
+            {
+                StockRequisitionLineId = l.Id,
+                Description = l.DisplayDescription,
+                Quantity = l.QuantityRequested - l.QuantityReserved,
+                UnitPrice = l.IsNonCatalog
+                    ? l.EstimatedUnitCost
+                    : (l.InventoryItem?.UnitCost ?? 0m)
+            })
+            .ToList();
+    }
+
+    private void SetRfqLinePrice(Guid? lineId, ChangeEventArgs e)
+    {
+        var draft = _rfqLineDrafts.FirstOrDefault(d => d.StockRequisitionLineId == lineId);
+        if (draft == null) return;
+        if (decimal.TryParse(e.Value?.ToString(), out var price) && price >= 0)
+            draft.UnitPrice = price;
     }
 
     private void CloseRfqModal()
@@ -294,6 +388,8 @@ else
         _showRfqModal = false;
         _rfqRequisition = null;
         _rfqQuotes = new();
+        _rfqLineDrafts = new();
+        _rfqUseLines = false;
     }
 
     private async Task ReloadRfqQuotesAsync()
@@ -312,11 +408,32 @@ else
 
         try
         {
+            IReadOnlyList<ProcurementQuoteLineInput>? lines = null;
+            var total = _rfqTotal;
+            if (_rfqUseLines)
+            {
+                if (_rfqLineDrafts.Count == 0)
+                {
+                    Toast.ShowError("No shortfall lines to price.");
+                    return;
+                }
+
+                lines = _rfqLineDrafts
+                    .Select(d => new ProcurementQuoteLineInput(
+                        d.StockRequisitionLineId,
+                        d.Description,
+                        d.Quantity,
+                        d.UnitPrice))
+                    .ToList();
+                total = lines.Sum(l => l.Quantity * l.UnitPrice);
+            }
+
             await QuoteService.AddQuoteAsync(
                 _rfqRequisition.Id,
                 _rfqSupplierId,
-                _rfqTotal,
-                string.IsNullOrWhiteSpace(_rfqNotes) ? null : _rfqNotes.Trim());
+                total,
+                string.IsNullOrWhiteSpace(_rfqNotes) ? null : _rfqNotes.Trim(),
+                lines);
             Toast.ShowSuccess("Supplier quote added.");
             _rfqTotal = 0;
             _rfqNotes = "";

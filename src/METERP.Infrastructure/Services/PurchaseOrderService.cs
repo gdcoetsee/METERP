@@ -326,6 +326,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         Guid receivedByUserId,
         string? supplierDeliveryNote = null,
         IReadOnlyDictionary<Guid, decimal>? lineQuantities = null,
+        bool createSkuForFreeTextLines = false,
         CancellationToken ct = default)
     {
         var po = await _dbContext.Set<PurchaseOrder>()
@@ -338,6 +339,25 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         if (po.Status is not (PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived))
             throw new InvalidOperationException("PO must be Sent before receiving (GRV).");
+
+        if (createSkuForFreeTextLines)
+        {
+            foreach (var freeText in po.Lines.Where(l => !l.IsDeleted && !l.InventoryItemId.HasValue))
+            {
+                var outstanding = freeText.QuantityOutstanding;
+                if (lineQuantities != null && lineQuantities.TryGetValue(freeText.Id, out var rq) && rq <= 0)
+                    continue;
+                if (outstanding <= 0 && freeText.QuantityReceived <= 0)
+                    continue;
+
+                await CreateSkuFromPoLineAsync(freeText.Id, ct: ct);
+            }
+
+            // Reload lines so InventoryItemId is current for receipt posting.
+            po = await _dbContext.Set<PurchaseOrder>()
+                .Include(p => p.Lines)
+                .FirstAsync(p => p.Id == poId, ct);
+        }
 
         var linkedRequisitionId = await _dbContext.Set<StockRequisition>()
             .Where(r => r.PurchaseOrderId == po.Id)
@@ -422,6 +442,112 @@ public class PurchaseOrderService : IPurchaseOrderService
             await _requisitionService.FulfillAfterPoReceiptAsync(po.Id, ct);
 
         return grv;
+    }
+
+    public async Task<Guid> CreateSkuFromPoLineAsync(
+        Guid poLineId,
+        string? sku = null,
+        string? name = null,
+        string? category = null,
+        CancellationToken ct = default)
+    {
+        var line = await _dbContext.Set<PurchaseOrderLine>()
+            .Include(l => l.PurchaseOrder)
+            .FirstOrDefaultAsync(l => l.Id == poLineId, ct)
+            ?? throw new InvalidOperationException("Purchase order line not found.");
+
+        if (line.InventoryItemId.HasValue && line.InventoryItemId != Guid.Empty)
+            throw new InvalidOperationException("Line is already linked to an inventory SKU.");
+
+        if (string.IsNullOrWhiteSpace(line.Description))
+            throw new InvalidOperationException("Line needs a description to create a SKU.");
+
+        var itemName = string.IsNullOrWhiteSpace(name) ? line.Description.Trim() : name.Trim();
+        var item = new InventoryItem
+        {
+            Sku = string.IsNullOrWhiteSpace(sku) ? string.Empty : sku.Trim(),
+            Name = itemName,
+            Description = line.Description.Trim(),
+            Unit = string.IsNullOrWhiteSpace(line.Unit) ? "ea" : line.Unit!,
+            UnitCost = line.UnitPrice,
+            Category = string.IsNullOrWhiteSpace(category) ? "Non-catalog" : category.Trim(),
+            QuantityOnHand = 0m,
+            QuantityReserved = 0m,
+            ReorderLevel = 0m,
+            IsActive = true
+        };
+
+        var itemId = await _inventoryService.CreateItemAsync(item, ct);
+        line.InventoryItemId = itemId;
+        await _dbContext.SaveChangesAsync(ct);
+
+        // Backfill stock for qty already received without a catalog link.
+        if (line.QuantityReceived > 0)
+        {
+            var grvRef = line.PurchaseOrder?.PoNumber ?? "PO";
+            await _inventoryService.RecordStockTransactionAsync(
+                itemId,
+                line.QuantityReceived,
+                StockTransactionType.Receipt,
+                grvRef,
+                null,
+                $"SKU created from free-text PO line; backfill received qty for {line.Description}",
+                ct);
+        }
+
+        // Patch historical GRV lines that had no inventory link.
+        var grvLines = await _dbContext.Set<GoodsReceiptLine>()
+            .Where(g => g.PurchaseOrderLineId == poLineId && g.InventoryItemId == null)
+            .ToListAsync(ct);
+        foreach (var gl in grvLines)
+            gl.InventoryItemId = itemId;
+
+        // Link matching free-text requisition lines and move open reservations onto the SKU.
+        var req = await _dbContext.Set<StockRequisition>()
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.PurchaseOrderId == line.PurchaseOrderId, ct);
+
+        if (req != null)
+        {
+            var desc = line.Description.Trim();
+            foreach (var rl in req.Lines.Where(l => !l.IsDeleted && l.IsNonCatalog))
+            {
+                var rlDesc = rl.DisplayDescription.Trim();
+                if (!string.Equals(rlDesc, desc, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals((rl.Description ?? string.Empty).Trim(), desc, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                rl.InventoryItemId = itemId;
+                if (string.IsNullOrWhiteSpace(rl.Unit))
+                    rl.Unit = line.Unit;
+
+                var reservedUnissued = rl.QuantityReserved - rl.QuantityIssued;
+                if (reservedUnissued > 0)
+                {
+                    var inv = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == itemId, ct);
+                    inv.QuantityReserved += reservedUnissued;
+                }
+
+                break;
+            }
+        }
+
+        if (grvLines.Count > 0 || req != null)
+            await _dbContext.SaveChangesAsync(ct);
+
+        if (_audit != null)
+        {
+            var created = await _inventoryService.GetItemByIdAsync(itemId, ct);
+            await _audit.LogAsync(
+                "CREATE_SKU",
+                "InventoryItem",
+                created?.Sku ?? itemId.ToString("N")[..8],
+                $"From free-text PO line: {line.Description}",
+                ct);
+        }
+
+        InvalidateListCaches();
+        return itemId;
     }
 
     public async Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default)

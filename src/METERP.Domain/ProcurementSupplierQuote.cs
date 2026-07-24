@@ -1,8 +1,9 @@
 namespace METERP.Domain;
 
 /// <summary>
-/// Supplier quote against a stock requisition shortfall (multi-supplier RFQ lite).
-/// Manager selects one; PO is created from the selected quote's supplier.
+/// Supplier quote against a stock requisition shortfall (multi-supplier RFQ).
+/// Optional line detail via <see cref="Lines"/>; header total is authoritative for comparison.
+/// Manager selects one; PO is created from the selected quote's supplier (and line prices when present).
 /// </summary>
 public class ProcurementSupplierQuote : BaseEntity
 {
@@ -23,4 +24,6 @@ public class ProcurementSupplierQuote : BaseEntity
     public Guid? SelectedByUserId { get; set; }
 
     public DateTime? SelectedAt { get; set; }
+
+    public ICollection<ProcurementSupplierQuoteLine> Lines { get; set; } = new List<ProcurementSupplierQuoteLine>();
 }

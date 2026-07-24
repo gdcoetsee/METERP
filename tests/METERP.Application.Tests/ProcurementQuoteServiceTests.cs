@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -139,5 +140,107 @@ public class ProcurementQuoteServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             quotes.AddQuoteAsync(req.Id, supplier.Id, 50m));
+    }
+
+    [Fact]
+    public async Task AddQuote_WithLines_ComputesTotal_AndAppliesPricesToPo()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"rfq-lines-{Guid.NewGuid():N}")
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var inventory = new InventoryService(db);
+        var requisitions = new StockRequisitionService(db, inventory);
+        var pos = new PurchaseOrderService(db, inventory, requisitions);
+        var quotes = new ProcurementQuoteService(db, pos);
+
+        var customer = new Customer { TenantId = tenantId, Name = "RFQ Lines Customer" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job { TenantId = tenantId, CustomerId = customer.Id, Title = "RFQ lines job", QuotedTotal = 8000m };
+        db.Set<Job>().Add(job);
+        var supplier = new Supplier { TenantId = tenantId, Name = "Line Supplier" };
+        db.Set<Supplier>().Add(supplier);
+        await db.SaveChangesAsync();
+
+        // Pure free-text shortfall lines → always AwaitingProcurement (no catalog reserve).
+        var reqId = await requisitions.SubmitAsync(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequestedByUserId = TestUserId,
+            Lines =
+            [
+                new StockRequisitionLine
+                {
+                    Description = "RFQ part A",
+                    QuantityRequested = 3,
+                    EstimatedUnitCost = 50m,
+                    Unit = "ea"
+                },
+                new StockRequisitionLine
+                {
+                    Description = "Custom gasket kit",
+                    QuantityRequested = 2,
+                    EstimatedUnitCost = 40m,
+                    Unit = "kit"
+                }
+            ]
+        });
+        await requisitions.ApproveManagerAsync(reqId, TestUserId);
+        await requisitions.ApproveExecutiveAsync(reqId, TestUserId);
+
+        var req = await requisitions.GetByIdAsync(reqId);
+        Assert.Equal(RequisitionStatus.AwaitingProcurement, req!.Status);
+        var shortfallLines = req.Lines.Where(l => !l.IsDeleted).OrderBy(l => l.Description).ToList();
+        Assert.Equal(2, shortfallLines.Count);
+
+        var quoteId = await quotes.AddQuoteAsync(
+            reqId,
+            supplier.Id,
+            quotedTotal: 0,
+            notes: "Line detail",
+            lines:
+            [
+                new ProcurementQuoteLineInput(
+                    shortfallLines[0].Id,
+                    shortfallLines[0].DisplayDescription,
+                    Quantity: shortfallLines[0].QuantityRequested,
+                    UnitPrice: 90m),
+                new ProcurementQuoteLineInput(
+                    shortfallLines[1].Id,
+                    shortfallLines[1].DisplayDescription,
+                    Quantity: shortfallLines[1].QuantityRequested,
+                    UnitPrice: 55m)
+            ]);
+
+        var list = await quotes.GetForRequisitionAsync(reqId);
+        var quote = Assert.Single(list, q => q.Id == quoteId);
+        Assert.Equal(2 * 90m + 3 * 55m, quote.QuotedTotal); // 345
+        Assert.Equal(2, quote.Lines.Count);
+
+        Assert.True(await quotes.SelectQuoteAsync(quoteId, TestUserId));
+        var poId = await quotes.CreatePoFromSelectedQuoteAsync(reqId);
+        var po = await pos.GetByIdAsync(poId);
+        Assert.NotNull(po);
+        Assert.Equal(supplier.Id, po!.SupplierId);
+
+        var gasketLine = po.Lines.FirstOrDefault(l =>
+            l.Description.Contains("gasket", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(gasketLine);
+        Assert.Equal(90m, gasketLine!.UnitPrice);
+        Assert.Equal(2m, gasketLine.Quantity);
+
+        var partLine = po.Lines.FirstOrDefault(l =>
+            l.Description.Contains("part A", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(partLine);
+        Assert.Equal(55m, partLine!.UnitPrice);
+        Assert.Equal(3m, partLine.Quantity);
     }
 }
