@@ -104,6 +104,32 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_ThrowsWhenQuotedTotalZeroWithoutLines()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 0m));
+        }
+    }
+
+    [Fact]
+    public async Task AddQuote_ThrowsWhenSupplierInactive()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var supplier = await db.Set<Supplier>().FirstAsync(s => s.Id == supplierA);
+            supplier.IsActive = false;
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 50m));
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_WhenNotAwaitingProcurement_Throws()
     {
         var tenantId = Guid.NewGuid();

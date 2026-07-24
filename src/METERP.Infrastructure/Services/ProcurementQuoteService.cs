@@ -51,8 +51,11 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         if (req.Status is not (RequisitionStatus.AwaitingProcurement or RequisitionStatus.ProcurementOrdered))
             throw new InvalidOperationException("Quotes can only be added for requisitions awaiting procurement.");
 
-        var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId, ct)
-            ?? throw new InvalidOperationException("Supplier not found.");
+        if (req.PurchaseOrderId.HasValue)
+            throw new InvalidOperationException("A purchase order already exists for this requisition.");
+
+        var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId && s.IsActive, ct)
+            ?? throw new InvalidOperationException("Supplier not found or inactive.");
 
         var quote = new ProcurementSupplierQuote
         {
@@ -89,6 +92,9 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         }
         else
         {
+            if (quotedTotal <= 0)
+                throw new InvalidOperationException(
+                    "Quoted total must be positive when no line prices are provided.");
             quote.QuotedTotal = quotedTotal;
         }
 
@@ -115,6 +121,15 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
         if (quote == null) return false;
 
+        var req = await _dbContext.Set<StockRequisition>()
+            .FirstOrDefaultAsync(r => r.Id == quote.StockRequisitionId, ct);
+        if (req == null)
+            return false;
+        if (req.PurchaseOrderId.HasValue)
+            throw new InvalidOperationException("Cannot change quote selection after a PO has been created.");
+        if (req.Status is not (RequisitionStatus.AwaitingProcurement or RequisitionStatus.ProcurementOrdered))
+            throw new InvalidOperationException("Quotes can only be selected while the requisition awaits procurement.");
+
         var siblings = await _dbContext.Set<ProcurementSupplierQuote>()
             .Where(q => q.StockRequisitionId == quote.StockRequisitionId)
             .ToListAsync(ct);
@@ -138,12 +153,10 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
 
         if (_audit != null)
         {
-            var req = await _dbContext.Set<StockRequisition>().AsNoTracking()
-                .FirstOrDefaultAsync(r => r.Id == quote.StockRequisitionId, ct);
             await _audit.LogAsync(
                 "RFQ_SELECT",
                 "ProcurementSupplierQuote",
-                req?.RequisitionNumber ?? quoteId.ToString("N")[..8],
+                req.RequisitionNumber,
                 $"Selected supplier quote R {quote.QuotedTotal:N2}",
                 ct);
         }
