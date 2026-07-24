@@ -294,7 +294,8 @@ public class JobTests
             TenantId = tenantId,
             FirstName = "Thabo",
             LastName = "Mokoena",
-            DefaultHourlyRate = 195m
+            DefaultHourlyRate = 195m,
+            IsActive = true
         });
 
         var job = new Job
@@ -319,6 +320,94 @@ public class JobTests
         Assert.Equal("Thabo Mokoena", labor.Technician);
         Assert.Equal(195m, labor.HourlyRate);
         Assert.Equal(1170m, labor.TotalCost);
+    }
+
+    [Fact]
+    public async Task JobService_AddLaborAsync_RejectsHoursOver24()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLaborAsync(new JobLabor { JobId = job.Id, Hours = 25, HourlyRate = 100m }));
+        Assert.Contains("24", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddLaborAsync_RejectsWorkDateTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLaborAsync(new JobLabor
+            {
+                JobId = job.Id,
+                Hours = 8,
+                HourlyRate = 100m,
+                WorkDate = DateTime.UtcNow.Date.AddDays(7)
+            }));
+        Assert.Contains("future", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_AddLaborAsync_RejectsInactiveEmployee()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var empId = Guid.NewGuid();
+        db.Set<Employee>().Add(new Employee
+        {
+            Id = empId,
+            TenantId = tenantId,
+            EmployeeNumber = "E-INACT",
+            FirstName = "Old",
+            LastName = "Hand",
+            IsActive = false
+        });
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLaborAsync(new JobLabor
+            {
+                JobId = job.Id,
+                EmployeeId = empId,
+                Hours = 4,
+                HourlyRate = 100m
+            }));
+        Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_AddCostAsync_RejectsFutureCostDate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "C", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddCostAsync(new JobCost
+            {
+                JobId = job.Id,
+                Amount = 100m,
+                Description = "Future material",
+                CostDate = DateTime.UtcNow.Date.AddDays(14)
+            }));
+        Assert.Contains("future", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

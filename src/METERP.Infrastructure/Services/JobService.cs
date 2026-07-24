@@ -698,6 +698,12 @@ public class JobService : IJobService
         if (string.IsNullOrWhiteSpace(cost.CostType))
             cost.CostType = "Other";
 
+        cost.CostDate = cost.CostDate == default ? DateTime.UtcNow.Date : cost.CostDate.Date;
+        if (cost.CostDate > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Cost date cannot be more than one day in the future.");
+        if (cost.CostDate < DateTime.UtcNow.Date.AddYears(-2))
+            throw new InvalidOperationException("Cost date cannot be more than 2 years in the past.");
+
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == cost.JobId, ct)
             ?? throw new InvalidOperationException($"Job {cost.JobId} was not found.");
 
@@ -728,8 +734,16 @@ public class JobService : IJobService
     {
         if (labor.Hours <= 0)
             throw new InvalidOperationException("Labor hours must be positive.");
+        if (labor.Hours > 24m)
+            throw new InvalidOperationException("Labor hours cannot exceed 24 in a single entry.");
         if (labor.HourlyRate < 0)
             throw new InvalidOperationException("Hourly rate cannot be negative.");
+
+        labor.WorkDate = labor.WorkDate == default ? DateTime.UtcNow.Date : labor.WorkDate.Date;
+        if (labor.WorkDate > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Labor work date cannot be more than one day in the future.");
+        if (labor.WorkDate < DateTime.UtcNow.Date.AddYears(-2))
+            throw new InvalidOperationException("Labor work date cannot be more than 2 years in the past.");
 
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == labor.JobId, ct)
             ?? throw new InvalidOperationException($"Job {labor.JobId} was not found.");
@@ -739,6 +753,14 @@ public class JobService : IJobService
 
         if (labor.Hours <= 0)
             throw new InvalidOperationException("Labor hours must be positive.");
+
+        if (labor.EmployeeId is { } empId && empId != Guid.Empty)
+        {
+            var empOk = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.Id == empId && e.IsActive, ct);
+            if (!empOk)
+                throw new InvalidOperationException("Labor employee not found or inactive.");
+        }
 
         _dbContext.Set<JobLabor>().Add(labor);
         await _dbContext.SaveChangesAsync(ct);
