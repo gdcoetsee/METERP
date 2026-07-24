@@ -107,6 +107,14 @@ public class EmployeeService : IEmployeeService
                 throw new InvalidOperationException($"Employee number '{emp.EmployeeNumber}' already exists.");
         }
 
+        if (emp.ManagerEmployeeId is { } managerId && managerId != Guid.Empty)
+        {
+            var managerOk = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.Id == managerId && e.IsActive, ct);
+            if (!managerOk)
+                throw new InvalidOperationException("Manager employee not found or inactive.");
+        }
+
         _dbContext.Set<Employee>().Add(emp);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -145,6 +153,16 @@ public class EmployeeService : IEmployeeService
             if (hasOpenJobs)
                 throw new InvalidOperationException(
                     "Cannot deactivate an employee assigned to open jobs. Reassign or close those jobs first.");
+        }
+
+        if (emp.ManagerEmployeeId is { } managerId && managerId != Guid.Empty)
+        {
+            if (managerId == emp.Id)
+                throw new InvalidOperationException("An employee cannot be their own manager.");
+            var managerOk = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.Id == managerId && e.IsActive, ct);
+            if (!managerOk)
+                throw new InvalidOperationException("Manager employee not found or inactive.");
         }
 
         existing.EmployeeNumber = number;

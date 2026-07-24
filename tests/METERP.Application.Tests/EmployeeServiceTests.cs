@@ -219,6 +219,42 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenManagerMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-MGR",
+                FirstName = "Has",
+                LastName = "Boss",
+                ManagerEmployeeId = Guid.NewGuid()
+            }));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ThrowsWhenEmployeeIsOwnManager()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var id = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-SELF",
+            FirstName = "Self",
+            LastName = "Mgr"
+        });
+        var emp = await service.GetByIdAsync(id);
+        Assert.NotNull(emp);
+        emp!.ManagerEmployeeId = id;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(emp));
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenLeaveBalanceNegative()
     {
         var tenantId = Guid.NewGuid();
