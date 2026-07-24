@@ -115,6 +115,14 @@ public class EmployeeService : IEmployeeService
                 throw new InvalidOperationException("Manager employee not found or inactive.");
         }
 
+        if (emp.DivisionId is { } divisionId && divisionId != Guid.Empty)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
+        }
+
         _dbContext.Set<Employee>().Add(emp);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -163,6 +171,14 @@ public class EmployeeService : IEmployeeService
                 .AnyAsync(e => e.Id == managerId && e.IsActive, ct);
             if (!managerOk)
                 throw new InvalidOperationException("Manager employee not found or inactive.");
+        }
+
+        if (emp.DivisionId is { } divisionId && divisionId != Guid.Empty)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
         }
 
         existing.EmployeeNumber = number;

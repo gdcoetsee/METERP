@@ -236,6 +236,23 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenDivisionMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-DIV",
+                FirstName = "Div",
+                LastName = "Missing",
+                DivisionId = Guid.NewGuid()
+            }));
+    }
+
+    [Fact]
     public async Task UpdateAsync_ThrowsWhenEmployeeIsOwnManager()
     {
         var tenantId = Guid.NewGuid();
