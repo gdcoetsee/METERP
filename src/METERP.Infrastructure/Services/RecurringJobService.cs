@@ -77,6 +77,47 @@ public sealed class RecurringJobService : IRecurringJobService
         return schedule.Id;
     }
 
+    public async Task UpdateAsync(RecurringJobSchedule schedule, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(schedule.Title))
+            throw new InvalidOperationException("Recurring job title is required.");
+        if (schedule.IntervalDays < 1)
+            throw new InvalidOperationException("Interval must be at least 1 day.");
+        if (schedule.DefaultQuotedTotal < 0)
+            throw new InvalidOperationException("Default quoted total cannot be negative.");
+
+        var existing = await _dbContext.Set<RecurringJobSchedule>()
+            .FirstOrDefaultAsync(s => s.Id == schedule.Id, ct)
+            ?? throw new InvalidOperationException("Recurring schedule not found.");
+
+        var customerExists = await _dbContext.Set<Customer>()
+            .AnyAsync(c => c.Id == schedule.CustomerId, ct);
+        if (!customerExists)
+            throw new InvalidOperationException("Customer not found for recurring schedule.");
+
+        existing.Title = schedule.Title.Trim();
+        existing.CustomerId = schedule.CustomerId;
+        existing.DivisionId = schedule.DivisionId;
+        existing.IntervalDays = schedule.IntervalDays;
+        existing.NextRunDate = schedule.NextRunDate == default
+            ? existing.NextRunDate
+            : schedule.NextRunDate.Date;
+        existing.DefaultQuotedTotal = schedule.DefaultQuotedTotal;
+        existing.IsActive = schedule.IsActive;
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        if (_audit != null)
+        {
+            await _audit.LogAsync(
+                "UPDATE",
+                "RecurringJobSchedule",
+                existing.Title,
+                $"Every {existing.IntervalDays} day(s), next {existing.NextRunDate:yyyy-MM-dd}",
+                ct);
+        }
+    }
+
     public async Task SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
     {
         var schedule = await _dbContext.Set<RecurringJobSchedule>()

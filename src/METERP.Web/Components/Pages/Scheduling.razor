@@ -11,6 +11,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject ISchedulingService SchedulingService
 @inject IRecurringJobService RecurringJobService
+@inject ICustomerService CustomerService
 @inject ICurrentUserService CurrentUserService
 @inject IAiAssistantService AiAssistantService
 @inject NavigationManager Nav
@@ -32,27 +33,90 @@
     <button class="btn btn-outline-secondary btn-sm ms-1" @onclick="NextWeek">Next week →</button>
 </div>
 
-@if (!_loading && _recurringSchedules.Count > 0)
+@if (!_loading)
 {
     <div class="card mb-3" data-testid="scheduling-recurring">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>Recurring jobs</span>
-            <button class="btn btn-sm btn-outline-primary" @onclick="ProcessRecurringAsync" data-testid="scheduling-process-recurring">Spawn due jobs</button>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-primary" @onclick="OpenCreateRecurring"
+                        data-testid="scheduling-recurring-create">Add schedule</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="ProcessRecurringAsync" data-testid="scheduling-process-recurring">Spawn due jobs</button>
+            </div>
         </div>
-        <ul class="list-group list-group-flush small">
-            @foreach (var s in _recurringSchedules)
-            {
-                <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
-                    <span><strong>@s.Title</strong> — @(s.Customer?.Name ?? "Customer") every @s.IntervalDays d</span>
-                    <span class="text-nowrap">
-                        <span class="text-muted me-2">Next: @s.NextRunDate.ToString("yyyy-MM-dd")</span>
-                        <button type="button" class="btn btn-outline-secondary btn-sm py-0"
-                                data-testid="scheduling-recurring-deactivate"
-                                @onclick="() => DeactivateRecurringAsync(s.Id)">Deactivate</button>
-                    </span>
-                </li>
-            }
-        </ul>
+        @if (_recurringSchedules.Count == 0)
+        {
+            <div class="card-body small text-muted py-2">No active recurring schedules. Add maintenance/SLA templates to auto-spawn jobs.</div>
+        }
+        else
+        {
+            <ul class="list-group list-group-flush small">
+                @foreach (var s in _recurringSchedules)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                        <span><strong>@s.Title</strong> — @(s.Customer?.Name ?? "Customer") every @s.IntervalDays d · R @s.DefaultQuotedTotal.ToString("N0")</span>
+                        <span class="text-nowrap">
+                            <span class="text-muted me-2">Next: @s.NextRunDate.ToString("yyyy-MM-dd")</span>
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0"
+                                    data-testid="scheduling-recurring-deactivate"
+                                    @onclick="() => DeactivateRecurringAsync(s.Id)">Deactivate</button>
+                        </span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@if (_showRecurringModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)" data-testid="scheduling-recurring-modal" role="dialog" aria-modal="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">New recurring job schedule</h5>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseCreateRecurring"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label" for="recurring-title">Title</label>
+                        <input id="recurring-title" class="form-control" data-testid="scheduling-recurring-title" @bind="_newRecurringTitle" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" for="recurring-customer">Customer</label>
+                        <select id="recurring-customer" class="form-select" data-testid="scheduling-recurring-customer" @bind="_newRecurringCustomerId">
+                            <option value="@Guid.Empty">— Select —</option>
+                            @foreach (var c in _customers)
+                            {
+                                <option value="@c.Id">@c.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label" for="recurring-interval">Interval (days)</label>
+                            <input id="recurring-interval" type="number" min="1" class="form-control"
+                                   data-testid="scheduling-recurring-interval" @bind="_newRecurringInterval" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="recurring-next">Next run</label>
+                            <input id="recurring-next" type="date" class="form-control"
+                                   data-testid="scheduling-recurring-next" @bind="_newRecurringNext" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="recurring-quote">Quoted total (R)</label>
+                            <input id="recurring-quote" type="number" min="0" step="0.01" class="form-control"
+                                   data-testid="scheduling-recurring-quoted" @bind="_newRecurringQuoted" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseCreateRecurring">Cancel</button>
+                    <button type="button" class="btn btn-primary" data-testid="scheduling-recurring-save"
+                            disabled="@_recurringBusy" @onclick="SaveRecurringAsync">Save schedule</button>
+                </div>
+            </div>
+        </div>
     </div>
 }
 
@@ -253,7 +317,16 @@ else
     private DateTime _weekStart;
     private List<Job> _calendarJobs = new();
     private List<RecurringJobSchedule> _recurringSchedules = new();
+    private List<Customer> _customers = new();
     private DateTime? assignScheduledDate;
+
+    private bool _showRecurringModal;
+    private bool _recurringBusy;
+    private string _newRecurringTitle = "";
+    private Guid _newRecurringCustomerId = Guid.Empty;
+    private int _newRecurringInterval = 30;
+    private DateTime _newRecurringNext = DateTime.UtcNow.Date;
+    private decimal _newRecurringQuoted;
 
     protected override async Task OnInitializedAsync()
     {
@@ -290,10 +363,71 @@ else
             availableEmployees = board.Employees.ToList();
             _calendarJobs = (await SchedulingService.GetCalendarJobsAsync(_weekStart)).ToList();
             _recurringSchedules = (await RecurringJobService.GetAllAsync()).ToList();
+            _customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
         }
         finally
         {
             _loading = false;
+        }
+    }
+
+    private void OpenCreateRecurring()
+    {
+        _newRecurringTitle = "";
+        _newRecurringCustomerId = _customers.FirstOrDefault()?.Id ?? Guid.Empty;
+        _newRecurringInterval = 30;
+        _newRecurringNext = DateTime.UtcNow.Date;
+        _newRecurringQuoted = 0;
+        _showRecurringModal = true;
+    }
+
+    private void CloseCreateRecurring()
+    {
+        _showRecurringModal = false;
+        _recurringBusy = false;
+    }
+
+    private async Task SaveRecurringAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newRecurringTitle))
+        {
+            ToastService.ShowError("Title is required.");
+            return;
+        }
+        if (_newRecurringCustomerId == Guid.Empty)
+        {
+            ToastService.ShowError("Customer is required.");
+            return;
+        }
+        if (_newRecurringInterval < 1)
+        {
+            ToastService.ShowError("Interval must be at least 1 day.");
+            return;
+        }
+
+        _recurringBusy = true;
+        try
+        {
+            await RecurringJobService.CreateAsync(new RecurringJobSchedule
+            {
+                Title = _newRecurringTitle.Trim(),
+                CustomerId = _newRecurringCustomerId,
+                IntervalDays = _newRecurringInterval,
+                NextRunDate = _newRecurringNext.Date,
+                DefaultQuotedTotal = _newRecurringQuoted,
+                IsActive = true
+            });
+            ToastService.ShowSuccess("Recurring schedule created.");
+            CloseCreateRecurring();
+            await LoadBoardAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _recurringBusy = false;
         }
     }
 

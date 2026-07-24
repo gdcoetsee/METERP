@@ -96,6 +96,60 @@ public class RecurringJobServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsTitleIntervalAndNextRun()
+    {
+        var (db, service, _, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Maint Co" });
+            await db.SaveChangesAsync();
+
+            var id = await service.CreateAsync(new RecurringJobSchedule
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Quarterly check",
+                IntervalDays = 90,
+                NextRunDate = DateTime.UtcNow.Date,
+                DefaultQuotedTotal = 2000m
+            });
+
+            var schedule = await service.GetByIdAsync(id);
+            Assert.NotNull(schedule);
+            schedule!.Title = "  Bi-monthly check  ";
+            schedule.IntervalDays = 60;
+            schedule.NextRunDate = DateTime.UtcNow.Date.AddDays(14);
+            schedule.DefaultQuotedTotal = 2500m;
+
+            await service.UpdateAsync(schedule);
+
+            var reloaded = await service.GetByIdAsync(id);
+            Assert.Equal("Bi-monthly check", reloaded!.Title);
+            Assert.Equal(60, reloaded.IntervalDays);
+            Assert.Equal(DateTime.UtcNow.Date.AddDays(14), reloaded.NextRunDate);
+            Assert.Equal(2500m, reloaded.DefaultQuotedTotal);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ThrowsWhenScheduleMissing()
+    {
+        var (db, service, _, _) = Create();
+        await using (db)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateAsync(new RecurringJobSchedule
+                {
+                    Id = Guid.NewGuid(),
+                    Title = "Ghost",
+                    CustomerId = Guid.NewGuid(),
+                    IntervalDays = 30
+                }));
+        }
+    }
+
+    [Fact]
     public async Task ProcessDueAsync_ContinuesWhenOneScheduleFails()
     {
         var (db, service, jobs, tenantId) = Create();

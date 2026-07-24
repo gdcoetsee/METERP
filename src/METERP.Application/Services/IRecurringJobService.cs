@@ -10,6 +10,8 @@ public interface IRecurringJobService
 
     Task<Guid> CreateAsync(RecurringJobSchedule schedule, CancellationToken ct = default);
 
+    Task UpdateAsync(RecurringJobSchedule schedule, CancellationToken ct = default);
+
     Task SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
 
     /// <summary>
