@@ -118,6 +118,15 @@ public class SalesOrderService : ISalesOrderService
             && so.DeliveryDate.Value.Date < so.SoDate.Date)
             throw new InvalidOperationException("Delivery date cannot be before the sales order date.");
 
+        if (so.CustomerId == Guid.Empty)
+            so.CustomerId = existing.CustomerId;
+        else if (so.CustomerId != existing.CustomerId)
+        {
+            var customer = await _dbContext.Set<Customer>().FindAsync([so.CustomerId], ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException("Customer not found.");
+        }
+
         so.SoNumber = existing.SoNumber;
         so.Status = existing.Status;
 
