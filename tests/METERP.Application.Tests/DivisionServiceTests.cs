@@ -120,4 +120,31 @@ public class DivisionServiceTests
             Assert.Single(active);
         }
     }
+
+    [Fact]
+    public async Task SetActiveAsync_ThrowsWhenDeactivatingDivisionWithOpenJobs()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new Division { TenantId = tenantId, Code = "J", Name = "Jobs Div" });
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+            db.Set<Job>().Add(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                DivisionId = id,
+                JobNumber = "J-DIV",
+                Title = "Open",
+                Status = JobStatus.InProgress
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.SetActiveAsync(id, false));
+            Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True((await service.GetByIdAsync(id))!.IsActive);
+        }
+    }
 }

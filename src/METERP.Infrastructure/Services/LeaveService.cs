@@ -222,9 +222,14 @@ public sealed class LeaveService : ILeaveService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Reason is required for leave balance adjustment.", nameof(reason));
+        if (newBalanceDays < 0)
+            throw new InvalidOperationException("Leave balance cannot be negative.");
 
         var emp = await _dbContext.Set<Employee>().FirstOrDefaultAsync(e => e.Id == employeeId, ct)
             ?? throw new InvalidOperationException("Employee not found.");
+
+        if (!emp.IsActive)
+            throw new InvalidOperationException("Cannot adjust leave balance for an inactive employee.");
 
         var previous = emp.LeaveBalanceDays;
         emp.LeaveBalanceDays = newBalanceDays;

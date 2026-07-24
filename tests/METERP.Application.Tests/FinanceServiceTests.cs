@@ -159,6 +159,38 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task PostJournalAsync_Throws_WhenAccountMissingOrInactive()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var inactive = new Account
+        {
+            TenantId = tenantId,
+            AccountCode = "9999",
+            Name = "Closed",
+            Type = AccountType.Asset,
+            IsActive = false
+        };
+        db.Set<Account>().AddRange(cash, inactive);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var entry = new JournalEntry
+        {
+            TenantId = tenantId,
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 100m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = inactive.Id, Credit = 100m }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.PostJournalAsync(entry));
+        Assert.Contains("account", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PostJournalAsync_AssignsEntryNumber_WhenMissing()
     {
         var tenantId = Guid.NewGuid();

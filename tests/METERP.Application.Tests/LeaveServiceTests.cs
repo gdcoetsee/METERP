@@ -177,6 +177,33 @@ public class LeaveServiceTests
             Assert.Equal(12m, reloaded.LeaveBalanceDays);
             Assert.Contains("HR correction Q1", reloaded.Notes);
             Assert.Contains("was 5", reloaded.Notes);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AdjustLeaveBalanceAsync(employee.Id, -1m, "Bad balance"));
+        }
+    }
+
+    [Fact]
+    public async Task AdjustLeaveBalanceAsync_ThrowsWhenEmployeeInactive()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-INA",
+                FirstName = "Inactive",
+                LastName = "Emp",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                LeaveBalanceDays = 5m,
+                IsActive = false
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AdjustLeaveBalanceAsync(employee.Id, 8m, "Should fail"));
         }
     }
 

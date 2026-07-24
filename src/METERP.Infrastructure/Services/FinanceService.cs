@@ -123,12 +123,27 @@ public class FinanceService : IFinanceService
         if (lines.Any(l => l.Debit == 0 && l.Credit == 0))
             throw new InvalidOperationException("Journal lines must have a debit or credit amount.");
 
+        if (lines.Any(l => l.AccountId == Guid.Empty))
+            throw new InvalidOperationException("Every journal line must reference an account.");
+
+        var accountIds = lines.Select(l => l.AccountId).Distinct().ToList();
+        var existingAccounts = await _dbContext.Set<Account>()
+            .AsNoTracking()
+            .Where(a => accountIds.Contains(a.Id) && a.IsActive)
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+        if (existingAccounts.Count != accountIds.Count)
+            throw new InvalidOperationException("One or more journal accounts are missing or inactive.");
+
         var debits = lines.Sum(l => l.Debit);
         var credits = lines.Sum(l => l.Credit);
         if (Math.Abs(debits - credits) > 0.01m)
         {
             throw new InvalidOperationException("Journal does not balance (debits must equal credits).");
         }
+
+        if (!string.IsNullOrWhiteSpace(entry.Description))
+            entry.Description = entry.Description.Trim();
 
         _dbContext.Set<JournalEntry>().Add(entry);
         await _dbContext.SaveChangesAsync(ct);

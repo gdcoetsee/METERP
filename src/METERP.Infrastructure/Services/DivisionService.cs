@@ -76,6 +76,17 @@ public sealed class DivisionService : IDivisionService
         var division = await _dbContext.Set<Division>().FirstOrDefaultAsync(d => d.Id == id, ct)
             ?? throw new InvalidOperationException("Division not found.");
 
+        if (!isActive && division.IsActive)
+        {
+            var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+                .AnyAsync(j => j.DivisionId == id
+                    && j.Status != JobStatus.Cancelled
+                    && j.Status != JobStatus.Closed, ct);
+            if (hasOpenJobs)
+                throw new InvalidOperationException(
+                    "Cannot deactivate a division with open jobs. Reassign or close those jobs first.");
+        }
+
         division.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
     }
