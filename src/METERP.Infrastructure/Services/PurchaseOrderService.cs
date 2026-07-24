@@ -132,6 +132,12 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (supplier == null || supplier.IsDeleted)
             throw new InvalidOperationException("Supplier not found.");
 
+        if (po.TaxRate < 0 || po.TaxRate > 1m)
+            throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
+        if (po.ExpectedDate.HasValue && po.PoDate != default
+            && po.ExpectedDate.Value.Date < po.PoDate.Date)
+            throw new InvalidOperationException("Expected delivery date cannot be before the PO date.");
+
         // Preserve identity fields that must not drift via free-form update payloads.
         po.PoNumber = existing.PoNumber;
         po.Status = existing.Status;
