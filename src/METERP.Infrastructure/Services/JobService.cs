@@ -279,6 +279,31 @@ public class JobService : IJobService
 
     public async Task UpdateAsync(Job job, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(job.Title))
+            throw new InvalidOperationException("Job title is required.");
+        if (job.QuotedTotal < 0)
+            throw new InvalidOperationException("Quoted total cannot be negative.");
+
+        var existing = await _dbContext.Set<Job>().AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == job.Id, ct)
+            ?? throw new InvalidOperationException("Job not found.");
+
+        if (existing.Status is JobStatus.Closed or JobStatus.Cancelled)
+            throw new InvalidOperationException(
+                $"Cannot edit job {existing.JobNumber} — it is {existing.Status}.");
+
+        // Status lifecycle must go through dedicated methods (status / close / cancel / reopen).
+        if (job.Status != existing.Status)
+            throw new InvalidOperationException(
+                "Use status, close, cancel, or reopen actions to change job status.");
+
+        job.Title = job.Title.Trim();
+        job.JobNumber = existing.JobNumber;
+        job.Status = existing.Status;
+        job.ClosedAt = existing.ClosedAt;
+        job.ClosedByUserId = existing.ClosedByUserId;
+        job.CloseNotes = existing.CloseNotes;
+
         _dbContext.Set<Job>().Update(job);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);

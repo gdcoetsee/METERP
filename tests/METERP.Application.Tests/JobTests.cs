@@ -763,4 +763,44 @@ public class JobTests
         Assert.True(incidents[0].IsClosed);
         Assert.Contains("toolbox talk", incidents[0].CorrectiveAction);
     }
+
+    [Fact]
+    public async Task JobService_UpdateAsync_ThrowsWhenClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Closed"));
+
+        var job = await service.GetByIdAsync(jobId);
+        Assert.NotNull(job);
+        job!.Title = "Cannot edit";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(job));
+        Assert.Contains("Closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_UpdateAsync_PreservesJobNumberAndRejectsStatusChange()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await service.GetByIdAsync(jobId);
+        Assert.NotNull(job);
+        var number = job!.JobNumber;
+
+        job.Title = "  Retitled work  ";
+        job.JobNumber = "HACKED";
+        await service.UpdateAsync(job);
+
+        var reloaded = await service.GetByIdAsync(jobId);
+        Assert.Equal("Retitled work", reloaded!.Title);
+        Assert.Equal(number, reloaded.JobNumber);
+
+        reloaded.Status = JobStatus.Completed;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(reloaded));
+    }
 }

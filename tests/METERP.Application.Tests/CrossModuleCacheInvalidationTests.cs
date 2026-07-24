@@ -516,18 +516,20 @@ public class CrossModuleCacheInvalidationTests
     }
 
     [Fact]
-    public async Task JobUpdate_InvalidatesInvoiceListCache_WithFreshJobNumber()
+    public async Task JobUpdate_InvalidatesInvoiceListCache_WithFreshJobTitle()
     {
         var tenantId = Guid.NewGuid();
         using var harness = new Harness(tenantId);
         var (_, job) = await SeedJobWithInvoiceAsync(harness, "J-OLD-001");
 
-        Assert.Equal("J-OLD-001", (await harness.Invoices.GetAllAsync())[0].Job!.JobNumber);
+        // Job numbers are immutable via UpdateAsync; title change still invalidates invoice list cache.
+        Assert.NotEqual("Renamed install", (await harness.Invoices.GetAllAsync())[0].Job!.Title);
 
-        job.JobNumber = "J-RENAMED-001";
+        job.Title = "Renamed install";
         await harness.Jobs.UpdateAsync(job);
 
         var refreshed = await harness.Invoices.GetAllAsync();
-        Assert.Equal("J-RENAMED-001", refreshed[0].Job!.JobNumber);
+        Assert.Equal("Renamed install", refreshed[0].Job!.Title);
+        Assert.Equal("J-OLD-001", refreshed[0].Job!.JobNumber);
     }
 }
