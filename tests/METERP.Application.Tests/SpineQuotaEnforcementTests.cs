@@ -103,6 +103,10 @@ public class SpineQuotaEnforcementTests
         using var harness = new QuotaHarness(tenantId);
         await harness.SeedTenantAsync(periodJobs: 10);
 
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Quota Job Customer" };
+        harness.Db.Set<Customer>().Add(customer);
+        await harness.Db.SaveChangesAsync();
+
         var service = new JobService(
             harness.Db,
             tenantProvider: harness.TenantProvider.Object,
@@ -111,7 +115,7 @@ public class SpineQuotaEnforcementTests
         var job = new Job
         {
             TenantId = tenantId,
-            CustomerId = Guid.NewGuid(),
+            CustomerId = customer.Id,
             Title = "Blocked job"
         };
 

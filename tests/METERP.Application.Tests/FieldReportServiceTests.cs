@@ -44,10 +44,13 @@ public class FieldReportServiceTests
             {
                 Id = employeeId,
                 TenantId = tenantId,
+                EmployeeNumber = "E-TECH1",
                 FirstName = "Tech",
                 LastName = "One",
-                DefaultHourlyRate = 200m
+                DefaultHourlyRate = 200m,
+                IsActive = true
             });
+            await db.SaveChangesAsync();
 
             var jobId = await jobs.CreateAsync(new Job
             {

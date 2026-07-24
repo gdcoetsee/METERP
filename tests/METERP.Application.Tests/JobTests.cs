@@ -180,11 +180,14 @@ public class JobTests
                          .Returns(Task.CompletedTask);
 
         var service = new JobService(db, tenantServiceMock.Object);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Counter Co" });
+        await db.SaveChangesAsync();
 
         var job = new Job
         {
             TenantId = tenantId,
-            CustomerId = Guid.NewGuid(),
+            CustomerId = customerId,
             JobNumber = "",
             Title = "Test Job with Travel",
             QuotedTotal = 10000m
