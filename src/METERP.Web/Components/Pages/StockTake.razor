@@ -73,6 +73,8 @@ else
                 {
                     <button type="button" class="btn btn-sm btn-success me-2" data-testid="stock-take-post"
                             @onclick="PostSessionAsync">Post variances</button>
+                    <button type="button" class="btn btn-sm btn-outline-light me-2" data-testid="stock-take-cancel"
+                            @onclick="CancelSessionAsync">Cancel session</button>
                 }
                 <button type="button" class="btn btn-sm btn-light" @onclick="CloseSession">Close</button>
             </div>
@@ -169,10 +171,17 @@ else
             confirmLabel: "Start");
         if (!ok) return;
 
-        var id = await StockTakeService.StartSessionAsync(userId);
-        await LoadAsync();
-        await OpenSession(id);
-        Toast.ShowSuccess("Stock take session started.");
+        try
+        {
+            var id = await StockTakeService.StartSessionAsync(userId);
+            await LoadAsync();
+            await OpenSession(id);
+            Toast.ShowSuccess("Stock take session started.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
     }
 
     private async Task OpenSession(Guid id)
@@ -193,8 +202,15 @@ else
         if (_activeSession == null || !decimal.TryParse(e.Value?.ToString(), out var qty)) return;
 
         _countInputs[line.Id] = e.Value?.ToString() ?? string.Empty;
-        await StockTakeService.RecordCountAsync(_activeSession.Id, line.InventoryItemId, qty);
-        _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+        try
+        {
+            await StockTakeService.RecordCountAsync(_activeSession.Id, line.InventoryItemId, qty);
+            _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
     }
 
     private async Task PostSessionAsync()
@@ -202,19 +218,48 @@ else
         if (_activeSession == null || CurrentUser.UserId is not { } userId) return;
 
         var ok = await Confirm.ConfirmAsync(
-            "Post variances to inventory? This cannot be undone.",
+            "Post variances to inventory? Uncounted lines are left unchanged. This cannot be undone.",
             "Post stock take",
             confirmLabel: "Post",
             confirmVariant: "success");
         if (!ok) return;
 
-        if (!await StockTakeService.PostSessionAsync(_activeSession.Id, userId))
+        try
         {
-            Toast.ShowError("Session could not be posted.");
+            if (!await StockTakeService.PostSessionAsync(_activeSession.Id, userId))
+            {
+                Toast.ShowError("Session could not be posted.");
+                return;
+            }
+
+            Toast.ShowSuccess("Stock take posted — variances applied.");
+            _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task CancelSessionAsync()
+    {
+        if (_activeSession == null || CurrentUser.UserId is not { } userId) return;
+
+        var ok = await Confirm.ConfirmAsync(
+            "Cancel this stock take without posting any inventory changes?",
+            "Cancel stock take",
+            confirmLabel: "Cancel session",
+            confirmVariant: "danger");
+        if (!ok) return;
+
+        if (!await StockTakeService.CancelSessionAsync(_activeSession.Id, userId, "Cancelled from UI"))
+        {
+            Toast.ShowError("Session could not be cancelled.");
             return;
         }
 
-        Toast.ShowSuccess("Stock take posted — variances applied.");
+        Toast.ShowSuccess("Stock take session cancelled.");
         _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
         await LoadAsync();
     }

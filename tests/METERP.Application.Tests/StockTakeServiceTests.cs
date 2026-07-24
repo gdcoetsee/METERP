@@ -141,7 +141,7 @@ public class StockTakeServiceTests
         var (db, service, inventory) = CreateServices(tenantId);
         await using (db)
         {
-            await inventory.CreateItemAsync(new InventoryItem
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
             {
                 Sku = "D-1",
                 Name = "Drill",
@@ -152,6 +152,7 @@ public class StockTakeServiceTests
             });
 
             var sessionId = await service.StartSessionAsync(TestUserId);
+            await service.RecordCountAsync(sessionId, itemId, 5m);
             await service.PostSessionAsync(sessionId, TestUserId);
 
             Assert.False(await service.PostSessionAsync(sessionId, TestUserId));
@@ -185,6 +186,108 @@ public class StockTakeServiceTests
 
             var session = await service.GetByIdAsync(sessionId);
             Assert.Equal(StockTakeStatus.Posted, session!.Status);
+        }
+    }
+
+    [Fact]
+    public async Task StartSessionAsync_ThrowsWhenOpenSessionExists()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "O-1",
+                Name = "Open guard",
+                QuantityOnHand = 1,
+                ReorderLevel = 0,
+                UnitCost = 1m,
+                IsActive = true
+            });
+
+            await service.StartSessionAsync(TestUserId);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.StartSessionAsync(TestUserId));
+        }
+    }
+
+    [Fact]
+    public async Task RecordCountAsync_ThrowsWhenNegative()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "N-1",
+                Name = "Neg",
+                QuantityOnHand = 5,
+                ReorderLevel = 0,
+                UnitCost = 1m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordCountAsync(sessionId, itemId, -1m));
+        }
+    }
+
+    [Fact]
+    public async Task PostSessionAsync_ThrowsWhenNoCounts()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "Z-1",
+                Name = "Zero counts",
+                QuantityOnHand = 2,
+                ReorderLevel = 0,
+                UnitCost = 1m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.PostSessionAsync(sessionId, TestUserId));
+        }
+    }
+
+    [Fact]
+    public async Task CancelSessionAsync_CancelsWithoutInventoryChange()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "K-1",
+                Name = "Keep",
+                QuantityOnHand = 12,
+                ReorderLevel = 0,
+                UnitCost = 3m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+            await service.RecordCountAsync(sessionId, itemId, 9m);
+
+            Assert.True(await service.CancelSessionAsync(sessionId, TestUserId, "Wrong timing"));
+            var session = await service.GetByIdAsync(sessionId);
+            Assert.Equal(StockTakeStatus.Cancelled, session!.Status);
+            Assert.Contains("Wrong timing", session.Notes);
+
+            var item = await inventory.GetItemByIdAsync(itemId);
+            Assert.Equal(12m, item!.QuantityOnHand);
+
+            // After cancel, a new session may start.
+            var nextId = await service.StartSessionAsync(TestUserId);
+            Assert.NotEqual(sessionId, nextId);
         }
     }
 }

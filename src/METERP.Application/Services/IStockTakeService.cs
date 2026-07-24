@@ -13,4 +13,7 @@ public interface IStockTakeService
     Task<bool> RecordCountAsync(Guid sessionId, Guid inventoryItemId, decimal countedQuantity, CancellationToken ct = default);
 
     Task<bool> PostSessionAsync(Guid sessionId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Cancel an open session without posting variances. No inventory changes.</summary>
+    Task<bool> CancelSessionAsync(Guid sessionId, Guid userId, string? reason = null, CancellationToken ct = default);
 }

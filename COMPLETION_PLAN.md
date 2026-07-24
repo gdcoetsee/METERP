@@ -51,6 +51,8 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 **R6 quota UX + field report guards (2026-07-24):** Quotes/Jobs/Invoices disable create actions when monthly quota is exceeded and show page banners. Field reports reject submit/approve on closed jobs and empty content.
 
+**Stock take + scheduling hardening (2026-07-24):** One open stock-take session at a time; cancel without posting; reject negative counts; require counts before post. Scheduling blocks assign/labor/reschedule on closed jobs.
+
 **R2c SKU promote + RFQ lines (2026-07-24):** Free-text PO/GRV lines can become stock master SKUs; multi-supplier RFQ supports per-line unit prices that roll into header total and apply to the created PO.
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.

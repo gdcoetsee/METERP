@@ -44,6 +44,10 @@ public class SchedulingService : ISchedulingService
         var job = await _jobService.GetByIdAsync(jobId, ct)
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
 
+        if (!job.IsOpenForOperations())
+            throw new InvalidOperationException(
+                $"Cannot assign resources — job {job.JobNumber} is {job.Status}.");
+
         job.AssetId = assetId;
 
         var employees = await _employeeService.GetAllAsync(null, 1, 1000, includeInactive: false, ct: ct);
@@ -81,6 +85,10 @@ public class SchedulingService : ISchedulingService
 
         var job = await _jobService.GetByIdAsync(jobId, ct)
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
+
+        if (!job.IsOpenForOperations())
+            throw new InvalidOperationException(
+                $"Cannot log crew labor — job {job.JobNumber} is {job.Status}.");
 
         var crew = job.GetCrewEmployees().ToList();
         if (job.AssignedEmployee != null && crew.All(e => e.Id != job.AssignedEmployeeId))
@@ -129,6 +137,10 @@ public class SchedulingService : ISchedulingService
     {
         var job = await _jobService.GetByIdAsync(jobId, ct)
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
+
+        if (!job.IsOpenForOperations())
+            throw new InvalidOperationException(
+                $"Cannot reschedule — job {job.JobNumber} is {job.Status}.");
 
         job.ScheduledStart = scheduledStart?.Date;
         await _jobService.UpdateAsync(job, ct);

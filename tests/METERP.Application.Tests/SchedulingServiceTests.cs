@@ -309,4 +309,41 @@ public class SchedulingServiceTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddCrewLaborAsync(jobId, 4m));
         }
     }
+
+    [Fact]
+    public async Task AssignAndLabor_ThrowWhenJobClosed()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Closed Co" });
+            await db.SaveChangesAsync();
+
+            var leadId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Lead",
+                LastName = "Tech",
+                DefaultHourlyRate = 200m,
+                IsActive = true
+            });
+
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Closed job",
+                QuotedTotal = 2000m,
+                Status = JobStatus.InProgress
+            });
+            await service.AssignJobResourcesAsync(jobId, null, leadId);
+            await jobService.CloseAsync(jobId, Guid.NewGuid(), "Done");
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobId, null, leadId));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddCrewLaborAsync(jobId, 4m));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateScheduledStartAsync(jobId, DateTime.UtcNow.Date));
+        }
+    }
 }

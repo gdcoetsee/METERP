@@ -43,6 +43,12 @@ public sealed class StockTakeService : IStockTakeService
 
     public async Task<Guid> StartSessionAsync(Guid userId, string? notes = null, CancellationToken ct = default)
     {
+        var openExists = await _dbContext.Set<StockTakeSession>()
+            .AnyAsync(s => s.Status == StockTakeStatus.Open, ct);
+        if (openExists)
+            throw new InvalidOperationException(
+                "An open stock take session already exists. Post or cancel it before starting another.");
+
         var items = await _inventoryService.GetAllItemsAsync(pageSize: 500, ct: ct);
         var session = new StockTakeSession
         {
@@ -77,6 +83,9 @@ public sealed class StockTakeService : IStockTakeService
 
     public async Task<bool> RecordCountAsync(Guid sessionId, Guid inventoryItemId, decimal countedQuantity, CancellationToken ct = default)
     {
+        if (countedQuantity < 0)
+            throw new InvalidOperationException("Counted quantity cannot be negative.");
+
         var line = await _dbContext.Set<StockTakeLine>()
             .FirstOrDefaultAsync(l => l.StockTakeSessionId == sessionId && l.InventoryItemId == inventoryItemId, ct);
         if (line == null) return false;
@@ -96,7 +105,12 @@ public sealed class StockTakeService : IStockTakeService
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
         if (session == null || session.Status != StockTakeStatus.Open) return false;
 
-        foreach (var line in session.Lines.Where(l => !l.IsDeleted && l.CountedQuantity.HasValue))
+        var countedLines = session.Lines.Where(l => !l.IsDeleted && l.CountedQuantity.HasValue).ToList();
+        if (countedLines.Count == 0)
+            throw new InvalidOperationException(
+                "Record at least one physical count before posting variances.");
+
+        foreach (var line in countedLines)
         {
             var variance = line.CountedQuantity!.Value - line.SystemQuantity;
             if (variance == 0) continue;
@@ -117,7 +131,34 @@ public sealed class StockTakeService : IStockTakeService
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)
-            await _audit.LogAsync("POST", "StockTake", session.SessionNumber, "Variances posted", ct);
+            await _audit.LogAsync("POST", "StockTake", session.SessionNumber,
+                $"{countedLines.Count} line(s) counted — variances posted", ct);
+
+        return true;
+    }
+
+    public async Task<bool> CancelSessionAsync(Guid sessionId, Guid userId, string? reason = null, CancellationToken ct = default)
+    {
+        var session = await _dbContext.Set<StockTakeSession>()
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null || session.Status != StockTakeStatus.Open)
+            return false;
+
+        session.Status = StockTakeStatus.Cancelled;
+        session.PostedAt = DateTime.UtcNow;
+        session.PostedByUserId = userId;
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            session.Notes = string.IsNullOrWhiteSpace(session.Notes)
+                ? $"Cancelled: {reason.Trim()}"
+                : $"{session.Notes.Trim()} | Cancelled: {reason.Trim()}";
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        if (_audit != null)
+            await _audit.LogAsync("CANCEL", "StockTake", session.SessionNumber,
+                reason ?? "Session cancelled without posting", ct);
 
         return true;
     }
