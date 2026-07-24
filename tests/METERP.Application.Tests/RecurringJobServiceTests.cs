@@ -205,6 +205,34 @@ public class RecurringJobServiceTests
             var allJobs = await jobs.GetAllAsync(pageSize: 50);
             Assert.Contains(allJobs, j => j.Title == "Good schedule");
             Assert.DoesNotContain(allJobs, j => j.Title == "Broken schedule");
+
+            var broken = await db.Set<RecurringJobSchedule>().FirstAsync(s => s.Title == "Broken schedule");
+            Assert.False(broken.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_DeactivatesScheduleWhenCustomerMissing()
+    {
+        var (db, service, jobs, tenantId) = Create();
+        await using (db)
+        {
+            db.Set<RecurringJobSchedule>().Add(new RecurringJobSchedule
+            {
+                TenantId = tenantId,
+                CustomerId = Guid.NewGuid(),
+                Title = "Orphan schedule",
+                IntervalDays = 7,
+                NextRunDate = DateTime.UtcNow.Date,
+                DefaultQuotedTotal = 500m,
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+
+            Assert.Equal(0, await service.ProcessDueAsync());
+            var schedule = await db.Set<RecurringJobSchedule>().FirstAsync(s => s.Title == "Orphan schedule");
+            Assert.False(schedule.IsActive);
+            Assert.Empty(await jobs.GetAllAsync(pageSize: 50));
         }
     }
 

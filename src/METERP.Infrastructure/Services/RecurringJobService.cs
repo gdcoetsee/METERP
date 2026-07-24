@@ -177,7 +177,24 @@ public sealed class RecurringJobService : IRecurringJobService
                 var customerOk = await _dbContext.Set<Customer>()
                     .AnyAsync(c => c.Id == schedule.CustomerId, ct);
                 if (!customerOk)
-                    throw new InvalidOperationException($"Customer {schedule.CustomerId} not found for schedule '{schedule.Title}'.");
+                {
+                    // Avoid infinite daily failure loops for soft-deleted customers.
+                    schedule.IsActive = false;
+                    throw new InvalidOperationException(
+                        $"Customer not found for schedule '{schedule.Title}' — schedule deactivated.");
+                }
+
+                if (schedule.DivisionId is { } divId && divId != Guid.Empty)
+                {
+                    var divisionOk = await _dbContext.Set<Division>()
+                        .AnyAsync(d => d.Id == divId && d.IsActive, ct);
+                    if (!divisionOk)
+                    {
+                        schedule.IsActive = false;
+                        throw new InvalidOperationException(
+                            $"Division not found or inactive for schedule '{schedule.Title}' — schedule deactivated.");
+                    }
+                }
 
                 await _jobs.CreateAsync(new Job
                 {
