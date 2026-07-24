@@ -1,13 +1,44 @@
 @page "/field"
 @layout Layout.FieldLayout
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Domain
 @attribute [Authorize(Policy = "Field.View")]
 @rendermode InteractiveServer
+@inject IJobService JobService
+@inject ILeaveService LeaveService
+@inject IFieldReportService FieldReportService
+@inject ICurrentUserService CurrentUser
 
 <PageTitle>Field Portal</PageTitle>
 
 <div data-testid="field-portal-ready">
     <h1 class="h4 mb-1">Field Portal</h1>
     <p class="text-muted small mb-4">Submit job reports, request stock, and apply for leave — paperless and accountable.</p>
+
+    @if (_loaded)
+    {
+        <div class="row g-2 mb-3" data-testid="field-home-stats">
+            <div class="col-4">
+                <div class="border rounded p-2 text-center bg-white">
+                    <div class="fw-semibold" data-testid="field-home-jobs-count">@_openJobs</div>
+                    <div class="small text-muted">Open jobs</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="border rounded p-2 text-center bg-white">
+                    <div class="fw-semibold" data-testid="field-home-reports-count">@_recentReports</div>
+                    <div class="small text-muted">My reports</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="border rounded p-2 text-center bg-white">
+                    <div class="fw-semibold" data-testid="field-home-leave-days">@_leaveDays.ToString("N1")</div>
+                    <div class="small text-muted">Leave days</div>
+                </div>
+            </div>
+        </div>
+    }
 
     <div class="row g-3">
         <div class="col-6">
@@ -52,3 +83,37 @@
         </AuthorizeView>
     </div>
 </div>
+
+@code {
+    private bool _loaded;
+    private int _openJobs;
+    private int _recentReports;
+    private decimal _leaveDays;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var jobs = await JobService.GetAllAsync(pageSize: 100);
+            _openJobs = jobs.Count(j =>
+                j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold
+                || j.Status == JobStatus.Completed);
+
+            if (CurrentUser.UserId is { } userId)
+            {
+                _recentReports = (await FieldReportService.GetBySubmitterAsync(userId, take: 20)).Count;
+                var emp = await LeaveService.GetEmployeeForUserAsync(userId);
+                if (emp != null)
+                    _leaveDays = await LeaveService.GetAvailableLeaveDaysAsync(emp.Id);
+            }
+        }
+        catch
+        {
+            // Portal cards still work without stats.
+        }
+        finally
+        {
+            _loaded = true;
+        }
+    }
+}
