@@ -74,6 +74,14 @@ public class CustomerService : ICustomerService
         if (nameTaken)
             throw new InvalidOperationException($"Customer '{customer.Name}' already exists.");
 
+        if (!string.IsNullOrWhiteSpace(customer.Email))
+        {
+            var emailTaken = await _dbContext.Set<Customer>()
+                .AnyAsync(c => c.Email == customer.Email, ct);
+            if (emailTaken)
+                throw new InvalidOperationException($"Customer email '{customer.Email}' is already in use.");
+        }
+
         _dbContext.Set<Customer>().Add(customer);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -93,6 +101,14 @@ public class CustomerService : ICustomerService
             .AnyAsync(c => c.Name == customer.Name && c.Id != customer.Id, ct);
         if (nameTaken)
             throw new InvalidOperationException($"Customer '{customer.Name}' already exists.");
+
+        if (!string.IsNullOrWhiteSpace(customer.Email))
+        {
+            var emailTaken = await _dbContext.Set<Customer>()
+                .AnyAsync(c => c.Email == customer.Email && c.Id != customer.Id, ct);
+            if (emailTaken)
+                throw new InvalidOperationException($"Customer email '{customer.Email}' is already in use.");
+        }
 
         _dbContext.Set<Customer>().Update(customer);
         await _dbContext.SaveChangesAsync(ct);

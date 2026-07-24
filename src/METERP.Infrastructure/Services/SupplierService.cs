@@ -75,6 +75,14 @@ public class SupplierService : ISupplierService
         if (nameTaken)
             throw new InvalidOperationException($"Supplier '{supplier.Name}' already exists.");
 
+        if (!string.IsNullOrWhiteSpace(supplier.Email))
+        {
+            var emailTaken = await _dbContext.Set<Supplier>()
+                .AnyAsync(s => s.Email == supplier.Email && s.IsActive, ct);
+            if (emailTaken)
+                throw new InvalidOperationException($"Supplier email '{supplier.Email}' is already in use.");
+        }
+
         _dbContext.Set<Supplier>().Add(supplier);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -94,6 +102,14 @@ public class SupplierService : ISupplierService
             .AnyAsync(s => s.Name == supplier.Name && s.Id != supplier.Id && s.IsActive, ct);
         if (nameTaken)
             throw new InvalidOperationException($"Supplier '{supplier.Name}' already exists.");
+
+        if (!string.IsNullOrWhiteSpace(supplier.Email))
+        {
+            var emailTaken = await _dbContext.Set<Supplier>()
+                .AnyAsync(s => s.Email == supplier.Email && s.Id != supplier.Id && s.IsActive, ct);
+            if (emailTaken)
+                throw new InvalidOperationException($"Supplier email '{supplier.Email}' is already in use.");
+        }
 
         _dbContext.Set<Supplier>().Update(supplier);
         await _dbContext.SaveChangesAsync(ct);

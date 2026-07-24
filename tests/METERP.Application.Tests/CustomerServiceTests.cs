@@ -69,6 +69,19 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenEmailDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        await service.CreateAsync(new Customer { Name = "A Co", Email = "billing@acme.demo" });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Customer { Name = "B Co", Email = "billing@acme.demo" }));
+        Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task DeleteAsync_SoftDeletesCustomerAndContacts()
     {
         var tenantId = Guid.NewGuid();
