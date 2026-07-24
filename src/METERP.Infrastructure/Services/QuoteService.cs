@@ -353,6 +353,16 @@ public class QuoteService : IQuoteService
         if (quote == null)
             throw new InvalidOperationException("Quote not found.");
 
+        if (quote.Status is QuoteStatus.Rejected or QuoteStatus.Expired)
+            throw new InvalidOperationException($"Cannot convert a {quote.Status} quote to a job.");
+
+        var alreadyConverted = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .AnyAsync(j => j.QuoteId == quote.Id, ct);
+        if (alreadyConverted)
+            throw new InvalidOperationException(
+                $"Quote {quote.QuoteNumber} has already been converted to a job.");
+
         if (quote.Status != QuoteStatus.Accepted)
         {
             quote.Status = QuoteStatus.Accepted;
@@ -362,7 +372,9 @@ public class QuoteService : IQuoteService
         {
             QuoteId = quote.Id,
             CustomerId = quote.CustomerId,
-            JobNumber = $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}",
+            JobNumber = _documentSequence != null
+                ? await _documentSequence.GetNextNumberAsync("Job", "J", ct)
+                : $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}",
             Title = $"Job from {quote.QuoteNumber}",
             Description = quote.Notes,
             QuotedTotal = quote.Total,

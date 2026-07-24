@@ -30,6 +30,22 @@ public sealed class DivisionService : IDivisionService
 
     public async Task<Guid> CreateAsync(Division division, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(division.Name))
+            throw new InvalidOperationException("Division name is required.");
+
+        division.Name = division.Name.Trim();
+        if (string.IsNullOrWhiteSpace(division.Code))
+            division.Code = division.Name.Length <= 6
+                ? division.Name.ToUpperInvariant()
+                : division.Name[..6].ToUpperInvariant();
+        else
+            division.Code = division.Code.Trim().ToUpperInvariant();
+
+        var duplicate = await _dbContext.Set<Division>()
+            .AnyAsync(d => d.Code == division.Code, ct);
+        if (duplicate)
+            throw new InvalidOperationException($"Division code '{division.Code}' already exists.");
+
         _dbContext.Set<Division>().Add(division);
         await _dbContext.SaveChangesAsync(ct);
         return division.Id;
