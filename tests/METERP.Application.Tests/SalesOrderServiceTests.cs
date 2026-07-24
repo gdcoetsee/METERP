@@ -218,6 +218,49 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_ThrowsWhenConfirmingEmptySo()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                TaxRate = 0.15m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(soId, SalesOrderStatus.Confirmed));
+            Assert.Contains("no lines", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertToJobAsync_ThrowsWhenNoLines()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0.15m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ConvertToJobAsync(soId));
+            Assert.Contains("no lines", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ConvertToJobAsync_ThrowsWhenAlreadyConverted()
     {
         var tenantId = Guid.NewGuid();

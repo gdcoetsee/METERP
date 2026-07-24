@@ -169,7 +169,9 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task UpdateStatusAsync(Guid soId, SalesOrderStatus newStatus, CancellationToken ct = default)
     {
-        var so = await _dbContext.Set<SalesOrder>().FirstOrDefaultAsync(s => s.Id == soId, ct);
+        var so = await _dbContext.Set<SalesOrder>()
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == soId, ct);
         if (so == null) return;
         if (so.Status == newStatus) return;
 
@@ -178,6 +180,11 @@ public class SalesOrderService : ISalesOrderService
 
         if (so.Status == SalesOrderStatus.Completed && newStatus != SalesOrderStatus.Completed)
             throw new InvalidOperationException("Completed sales orders cannot change status.");
+
+        if (newStatus == SalesOrderStatus.Confirmed
+            && so.Status == SalesOrderStatus.Draft
+            && !so.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Cannot confirm a sales order with no lines.");
 
         if (newStatus == SalesOrderStatus.Cancelled && so.Status == SalesOrderStatus.InProgress)
         {
@@ -280,6 +287,9 @@ public class SalesOrderService : ISalesOrderService
 
         if (so.Status is SalesOrderStatus.Cancelled or SalesOrderStatus.Completed)
             throw new InvalidOperationException($"Cannot convert sales order in status {so.Status}.");
+
+        if (!so.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Cannot convert a sales order with no lines to a job.");
 
         if (so.Status != SalesOrderStatus.Confirmed && so.Status != SalesOrderStatus.InProgress)
             so.Status = SalesOrderStatus.Confirmed;

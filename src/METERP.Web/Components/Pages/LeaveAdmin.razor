@@ -37,6 +37,7 @@ else
                     <th>Status</th>
                     <th>Paid</th>
                     <th>Reason</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -49,6 +50,14 @@ else
                         <td><span class="badge bg-secondary">@r.Status</span></td>
                         <td>@(r.IsPaid ? "Yes" : "Unpaid")</td>
                         <td class="small">@(r.Reason ?? "—")</td>
+                        <td class="text-end">
+                            @if (CanCancel(r))
+                            {
+                                <button type="button" class="btn btn-link btn-sm p-0"
+                                        data-testid="leave-admin-cancel"
+                                        @onclick="() => CancelRequestAsync(r)">Cancel</button>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -134,6 +143,33 @@ else
             Toast.ShowSuccess("Leave balance updated.");
             _showAdjust = false;
             _employees = (await EmployeeService.GetAllAsync(pageSize: 200)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private static bool CanCancel(LeaveRequest r) =>
+        r.Status is LeaveRequestStatus.PendingManager
+            or LeaveRequestStatus.PendingExecutive
+            or LeaveRequestStatus.PendingHr
+        || (r.Status == LeaveRequestStatus.Approved && r.StartDate.Date > DateTime.UtcNow.Date);
+
+    private async Task CancelRequestAsync(LeaveRequest r)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            if (!await LeaveService.CancelAsync(r.Id, userId, "Cancelled by leave admin"))
+            {
+                Toast.ShowInfo("Request could not be cancelled.");
+                return;
+            }
+
+            Toast.ShowSuccess("Leave request cancelled.");
+            _requests = (await LeaveService.GetRecentRequestsAsync(100)).ToList();
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {

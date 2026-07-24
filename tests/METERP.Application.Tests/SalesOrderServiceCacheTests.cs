@@ -237,6 +237,13 @@ public class SalesOrderServiceCacheTests
             so.Status = SalesOrderStatus.Confirmed;
             so.Total = 5000m;
             so.Subtotal = 5000m;
+            db.Set<SalesOrderLine>().Add(new SalesOrderLine
+            {
+                SalesOrderId = soId,
+                Description = "Convert line",
+                Quantity = 1,
+                UnitPrice = 5000m
+            });
             await db.SaveChangesAsync();
 
             var jobService = new JobService(db, cache: cache);
