@@ -166,6 +166,35 @@ public class TenantServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ThrowsWhenNameMissing()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var id = await service.CreateAsync("Name Co", "nameco");
+        var tenant = await service.GetByIdAsync(id);
+        Assert.NotNull(tenant);
+        tenant!.Name = "  ";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(tenant));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ThrowsWhenSubdomainTaken()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        await service.CreateAsync("A Co", "alpha");
+        var id = await service.CreateAsync("B Co", "beta");
+        var tenant = await service.GetByIdAsync(id);
+        Assert.NotNull(tenant);
+        tenant!.Subdomain = "alpha";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(tenant));
+    }
+
+    [Fact]
     public async Task UpdateAsync_PersistsTenantAiSettingsFields()
     {
         var dbName = Guid.NewGuid().ToString();

@@ -101,8 +101,23 @@ public class TenantService : ITenantService
 
         if (existing == null) return;
 
-        existing.Name = tenant.Name?.Trim() ?? string.Empty;
-        existing.Subdomain = tenant.Subdomain?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(tenant.Name))
+            throw new InvalidOperationException("Tenant name is required.");
+        if (string.IsNullOrWhiteSpace(tenant.Subdomain))
+            throw new InvalidOperationException("Tenant subdomain is required.");
+
+        var normalizedSubdomain = tenant.Subdomain.Trim().ToLowerInvariant();
+        if (normalizedSubdomain.Any(c => !(char.IsLetterOrDigit(c) || c is '-' or '_')))
+            throw new InvalidOperationException("Subdomain may only contain letters, digits, hyphens, and underscores.");
+
+        var taken = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .AnyAsync(t => !t.IsDeleted && t.Subdomain == normalizedSubdomain && t.Id != tenant.Id, ct);
+        if (taken)
+            throw new InvalidOperationException($"Subdomain '{normalizedSubdomain}' is already in use.");
+
+        existing.Name = tenant.Name.Trim();
+        existing.Subdomain = normalizedSubdomain;
         existing.IsActive = tenant.IsActive;
         existing.Tier = tenant.Tier;
         existing.EnabledFeatures = tenant.EnabledFeatures ?? string.Empty;
