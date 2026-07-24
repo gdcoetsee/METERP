@@ -195,6 +195,23 @@ public class CustomerService : ICustomerService
         var contact = await _dbContext.Set<Contact>().FirstOrDefaultAsync(c => c.Id == contactId, ct);
         if (contact == null) return;
 
+        if (contact.IsPrimary)
+        {
+            var otherContacts = await _dbContext.Set<Contact>()
+                .Where(c => c.CustomerId == contact.CustomerId && c.Id != contact.Id)
+                .ToListAsync(ct);
+            if (otherContacts.Count > 0)
+            {
+                // Promote another contact so the customer always has a primary when contacts remain.
+                var next = otherContacts
+                    .OrderByDescending(c => c.LastName)
+                    .ThenBy(c => c.FirstName)
+                    .First();
+                next.IsPrimary = true;
+            }
+        }
+
+        contact.IsPrimary = false;
         contact.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

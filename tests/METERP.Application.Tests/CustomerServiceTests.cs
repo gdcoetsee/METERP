@@ -178,4 +178,34 @@ public class CustomerServiceTests
         var deleted = await db.Set<Contact>().IgnoreQueryFilters().FirstAsync(c => c.Id == contactId);
         Assert.True(deleted.IsDeleted);
     }
+
+    [Fact]
+    public async Task DeleteContactAsync_PromotesAnotherPrimary_WhenDeletingPrimary()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Primary Co" });
+        var primaryId = await service.AddContactAsync(new Contact
+        {
+            CustomerId = customerId,
+            FirstName = "Primary",
+            LastName = "One",
+            IsPrimary = true
+        });
+        var secondaryId = await service.AddContactAsync(new Contact
+        {
+            CustomerId = customerId,
+            FirstName = "Secondary",
+            LastName = "Two",
+            IsPrimary = false
+        });
+
+        await service.DeleteContactAsync(primaryId);
+
+        var remaining = await service.GetContactsAsync(customerId);
+        Assert.Single(remaining);
+        Assert.Equal(secondaryId, remaining[0].Id);
+        Assert.True(remaining[0].IsPrimary);
+    }
 }
