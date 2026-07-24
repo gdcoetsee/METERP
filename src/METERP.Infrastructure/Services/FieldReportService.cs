@@ -43,6 +43,18 @@ public sealed class FieldReportService : IFieldReportService
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<FieldReport>> GetBySubmitterAsync(Guid userId, int take = 20, CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 100);
+        return await _dbContext.Set<FieldReport>()
+            .AsNoTracking()
+            .Include(r => r.Job)
+            .Where(r => r.SubmittedByUserId == userId)
+            .OrderByDescending(r => r.SubmittedAt)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
     public async Task<Guid> SubmitAsync(FieldReport report, CancellationToken ct = default)
     {
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == report.JobId, ct);

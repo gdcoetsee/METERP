@@ -91,8 +91,17 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
 
     public async Task UpdateMetadataAsync(CompanyDocument document, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(document.Title))
+            throw new InvalidOperationException("Document title is required.");
+        if (string.IsNullOrWhiteSpace(document.DocumentType))
+            throw new InvalidOperationException("Document type is required.");
         if (!document.NoExpiry && document.ExpiryDate is null)
             throw new InvalidOperationException("Expiry date is required unless marked as no expiry.");
+
+        document.Title = document.Title.Trim();
+        document.DocumentType = document.DocumentType.Trim();
+        if (!document.NoExpiry && document.ExpiryDate.HasValue)
+            document.ExpiryDate = document.ExpiryDate.Value.Date;
 
         _dbContext.Set<CompanyDocument>().Update(document);
         await _dbContext.SaveChangesAsync(ct);

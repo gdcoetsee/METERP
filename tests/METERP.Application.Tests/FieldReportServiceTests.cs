@@ -198,6 +198,37 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task GetBySubmitterAsync_ReturnsUserReports()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+            var otherUser = Guid.NewGuid();
+
+            await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m
+            });
+            await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = otherUser,
+                HoursWorked = 2m
+            });
+
+            var mine = await service.GetBySubmitterAsync(TestUserId);
+            Assert.Single(mine);
+            Assert.Equal(TestUserId, mine[0].SubmittedByUserId);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_ThrowsWhenJobClosed()
     {
         var tenantId = Guid.NewGuid();

@@ -123,4 +123,67 @@ public class CompanyDocumentServiceTests
             storage.Verify(s => s.DeleteAsync(tenantId, "key/remove.pdf", It.IsAny<CancellationToken>()), Times.Once);
         }
     }
+
+    [Fact]
+    public async Task UpdateMetadataAsync_TrimsTitleAndType_AndNormalizesExpiryDate()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var doc = new CompanyDocument
+            {
+                TenantId = tenantId,
+                DocumentType = "COID",
+                Title = "Old title",
+                StorageKey = "key/a.pdf",
+                FileName = "a.pdf",
+                ExpiryDate = DateTime.UtcNow.AddMonths(3).Date
+            };
+            db.Set<CompanyDocument>().Add(doc);
+            await db.SaveChangesAsync();
+
+            doc.Title = "  Renewed COID  ";
+            doc.DocumentType = "  Insurance  ";
+            doc.ExpiryDate = new DateTime(2027, 6, 15, 14, 30, 0, DateTimeKind.Utc);
+
+            await service.UpdateMetadataAsync(doc);
+
+            var saved = await db.Set<CompanyDocument>().FirstAsync(d => d.Id == doc.Id);
+            Assert.Equal("Renewed COID", saved.Title);
+            Assert.Equal("Insurance", saved.DocumentType);
+            Assert.Equal(new DateTime(2027, 6, 15), saved.ExpiryDate);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateMetadataAsync_RequiresTitleTypeAndExpiry()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var doc = new CompanyDocument
+            {
+                TenantId = tenantId,
+                DocumentType = "COID",
+                Title = "Valid",
+                StorageKey = "key/b.pdf",
+                FileName = "b.pdf",
+                ExpiryDate = DateTime.UtcNow.AddMonths(1).Date
+            };
+            db.Set<CompanyDocument>().Add(doc);
+            await db.SaveChangesAsync();
+
+            doc.Title = "   ";
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateMetadataAsync(doc));
+
+            doc.Title = "Valid";
+            doc.DocumentType = "";
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateMetadataAsync(doc));
+
+            doc.DocumentType = "COID";
+            doc.NoExpiry = false;
+            doc.ExpiryDate = null;
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateMetadataAsync(doc));
+        }
+    }
 }

@@ -52,6 +52,23 @@ else
                 </div>
             }
         </div>
+
+        @if (_recentReports.Count > 0)
+        {
+            <h2 class="h6 text-muted mt-4">My recent reports</h2>
+            <div class="list-group mb-3" data-testid="field-reports-recent">
+                @foreach (var r in _recentReports)
+                {
+                    <div class="list-group-item small" data-testid="field-report-row">
+                        <div class="d-flex justify-content-between">
+                            <span>@(r.Job?.JobNumber ?? "Job") — @r.WorkDate.ToString("dd MMM")</span>
+                            <span class="badge bg-secondary">@r.Status</span>
+                        </div>
+                        <div class="text-muted">@r.HoursWorked.ToString("N1")h · travel R @r.TravelCost.ToString("N0")</div>
+                    </div>
+                }
+            </div>
+        }
     </div>
 }
 </div>
@@ -92,6 +109,7 @@ else
 
 @code {
     private List<Job> _jobs = new();
+    private List<FieldReport> _recentReports = new();
     private bool _loading = true;
     private bool _showModal;
     private Job? _reportJob;
@@ -111,6 +129,9 @@ else
                 .Where(j => j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold)
                 .OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue)
                 .ToList();
+
+            if (CurrentUser.UserId is { } userId)
+                _recentReports = (await FieldReportService.GetBySubmitterAsync(userId, take: 8)).ToList();
 
             // Deep-link: /field/jobs?report=1 or ?report={jobId}
             var uri = Nav.ToAbsoluteUri(Nav.Uri);
@@ -186,6 +207,8 @@ else
             });
 
             Toast.ShowSuccess($"Field report submitted for {_reportJob.JobNumber} — awaiting manager approval.");
+            if (CurrentUser.UserId is { } uid)
+                _recentReports = (await FieldReportService.GetBySubmitterAsync(uid, take: 8)).ToList();
             await CloseModal();
             await InvokeAsync(StateHasChanged);
         }
