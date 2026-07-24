@@ -324,6 +324,26 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenExpectedDateBeforePoDate()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new PurchaseOrder
+                {
+                    SupplierId = supplierId,
+                    TaxRate = 0.15m,
+                    PoDate = DateTime.UtcNow.Date,
+                    ExpectedDate = DateTime.UtcNow.Date.AddDays(-2)
+                }));
+        }
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenQuantityNotPositive()
     {
         var tenantId = Guid.NewGuid();

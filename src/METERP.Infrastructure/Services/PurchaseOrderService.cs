@@ -97,6 +97,10 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (po.TaxRate < 0 || po.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
 
+        if (po.ExpectedDate.HasValue && po.PoDate != default
+            && po.ExpectedDate.Value.Date < po.PoDate.Date)
+            throw new InvalidOperationException("Expected delivery date cannot be before the PO date.");
+
         if (string.IsNullOrWhiteSpace(po.PoNumber))
         {
             po.PoNumber = _documentSequence != null
