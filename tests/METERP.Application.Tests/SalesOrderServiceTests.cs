@@ -245,6 +245,24 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenTaxRateOutOfRange()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new SalesOrder
+                {
+                    QuoteId = quoteId,
+                    CustomerId = customerId,
+                    TaxRate = 1.5m
+                }));
+        }
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenQuantityNotPositive()
     {
         var tenantId = Guid.NewGuid();

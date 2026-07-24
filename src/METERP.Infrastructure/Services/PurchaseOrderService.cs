@@ -94,6 +94,9 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (supplier == null || supplier.IsDeleted)
             throw new InvalidOperationException("Supplier not found.");
 
+        if (po.TaxRate < 0 || po.TaxRate > 1m)
+            throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
+
         if (string.IsNullOrWhiteSpace(po.PoNumber))
         {
             po.PoNumber = _documentSequence != null
