@@ -500,19 +500,21 @@ public class CrossModuleCacheInvalidationTests
     }
 
     [Fact]
-    public async Task QuoteUpdate_InvalidatesJobListCache_WithFreshQuoteNumber()
+    public async Task QuoteUpdate_InvalidatesJobListCache_WithFreshQuoteNotes()
     {
         var tenantId = Guid.NewGuid();
         using var harness = new Harness(tenantId);
         var (_, quote, _) = await SeedJobWithQuoteAsync(harness, "Q-OLD-001");
 
-        Assert.Equal("Q-OLD-001", (await harness.Jobs.GetAllAsync())[0].Quote!.QuoteNumber);
+        // Quote numbers are immutable via UpdateAsync; notes still invalidate job list cache.
+        Assert.NotEqual("cache-note", (await harness.Jobs.GetAllAsync())[0].Quote!.Notes);
 
-        quote.QuoteNumber = "Q-RENAMED-001";
+        quote.Notes = "cache-note";
         await harness.Quotes.UpdateAsync(quote);
 
         var refreshed = await harness.Jobs.GetAllAsync();
-        Assert.Equal("Q-RENAMED-001", refreshed[0].Quote!.QuoteNumber);
+        Assert.Equal("cache-note", refreshed[0].Quote!.Notes);
+        Assert.Equal("Q-OLD-001", refreshed[0].Quote!.QuoteNumber);
     }
 
     [Fact]

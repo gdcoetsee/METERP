@@ -130,10 +130,19 @@ public class QuoteService : IQuoteService
     {
         var existing = await _dbContext.Set<Quote>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(q => q.Id == quote.Id, ct);
+            .FirstOrDefaultAsync(q => q.Id == quote.Id, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
 
-        if (existing != null)
-            EnforceSendGate(existing, quote);
+        EnforceSendGate(existing, quote);
+
+        // Document number is assigned once; do not allow free-form renumbering.
+        quote.QuoteNumber = existing.QuoteNumber;
+        // Approval chain is controlled by submit/approve/reject methods.
+        quote.ApprovalStatus = existing.ApprovalStatus;
+        quote.SubmittedForApprovalAt = existing.SubmittedForApprovalAt;
+        quote.SubmittedForApprovalByUserId = existing.SubmittedForApprovalByUserId;
+        quote.ExecutiveApprovedAt = existing.ExecutiveApprovedAt;
+        quote.ExecutiveApprovedByUserId = existing.ExecutiveApprovedByUserId;
 
         quote.RecalculateTotals();
         _dbContext.Set<Quote>().Update(quote);

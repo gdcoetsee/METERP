@@ -105,6 +105,9 @@ public class SalesOrderService : ISalesOrderService
             throw new InvalidOperationException(
                 $"Cannot edit sales order in status {existing.Status}.");
 
+        so.SoNumber = existing.SoNumber;
+        so.Status = existing.Status;
+
         RecalculateTotals(so);
         _dbContext.Set<SalesOrder>().Update(so);
         await _dbContext.SaveChangesAsync(ct);

@@ -133,6 +133,12 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException(
                 $"Cannot edit invoice in status {existing.Status}. Only Draft invoices can be updated.");
 
+        // Identity and payment state must not drift via free-form update payloads.
+        invoice.InvoiceNumber = existing.InvoiceNumber;
+        invoice.Status = existing.Status;
+        invoice.AmountPaid = existing.AmountPaid;
+        invoice.DocumentType = existing.DocumentType;
+
         invoice.RecalculateTotals();
         _dbContext.Set<Invoice>().Update(invoice);
         await _dbContext.SaveChangesAsync(ct);
