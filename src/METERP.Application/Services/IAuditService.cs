@@ -17,7 +17,8 @@ public interface IAuditService
         string? userEmail = null,
         int page = 1,
         int pageSize = 50,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? action = null);
 
     Task<string> ExportCsvAsync(CancellationToken ct = default);
 }

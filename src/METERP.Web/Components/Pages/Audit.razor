@@ -18,9 +18,13 @@
 </div>
 
 <div class="row g-2 mb-3" data-testid="audit-filters">
-    <div class="col-md-3">
+    <div class="col-md-2">
         <input class="form-control form-control-sm" placeholder="Entity type (Quote, Job…)"
                @bind="_entityType" @bind:event="oninput" data-testid="audit-filter-entity-type" />
+    </div>
+    <div class="col-md-2">
+        <input class="form-control form-control-sm" placeholder="Action (CREATE, PAYMENT…)"
+               @bind="_action" @bind:event="oninput" data-testid="audit-filter-action" />
     </div>
     <div class="col-md-3">
         <input class="form-control form-control-sm" placeholder="Reference (Q-2026…)"
@@ -30,7 +34,7 @@
         <input class="form-control form-control-sm" placeholder="User email"
                @bind="_userEmail" @bind:event="oninput" data-testid="audit-filter-user" />
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <button type="button" class="btn btn-sm btn-primary w-100" data-testid="audit-filter-apply" @onclick="ApplyFilters">Search</button>
     </div>
 </div>
@@ -68,6 +72,7 @@
     private string _entityType = "";
     private string _entityReference = "";
     private string _userEmail = "";
+    private string _action = "";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -76,7 +81,8 @@
         logs = (await AuditService.SearchAsync(
             string.IsNullOrWhiteSpace(_entityType) ? null : _entityType,
             string.IsNullOrWhiteSpace(_entityReference) ? null : _entityReference,
-            string.IsNullOrWhiteSpace(_userEmail) ? null : _userEmail)).ToList();
+            string.IsNullOrWhiteSpace(_userEmail) ? null : _userEmail,
+            action: string.IsNullOrWhiteSpace(_action) ? null : _action)).ToList();
     }
 
     private async Task ApplyFilters() => await LoadAsync();
@@ -91,7 +97,8 @@
                 string.IsNullOrWhiteSpace(_entityReference) ? null : _entityReference,
                 string.IsNullOrWhiteSpace(_userEmail) ? null : _userEmail,
                 page: 1,
-                pageSize: 5000);
+                pageSize: 5000,
+                action: string.IsNullOrWhiteSpace(_action) ? null : _action);
 
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("OccurredAtUtc,UserEmail,Action,EntityType,EntityReference,Details");

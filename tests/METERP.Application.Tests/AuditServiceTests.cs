@@ -59,6 +59,22 @@ public class AuditServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_FiltersByAction()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateContext(tenantId);
+        var service = new AuditService(db, new Mock<ICurrentUserService>().Object);
+
+        await service.LogAsync("CREATE", "Quote", "Q-1", "a");
+        await service.LogAsync("PAYMENT", "Invoice", "INV-1", "R 100");
+        await service.LogAsync("UPDATE", "Job", "J-1", "b");
+
+        var payments = await service.SearchAsync(action: "PAY");
+        Assert.Single(payments);
+        Assert.Equal("PAYMENT", payments[0].Action);
+    }
+
+    [Fact]
     public async Task ExportCsvAsync_IncludesHeaderAndRows()
     {
         var tenantId = Guid.NewGuid();

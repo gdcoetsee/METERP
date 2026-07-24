@@ -57,7 +57,8 @@ public class AuditService : IAuditService
         string? userEmail = null,
         int page = 1,
         int pageSize = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? action = null)
     {
         var query = _dbContext.Set<AuditLogEntry>().AsNoTracking().AsQueryable();
 
@@ -77,6 +78,12 @@ public class AuditService : IAuditService
         {
             var email = userEmail.Trim();
             query = query.Where(e => e.UserEmail.Contains(email));
+        }
+
+        if (!string.IsNullOrWhiteSpace(action))
+        {
+            var act = action.Trim();
+            query = query.Where(e => e.Action.Contains(act));
         }
 
         return await query
