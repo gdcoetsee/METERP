@@ -112,6 +112,22 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_ThrowsWhenReorderLevelNegative()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateItemAsync(new InventoryItem
+            {
+                Sku = "NEG-RO",
+                Name = "Bad reorder",
+                ReorderLevel = -1,
+                UnitCost = 1m
+            }));
+    }
+
+    [Fact]
     public async Task UpdateItemAsync_PreservesSku()
     {
         using var db = CreateContext();

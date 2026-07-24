@@ -90,6 +90,8 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Unit cost cannot be negative.");
         if (item.QuantityOnHand < 0)
             throw new InvalidOperationException("Opening quantity cannot be negative.");
+        if (item.ReorderLevel < 0)
+            throw new InvalidOperationException("Reorder level cannot be negative.");
 
         _dbContext.Set<InventoryItem>().Add(item);
         await _dbContext.SaveChangesAsync(ct);
@@ -103,6 +105,8 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Inventory item name is required.");
         if (item.UnitCost < 0)
             throw new InvalidOperationException("Unit cost cannot be negative.");
+        if (item.ReorderLevel < 0)
+            throw new InvalidOperationException("Reorder level cannot be negative.");
 
         // Do not allow direct QuantityOnHand edits via Update — use stock transactions.
         var existing = await _dbContext.Set<InventoryItem>().AsNoTracking()
