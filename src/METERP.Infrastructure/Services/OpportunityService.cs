@@ -183,14 +183,23 @@ public class OpportunityService : IOpportunityService
     public async Task AdvanceStageAsync(Guid id, CancellationToken ct = default)
     {
         var opp = await _dbContext.Set<Opportunity>().FirstOrDefaultAsync(o => o.Id == id, ct);
-        if (opp == null) return;
+        if (opp == null)
+            throw new InvalidOperationException("Opportunity not found.");
 
         if (opp.Stage is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost)
             throw new InvalidOperationException($"Opportunity is already {opp.Stage} and cannot be advanced.");
 
         var idx = Array.IndexOf(StageOrder, opp.Stage);
-        if (idx >= 0 && idx < StageOrder.Length - 1)
-            opp.Stage = StageOrder[idx + 1];
+        if (idx < 0)
+            throw new InvalidOperationException("Unknown opportunity stage.");
+
+        var next = StageOrder[idx + 1];
+        // Advance is for pipeline movement only — not auto Closed Won/Lost.
+        if (next is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost)
+            throw new InvalidOperationException(
+                "Opportunity is already at Negotiation. Mark Closed Won via edit or convert to quote.");
+
+        opp.Stage = next;
 
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

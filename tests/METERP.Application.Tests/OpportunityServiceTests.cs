@@ -182,14 +182,30 @@ public class OpportunityServiceTests
     }
 
     [Fact]
-    public async Task AdvanceStageAsync_IsNoOp_WhenOpportunityMissing()
+    public async Task AdvanceStageAsync_Throws_WhenOpportunityMissing()
     {
         using var db = CreateContext(Guid.NewGuid());
         var service = new OpportunityService(db);
 
-        await service.AdvanceStageAsync(Guid.NewGuid());
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AdvanceStageAsync(Guid.NewGuid()));
+    }
 
-        Assert.Empty(await service.GetAllAsync());
+    [Fact]
+    public async Task AdvanceStageAsync_ThrowsFromNegotiation_InsteadOfAutoClosedLost()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Negotiating",
+            Value = 10000m,
+            Stage = OpportunityStage.Negotiation
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.AdvanceStageAsync(id));
+        Assert.Equal(OpportunityStage.Negotiation, (await service.GetByIdAsync(id))!.Stage);
     }
 
     [Fact]
