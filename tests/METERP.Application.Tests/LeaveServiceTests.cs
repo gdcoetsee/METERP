@@ -512,6 +512,41 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task CancelAsync_CancelsPendingRequest()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-CAN",
+                FirstName = "Can",
+                LastName = "Cel",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 5
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(20),
+                EndDate = DateTime.UtcNow.Date.AddDays(22),
+                IsPaid = true
+            });
+
+            Assert.True(await service.CancelAsync(requestId, Guid.NewGuid(), "Plans changed"));
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(LeaveRequestStatus.Cancelled, saved.Status);
+            Assert.False(await service.CancelAsync(requestId, Guid.NewGuid()));
+        }
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_RejectsEndBeforeStart()
     {
         var (service, db, tenantId) = Create();

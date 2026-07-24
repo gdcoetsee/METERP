@@ -74,11 +74,14 @@ public class QuoteTests
                          .Returns(Task.CompletedTask);
 
         var service = new QuoteService(db, tenantServiceMock.Object);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Counter Customer" });
+        await db.SaveChangesAsync();
 
         var quote = new Quote
         {
             TenantId = tenantId,
-            CustomerId = Guid.NewGuid(),
+            CustomerId = customerId,
             TaxRate = 0.15m,
             Lines = new List<QuoteLine>
             {
@@ -248,10 +251,14 @@ public class QuoteTests
         using var db = CreateInMemoryContext(tenantId);
 
         var service = new QuoteService(db, null);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Tracked Customer" });
+        await db.SaveChangesAsync();
+
         var quoteId = await service.CreateAsync(new Quote
         {
             TenantId = tenantId,
-            CustomerId = Guid.NewGuid(),
+            CustomerId = customerId,
             TaxRate = 0.15m,
             Lines =
             [

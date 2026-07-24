@@ -175,13 +175,31 @@ public sealed class LeaveService : ILeaveService
 
     public async Task<bool> RejectAsync(Guid requestId, Guid approverUserId, string reason, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Rejection reason is required.", nameof(reason));
+
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status is LeaveRequestStatus.Approved or LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
             return false;
 
         request.Status = LeaveRequestStatus.Rejected;
-        request.RejectionReason = reason;
+        request.RejectionReason = reason.Trim();
         request.LastModifiedBy = approverUserId.ToString();
+        await _dbContext.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> CancelAsync(Guid requestId, Guid userId, string? reason = null, CancellationToken ct = default)
+    {
+        var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
+        if (request == null || request.Status is LeaveRequestStatus.Approved or LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
+            return false;
+
+        request.Status = LeaveRequestStatus.Cancelled;
+        request.RejectionReason = string.IsNullOrWhiteSpace(reason)
+            ? "Cancelled by requester"
+            : reason.Trim();
+        request.LastModifiedBy = userId.ToString();
         await _dbContext.SaveChangesAsync(ct);
         return true;
     }

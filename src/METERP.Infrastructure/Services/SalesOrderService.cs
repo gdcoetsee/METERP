@@ -75,6 +75,13 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task<Guid> CreateAsync(SalesOrder so, CancellationToken ct = default)
     {
+        if (so.CustomerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for a sales order.");
+
+        var customer = await _dbContext.Set<Customer>().FindAsync([so.CustomerId], ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found.");
+
         if (string.IsNullOrWhiteSpace(so.SoNumber))
         {
             so.SoNumber = $"SO-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";

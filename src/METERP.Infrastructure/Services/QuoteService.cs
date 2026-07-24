@@ -86,6 +86,13 @@ public class QuoteService : IQuoteService
 
     public async Task<Guid> CreateAsync(Quote quote, CancellationToken ct = default)
     {
+        if (quote.CustomerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for a quote.");
+
+        var customer = await _dbContext.Set<Customer>().FindAsync([quote.CustomerId], ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found.");
+
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? quote.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Quote, ct);

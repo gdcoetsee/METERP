@@ -22,6 +22,9 @@ public interface ILeaveService
 
     Task<bool> RejectAsync(Guid requestId, Guid approverUserId, string reason, CancellationToken ct = default);
 
+    /// <summary>Cancel a pending leave request before it is approved.</summary>
+    Task<bool> CancelAsync(Guid requestId, Guid userId, string? reason = null, CancellationToken ct = default);
+
     Task<IReadOnlyList<LeaveRequest>> GetPendingApprovalsAsync(CancellationToken ct = default);
 
     /// <summary>Office leave admin: recent requests across employees.</summary>
