@@ -20,11 +20,11 @@
 | R2c SKU promote + RFQ lines | **Done (unit/UI)** — free-text → SKU after GRV; line-level RFQ prices (2026-07-24) |
 | R6 Production hardening | **Strong partial** — health, rate limits, headers, expanded production secrets validator |
 
-**Latest product stream (2026-07-24 continuous):** Field report history UI; SO/PO/invoice line integrity; master-data delete guards (customer/supplier/employee/asset); approvals reject-reason modal; scheduling assign validation; recurring create/update UI; leave/division/journal/cert/inventory reserved-stock guards.  
+**Latest product stream (2026-07-24 continuous):** ~50 commits — field report history, document line integrity, master-data lifecycle locks, approvals reject reasons, scheduling/recurring UI, stock-take variance summary, quote withdraw, notifications dismiss-all, audit action filter, tax/date/GP% validation, unique customer/supplier/employee numbers, job delete guards.  
 
 **Unit tests:** **836 green** (Application.Tests). `main` pushed continuously.
 
-**Tests verified (2026-07-24 continuous):** Full product integrity stream — document lines, master-data lifecycle, scheduling/recurring, stock-take summary, RFQ, job/PO/asset/SKU locks, tax rates, quote withdraw, notifications, audit filters, job delete guards.
+**Tests verified (2026-07-24 continuous):** Full product integrity stream across commercial spine, CRM, field portal, inventory/PPE, finance, HR, and scheduling.
 
 ### Advisory duty
 
