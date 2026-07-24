@@ -78,6 +78,13 @@ public class SupplierService : ISupplierService
 
     public async Task UpdateAsync(Supplier supplier, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(supplier.Name))
+            throw new InvalidOperationException("Supplier name is required.");
+
+        supplier.Name = supplier.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(supplier.Email))
+            supplier.Email = supplier.Email.Trim();
+
         _dbContext.Set<Supplier>().Update(supplier);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -88,6 +95,8 @@ public class SupplierService : ISupplierService
         var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == id, ct);
         if (supplier == null) return;
 
+        // Soft-delete and deactivate so pickers hide the supplier.
+        supplier.IsActive = false;
         supplier.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

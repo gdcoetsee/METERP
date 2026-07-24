@@ -101,8 +101,12 @@ public class AssetService : IAssetService
 
     public async Task UpdateStatusAsync(Guid assetId, AssetStatus newStatus, CancellationToken ct = default)
     {
-        var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == assetId, ct);
-        if (asset == null) return;
+        var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == assetId, ct)
+            ?? throw new InvalidOperationException("Asset not found.");
+
+        if (asset.Status == AssetStatus.Decommissioned && newStatus != AssetStatus.Decommissioned)
+            throw new InvalidOperationException(
+                "Decommissioned assets cannot be returned to service without an explicit re-create / admin process.");
 
         asset.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);

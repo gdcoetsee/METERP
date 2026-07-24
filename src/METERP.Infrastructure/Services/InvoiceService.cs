@@ -125,6 +125,14 @@ public class InvoiceService : IInvoiceService
 
     public async Task UpdateAsync(Invoice invoice, CancellationToken ct = default)
     {
+        var existing = await _dbContext.Set<Invoice>().AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == invoice.Id, ct);
+        if (existing == null)
+            throw new InvalidOperationException("Invoice not found.");
+        if (existing.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException(
+                $"Cannot edit invoice in status {existing.Status}. Only Draft invoices can be updated.");
+
         invoice.RecalculateTotals();
         _dbContext.Set<Invoice>().Update(invoice);
         await _dbContext.SaveChangesAsync(ct);
@@ -139,6 +147,14 @@ public class InvoiceService : IInvoiceService
 
         if (invoice == null) return;
 
+        if (invoice.Status is not (InvoiceStatus.Draft or InvoiceStatus.Cancelled)
+            && invoice.AmountPaid > 0)
+            throw new InvalidOperationException(
+                "Cannot delete an invoice with recorded payments. Cancel it instead if supported.");
+
+        if (invoice.Status is InvoiceStatus.Paid or InvoiceStatus.PartiallyPaid)
+            throw new InvalidOperationException("Cannot delete a paid or partially paid invoice.");
+
         foreach (var line in invoice.Lines)
         {
             line.IsDeleted = true;
@@ -151,19 +167,23 @@ public class InvoiceService : IInvoiceService
 
     public async Task<Guid> AddLineAsync(InvoiceLine line, CancellationToken ct = default)
     {
+        var invoice = await _dbContext.Set<Invoice>()
+            .Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == line.InvoiceId, ct)
+            ?? throw new InvalidOperationException("Invoice not found.");
+
+        if (invoice.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException("Lines can only be added to draft invoices.");
+
         // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
 
         _dbContext.Set<InvoiceLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        var invoice = await _dbContext.Set<Invoice>()
-            .Include(i => i.Lines)
-            .FirstOrDefaultAsync(i => i.Id == line.InvoiceId, ct);
-        if (invoice != null)
-        {
-            invoice.RecalculateTotals();
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        // Reload lines for accurate totals after insert.
+        await _dbContext.Entry(invoice).Collection(i => i.Lines).LoadAsync(ct);
+        invoice.RecalculateTotals();
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
         return line.Id;
@@ -171,19 +191,21 @@ public class InvoiceService : IInvoiceService
 
     public async Task UpdateLineAsync(InvoiceLine line, CancellationToken ct = default)
     {
+        var invoice = await _dbContext.Set<Invoice>()
+            .Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == line.InvoiceId, ct)
+            ?? throw new InvalidOperationException("Invoice not found.");
+
+        if (invoice.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException("Lines can only be edited on draft invoices.");
+
         // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
 
         _dbContext.Set<InvoiceLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        var invoice = await _dbContext.Set<Invoice>()
-            .Include(i => i.Lines)
-            .FirstOrDefaultAsync(i => i.Id == line.InvoiceId, ct);
-        if (invoice != null)
-        {
-            invoice.RecalculateTotals();
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        invoice.RecalculateTotals();
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
     }
@@ -194,18 +216,19 @@ public class InvoiceService : IInvoiceService
         if (line == null) return;
 
         var invoiceId = line.InvoiceId;
-        line.IsDeleted = true;
-
-        await _dbContext.SaveChangesAsync(ct);
-
         var invoice = await _dbContext.Set<Invoice>()
             .Include(i => i.Lines)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
-        if (invoice != null)
-        {
-            invoice.RecalculateTotals();
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        if (invoice == null) return;
+
+        if (invoice.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException("Lines can only be removed from draft invoices.");
+
+        line.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+
+        invoice.RecalculateTotals();
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
     }
@@ -701,8 +724,39 @@ public class InvoiceService : IInvoiceService
         var invoice = await _dbContext.Set<Invoice>().FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
         if (invoice == null) return;
 
+        if (invoice.Status == newStatus)
+            return;
+
+        // Guard illegal transitions that would lose payment integrity.
+        if (invoice.Status == InvoiceStatus.Paid && newStatus is not InvoiceStatus.Cancelled)
+            throw new InvalidOperationException("Paid invoices cannot change status except to Cancelled when voiding.");
+
+        if (invoice.Status == InvoiceStatus.Cancelled)
+            throw new InvalidOperationException("Cancelled invoices cannot change status.");
+
+        if (newStatus == InvoiceStatus.Paid && invoice.AmountPaid + 0.01m < invoice.Total)
+            throw new InvalidOperationException(
+                $"Cannot mark paid — balance remaining R {InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid):N2}.");
+
+        if (newStatus == InvoiceStatus.Sent && invoice.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException("Only draft invoices can be marked Sent.");
+
+        if (newStatus == InvoiceStatus.Cancelled && invoice.AmountPaid > 0)
+            throw new InvalidOperationException(
+                "Cannot cancel an invoice with payments. Create a credit note instead.");
+
         invoice.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "STATUS",
+                "Invoice",
+                invoice.InvoiceNumber,
+                $"Status → {newStatus}",
+                ct);
+        }
     }
 }

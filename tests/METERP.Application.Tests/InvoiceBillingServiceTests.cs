@@ -246,6 +246,43 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_RejectsIllegalTransitions()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Status Co" };
+            db.Set<Customer>().Add(customer);
+            var paid = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-PD",
+                Status = InvoiceStatus.Paid,
+                Total = 100,
+                AmountPaid = 100
+            };
+            var draft = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-DF",
+                Status = InvoiceStatus.Draft,
+                Total = 50
+            };
+            db.Set<Invoice>().AddRange(paid, draft);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(paid.Id, InvoiceStatus.Sent));
+
+            await service.UpdateStatusAsync(draft.Id, InvoiceStatus.Sent);
+            var saved = await db.Set<Invoice>().FirstAsync(i => i.Id == draft.Id);
+            Assert.Equal(InvoiceStatus.Sent, saved.Status);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsOverpaymentAndDraft()
     {
         var (service, db, tenantId) = Create();
