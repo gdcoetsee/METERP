@@ -85,6 +85,10 @@ public class SalesOrderService : ISalesOrderService
         if (so.TaxRate < 0 || so.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
 
+        if (so.DeliveryDate.HasValue && so.SoDate != default
+            && so.DeliveryDate.Value.Date < so.SoDate.Date)
+            throw new InvalidOperationException("Delivery date cannot be before the sales order date.");
+
         if (string.IsNullOrWhiteSpace(so.SoNumber))
         {
             so.SoNumber = $"SO-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
