@@ -166,6 +166,27 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_ThrowsWhenValidUntilBeforeQuoteDate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Valid Co" });
+        await db.SaveChangesAsync();
+        var service = new QuoteService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                QuoteDate = DateTime.UtcNow.Date,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(-1),
+                TaxRate = 0.15m
+            }));
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_ThrowsWhenDescriptionMissing()
     {
         var tenantId = Guid.NewGuid();
