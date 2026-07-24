@@ -182,6 +182,17 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenCustomerMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Asset { Name = "Orphan", CustomerId = Guid.NewGuid() }));
+    }
+
+    [Fact]
     public async Task UpdateAsync_PreservesAssetNumber()
     {
         var tenantId = Guid.NewGuid();

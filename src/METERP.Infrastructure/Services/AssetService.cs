@@ -68,8 +68,16 @@ public class AssetService : IAssetService
     {
         if (string.IsNullOrWhiteSpace(asset.Name))
             throw new InvalidOperationException("Asset name is required.");
+        if (asset.CustomerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for an asset.");
+
+        var customer = await _dbContext.Set<Customer>().FindAsync([asset.CustomerId], ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found.");
 
         asset.Name = asset.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(asset.AssetType))
+            asset.AssetType = asset.AssetType.Trim();
 
         if (string.IsNullOrWhiteSpace(asset.AssetNumber))
         {
