@@ -152,6 +152,57 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task UpdateItemAsync_ThrowsWhenDeactivatingItemOnOpenRequisition()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "REQ-OPEN",
+            Name = "Cable",
+            QuantityOnHand = 20,
+            ReorderLevel = 2,
+            UnitCost = 10m,
+            IsActive = true
+        });
+
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-REQ",
+            Title = "Work",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        var req = new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequisitionNumber = "REQ-1",
+            Status = RequisitionStatus.PendingManager
+        };
+        db.Set<StockRequisition>().Add(req);
+        db.Set<StockRequisitionLine>().Add(new StockRequisitionLine
+        {
+            TenantId = tenantId,
+            StockRequisitionId = req.Id,
+            InventoryItemId = id,
+            QuantityRequested = 2,
+            Description = "Cable"
+        });
+        await db.SaveChangesAsync();
+
+        var item = await service.GetItemByIdAsync(id);
+        item!.IsActive = false;
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateItemAsync(item));
+        Assert.Contains("requisition", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task UpdateItemAsync_ThrowsWhenDeactivatingItemWithReservedStock()
     {
         using var db = CreateContext();

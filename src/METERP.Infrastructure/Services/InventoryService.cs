@@ -113,9 +113,27 @@ public class InventoryService : IInventoryService
             .FirstOrDefaultAsync(i => i.Id == item.Id, ct)
             ?? throw new InvalidOperationException("Inventory item not found.");
 
-        if (!item.IsActive && existing.IsActive && existing.QuantityReserved > 0)
-            throw new InvalidOperationException(
-                "Cannot deactivate an item with reserved stock. Release reservations first.");
+        if (!item.IsActive && existing.IsActive)
+        {
+            if (existing.QuantityReserved > 0)
+                throw new InvalidOperationException(
+                    "Cannot deactivate an item with reserved stock. Release reservations first.");
+
+            var openReqLines = await (
+                from line in _dbContext.Set<StockRequisitionLine>().AsNoTracking()
+                join req in _dbContext.Set<StockRequisition>().AsNoTracking()
+                    on line.StockRequisitionId equals req.Id
+                where line.InventoryItemId == item.Id
+                      && !line.IsDeleted
+                      && req.Status != RequisitionStatus.Issued
+                      && req.Status != RequisitionStatus.Cancelled
+                      && req.Status != RequisitionStatus.Rejected
+                select line.Id).AnyAsync(ct);
+
+            if (openReqLines)
+                throw new InvalidOperationException(
+                    "Cannot deactivate an item on open stock requisitions. Complete or cancel them first.");
+        }
 
         item.Name = item.Name.Trim();
         // SKU is identity for stock history and REQs — immutable after create.
