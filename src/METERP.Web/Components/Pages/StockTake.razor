@@ -80,6 +80,16 @@ else
             </div>
         </div>
         <div class="card-body p-0">
+            @if (_varianceSummary != null)
+            {
+                <div class="px-3 py-2 border-bottom small bg-light" data-testid="stock-take-variance-summary">
+                    <strong>@_varianceSummary.LinesCounted</strong> counted
+                    · <strong>@_varianceSummary.LinesUncounted</strong> uncounted
+                    · <strong>@_varianceSummary.LinesWithVariance</strong> with variance
+                    · gain <span class="text-success">@_varianceSummary.TotalPositiveVariance.ToString("N2")</span>
+                    · loss <span class="text-danger">@_varianceSummary.TotalNegativeVariance.ToString("N2")</span>
+                </div>
+            }
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
                     <thead>
@@ -139,6 +149,7 @@ else
 @code {
     private List<StockTakeSession> _sessions = new();
     private StockTakeSession? _activeSession;
+    private StockTakeVarianceSummary? _varianceSummary;
     private bool _loading = true;
     private readonly Dictionary<Guid, string> _countInputs = new();
 
@@ -187,10 +198,15 @@ else
     private async Task OpenSession(Guid id)
     {
         _activeSession = await StockTakeService.GetByIdAsync(id);
+        _varianceSummary = await StockTakeService.GetVarianceSummaryAsync(id);
         _countInputs.Clear();
     }
 
-    private void CloseSession() => _activeSession = null;
+    private void CloseSession()
+    {
+        _activeSession = null;
+        _varianceSummary = null;
+    }
 
     private string GetCountInput(StockTakeLine line) =>
         _countInputs.TryGetValue(line.Id, out var v)
@@ -204,8 +220,10 @@ else
         _countInputs[line.Id] = e.Value?.ToString() ?? string.Empty;
         try
         {
-            await StockTakeService.RecordCountAsync(_activeSession.Id, line.InventoryItemId, qty);
-            _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+            var sessionId = _activeSession.Id;
+            await StockTakeService.RecordCountAsync(sessionId, line.InventoryItemId, qty);
+            _activeSession = await StockTakeService.GetByIdAsync(sessionId);
+            _varianceSummary = await StockTakeService.GetVarianceSummaryAsync(sessionId);
         }
         catch (Exception ex)
         {
@@ -217,8 +235,17 @@ else
     {
         if (_activeSession == null || CurrentUser.UserId is not { } userId) return;
 
+        var sessionId = _activeSession.Id;
+        var sessionNumber = _activeSession.SessionNumber;
+        var summary = await StockTakeService.GetVarianceSummaryAsync(sessionId);
+        var detail = summary == null
+            ? "Post variances to inventory? Uncounted lines are left unchanged. This cannot be undone."
+            : $"Post {sessionNumber}? {summary.LinesWithVariance} variance line(s) " +
+              $"(gain {summary.TotalPositiveVariance:N2}, loss {summary.TotalNegativeVariance:N2}). " +
+              $"{summary.LinesUncounted} uncounted line(s) stay unchanged.";
+
         var ok = await Confirm.ConfirmAsync(
-            "Post variances to inventory? Uncounted lines are left unchanged. This cannot be undone.",
+            detail,
             "Post stock take",
             confirmLabel: "Post",
             confirmVariant: "success");
@@ -226,14 +253,15 @@ else
 
         try
         {
-            if (!await StockTakeService.PostSessionAsync(_activeSession.Id, userId))
+            if (!await StockTakeService.PostSessionAsync(sessionId, userId))
             {
                 Toast.ShowError("Session could not be posted.");
                 return;
             }
 
             Toast.ShowSuccess("Stock take posted — variances applied.");
-            _activeSession = await StockTakeService.GetByIdAsync(_activeSession.Id);
+            _activeSession = await StockTakeService.GetByIdAsync(sessionId);
+            _varianceSummary = await StockTakeService.GetVarianceSummaryAsync(sessionId);
             await LoadAsync();
         }
         catch (Exception ex)

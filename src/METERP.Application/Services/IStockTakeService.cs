@@ -2,6 +2,13 @@ using METERP.Domain;
 
 namespace METERP.Application.Services;
 
+public sealed record StockTakeVarianceSummary(
+    int LinesCounted,
+    int LinesUncounted,
+    int LinesWithVariance,
+    decimal TotalPositiveVariance,
+    decimal TotalNegativeVariance);
+
 public interface IStockTakeService
 {
     Task<StockTakeSession?> GetByIdAsync(Guid id, CancellationToken ct = default);
@@ -11,6 +18,8 @@ public interface IStockTakeService
     Task<Guid> StartSessionAsync(Guid userId, string? notes = null, CancellationToken ct = default);
 
     Task<bool> RecordCountAsync(Guid sessionId, Guid inventoryItemId, decimal countedQuantity, CancellationToken ct = default);
+
+    Task<StockTakeVarianceSummary?> GetVarianceSummaryAsync(Guid sessionId, CancellationToken ct = default);
 
     Task<bool> PostSessionAsync(Guid sessionId, Guid userId, CancellationToken ct = default);
 

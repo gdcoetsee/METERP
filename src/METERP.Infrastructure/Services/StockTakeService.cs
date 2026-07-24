@@ -98,6 +98,38 @@ public sealed class StockTakeService : IStockTakeService
         return true;
     }
 
+    public async Task<StockTakeVarianceSummary?> GetVarianceSummaryAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        var session = await _dbContext.Set<StockTakeSession>()
+            .AsNoTracking()
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return null;
+
+        var lines = session.Lines.Where(l => !l.IsDeleted).ToList();
+        var counted = lines.Where(l => l.CountedQuantity.HasValue).ToList();
+        var uncounted = lines.Count - counted.Count;
+        var withVariance = 0;
+        decimal positive = 0m;
+        decimal negative = 0m;
+
+        foreach (var line in counted)
+        {
+            var variance = line.CountedQuantity!.Value - line.SystemQuantity;
+            if (variance == 0) continue;
+            withVariance++;
+            if (variance > 0) positive += variance;
+            else negative += variance;
+        }
+
+        return new StockTakeVarianceSummary(
+            counted.Count,
+            uncounted,
+            withVariance,
+            positive,
+            negative);
+    }
+
     public async Task<bool> PostSessionAsync(Guid sessionId, Guid userId, CancellationToken ct = default)
     {
         var session = await _dbContext.Set<StockTakeSession>()

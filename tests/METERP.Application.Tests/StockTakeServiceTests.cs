@@ -290,4 +290,47 @@ public class StockTakeServiceTests
             Assert.NotEqual(sessionId, nextId);
         }
     }
+
+    [Fact]
+    public async Task GetVarianceSummaryAsync_ReflectsCountsAndGainsLosses()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            var gainId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "G-1",
+                Name = "Gain",
+                QuantityOnHand = 10,
+                IsActive = true
+            });
+            var lossId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "L-1",
+                Name = "Loss",
+                QuantityOnHand = 20,
+                IsActive = true
+            });
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "U-1",
+                Name = "Uncounted",
+                QuantityOnHand = 5,
+                IsActive = true
+            });
+
+            var sessionId = await service.StartSessionAsync(TestUserId);
+            await service.RecordCountAsync(sessionId, gainId, 12m);
+            await service.RecordCountAsync(sessionId, lossId, 15m);
+
+            var summary = await service.GetVarianceSummaryAsync(sessionId);
+            Assert.NotNull(summary);
+            Assert.Equal(2, summary!.LinesCounted);
+            Assert.Equal(1, summary.LinesUncounted);
+            Assert.Equal(2, summary.LinesWithVariance);
+            Assert.Equal(2m, summary.TotalPositiveVariance);
+            Assert.Equal(-5m, summary.TotalNegativeVariance);
+        }
+    }
 }
