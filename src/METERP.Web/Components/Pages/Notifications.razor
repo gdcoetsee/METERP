@@ -13,7 +13,10 @@
         <h1 class="h5 mb-1">Notifications</h1>
         <p class="text-muted small mb-0">Compliance expiry alerts, approvals, and system messages (tenant-scoped).</p>
     </div>
-    <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllRead" data-testid="notifications-mark-all">Mark all read</button>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllRead" data-testid="notifications-mark-all">Mark all read</button>
+        <button class="btn btn-outline-danger btn-sm" @onclick="DismissAllAsync" data-testid="notifications-dismiss-all">Dismiss all</button>
+    </div>
 </div>
 
 <span data-testid="notifications-ready" class="visually-hidden">ready</span>
@@ -87,5 +90,19 @@
         await NotificationService.DismissAsync(n.Id);
         notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
         ToastService.ShowSuccess("Notification dismissed.");
+    }
+
+    private async Task DismissAllAsync()
+    {
+        try
+        {
+            await NotificationService.DismissAllAsync();
+            notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
+            ToastService.ShowSuccess("All notifications dismissed.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 }

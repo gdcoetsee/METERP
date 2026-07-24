@@ -16,4 +16,7 @@ public interface ITenantNotificationService
 
     /// <summary>Soft-delete a notification visible to the current user.</summary>
     Task DismissAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Soft-delete all notifications visible to the current user.</summary>
+    Task DismissAllAsync(CancellationToken ct = default);
 }

@@ -99,6 +99,19 @@ public sealed class TenantNotificationService : ITenantNotificationService
         await _dbContext.SaveChangesAsync(ct);
     }
 
+    public async Task DismissAllAsync(CancellationToken ct = default)
+    {
+        var roles = await GetCurrentUserRolesAsync(ct);
+        var items = await _dbContext.Set<TenantNotification>().ToListAsync(ct);
+        foreach (var item in items.Where(n => !n.IsDeleted && IsVisibleToRoles(n.TargetRoles, roles)))
+        {
+            item.IsRead = true;
+            item.IsDeleted = true;
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
     private static bool IsVisibleToRoles(string targetRoles, IReadOnlyList<string> userRoles)
     {
         if (targetRoles == "*")

@@ -227,6 +227,47 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task DismissAllAsync_SoftDeletesVisibleNotifications()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            harness.Db.Set<TenantNotification>().AddRange(
+                new TenantNotification
+                {
+                    TenantId = harness.TenantId,
+                    Title = "One",
+                    Message = "A",
+                    TargetRoles = "Executive"
+                },
+                new TenantNotification
+                {
+                    TenantId = harness.TenantId,
+                    Title = "Two",
+                    Message = "B",
+                    TargetRoles = "*"
+                },
+                new TenantNotification
+                {
+                    TenantId = harness.TenantId,
+                    Title = "Hidden role",
+                    Message = "C",
+                    TargetRoles = "FieldTech"
+                });
+            await harness.Db.SaveChangesAsync();
+
+            await harness.Service.DismissAllAsync();
+
+            Assert.Empty(await harness.Service.GetForCurrentUserAsync());
+            var raw = await harness.Db.Set<TenantNotification>().IgnoreQueryFilters()
+                .Where(n => n.TenantId == harness.TenantId)
+                .ToListAsync();
+            Assert.Equal(2, raw.Count(n => n.IsDeleted));
+            Assert.Single(raw, n => !n.IsDeleted && n.Title == "Hidden role");
+        }
+    }
+
+    [Fact]
     public async Task GetUnreadCountAsync_ReturnsZero_AfterMarkAllRead()
     {
         using var harness = new Harness("Executive");
