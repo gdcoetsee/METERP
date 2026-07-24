@@ -50,6 +50,11 @@ public sealed class StockTakeService : IStockTakeService
                 "An open stock take session already exists. Post or cancel it before starting another.");
 
         var items = await _inventoryService.GetAllItemsAsync(pageSize: 500, ct: ct);
+        var activeItems = items.Where(i => i.IsActive).ToList();
+        if (activeItems.Count == 0)
+            throw new InvalidOperationException(
+                "Cannot start a stock take with no active inventory items. Add stock master records first.");
+
         var session = new StockTakeSession
         {
             SessionNumber = _documentSequence != null
@@ -63,7 +68,7 @@ public sealed class StockTakeService : IStockTakeService
         _dbContext.Set<StockTakeSession>().Add(session);
         await _dbContext.SaveChangesAsync(ct);
 
-        foreach (var item in items.Where(i => i.IsActive))
+        foreach (var item in activeItems)
         {
             _dbContext.Set<StockTakeLine>().Add(new StockTakeLine
             {
@@ -76,7 +81,7 @@ public sealed class StockTakeService : IStockTakeService
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)
-            await _audit.LogAsync("START", "StockTake", session.SessionNumber, $"{items.Count} items", ct);
+            await _audit.LogAsync("START", "StockTake", session.SessionNumber, $"{activeItems.Count} items", ct);
 
         return session.Id;
     }

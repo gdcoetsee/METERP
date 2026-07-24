@@ -66,6 +66,19 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task StartSessionAsync_ThrowsWhenNoActiveItems()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.StartSessionAsync(TestUserId));
+            Assert.Contains("no active inventory", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task GetByIdAsync_ReturnsNull_WhenMissing()
     {
         var tenantId = Guid.NewGuid();
