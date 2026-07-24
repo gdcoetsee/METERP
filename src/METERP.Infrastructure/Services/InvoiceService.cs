@@ -93,6 +93,14 @@ public class InvoiceService : IInvoiceService
 
     public async Task<Guid> CreateAsync(Invoice invoice, CancellationToken ct = default)
     {
+        if (invoice.CustomerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for an invoice.");
+
+        var customerExists = await _dbContext.Set<Customer>()
+            .AnyAsync(c => c.Id == invoice.CustomerId, ct);
+        if (!customerExists)
+            throw new InvalidOperationException("Customer not found.");
+
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? invoice.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
@@ -291,12 +299,24 @@ public class InvoiceService : IInvoiceService
 
     public async Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("A reason is required for a credit note.");
+
         var source = await GetByIdAsync(sourceInvoiceId, ct);
         if (source == null)
             throw new InvalidOperationException("Source invoice not found.");
 
         if (source.DocumentType == InvoiceDocumentType.CreditNote)
             throw new InvalidOperationException("Cannot create a credit note from another credit note.");
+
+        if (source.DocumentType == InvoiceDocumentType.Proforma)
+            throw new InvalidOperationException("Cannot create a credit note from a proforma.");
+
+        if (source.Status == InvoiceStatus.Cancelled)
+            throw new InvalidOperationException("Cannot credit a cancelled invoice.");
+
+        if (!source.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Source invoice has no lines to credit.");
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? source.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
@@ -312,7 +332,7 @@ public class InvoiceService : IInvoiceService
             DocumentType = InvoiceDocumentType.CreditNote,
             CreditNoteForInvoiceId = source.Id,
             TaxRate = source.TaxRate,
-            Notes = reason
+            Notes = reason.Trim()
         };
 
         creditNote.InvoiceNumber = _documentSequence != null
@@ -581,6 +601,23 @@ public class InvoiceService : IInvoiceService
 
         if (invoice.DocumentType == InvoiceDocumentType.Proforma)
             throw new InvalidOperationException("Payments cannot be recorded against proforma invoices.");
+
+        if (invoice.DocumentType == InvoiceDocumentType.CreditNote)
+            throw new InvalidOperationException("Payments cannot be recorded against credit notes.");
+
+        if (invoice.Status == InvoiceStatus.Cancelled)
+            throw new InvalidOperationException("Cannot record payment on a cancelled invoice.");
+
+        if (invoice.Status == InvoiceStatus.Draft)
+            throw new InvalidOperationException("Send the invoice before recording payments.");
+
+        var balance = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+        if (balance <= 0.01m)
+            throw new InvalidOperationException("Invoice is already fully paid.");
+
+        if (amount > balance + 0.01m)
+            throw new InvalidOperationException(
+                $"Payment R {amount:N2} exceeds balance due R {balance:N2}.");
 
         var payment = new InvoicePayment
         {

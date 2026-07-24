@@ -152,6 +152,9 @@ public sealed class FieldReportService : IFieldReportService
 
     public async Task<bool> RejectAsync(Guid reportId, Guid approverUserId, string reason, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Rejection reason is required.", nameof(reason));
+
         var report = await _dbContext.Set<FieldReport>().FirstOrDefaultAsync(r => r.Id == reportId, ct);
         if (report == null || report.Status != FieldReportStatus.PendingApproval)
             return false;
@@ -159,11 +162,11 @@ public sealed class FieldReportService : IFieldReportService
         report.Status = FieldReportStatus.Rejected;
         report.ApprovedByUserId = approverUserId;
         report.ApprovedAt = DateTime.UtcNow;
-        report.RejectionReason = reason;
+        report.RejectionReason = reason.Trim();
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)
-            await _audit.LogAsync("REJECT", "FieldReport", report.Id.ToString(), reason, ct);
+            await _audit.LogAsync("REJECT", "FieldReport", report.Id.ToString(), report.RejectionReason, ct);
 
         return true;
     }

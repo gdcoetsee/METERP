@@ -25,13 +25,20 @@ public class AuditService : IAuditService
         string details,
         CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(action))
+            action = "ACTION";
+        if (string.IsNullOrWhiteSpace(entityType))
+            entityType = "Unknown";
+        if (string.IsNullOrWhiteSpace(entityReference))
+            entityReference = "—";
+
         var entry = new AuditLogEntry
         {
             UserEmail = _currentUser?.UserName ?? _currentUser?.UserId?.ToString() ?? "system",
-            Action = action,
-            EntityType = entityType,
-            EntityReference = entityReference,
-            Details = details,
+            Action = action.Trim(),
+            EntityType = entityType.Trim(),
+            EntityReference = entityReference.Trim(),
+            Details = details ?? string.Empty,
             OccurredAtUtc = DateTime.UtcNow
         };
 

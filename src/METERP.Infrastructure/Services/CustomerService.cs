@@ -77,6 +77,10 @@ public class CustomerService : ICustomerService
 
     public async Task UpdateAsync(Customer customer, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(customer.Name))
+            throw new InvalidOperationException("Customer name is required.");
+
+        customer.Name = customer.Name.Trim();
         _dbContext.Set<Customer>().Update(customer);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -111,6 +115,13 @@ public class CustomerService : ICustomerService
 
     public async Task<Guid> AddContactAsync(Contact contact, CancellationToken ct = default)
     {
+        ValidateContact(contact);
+
+        var customerExists = await _dbContext.Set<Customer>()
+            .AnyAsync(c => c.Id == contact.CustomerId, ct);
+        if (!customerExists)
+            throw new InvalidOperationException("Customer not found.");
+
         if (contact.IsPrimary)
         {
             var existingPrimaries = await _dbContext.Set<Contact>()
@@ -131,6 +142,8 @@ public class CustomerService : ICustomerService
 
     public async Task UpdateContactAsync(Contact contact, CancellationToken ct = default)
     {
+        ValidateContact(contact);
+
         if (contact.IsPrimary)
         {
             var existingPrimaries = await _dbContext.Set<Contact>()
@@ -146,6 +159,19 @@ public class CustomerService : ICustomerService
         _dbContext.Set<Contact>().Update(contact);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+    }
+
+    private static void ValidateContact(Contact contact)
+    {
+        if (contact.CustomerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for a contact.");
+        if (string.IsNullOrWhiteSpace(contact.FirstName) && string.IsNullOrWhiteSpace(contact.LastName))
+            throw new InvalidOperationException("Contact first or last name is required.");
+
+        contact.FirstName = (contact.FirstName ?? string.Empty).Trim();
+        contact.LastName = (contact.LastName ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(contact.Email))
+            contact.Email = contact.Email.Trim();
     }
 
     public async Task DeleteContactAsync(Guid contactId, CancellationToken ct = default)

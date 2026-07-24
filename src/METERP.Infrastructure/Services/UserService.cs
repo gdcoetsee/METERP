@@ -71,7 +71,13 @@ public class UserService : IUserService
 
     public async Task<(bool Succeeded, string[] Errors)> CreateUserAsync(string email, string password, string role, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            return (false, new[] { "A valid email address is required." });
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+            return (false, new[] { "Password must be at least 8 characters." });
+
         var currentTenant = _tenantProvider.GetCurrentTenantId();
+        email = email.Trim();
 
         var user = new ApplicationUser
         {

@@ -213,4 +213,75 @@ public class InvoiceBillingServiceTests
             Assert.Equal(2500m, invoice.Lines.First().UnitPrice);
         }
     }
+
+    [Fact]
+    public async Task CreateCreditNoteAsync_RequiresReason()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-R",
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateCreditNoteAsync(source.Id, "  "));
+        }
+    }
+
+    [Fact]
+    public async Task RecordPaymentAsync_RejectsOverpaymentAndDraft()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var draft = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-DR",
+                Status = InvoiceStatus.Draft,
+                Total = 500
+            };
+            var sent = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-OV",
+                Status = InvoiceStatus.Sent,
+                Total = 200,
+                AmountPaid = 0
+            };
+            db.Set<Invoice>().AddRange(draft, sent);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(draft.Id, 10m, DateTime.UtcNow, null, null, null));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(sent.Id, 250m, DateTime.UtcNow, null, null, null));
+
+            await service.RecordPaymentAsync(sent.Id, 200m, DateTime.UtcNow, "full", null, null);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(sent.Id, 1m, DateTime.UtcNow, null, null, null));
+        }
+    }
 }
