@@ -166,6 +166,26 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_ThrowsWhenGrossProfitPercentInvalid()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "GP Co" });
+        await db.SaveChangesAsync();
+        var service = new QuoteService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                TaxRate = 0.15m,
+                GrossProfitPercent = 1.0m
+            }));
+    }
+
+    [Fact]
     public async Task QuoteService_CreateAsync_ThrowsWhenValidUntilBeforeQuoteDate()
     {
         var tenantId = Guid.NewGuid();

@@ -95,6 +95,9 @@ public class QuoteService : IQuoteService
 
         if (quote.TaxRate < 0 || quote.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
+        if (quote.GrossProfitPercent < 0 || quote.GrossProfitPercent >= 1m)
+            throw new InvalidOperationException(
+                "Gross profit percent must be between 0 and 1 exclusive of 100% (e.g. 0.25 for 25%).");
 
         if (quote.QuoteDate != default && quote.ValidUntil.Date < quote.QuoteDate.Date)
             throw new InvalidOperationException("Valid-until date cannot be before the quote date.");
