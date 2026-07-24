@@ -790,7 +790,9 @@ public class InvoiceService : IInvoiceService
 
     public async Task UpdateStatusAsync(Guid invoiceId, InvoiceStatus newStatus, CancellationToken ct = default)
     {
-        var invoice = await _dbContext.Set<Invoice>().FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+        var invoice = await _dbContext.Set<Invoice>()
+            .Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
         if (invoice == null) return;
 
         if (invoice.Status == newStatus)
@@ -809,6 +811,10 @@ public class InvoiceService : IInvoiceService
 
         if (newStatus == InvoiceStatus.Sent && invoice.Status != InvoiceStatus.Draft)
             throw new InvalidOperationException("Only draft invoices can be marked Sent.");
+
+        if (newStatus == InvoiceStatus.Sent
+            && !invoice.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Cannot send an invoice with no lines.");
 
         if (newStatus == InvoiceStatus.Cancelled && invoice.AmountPaid > 0)
             throw new InvalidOperationException(

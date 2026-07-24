@@ -192,8 +192,25 @@ public sealed class LeaveService : ILeaveService
     public async Task<bool> CancelAsync(Guid requestId, Guid userId, string? reason = null, CancellationToken ct = default)
     {
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
-        if (request == null || request.Status is LeaveRequestStatus.Approved or LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
+        if (request == null)
             return false;
+
+        if (request.Status is LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
+            return false;
+
+        // Pending chain can always cancel. Approved leave may cancel only before it starts.
+        if (request.Status == LeaveRequestStatus.Approved)
+        {
+            if (request.StartDate.Date <= DateTime.UtcNow.Date)
+                return false;
+        }
+        else if (request.Status is not (
+                     LeaveRequestStatus.PendingManager
+                     or LeaveRequestStatus.PendingExecutive
+                     or LeaveRequestStatus.PendingHr))
+        {
+            return false;
+        }
 
         request.Status = LeaveRequestStatus.Cancelled;
         request.RejectionReason = string.IsNullOrWhiteSpace(reason)

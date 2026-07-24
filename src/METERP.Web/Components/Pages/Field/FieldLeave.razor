@@ -57,7 +57,7 @@ else
                             </div>
                             <div class="text-end">
                                 <span class="badge bg-secondary">@req.Status</span>
-                                @if (IsPending(req.Status))
+                                @if (CanCancel(req))
                                 {
                                     <button type="button" class="btn btn-link btn-sm p-0 d-block mt-1"
                                             data-testid="field-leave-cancel"
@@ -161,6 +161,11 @@ else
         status is LeaveRequestStatus.PendingManager
             or LeaveRequestStatus.PendingExecutive
             or LeaveRequestStatus.PendingHr;
+
+    /// <summary>Pending always; approved only when leave has not started yet (UTC date).</summary>
+    private static bool CanCancel(LeaveRequest req) =>
+        IsPending(req.Status)
+        || (req.Status == LeaveRequestStatus.Approved && req.StartDate.Date > DateTime.UtcNow.Date);
 
     private async Task CancelRequestAsync(LeaveRequest req)
     {

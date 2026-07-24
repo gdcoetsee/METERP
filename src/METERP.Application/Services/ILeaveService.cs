@@ -22,7 +22,10 @@ public interface ILeaveService
 
     Task<bool> RejectAsync(Guid requestId, Guid approverUserId, string reason, CancellationToken ct = default);
 
-    /// <summary>Cancel a pending leave request before it is approved.</summary>
+    /// <summary>
+    /// Cancel a pending leave request, or an approved request that has not started yet
+    /// (StartDate strictly after today UTC).
+    /// </summary>
     Task<bool> CancelAsync(Guid requestId, Guid userId, string? reason = null, CancellationToken ct = default);
 
     Task<IReadOnlyList<LeaveRequest>> GetPendingApprovalsAsync(CancellationToken ct = default);

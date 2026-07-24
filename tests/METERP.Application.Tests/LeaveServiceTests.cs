@@ -574,6 +574,80 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task CancelAsync_CancelsApprovedLeave_WhenNotStarted()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-APPR-CAN",
+                FirstName = "Future",
+                LastName = "Leave",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(30),
+                EndDate = DateTime.UtcNow.Date.AddDays(32),
+                IsPaid = true
+            });
+            var userId = Guid.NewGuid();
+            Assert.True(await service.ApproveManagerAsync(requestId, userId));
+            Assert.True(await service.ApproveExecutiveAsync(requestId, userId));
+            Assert.True(await service.ApproveHrAsync(requestId, userId));
+
+            Assert.True(await service.CancelAsync(requestId, userId, "Travel cancelled"));
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(LeaveRequestStatus.Cancelled, saved.Status);
+        }
+    }
+
+    [Fact]
+    public async Task CancelAsync_DoesNotCancelApprovedLeave_OnceStarted()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-STARTED",
+                FirstName = "On",
+                LastName = "Leave",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            db.Set<LeaveRequest>().Add(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(-1),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                DaysRequested = 3,
+                Status = LeaveRequestStatus.Approved,
+                IsPaid = true
+            });
+            await db.SaveChangesAsync();
+
+            var requestId = await db.Set<LeaveRequest>().Select(r => r.Id).FirstAsync();
+            Assert.False(await service.CancelAsync(requestId, Guid.NewGuid()));
+            Assert.Equal(LeaveRequestStatus.Approved,
+                (await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId)).Status);
+        }
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_RejectsEndBeforeStart()
     {
         var (service, db, tenantId) = Create();

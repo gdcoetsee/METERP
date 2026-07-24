@@ -268,13 +268,29 @@ public class InvoiceBillingServiceTests
                 CustomerId = customer.Id,
                 InvoiceNumber = "INV-DF",
                 Status = InvoiceStatus.Draft,
-                Total = 50
+                Total = 50,
+                Lines =
+                {
+                    new InvoiceLine { Description = "Work", Quantity = 1, UnitPrice = 50m }
+                }
             };
-            db.Set<Invoice>().AddRange(paid, draft);
+            var emptyDraft = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-EMPTY",
+                Status = InvoiceStatus.Draft,
+                Total = 0
+            };
+            db.Set<Invoice>().AddRange(paid, draft, emptyDraft);
             await db.SaveChangesAsync();
 
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.UpdateStatusAsync(paid.Id, InvoiceStatus.Sent));
+
+            var emptyEx = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(emptyDraft.Id, InvoiceStatus.Sent));
+            Assert.Contains("no lines", emptyEx.Message, StringComparison.OrdinalIgnoreCase);
 
             await service.UpdateStatusAsync(draft.Id, InvoiceStatus.Sent);
             var saved = await db.Set<Invoice>().FirstAsync(i => i.Id == draft.Id);
