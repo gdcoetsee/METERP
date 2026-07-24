@@ -136,6 +136,21 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenCustomerIdMissing()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new OpportunityService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "Orphan opp",
+                CustomerId = Guid.NewGuid(),
+                Value = 1000m
+            }));
+    }
+
+    [Fact]
     public async Task AdvanceStageAsync_MovesToNextStage()
     {
         var tenantId = Guid.NewGuid();

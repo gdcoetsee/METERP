@@ -105,8 +105,9 @@ public class OpportunityService : IOpportunityService
             var customer = await _dbContext.Set<Customer>()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == opportunity.CustomerId, ct);
-            if (customer != null)
-                opportunity.CustomerName ??= customer.Name;
+            if (customer == null)
+                throw new InvalidOperationException("Customer not found.");
+            opportunity.CustomerName ??= customer.Name;
         }
 
         _dbContext.Set<Opportunity>().Add(opportunity);
