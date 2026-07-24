@@ -144,6 +144,15 @@ public class InvoiceService : IInvoiceService
         if (invoice.InvoiceDate != default && invoice.DueDate.Date < invoice.InvoiceDate.Date)
             throw new InvalidOperationException("Due date cannot be before the invoice date.");
 
+        if (invoice.CustomerId == Guid.Empty)
+            invoice.CustomerId = existing.CustomerId;
+        else if (invoice.CustomerId != existing.CustomerId)
+        {
+            var customer = await _dbContext.Set<Customer>().FindAsync([invoice.CustomerId], ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException("Customer not found.");
+        }
+
         // Identity and payment state must not drift via free-form update payloads.
         invoice.InvoiceNumber = existing.InvoiceNumber;
         invoice.Status = existing.Status;
