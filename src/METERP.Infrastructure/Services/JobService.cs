@@ -690,6 +690,14 @@ public class JobService : IJobService
 
     public async Task<Guid> AddMilestoneAsync(JobMilestone milestone, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(milestone.Title))
+            throw new InvalidOperationException("Milestone title is required.");
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct)
+            ?? throw new InvalidOperationException("Job not found.");
+        await EnsureJobOpenAsync(job, ct);
+
+        milestone.Title = milestone.Title.Trim();
         _dbContext.Set<JobMilestone>().Add(milestone);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
@@ -698,6 +706,14 @@ public class JobService : IJobService
 
     public async Task UpdateMilestoneAsync(JobMilestone milestone, CancellationToken ct = default)
     {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct)
+            ?? throw new InvalidOperationException("Job not found.");
+        await EnsureJobOpenAsync(job, ct);
+
+        if (string.IsNullOrWhiteSpace(milestone.Title))
+            throw new InvalidOperationException("Milestone title is required.");
+        milestone.Title = milestone.Title.Trim();
+
         _dbContext.Set<JobMilestone>().Update(milestone);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
@@ -707,6 +723,11 @@ public class JobService : IJobService
     {
         var milestone = await _dbContext.Set<JobMilestone>().FirstOrDefaultAsync(m => m.Id == milestoneId, ct);
         if (milestone == null) return;
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct);
+        if (job != null)
+            await EnsureJobOpenAsync(job, ct);
+
         milestone.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
@@ -721,6 +742,14 @@ public class JobService : IJobService
 
     public async Task<Guid> AddSnagAsync(JobSnagItem snag, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(snag.Description))
+            throw new InvalidOperationException("Snag description is required.");
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == snag.JobId, ct)
+            ?? throw new InvalidOperationException("Job not found.");
+        await EnsureJobOpenAsync(job, ct);
+
+        snag.Description = snag.Description.Trim();
         _dbContext.Set<JobSnagItem>().Add(snag);
         await _dbContext.SaveChangesAsync(ct);
         return snag.Id;
@@ -730,6 +759,11 @@ public class JobService : IJobService
     {
         var snag = await _dbContext.Set<JobSnagItem>().FirstOrDefaultAsync(s => s.Id == snagId, ct);
         if (snag == null || snag.IsResolved) return;
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == snag.JobId, ct);
+        if (job != null)
+            await EnsureJobOpenAsync(job, ct);
+
         snag.IsResolved = true;
         snag.ResolvedAt = DateTime.UtcNow;
         snag.ResolvedByUserId = userId;
@@ -745,6 +779,18 @@ public class JobService : IJobService
 
     public async Task<Guid> AddSafetyIncidentAsync(JobSafetyIncident incident, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(incident.Description))
+            throw new InvalidOperationException("Safety incident description is required.");
+
+        // Safety logs remain allowed on closed jobs for post-incident compliance capture.
+        if (incident.JobId != Guid.Empty)
+        {
+            var jobExists = await _dbContext.Set<Job>().AnyAsync(j => j.Id == incident.JobId, ct);
+            if (!jobExists)
+                throw new InvalidOperationException("Job not found.");
+        }
+
+        incident.Description = incident.Description.Trim();
         _dbContext.Set<JobSafetyIncident>().Add(incident);
         await _dbContext.SaveChangesAsync(ct);
         return incident.Id;
