@@ -10,6 +10,21 @@ public interface IPayrollService
         decimal? deductionPercent = null,
         decimal? fixedDeductions = null,
         CancellationToken ct = default);
+
+    /// <summary>Single-employee payslip summary for the period (null if employee not found).</summary>
+    Task<PayrollEmployeeSummary?> GetEmployeeSummaryAsync(
+        Guid employeeId,
+        DateTime? monthUtc = null,
+        decimal? deductionPercent = null,
+        decimal? fixedDeductions = null,
+        CancellationToken ct = default);
+
+    /// <summary>CSV export of monthly payroll summaries (contractor payslip v1).</summary>
+    Task<string> ExportMonthlyCsvAsync(
+        DateTime? monthUtc = null,
+        decimal? deductionPercent = null,
+        decimal? fixedDeductions = null,
+        CancellationToken ct = default);
 }
 
 public sealed record PayrollEmployeeSummary(

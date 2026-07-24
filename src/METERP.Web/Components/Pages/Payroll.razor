@@ -22,12 +22,16 @@
             Contractor payslips from linked <strong>JobLabor</strong>. Simple configurable deductions — not full SARS payroll.
         </p>
     </div>
-    @if (CanManage)
-    {
-        <button class="btn btn-primary" data-testid="payroll-generate-button" @onclick="RefreshPayslipsAsync" disabled="@_loading">
-            Refresh period payslips
-        </button>
-    }
+    <div class="d-flex gap-2">
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="payroll-export"
+                       OnExportCsv="ExportPeriodCsvAsync" Disabled="@_loading" />
+        @if (CanManage)
+        {
+            <button class="btn btn-primary" data-testid="payroll-generate-button" @onclick="RefreshPayslipsAsync" disabled="@_loading">
+                Refresh period payslips
+            </button>
+        }
+    </div>
 </div>
 
 <div class="card mb-3" data-testid="payroll-period-card">
@@ -184,27 +188,53 @@ else
 
     private void ViewPayslip(PayrollEmployeeSummary e) => selectedEmp = e;
 
+    private async Task ExportPeriodCsvAsync()
+    {
+        try
+        {
+            var month = ParsePeriodMonth();
+            var csv = await PayrollService.ExportMonthlyCsvAsync(month, _deductionPercent, _fixedDeductions);
+            if (string.IsNullOrWhiteSpace(csv) || csv.Split('\n').Length <= 1)
+            {
+                ToastService.ShowInfo("No payroll rows to export for this period.");
+                return;
+            }
+
+            await JS.InvokeVoidAsync("meterpUi.downloadText",
+                $"payroll-{month:yyyy-MM}.csv", csv, "text/csv;charset=utf-8");
+            ToastService.ShowSuccess($"Payroll CSV downloaded for {month:MMMM yyyy}.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
     private async Task DownloadPayslipCsv()
     {
         if (selectedEmp == null) return;
 
+        var single = await PayrollService.GetEmployeeSummaryAsync(
+            selectedEmp.EmployeeId, ParsePeriodMonth(), _deductionPercent, _fixedDeductions)
+            ?? selectedEmp;
+
         var csv = string.Join(Environment.NewLine, new[]
         {
-            $"Employee Number,{selectedEmp.EmployeeNumber}",
-            $"Employee,{selectedEmp.Name}",
-            $"Title,{selectedEmp.JobTitle}",
+            $"Employee Number,{single.EmployeeNumber}",
+            $"Employee,{single.Name}",
+            $"Title,{single.JobTitle}",
             $"Period,{_periodLabel}",
-            $"Hours,{selectedEmp.Hours:N2}",
-            $"Mandatory Hours/Month,{selectedEmp.MandatoryHoursPerMonth:N0}",
-            $"Gross Pay,R {selectedEmp.GrossPay:N2}",
-            $"Deductions,R {selectedEmp.Deductions:N2}",
-            $"Net Pay,R {selectedEmp.NetPay:N2}",
-            $"Labor Entries,{selectedEmp.LaborEntryCount}"
+            $"Hours,{single.Hours:N2}",
+            $"Mandatory Hours/Month,{single.MandatoryHoursPerMonth:N0}",
+            $"Gross Pay,R {single.GrossPay:N2}",
+            $"Deductions,R {single.Deductions:N2}",
+            $"Net Pay,R {single.NetPay:N2}",
+            $"Labor Entries,{single.LaborEntryCount}"
         });
 
-        var safeName = selectedEmp.Name.Replace(' ', '-').ToLowerInvariant();
+        var safeName = single.Name.Replace(' ', '-').ToLowerInvariant();
         await JS.InvokeVoidAsync("meterpUi.downloadText", $"payslip-{safeName}-{_periodLabel.Replace(' ', '-')}.csv", csv, "text/csv;charset=utf-8");
-        ToastService.ShowSuccess($"Payslip CSV downloaded for {selectedEmp.Name}.");
+        ToastService.ShowSuccess($"Payslip CSV downloaded for {single.Name}.");
     }
 
     private async Task DownloadPayslipPdf()

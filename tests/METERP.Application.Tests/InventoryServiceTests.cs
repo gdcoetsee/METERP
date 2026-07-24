@@ -80,7 +80,7 @@ public class InventoryServiceTests
     }
 
     [Fact]
-    public async Task UpdateItemAsync_PersistsQuantityAndReorderLevel()
+    public async Task UpdateItemAsync_PersistsMasterData_ButNotQuantityOnHand()
     {
         using var db = CreateContext();
         var service = new InventoryService(db);
@@ -95,15 +95,20 @@ public class InventoryServiceTests
 
         var item = await service.GetItemByIdAsync(id);
         Assert.NotNull(item);
+        // Direct qty edits via Update are ignored — stock must move via transactions.
         item!.QuantityOnHand = 20;
         item.ReorderLevel = 8;
+        item.Name = "Cable drum 500m";
+        item.UnitCost = 90m;
 
         await service.UpdateItemAsync(item);
 
         var reloaded = await service.GetItemByIdAsync(id);
         Assert.NotNull(reloaded);
-        Assert.Equal(20, reloaded!.QuantityOnHand);
+        Assert.Equal(12, reloaded!.QuantityOnHand);
         Assert.Equal(8, reloaded.ReorderLevel);
+        Assert.Equal("Cable drum 500m", reloaded.Name);
+        Assert.Equal(90m, reloaded.UnitCost);
     }
 
     [Fact]
@@ -140,15 +145,13 @@ public class InventoryServiceTests
     }
 
     [Fact]
-    public async Task RecordStockTransactionAsync_NoOpWhenItemMissing()
+    public async Task RecordStockTransactionAsync_ThrowsWhenItemMissing()
     {
         using var db = CreateContext();
         var service = new InventoryService(db);
 
-        await service.RecordStockTransactionAsync(Guid.NewGuid(), -5, StockTransactionType.Issue);
-
-        var txns = await service.GetRecentTransactionsAsync();
-        Assert.Empty(txns);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(Guid.NewGuid(), -5, StockTransactionType.Issue));
     }
 
     [Fact]

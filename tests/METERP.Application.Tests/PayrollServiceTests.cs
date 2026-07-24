@@ -67,6 +67,16 @@ public class PayrollServiceTests
             Assert.Equal(6m, johan.Hours);
             Assert.Equal(1260m, johan.GrossPay);
             Assert.Equal(1, johan.LaborEntryCount);
+
+            var single = await service.GetEmployeeSummaryAsync(thaboId, month);
+            Assert.NotNull(single);
+            Assert.Equal(thabo.Hours, single!.Hours);
+            Assert.Equal(thabo.NetPay, single.NetPay);
+
+            var csv = await service.ExportMonthlyCsvAsync(month);
+            Assert.Contains("EmployeeNumber", csv);
+            Assert.Contains("Thabo Mokoena", csv);
+            Assert.Contains("2026-06", csv);
         }
     }
 

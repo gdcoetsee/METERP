@@ -99,6 +99,29 @@ public class InventoryService : IInventoryService
 
     public async Task UpdateItemAsync(InventoryItem item, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(item.Name))
+            throw new InvalidOperationException("Inventory item name is required.");
+        if (string.IsNullOrWhiteSpace(item.Sku))
+            throw new InvalidOperationException("SKU is required.");
+        if (item.UnitCost < 0)
+            throw new InvalidOperationException("Unit cost cannot be negative.");
+
+        item.Name = item.Name.Trim();
+        item.Sku = item.Sku.Trim().ToUpperInvariant();
+
+        var dup = await _dbContext.Set<InventoryItem>()
+            .AnyAsync(i => i.Sku == item.Sku && i.Id != item.Id, ct);
+        if (dup)
+            throw new InvalidOperationException($"SKU '{item.Sku}' already exists.");
+
+        // Do not allow direct QuantityOnHand edits via Update — use stock transactions.
+        var existing = await _dbContext.Set<InventoryItem>().AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == item.Id, ct)
+            ?? throw new InvalidOperationException("Inventory item not found.");
+
+        item.QuantityOnHand = existing.QuantityOnHand;
+        item.QuantityReserved = existing.QuantityReserved;
+
         _dbContext.Set<InventoryItem>().Update(item);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -107,7 +130,8 @@ public class InventoryService : IInventoryService
     public async Task RecordStockTransactionAsync(Guid itemId, decimal quantityChange, StockTransactionType type, string? reference = null, Guid? jobId = null, string? notes = null, CancellationToken ct = default)
     {
         var item = await _dbContext.Set<InventoryItem>().FirstOrDefaultAsync(i => i.Id == itemId, ct);
-        if (item == null) return;
+        if (item == null)
+            throw new InvalidOperationException("Inventory item not found.");
 
         // Block issues/adjustments that would drive stock negative (returns/receipts still allowed).
         if (quantityChange < 0 && item.QuantityOnHand + quantityChange < 0)
