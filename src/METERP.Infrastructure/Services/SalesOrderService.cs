@@ -97,6 +97,14 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task UpdateAsync(SalesOrder so, CancellationToken ct = default)
     {
+        var existing = await _dbContext.Set<SalesOrder>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == so.Id, ct);
+        if (existing == null)
+            throw new InvalidOperationException("Sales order not found.");
+        if (existing.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Confirmed))
+            throw new InvalidOperationException(
+                $"Cannot edit sales order in status {existing.Status}.");
+
         RecalculateTotals(so);
         _dbContext.Set<SalesOrder>().Update(so);
         await _dbContext.SaveChangesAsync(ct);
@@ -109,6 +117,16 @@ public class SalesOrderService : ISalesOrderService
             .Include(s => s.Lines)
             .FirstOrDefaultAsync(s => s.Id == id, ct);
         if (so == null) return;
+
+        if (so.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Cancelled))
+            throw new InvalidOperationException(
+                $"Cannot delete sales order in status {so.Status}. Cancel or keep draft only.");
+
+        var linkedJob = await _dbContext.Set<Job>().AsNoTracking()
+            .AnyAsync(j => j.SalesOrderId == so.Id, ct);
+        if (linkedJob)
+            throw new InvalidOperationException(
+                $"Cannot delete sales order {so.SoNumber} — it is linked to a job.");
 
         foreach (var line in so.Lines)
         {
@@ -124,6 +142,22 @@ public class SalesOrderService : ISalesOrderService
     {
         var so = await _dbContext.Set<SalesOrder>().FirstOrDefaultAsync(s => s.Id == soId, ct);
         if (so == null) return;
+        if (so.Status == newStatus) return;
+
+        if (so.Status == SalesOrderStatus.Cancelled)
+            throw new InvalidOperationException("Cancelled sales orders cannot change status.");
+
+        if (so.Status == SalesOrderStatus.Completed && newStatus != SalesOrderStatus.Completed)
+            throw new InvalidOperationException("Completed sales orders cannot change status.");
+
+        if (newStatus == SalesOrderStatus.Cancelled && so.Status == SalesOrderStatus.InProgress)
+        {
+            var hasJob = await _dbContext.Set<Job>().AsNoTracking()
+                .AnyAsync(j => j.SalesOrderId == so.Id, ct);
+            if (hasJob)
+                throw new InvalidOperationException(
+                    "Cannot cancel a sales order that already has a job. Cancel the job instead.");
+        }
 
         so.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
@@ -132,19 +166,20 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task<Guid> AddLineAsync(SalesOrderLine line, CancellationToken ct = default)
     {
-        // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
+        var so = await _dbContext.Set<SalesOrder>()
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == line.SalesOrderId, ct)
+            ?? throw new InvalidOperationException("Sales order not found.");
+
+        if (so.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Confirmed))
+            throw new InvalidOperationException("Lines can only be added to draft or confirmed sales orders.");
 
         _dbContext.Set<SalesOrderLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        var so = await _dbContext.Set<SalesOrder>()
-            .Include(s => s.Lines)
-            .FirstOrDefaultAsync(s => s.Id == line.SalesOrderId, ct);
-        if (so != null)
-        {
-            RecalculateTotals(so);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        await _dbContext.Entry(so).Collection(s => s.Lines).LoadAsync(ct);
+        RecalculateTotals(so);
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
         return line.Id;
@@ -152,19 +187,19 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task UpdateLineAsync(SalesOrderLine line, CancellationToken ct = default)
     {
-        // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
+        var so = await _dbContext.Set<SalesOrder>()
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == line.SalesOrderId, ct)
+            ?? throw new InvalidOperationException("Sales order not found.");
+
+        if (so.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Confirmed))
+            throw new InvalidOperationException("Lines can only be edited on draft or confirmed sales orders.");
 
         _dbContext.Set<SalesOrderLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        var so = await _dbContext.Set<SalesOrder>()
-            .Include(s => s.Lines)
-            .FirstOrDefaultAsync(s => s.Id == line.SalesOrderId, ct);
-        if (so != null)
-        {
-            RecalculateTotals(so);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        RecalculateTotals(so);
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
     }
@@ -175,18 +210,19 @@ public class SalesOrderService : ISalesOrderService
         if (line == null) return;
 
         var soId = line.SalesOrderId;
-        line.IsDeleted = true;
-
-        await _dbContext.SaveChangesAsync(ct);
-
         var so = await _dbContext.Set<SalesOrder>()
             .Include(s => s.Lines)
             .FirstOrDefaultAsync(s => s.Id == soId, ct);
-        if (so != null)
-        {
-            RecalculateTotals(so);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        if (so == null) return;
+
+        if (so.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Confirmed))
+            throw new InvalidOperationException("Lines can only be removed from draft or confirmed sales orders.");
+
+        line.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+
+        RecalculateTotals(so);
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
     }

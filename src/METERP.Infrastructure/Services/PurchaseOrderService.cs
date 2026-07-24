@@ -124,6 +124,14 @@ public class PurchaseOrderService : IPurchaseOrderService
             .FirstOrDefaultAsync(p => p.Id == id, ct);
         if (po == null) return;
 
+        if (po.Status is not (PurchaseOrderStatus.Draft or PurchaseOrderStatus.Cancelled))
+            throw new InvalidOperationException(
+                $"Cannot delete PO in status {po.Status}. Only Draft or Cancelled POs can be deleted.");
+
+        if (po.Status is PurchaseOrderStatus.Received or PurchaseOrderStatus.PartiallyReceived
+            || po.Lines.Any(l => !l.IsDeleted && l.QuantityReceived > 0))
+            throw new InvalidOperationException("Cannot delete a PO that has received goods.");
+
         foreach (var line in po.Lines)
         {
             line.IsDeleted = true;
@@ -143,6 +151,26 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (po == null) return;
 
         var previous = po.Status;
+        if (previous == newStatus) return;
+
+        if (previous == PurchaseOrderStatus.Cancelled)
+            throw new InvalidOperationException("Cancelled POs cannot change status.");
+
+        if (previous == PurchaseOrderStatus.Received && newStatus != PurchaseOrderStatus.Received)
+            throw new InvalidOperationException("Fully received POs cannot change status.");
+
+        if (newStatus == PurchaseOrderStatus.Cancelled
+            && previous is PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.Received)
+            throw new InvalidOperationException("Cannot cancel a PO that has already been received.");
+
+        if (newStatus == PurchaseOrderStatus.Sent && previous != PurchaseOrderStatus.Draft)
+            throw new InvalidOperationException("Only draft POs can be marked Sent.");
+
+        // Received/PartiallyReceived should come from GRV ReceiveAsync, not manual flip.
+        if (newStatus is PurchaseOrderStatus.Received or PurchaseOrderStatus.PartiallyReceived
+            && previous is not (PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.Received))
+            throw new InvalidOperationException("Use GRV receive to mark goods as received.");
+
         po.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -193,19 +221,20 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<Guid> AddLineAsync(PurchaseOrderLine line, CancellationToken ct = default)
     {
-        // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
+        var po = await _dbContext.Set<PurchaseOrder>()
+            .Include(p => p.Lines)
+            .FirstOrDefaultAsync(p => p.Id == line.PurchaseOrderId, ct)
+            ?? throw new InvalidOperationException("Purchase order not found.");
+
+        if (po.Status != PurchaseOrderStatus.Draft)
+            throw new InvalidOperationException("Lines can only be added to draft purchase orders.");
 
         _dbContext.Set<PurchaseOrderLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        var po = await _dbContext.Set<PurchaseOrder>()
-            .Include(p => p.Lines)
-            .FirstOrDefaultAsync(p => p.Id == line.PurchaseOrderId, ct);
-        if (po != null)
-        {
-            RecalculateTotals(po);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        await _dbContext.Entry(po).Collection(p => p.Lines).LoadAsync(ct);
+        RecalculateTotals(po);
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
         return line.Id;
@@ -213,19 +242,19 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task UpdateLineAsync(PurchaseOrderLine line, CancellationToken ct = default)
     {
-        // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
+        var po = await _dbContext.Set<PurchaseOrder>()
+            .Include(p => p.Lines)
+            .FirstOrDefaultAsync(p => p.Id == line.PurchaseOrderId, ct)
+            ?? throw new InvalidOperationException("Purchase order not found.");
+
+        if (po.Status != PurchaseOrderStatus.Draft)
+            throw new InvalidOperationException("Lines can only be edited on draft purchase orders.");
 
         _dbContext.Set<PurchaseOrderLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
 
-        var po = await _dbContext.Set<PurchaseOrder>()
-            .Include(p => p.Lines)
-            .FirstOrDefaultAsync(p => p.Id == line.PurchaseOrderId, ct);
-        if (po != null)
-        {
-            RecalculateTotals(po);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        RecalculateTotals(po);
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
     }
@@ -236,18 +265,19 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (line == null) return;
 
         var poId = line.PurchaseOrderId;
-        line.IsDeleted = true;
-
-        await _dbContext.SaveChangesAsync(ct);
-
         var po = await _dbContext.Set<PurchaseOrder>()
             .Include(p => p.Lines)
             .FirstOrDefaultAsync(p => p.Id == poId, ct);
-        if (po != null)
-        {
-            RecalculateTotals(po);
-            await _dbContext.SaveChangesAsync(ct);
-        }
+        if (po == null) return;
+
+        if (po.Status != PurchaseOrderStatus.Draft)
+            throw new InvalidOperationException("Lines can only be removed from draft purchase orders.");
+
+        line.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(ct);
+
+        RecalculateTotals(po);
+        await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
     }

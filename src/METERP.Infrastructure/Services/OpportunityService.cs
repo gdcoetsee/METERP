@@ -126,6 +126,23 @@ public class OpportunityService : IOpportunityService
 
     public async Task UpdateAsync(Opportunity opportunity, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(opportunity.Title))
+            throw new InvalidOperationException("Opportunity title is required.");
+        if (opportunity.Value < 0)
+            throw new InvalidOperationException("Opportunity value cannot be negative.");
+
+        opportunity.Title = opportunity.Title.Trim();
+
+        var existing = await _dbContext.Set<Opportunity>().AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == opportunity.Id, ct);
+        if (existing == null)
+            throw new InvalidOperationException("Opportunity not found.");
+
+        if (existing.Stage is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost
+            && opportunity.Stage != existing.Stage)
+            throw new InvalidOperationException(
+                $"Closed opportunities cannot change stage from {existing.Stage}.");
+
         _dbContext.Set<Opportunity>().Update(opportunity);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
@@ -145,6 +162,13 @@ public class OpportunityService : IOpportunityService
     {
         var opp = await _dbContext.Set<Opportunity>().FirstOrDefaultAsync(o => o.Id == id, ct);
         if (opp == null) return;
+
+        if (opp.QuoteId.HasValue)
+            throw new InvalidOperationException(
+                "Cannot delete an opportunity linked to a quote. Unlink or keep for CRM history.");
+
+        if (opp.Stage is OpportunityStage.ClosedWon)
+            throw new InvalidOperationException("Cannot delete a Closed Won opportunity.");
 
         opp.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);

@@ -196,6 +196,28 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_ThrowsWhenInProgress()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Draft,
+                Lines = { new SalesOrderLine { Description = "X", Quantity = 1, UnitPrice = 10m } }
+            });
+            await service.UpdateStatusAsync(soId, SalesOrderStatus.Confirmed);
+            await service.ConvertToJobAsync(soId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(soId));
+        }
+    }
+
+    [Fact]
     public async Task ConvertToJobAsync_ThrowsWhenAlreadyConverted()
     {
         var tenantId = Guid.NewGuid();
