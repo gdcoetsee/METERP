@@ -68,10 +68,28 @@ public class InventoryService : IInventoryService
 
     public async Task<Guid> CreateItemAsync(InventoryItem item, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(item.Name))
+            throw new InvalidOperationException("Inventory item name is required.");
+
+        item.Name = item.Name.Trim();
+
         if (string.IsNullOrWhiteSpace(item.Sku))
         {
             item.Sku = "SKU-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
         }
+        else
+        {
+            item.Sku = item.Sku.Trim().ToUpperInvariant();
+            var dup = await _dbContext.Set<InventoryItem>()
+                .AnyAsync(i => i.Sku == item.Sku, ct);
+            if (dup)
+                throw new InvalidOperationException($"SKU '{item.Sku}' already exists.");
+        }
+
+        if (item.UnitCost < 0)
+            throw new InvalidOperationException("Unit cost cannot be negative.");
+        if (item.QuantityOnHand < 0)
+            throw new InvalidOperationException("Opening quantity cannot be negative.");
 
         _dbContext.Set<InventoryItem>().Add(item);
         await _dbContext.SaveChangesAsync(ct);

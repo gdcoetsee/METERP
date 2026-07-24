@@ -20,14 +20,11 @@
 | R2c SKU promote + RFQ lines | **Done (unit/UI)** — free-text → SKU after GRV; line-level RFQ prices (2026-07-24) |
 | R6 Production hardening | **Strong partial** — health, rate limits, headers, expanded production secrets validator |
 
-**Latest product batch (2026-07-24):**  
-- `CreateSkuFromPoLineAsync` — promote free-text PO lines to inventory SKUs (backfill received qty, link REQ lines, carry reservations).  
-- GRV option `createSkuForFreeTextLines` + PO UI “Create SKU” / receive checkbox.  
-- Line-level RFQ: `ProcurementSupplierQuoteLine`, `AddQuoteAsync(... lines)`, PO unit prices applied from selected quote.  
-- Migration: `AddProcurementQuoteLinesAndSkuPromote`.  
-- Unit tests: **736 green** (Application.Tests).
+**Latest product stream (2026-07-24 continuous):** SKU promote + RFQ lines; quota UX; field/scheduling/stock-take guards; production secrets validator; leave overlap; recurring resilience; notification dismiss; PPE return; finance/asset/customer/supplier/SO/quote/division/inventory create guards.  
 
-**Tests verified (2026-07-24):** PurchaseOrder + ProcurementQuote suites (SKU promote, GRV+SKU, REQ link, line RFQ→PO prices); full unit suite green.
+**Unit tests:** **765 green** (Application.Tests). `main` pushed continuously.
+
+**Tests verified (2026-07-24):** Full Application.Tests suite green after each batch.
 
 ### Advisory duty
 
