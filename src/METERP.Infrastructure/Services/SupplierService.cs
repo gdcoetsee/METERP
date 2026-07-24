@@ -63,6 +63,13 @@ public class SupplierService : ISupplierService
 
     public async Task<Guid> CreateAsync(Supplier supplier, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(supplier.Name))
+            throw new InvalidOperationException("Supplier name is required.");
+
+        supplier.Name = supplier.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(supplier.Email))
+            supplier.Email = supplier.Email.Trim();
+
         _dbContext.Set<Supplier>().Add(supplier);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

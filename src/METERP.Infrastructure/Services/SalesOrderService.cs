@@ -195,35 +195,37 @@ public class SalesOrderService : ISalesOrderService
         if (so == null)
             throw new InvalidOperationException("Sales Order not found.");
 
-        if (so.Status != SalesOrderStatus.Confirmed && so.Status != SalesOrderStatus.InProgress)
-        {
-            so.Status = SalesOrderStatus.Confirmed;
-        }
+        // Prevent double conversion.
+        var existingJob = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(j => j.SalesOrderId == so.Id, ct);
+        if (existingJob != null)
+            throw new InvalidOperationException($"Sales order {so.SoNumber} already converted to job {existingJob.JobNumber}.");
 
-        var job = new Job
+        if (so.Status is SalesOrderStatus.Cancelled or SalesOrderStatus.Completed)
+            throw new InvalidOperationException($"Cannot convert sales order in status {so.Status}.");
+
+        if (so.Status != SalesOrderStatus.Confirmed && so.Status != SalesOrderStatus.InProgress)
+            so.Status = SalesOrderStatus.Confirmed;
+
+        var title = so.Customer != null
+            ? $"{so.Customer.Name} - {so.SoNumber}"
+            : $"Job from {so.SoNumber}";
+
+        // Route through JobService so quota enforcement and usage counters apply.
+        var jobId = await _jobService.CreateAsync(new Job
         {
             QuoteId = so.QuoteId,
             SalesOrderId = so.Id,
             CustomerId = so.CustomerId,
-            JobNumber = $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}",
-            Title = $"Job from {so.SoNumber}",
+            Title = title,
             Description = so.Notes,
             QuotedTotal = so.Total,
             ActualCost = 0,
             ScheduledStart = so.DeliveryDate ?? DateTime.UtcNow.AddDays(7),
             Status = JobStatus.Scheduled
-        };
+        }, ct);
 
-        if (so.Customer != null)
-        {
-            job.Title = $"{so.Customer.Name} - {so.SoNumber}";
-        }
-
-        _dbContext.Set<Job>().Add(job);
-
-        await _dbContext.SaveChangesAsync(ct);
-
-        // Update SO status
         so.Status = SalesOrderStatus.InProgress;
         await _dbContext.SaveChangesAsync(ct);
 
@@ -231,26 +233,10 @@ public class SalesOrderService : ISalesOrderService
         if (_cache != null)
             await TenantCacheInvalidation.OnJobMutatedAsync(_cache, ct);
 
-        await TryIncrementJobCountAsync(so.TenantId, ct);
-
-        // Return loaded job (reuse from JobService or simple)
-        return (await _jobService.GetByIdAsync(job.Id, ct))!;
+        return (await _jobService.GetByIdAsync(jobId, ct))!;
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.SalesOrders);
-
-    private async Task TryIncrementJobCountAsync(Guid tenantId, CancellationToken ct)
-    {
-        if (tenantId == Guid.Empty || _tenantService == null) return;
-        try
-        {
-            await _tenantService.IncrementJobCountAsync(tenantId, ct);
-        }
-        catch
-        {
-            // Best-effort commercial tracking — must not break business operations.
-        }
-    }
 
     private static void RecalculateTotals(SalesOrder so)
     {

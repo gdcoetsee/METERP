@@ -62,6 +62,13 @@ public class CustomerService : ICustomerService
 
     public async Task<Guid> CreateAsync(Customer customer, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(customer.Name))
+            throw new InvalidOperationException("Customer name is required.");
+
+        customer.Name = customer.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(customer.Email))
+            customer.Email = customer.Email.Trim();
+
         _dbContext.Set<Customer>().Add(customer);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

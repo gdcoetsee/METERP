@@ -194,4 +194,31 @@ public class SalesOrderServiceTests
                 service.ConvertToJobAsync(Guid.NewGuid()));
         }
     }
+
+    [Fact]
+    public async Task ConvertToJobAsync_ThrowsWhenAlreadyConverted()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0.15m,
+                Lines = { new SalesOrderLine { Description = "Pkg", Quantity = 1, UnitPrice = 1000m } }
+            });
+
+            Assert.NotEqual(Guid.Empty, soId);
+            Assert.NotNull(await service.GetByIdAsync(soId));
+
+            await service.ConvertToJobAsync(soId);
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ConvertToJobAsync(soId));
+            Assert.Contains("already converted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

@@ -53,6 +53,10 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 **Stock take + scheduling hardening (2026-07-24):** One open stock-take session at a time; cancel without posting; reject negative counts; require counts before post. Scheduling blocks assign/labor/reschedule on closed jobs.
 
+**R6 secrets + leave/recurring/notifications (2026-07-24):** `ProductionSecretsValidator`; leave overlap/date guards; recurring create/deactivate + resilient ProcessDue; notification dismiss.
+
+**PPE return + master-data guards (2026-07-24):** Partial PPE return restocks inventory; customer/supplier/asset name required; finance account uniqueness + journal line rules; SO→Job uses JobService (quota) and blocks double convert.
+
 **R2c SKU promote + RFQ lines (2026-07-24):** Free-text PO/GRV lines can become stock master SKUs; multi-supplier RFQ supports per-line unit prices that roll into header total and apply to the created PO.
 
 **R2a delivered (2026-07-09):** PPE `JobId` optional; issue-to-employee register + stock decrement; multi-line REQ (Field + Command Center); negative stock guard on inventory issues.
