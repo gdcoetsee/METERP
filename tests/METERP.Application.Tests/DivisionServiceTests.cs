@@ -147,4 +147,29 @@ public class DivisionServiceTests
             Assert.True((await service.GetByIdAsync(id))!.IsActive);
         }
     }
+
+    [Fact]
+    public async Task SetActiveAsync_ThrowsWhenDeactivatingDivisionWithActiveEmployees()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new Division { TenantId = tenantId, Code = "HR", Name = "HR Div" });
+            db.Set<Employee>().Add(new Employee
+            {
+                TenantId = tenantId,
+                DivisionId = id,
+                EmployeeNumber = "EMP-DIV-1",
+                FirstName = "Pat",
+                LastName = "Lee",
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.SetActiveAsync(id, false));
+            Assert.Contains("active employees", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True((await service.GetByIdAsync(id))!.IsActive);
+        }
+    }
 }

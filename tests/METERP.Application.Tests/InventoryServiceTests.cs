@@ -10,9 +10,9 @@ namespace METERP.Application.Tests;
 
 public class InventoryServiceTests
 {
-    private AppDbContext CreateContext()
+    private AppDbContext CreateContext(Guid? fixedTenantId = null)
     {
-        var tenantId = Guid.NewGuid();
+        var tenantId = fixedTenantId ?? Guid.NewGuid();
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
         var currentUser = new Mock<ICurrentUserService>();
@@ -219,6 +219,92 @@ public class InventoryServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.RecordStockTransactionAsync(Guid.NewGuid(), -5, StockTransactionType.Issue));
+    }
+
+    [Fact]
+    public async Task RecordStockTransactionAsync_ThrowsWhenLinkedJobMissing()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "JOB-MISS",
+            Name = "Cable",
+            QuantityOnHand = 20,
+            ReorderLevel = 2,
+            UnitCost = 10m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(id, -1, StockTransactionType.Issue, jobId: Guid.NewGuid()));
+        Assert.Contains("job", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RecordStockTransactionAsync_ThrowsWhenIssuingToClosedJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "JOB-CLOSED",
+            Name = "Fittings",
+            QuantityOnHand = 20,
+            ReorderLevel = 2,
+            UnitCost = 5m
+        });
+
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-CLOSED-STK",
+            Title = "Done",
+            Status = JobStatus.Closed
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(id, -1, StockTransactionType.Issue, jobId: job.Id));
+        Assert.Contains("Closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RecordStockTransactionAsync_AllowsIssueToOpenJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "JOB-OPEN",
+            Name = "Conduit",
+            QuantityOnHand = 20,
+            ReorderLevel = 2,
+            UnitCost = 8m
+        });
+
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-OPEN-STK",
+            Title = "Live",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        await service.RecordStockTransactionAsync(id, -2, StockTransactionType.Issue, reference: job.JobNumber, jobId: job.Id);
+
+        var item = await service.GetItemByIdAsync(id);
+        Assert.Equal(18m, item!.QuantityOnHand);
     }
 
     [Fact]

@@ -106,6 +106,8 @@ public class InvoiceService : IInvoiceService
         if (invoice.InvoiceDate != default && invoice.DueDate.Date < invoice.InvoiceDate.Date)
             throw new InvalidOperationException("Due date cannot be before the invoice date.");
 
+        await ValidateInvoiceJobLinkAsync(invoice.JobId, invoice.CustomerId, ct);
+
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? invoice.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
@@ -152,6 +154,9 @@ public class InvoiceService : IInvoiceService
             if (customer == null || customer.IsDeleted)
                 throw new InvalidOperationException("Customer not found.");
         }
+
+        // Job link may be set/changed on draft invoices only (status already gated above).
+        await ValidateInvoiceJobLinkAsync(invoice.JobId, invoice.CustomerId, ct);
 
         // Identity and payment state must not drift via free-form update payloads.
         invoice.InvoiceNumber = existing.InvoiceNumber;
@@ -718,6 +723,29 @@ public class InvoiceService : IInvoiceService
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Invoices);
+
+    /// <summary>
+    /// Ensures optional JobId points at a real job for the same customer and is not cancelled.
+    /// Closed jobs may still receive credit notes / adjustments via free-form draft invoices.
+    /// </summary>
+    private async Task ValidateInvoiceJobLinkAsync(Guid? jobId, Guid customerId, CancellationToken ct)
+    {
+        if (jobId is null || jobId == Guid.Empty)
+            return;
+
+        var job = await _dbContext.Set<Job>().AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == jobId.Value, ct);
+        if (job == null)
+            throw new InvalidOperationException("Linked job not found.");
+
+        if (job.CustomerId != customerId)
+            throw new InvalidOperationException(
+                "Invoice customer must match the linked job's customer.");
+
+        if (job.Status == JobStatus.Cancelled)
+            throw new InvalidOperationException(
+                $"Cannot link an invoice to cancelled job {job.JobNumber}.");
+    }
 
     private static void ValidateLine(InvoiceLine line)
     {

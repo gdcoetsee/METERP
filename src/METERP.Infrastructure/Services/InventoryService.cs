@@ -141,6 +141,18 @@ public class InventoryService : IInventoryService
                 $"Insufficient stock for {item.Name}. On hand: {item.QuantityOnHand:N2}, change: {quantityChange:N2}.");
         }
 
+        if (jobId is { } linkedJobId && linkedJobId != Guid.Empty)
+        {
+            var job = await _dbContext.Set<Job>().AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == linkedJobId, ct)
+                ?? throw new InvalidOperationException("Linked job not found.");
+
+            // Issues against a job require the job still open for field ops.
+            if (type == StockTransactionType.Issue && !job.IsOpenForOperations())
+                throw new InvalidOperationException(
+                    $"Cannot issue stock to job {job.JobNumber} — job is {job.Status}.");
+        }
+
         // Update on-hand
         item.QuantityOnHand += quantityChange;
 

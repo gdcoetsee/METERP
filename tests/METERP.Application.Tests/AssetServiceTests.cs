@@ -88,14 +88,38 @@ public class AssetServiceTests
         var customerId = Guid.NewGuid();
         db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
         var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "TRF-1", Notes = "Existing" });
-        var jobId = Guid.NewGuid();
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-MAINT-1",
+            Title = "Service call",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
 
-        await service.AddMaintenanceNoteAsync(id, "Oil sample taken", jobId);
+        await service.AddMaintenanceNoteAsync(id, "Oil sample taken", job.Id);
 
         var loaded = await service.GetByIdAsync(id);
         Assert.Contains("Existing", loaded!.Notes);
         Assert.Contains("Oil sample taken", loaded.Notes);
-        Assert.Contains(jobId.ToString(), loaded.Notes);
+        Assert.Contains("J-MAINT-1", loaded.Notes);
+    }
+
+    [Fact]
+    public async Task AddMaintenanceNoteAsync_ThrowsWhenJobMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "TRF-2" });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddMaintenanceNoteAsync(id, "Note", Guid.NewGuid()));
+        Assert.Contains("job", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

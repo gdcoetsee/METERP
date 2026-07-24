@@ -85,6 +85,12 @@ public sealed class DivisionService : IDivisionService
             if (hasOpenJobs)
                 throw new InvalidOperationException(
                     "Cannot deactivate a division with open jobs. Reassign or close those jobs first.");
+
+            var hasActiveEmployees = await _dbContext.Set<Employee>().AsNoTracking()
+                .AnyAsync(e => e.DivisionId == id && e.IsActive, ct);
+            if (hasActiveEmployees)
+                throw new InvalidOperationException(
+                    "Cannot deactivate a division with active employees. Reassign them first.");
         }
 
         division.IsActive = isActive;

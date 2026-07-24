@@ -336,4 +336,126 @@ public class InvoiceTests
         Assert.Single(lines);
         Assert.True(lines[0].IsDeleted);
     }
+
+    [Fact]
+    public async Task InvoiceService_CreateAsync_LinksValidJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Link Client" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-INV-LINK",
+            Title = "Billable work",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        var id = await service.CreateAsync(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobId = job.Id,
+            InvoiceDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(14),
+            TaxRate = 0.15m
+        });
+
+        var saved = await service.GetByIdAsync(id);
+        Assert.Equal(job.Id, saved!.JobId);
+    }
+
+    [Fact]
+    public async Task InvoiceService_CreateAsync_RejectsJobCustomerMismatch()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customerA = new Customer { TenantId = tenantId, Name = "A Co" };
+        var customerB = new Customer { TenantId = tenantId, Name = "B Co" };
+        db.Set<Customer>().AddRange(customerA, customerB);
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerA.Id,
+            JobNumber = "J-MISMATCH",
+            Title = "Work",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customerB.Id,
+                JobId = job.Id,
+                InvoiceDate = DateTime.UtcNow.Date,
+                DueDate = DateTime.UtcNow.Date.AddDays(14)
+            }));
+        Assert.Contains("customer", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task InvoiceService_CreateAsync_RejectsCancelledJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Cancel Client" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-CANCELLED",
+            Title = "Stopped",
+            Status = JobStatus.Cancelled
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobId = job.Id,
+                InvoiceDate = DateTime.UtcNow.Date,
+                DueDate = DateTime.UtcNow.Date.AddDays(14)
+            }));
+        Assert.Contains("cancelled", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task InvoiceService_CreateAsync_RejectsMissingJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Missing Job Client" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobId = Guid.NewGuid(),
+                InvoiceDate = DateTime.UtcNow.Date,
+                DueDate = DateTime.UtcNow.Date.AddDays(14)
+            }));
+        Assert.Contains("job", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -122,6 +122,31 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_ThrowsWhenCustomerHasUnpaidInvoices()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Billed Client" });
+
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            InvoiceNumber = "INV-OPEN-1",
+            Status = InvoiceStatus.Sent,
+            InvoiceDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(30),
+            Total = 1000m
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(customerId));
+        Assert.Contains("invoice", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await service.GetByIdAsync(customerId));
+    }
+
+    [Fact]
     public async Task AddContactAsync_ClearsOtherPrimary_WhenSettingPrimary()
     {
         var tenantId = Guid.NewGuid();

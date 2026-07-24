@@ -159,7 +159,16 @@ public class AssetService : IAssetService
         if (asset == null)
             throw new InvalidOperationException("Asset not found.");
 
-        var prefix = jobId.HasValue ? $"[Job {jobId}] " : "";
+        string? jobNumber = null;
+        if (jobId is { } linkedJobId && linkedJobId != Guid.Empty)
+        {
+            var job = await _dbContext.Set<Job>().AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == linkedJobId, ct)
+                ?? throw new InvalidOperationException("Linked job not found.");
+            jobNumber = job.JobNumber;
+        }
+
+        var prefix = jobNumber != null ? $"[Job {jobNumber}] " : "";
         asset.Notes = string.IsNullOrWhiteSpace(asset.Notes)
             ? $"{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note.Trim()}"
             : $"{asset.Notes}\n{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note.Trim()}";

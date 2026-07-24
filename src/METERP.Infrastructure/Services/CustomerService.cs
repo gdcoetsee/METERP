@@ -123,6 +123,16 @@ public class CustomerService : ICustomerService
             throw new InvalidOperationException(
                 "Cannot delete a customer with open quotes. Reject or expire them first.");
 
+        var hasUnpaidInvoices = await _dbContext.Set<Invoice>().AsNoTracking()
+            .AnyAsync(i => i.CustomerId == id
+                && i.Status != InvoiceStatus.Cancelled
+                && i.Status != InvoiceStatus.Paid
+                && i.DocumentType != InvoiceDocumentType.CreditNote
+                && i.DocumentType != InvoiceDocumentType.Proforma, ct);
+        if (hasUnpaidInvoices)
+            throw new InvalidOperationException(
+                "Cannot delete a customer with open or unpaid invoices. Settle or cancel them first.");
+
         foreach (var contact in customer.Contacts)
         {
             contact.IsDeleted = true;
