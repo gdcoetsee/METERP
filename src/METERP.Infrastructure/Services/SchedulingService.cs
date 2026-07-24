@@ -164,7 +164,18 @@ public class SchedulingService : ISchedulingService
             throw new InvalidOperationException(
                 $"Cannot reschedule — job {job.JobNumber} is {job.Status}.");
 
-        job.ScheduledStart = scheduledStart?.Date;
+        if (scheduledStart.HasValue)
+        {
+            var date = scheduledStart.Value.Date;
+            if (date > DateTime.UtcNow.Date.AddYears(2))
+                throw new InvalidOperationException("Scheduled start cannot be more than 2 years in the future.");
+            job.ScheduledStart = date;
+        }
+        else
+        {
+            job.ScheduledStart = null;
+        }
+
         await _jobService.UpdateAsync(job, ct);
     }
 

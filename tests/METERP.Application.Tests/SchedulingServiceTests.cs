@@ -79,6 +79,28 @@ public class SchedulingServiceTests
         }
     }
 
+    [Fact]
+    public async Task UpdateScheduledStartAsync_ThrowsWhenMoreThanTwoYearsAhead()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Date Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Far future",
+                Status = JobStatus.Scheduled
+            });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateScheduledStartAsync(jobId, DateTime.UtcNow.Date.AddYears(3)));
+        }
+    }
+
     private (AppDbContext Db, SchedulingService Service, JobService Jobs, AssetService Assets, EmployeeService Employees, Guid TenantId) CreateHarness()
     {
         var tenantId = Guid.NewGuid();
