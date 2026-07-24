@@ -198,6 +198,76 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_ThrowsWhenJobClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+            await jobs.CloseAsync(jobId, TestUserId, "Done");
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m
+            }));
+            Assert.Contains("Closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenEmpty()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 0m,
+                TravelCost = 0m
+            }));
+        }
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ThrowsWhenJobClosedAfterSubmit()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 5m,
+                TravelCost = 100m
+            });
+
+            await jobs.CloseAsync(jobId, TestUserId, "Closed before approve");
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveAsync(reportId, TestUserId));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task GetByJobIdAsync_ReturnsReportsForJob()
     {
         var tenantId = Guid.NewGuid();

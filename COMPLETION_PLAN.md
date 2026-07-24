@@ -45,9 +45,11 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. **R6** Production hardening remainder (secrets audit, observability depth, quota UX)  
-2. Supporting-module sellable depth (scheduling/notifications polish, field report reliability)  
+1. **R6** Production hardening remainder (secrets audit, observability depth)  
+2. Supporting-module sellable depth (scheduling/notifications polish)  
 3. E2E against docker when validating release (not a development blocker)
+
+**R6 quota UX + field report guards (2026-07-24):** Quotes/Jobs/Invoices disable create actions when monthly quota is exceeded and show page banners. Field reports reject submit/approve on closed jobs and empty content.
 
 **R2c SKU promote + RFQ lines (2026-07-24):** Free-text PO/GRV lines can become stock master SKUs; multi-supplier RFQ supports per-line unit prices that roll into header total and apply to the created PO.
 

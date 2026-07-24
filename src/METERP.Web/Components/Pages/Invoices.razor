@@ -43,10 +43,22 @@
         <ExportToolbar TestId="invoices-export" OnExportCsv="ExportInvoicesCsvAsync" OnExportExcel="ExportInvoicesExcelAsync" OnExportPdf="ExportInvoicesPdfAsync" Disabled="@_loading" />
         @if (UserCanManage)
         {
-            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-invoice-button">+ New Invoice</button>
+            <button class="btn btn-primary" @onclick="ShowCreateForm"
+                    disabled="@InvoiceQuotaBlocked"
+                    title="@(InvoiceQuotaBlocked ? TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Invoice, "Invoices") : null)"
+                    data-testid="new-invoice-button">+ New Invoice</button>
         }
     </div>
 </div>
+
+@if (InvoiceQuotaBlocked)
+{
+    <div class="alert alert-warning" data-testid="invoices-quota-exceeded-banner" role="alert">
+        <strong>Invoice quota reached.</strong>
+        @TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Invoice, "Invoices")
+        <a href="/account" class="alert-link ms-1">View plan &amp; usage</a>
+    </div>
+}
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
@@ -388,6 +400,9 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private TenantBranding _branding = TenantBranding.Default;
+    private Tenant? _tenant;
+    private bool InvoiceQuotaBlocked =>
+        _tenant != null && TenantQuotaDefaults.IsAtOrOverLimit(_tenant, QuotaType.Invoice);
 
     private bool showLineForm;
     private InvoiceLine? editingLine;
@@ -404,8 +419,8 @@ else
         {
             if (CurrentUserService.TenantId != Guid.Empty)
             {
-                var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
-                _branding = TenantBranding.From(tenant);
+                _tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+                _branding = TenantBranding.From(_tenant);
             }
 
             await LoadInvoices();
@@ -461,6 +476,12 @@ else
 
     private void ShowCreateForm()
     {
+        if (InvoiceQuotaBlocked)
+        {
+            ToastService.ShowError(TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Invoice, "Invoices"));
+            return;
+        }
+
         currentInvoice = new Invoice
         {
             InvoiceDate = DateTime.UtcNow,

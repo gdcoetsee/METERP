@@ -49,11 +49,24 @@ public sealed class FieldReportService : IFieldReportService
         if (job == null)
             throw new InvalidOperationException("Job not found.");
 
+        if (!job.IsOpenForOperations())
+            throw new InvalidOperationException(
+                $"Cannot submit a field report for job {job.JobNumber} — job is {job.Status}.");
+
         if (report.HoursWorked < 0 || report.TravelCost < 0)
             throw new InvalidOperationException("Hours and travel cost cannot be negative.");
 
+        var hasContent = report.HoursWorked > 0
+            || report.TravelCost > 0
+            || !string.IsNullOrWhiteSpace(report.MaterialsUsed)
+            || !string.IsNullOrWhiteSpace(report.Comments);
+        if (!hasContent)
+            throw new InvalidOperationException(
+                "Enter hours worked, travel cost, materials used, or comments before submitting.");
+
         report.Status = FieldReportStatus.PendingApproval;
         report.SubmittedAt = DateTime.UtcNow;
+        report.WorkDate = report.WorkDate == default ? DateTime.UtcNow.Date : report.WorkDate.Date;
         // Stamp tenant from job so field-portal circuits never insert Guid.Empty TenantId.
         if (report.TenantId == Guid.Empty)
             report.TenantId = job.TenantId;
@@ -90,7 +103,12 @@ public sealed class FieldReportService : IFieldReportService
         if (report == null || report.Status != FieldReportStatus.PendingApproval)
             return false;
 
-        var hourlyRate = report.Job?.AssignedEmployee?.DefaultHourlyRate ?? 195m;
+        // Approving posts labor/travel to the job — only allowed while job is open for ops.
+        if (report.Job == null || !report.Job.IsOpenForOperations())
+            throw new InvalidOperationException(
+                $"Cannot approve field report — job {(report.Job?.JobNumber ?? report.JobId.ToString("N")[..8])} is closed or cancelled.");
+
+        var hourlyRate = report.Job.AssignedEmployee?.DefaultHourlyRate ?? 195m;
 
         if (report.HoursWorked > 0)
         {
@@ -100,8 +118,8 @@ public sealed class FieldReportService : IFieldReportService
                 WorkDate = report.WorkDate,
                 Hours = report.HoursWorked,
                 HourlyRate = hourlyRate,
-                EmployeeId = report.Job?.AssignedEmployeeId,
-                Technician = report.Job?.AssignedEmployee != null
+                EmployeeId = report.Job.AssignedEmployeeId,
+                Technician = report.Job.AssignedEmployee != null
                     ? $"{report.Job.AssignedEmployee.FirstName} {report.Job.AssignedEmployee.LastName}".Trim()
                     : "Field technician",
                 Description = $"Field report {report.SubmittedAt:yyyy-MM-dd}"

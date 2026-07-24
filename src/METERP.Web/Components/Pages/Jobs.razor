@@ -29,10 +29,24 @@
         <ExportToolbar TestId="jobs-export" OnExportCsv="ExportJobsCsvAsync" OnExportExcel="ExportJobsExcelAsync" OnExportPdf="ExportJobsPdfAsync" />
         @if (UserCanManage)
         {
-            <button type="button" class="btn btn-danger" data-testid="jobs-emergency-create" @onclick="OpenEmergencyModal">+ Emergency job</button>
+            <button type="button" class="btn btn-danger" data-testid="jobs-emergency-create"
+                    @onclick="OpenEmergencyModal"
+                    disabled="@JobQuotaBlocked"
+                    title="@(JobQuotaBlocked ? TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Job, "Jobs") : null)">
+                + Emergency job
+            </button>
         }
     </div>
 </div>
+
+@if (JobQuotaBlocked)
+{
+    <div class="alert alert-warning" data-testid="jobs-quota-exceeded-banner" role="alert">
+        <strong>Job quota reached.</strong>
+        @TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Job, "Jobs")
+        <a href="/account" class="alert-link ms-1">View plan &amp; usage</a>
+    </div>
+}
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
@@ -131,6 +145,9 @@ else
     private List<Job> demoJobs = new();
     private bool _initialLoadComplete;
     private TenantBranding _branding = TenantBranding.Default;
+    private Tenant? _tenant;
+    private bool JobQuotaBlocked =>
+        _tenant != null && TenantQuotaDefaults.IsAtOrOverLimit(_tenant, QuotaType.Job);
     private Job? selectedJob;
     private JobCommandCenterSummary? commandCenter;
     private List<JobMilestone> jobMilestones = new();
@@ -163,8 +180,8 @@ else
     {
         if (CurrentUserService.TenantId != Guid.Empty)
         {
-            var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
-            _branding = TenantBranding.From(tenant);
+            _tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+            _branding = TenantBranding.From(_tenant);
         }
 
         _customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
@@ -183,6 +200,12 @@ else
 
     private void OpenEmergencyModal()
     {
+        if (JobQuotaBlocked)
+        {
+            ToastService.ShowError(TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Job, "Jobs"));
+            return;
+        }
+
         _emergencyCustomerId = _customers.FirstOrDefault()?.Id ?? Guid.Empty;
         _emergencyTitle = "";
         _emergencyDescription = "";

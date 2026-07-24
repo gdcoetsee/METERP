@@ -37,11 +37,23 @@
         <ExportToolbar TestId="quotes-export" OnExportCsv="ExportQuotesCsv" OnExportExcel="ExportQuotesExcelAsync" OnExportPdf="ExportQuotesPdfAsync" Disabled="@_pageBusy" />
         @if (UserCanManage)
         {
-            <button type="button" class="btn btn-primary" @onclick="ShowCreateEditor" disabled="@_pageBusy" data-testid="new-quote-button">+ New Quote</button>
+            <button type="button" class="btn btn-primary" @onclick="ShowCreateEditor"
+                    disabled="@(_pageBusy || QuoteQuotaBlocked)"
+                    title="@(QuoteQuotaBlocked ? TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Quote, "Quotes") : null)"
+                    data-testid="new-quote-button">+ New Quote</button>
         }
         <a href="/ai-copilot" class="btn btn-outline-success" data-testid="create-with-ai-copilot">Create with AI</a>
     </div>
 </div>
+
+@if (QuoteQuotaBlocked)
+{
+    <div class="alert alert-warning" data-testid="quotes-quota-exceeded-banner" role="alert">
+        <strong>Quote quota reached.</strong>
+        @TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Quote, "Quotes")
+        <a href="/account" class="alert-link ms-1">View plan &amp; usage</a>
+    </div>
+}
 
 <div class="mb-3" style="max-width: 480px;">
     <div class="input-group">
@@ -347,6 +359,9 @@ else
 @code {
     private List<Quote> quotes = new();
     private TenantBranding _branding = TenantBranding.Default;
+    private Tenant? _tenant;
+    private bool QuoteQuotaBlocked =>
+        _tenant != null && TenantQuotaDefaults.IsAtOrOverLimit(_tenant, QuotaType.Quote);
     private List<Customer> availableCustomers = new();
     private Quote? editorQuote;
     private bool editorIsNew;
@@ -419,8 +434,8 @@ else
             var tenantId = TenantProvider.GetCurrentTenantId();
             if (tenantId != Guid.Empty)
             {
-                var tenant = await TenantService.GetByIdAsync(tenantId);
-                _branding = TenantBranding.From(tenant);
+                _tenant = await TenantService.GetByIdAsync(tenantId);
+                _branding = TenantBranding.From(_tenant);
             }
 
             await LoadCustomers();
@@ -581,6 +596,12 @@ else
 
     private void ShowCreateEditor()
     {
+        if (QuoteQuotaBlocked)
+        {
+            ToastService.ShowError(TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Quote, "Quotes"));
+            return;
+        }
+
         editorQuote = new Quote
         {
             QuoteDate = DateTime.UtcNow.Date,
