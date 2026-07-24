@@ -273,6 +273,48 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task RecordStockTransactionAsync_ThrowsWhenQuantityZero()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "ZERO",
+            Name = "Zero",
+            QuantityOnHand = 5,
+            ReorderLevel = 1,
+            UnitCost = 1m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(id, 0, StockTransactionType.Adjustment));
+        Assert.Contains("zero", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RecordStockTransactionAsync_ThrowsWhenItemInactive()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "INACT",
+            Name = "Inactive",
+            QuantityOnHand = 5,
+            ReorderLevel = 1,
+            UnitCost = 1m,
+            IsActive = true
+        });
+        var item = await service.GetItemByIdAsync(id);
+        item!.IsActive = false;
+        await service.UpdateItemAsync(item);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(id, -1, StockTransactionType.Issue));
+        Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RecordStockTransactionAsync_ThrowsWhenLinkedJobMissing()
     {
         using var db = CreateContext();

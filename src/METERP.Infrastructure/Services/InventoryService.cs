@@ -152,6 +152,13 @@ public class InventoryService : IInventoryService
         if (item == null)
             throw new InvalidOperationException("Inventory item not found.");
 
+        if (quantityChange == 0)
+            throw new InvalidOperationException("Stock transaction quantity cannot be zero.");
+
+        if (!item.IsActive && type is StockTransactionType.Issue or StockTransactionType.Receipt)
+            throw new InvalidOperationException(
+                $"Cannot post {type} transactions for inactive item {item.Sku}.");
+
         // Block issues/adjustments that would drive stock negative (returns/receipts still allowed).
         if (quantityChange < 0 && item.QuantityOnHand + quantityChange < 0)
         {

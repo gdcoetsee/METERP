@@ -646,6 +646,12 @@ public class InvoiceService : IInvoiceService
         if (amount <= 0)
             throw new InvalidOperationException("Payment amount must be positive.");
 
+        paymentDate = paymentDate == default ? DateTime.UtcNow.Date : paymentDate.Date;
+        if (paymentDate > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Payment date cannot be more than one day in the future.");
+        if (paymentDate < DateTime.UtcNow.Date.AddYears(-2))
+            throw new InvalidOperationException("Payment date cannot be more than 2 years in the past.");
+
         var invoice = await _dbContext.Set<Invoice>()
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
 

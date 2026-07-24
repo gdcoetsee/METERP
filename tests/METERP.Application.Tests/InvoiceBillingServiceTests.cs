@@ -299,6 +299,32 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_RejectsFuturePaymentDate()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-FUT",
+                Status = InvoiceStatus.Sent,
+                Total = 100m,
+                Lines = { new InvoiceLine { Description = "Work", Quantity = 1, UnitPrice = 100m } }
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date.AddDays(14), null, null, null));
+            Assert.Contains("future", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsOverpaymentAndDraft()
     {
         var (service, db, tenantId) = Create();
