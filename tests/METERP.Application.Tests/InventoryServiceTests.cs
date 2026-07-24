@@ -112,6 +112,30 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task UpdateItemAsync_PreservesSku()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "sku-lock",
+            Name = "Fuse",
+            QuantityOnHand = 5,
+            UnitCost = 2m
+        });
+
+        var item = await service.GetItemByIdAsync(id);
+        Assert.NotNull(item);
+        item!.Sku = "HACKED";
+        item.Name = "Fuse 10A";
+        await service.UpdateItemAsync(item);
+
+        var reloaded = await service.GetItemByIdAsync(id);
+        Assert.Equal("SKU-LOCK", reloaded!.Sku);
+        Assert.Equal("Fuse 10A", reloaded.Name);
+    }
+
+    [Fact]
     public async Task UpdateItemAsync_ThrowsWhenDeactivatingItemWithReservedStock()
     {
         using var db = CreateContext();

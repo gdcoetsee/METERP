@@ -101,18 +101,8 @@ public class InventoryService : IInventoryService
     {
         if (string.IsNullOrWhiteSpace(item.Name))
             throw new InvalidOperationException("Inventory item name is required.");
-        if (string.IsNullOrWhiteSpace(item.Sku))
-            throw new InvalidOperationException("SKU is required.");
         if (item.UnitCost < 0)
             throw new InvalidOperationException("Unit cost cannot be negative.");
-
-        item.Name = item.Name.Trim();
-        item.Sku = item.Sku.Trim().ToUpperInvariant();
-
-        var dup = await _dbContext.Set<InventoryItem>()
-            .AnyAsync(i => i.Sku == item.Sku && i.Id != item.Id, ct);
-        if (dup)
-            throw new InvalidOperationException($"SKU '{item.Sku}' already exists.");
 
         // Do not allow direct QuantityOnHand edits via Update — use stock transactions.
         var existing = await _dbContext.Set<InventoryItem>().AsNoTracking()
@@ -123,6 +113,9 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException(
                 "Cannot deactivate an item with reserved stock. Release reservations first.");
 
+        item.Name = item.Name.Trim();
+        // SKU is identity for stock history and REQs — immutable after create.
+        item.Sku = existing.Sku;
         item.QuantityOnHand = existing.QuantityOnHand;
         item.QuantityReserved = existing.QuantityReserved;
 
