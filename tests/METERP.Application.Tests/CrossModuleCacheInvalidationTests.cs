@@ -344,7 +344,18 @@ public class CrossModuleCacheInvalidationTests
     {
         var tenantId = Guid.NewGuid();
         using var harness = new Harness(tenantId);
-        var customer = await SeedCustomerWithSpineAsync(harness, "Delete Me Co");
+
+        // Only opportunity — no open jobs/quotes (delete is blocked when those exist).
+        var customer = new Customer { TenantId = tenantId, Name = "Delete Me Co" };
+        harness.Db.Set<Customer>().Add(customer);
+        harness.Db.Set<Opportunity>().Add(new Opportunity
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            Title = "Panel upgrade opp",
+            Value = 12000m
+        });
+        await harness.Db.SaveChangesAsync();
 
         Assert.Equal("Panel upgrade opp", (await harness.Opportunities.GetAllAsync())[0].Title);
 

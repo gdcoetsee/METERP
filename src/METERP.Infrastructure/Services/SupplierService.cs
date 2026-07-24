@@ -95,6 +95,14 @@ public class SupplierService : ISupplierService
         var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == id, ct);
         if (supplier == null) return;
 
+        var hasOpenPos = await _dbContext.Set<PurchaseOrder>().AsNoTracking()
+            .AnyAsync(p => p.SupplierId == id
+                && p.Status != PurchaseOrderStatus.Cancelled
+                && p.Status != PurchaseOrderStatus.Received, ct);
+        if (hasOpenPos)
+            throw new InvalidOperationException(
+                "Cannot delete a supplier with open purchase orders. Cancel or receive them first.");
+
         // Soft-delete and deactivate so pickers hide the supplier.
         supplier.IsActive = false;
         supplier.IsDeleted = true;

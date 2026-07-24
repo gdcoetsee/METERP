@@ -87,6 +87,29 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_ThrowsWhenCustomerHasOpenJobs()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Active Client" });
+
+        db.Set<Job>().Add(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-OPEN",
+            Title = "Open work",
+            Status = JobStatus.InProgress
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(customerId));
+        Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await service.GetByIdAsync(customerId));
+    }
+
+    [Fact]
     public async Task AddContactAsync_ClearsOtherPrimary_WhenSettingPrimary()
     {
         var tenantId = Guid.NewGuid();

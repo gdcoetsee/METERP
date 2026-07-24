@@ -174,6 +174,8 @@ public class SalesOrderService : ISalesOrderService
         if (so.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Confirmed))
             throw new InvalidOperationException("Lines can only be added to draft or confirmed sales orders.");
 
+        ValidateLine(line);
+
         _dbContext.Set<SalesOrderLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
 
@@ -194,6 +196,8 @@ public class SalesOrderService : ISalesOrderService
 
         if (so.Status is not (SalesOrderStatus.Draft or SalesOrderStatus.Confirmed))
             throw new InvalidOperationException("Lines can only be edited on draft or confirmed sales orders.");
+
+        ValidateLine(line);
 
         _dbContext.Set<SalesOrderLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -280,6 +284,22 @@ public class SalesOrderService : ISalesOrderService
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.SalesOrders);
+
+    private static void ValidateLine(SalesOrderLine line)
+    {
+        if (string.IsNullOrWhiteSpace(line.Description))
+            throw new InvalidOperationException("Line description is required.");
+        if (line.Quantity <= 0)
+            throw new InvalidOperationException("Line quantity must be positive.");
+        if (line.UnitPrice < 0)
+            throw new InvalidOperationException("Line unit price cannot be negative.");
+
+        line.Description = line.Description.Trim();
+        if (!string.IsNullOrWhiteSpace(line.Unit))
+            line.Unit = line.Unit.Trim();
+        if (!string.IsNullOrWhiteSpace(line.LineType))
+            line.LineType = line.LineType.Trim();
+    }
 
     private static void RecalculateTotals(SalesOrder so)
     {

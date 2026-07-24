@@ -119,4 +119,26 @@ public class SupplierServiceTests
         Assert.Equal("Jane Doe", reloaded!.ContactPerson);
         Assert.Equal("jane@cable.test", reloaded.Email);
     }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenSupplierHasOpenPurchaseOrders()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+        var id = await service.CreateAsync(new Supplier { Name = "Busy Sup" });
+
+        db.Set<PurchaseOrder>().Add(new PurchaseOrder
+        {
+            TenantId = tenantId,
+            SupplierId = id,
+            PoNumber = "PO-OPEN",
+            Status = PurchaseOrderStatus.Sent
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(id));
+        Assert.Contains("open purchase", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await service.GetByIdAsync(id));
+    }
 }

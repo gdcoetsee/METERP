@@ -229,6 +229,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (po.Status != PurchaseOrderStatus.Draft)
             throw new InvalidOperationException("Lines can only be added to draft purchase orders.");
 
+        ValidateLine(line);
+
         _dbContext.Set<PurchaseOrderLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
 
@@ -249,6 +251,8 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         if (po.Status != PurchaseOrderStatus.Draft)
             throw new InvalidOperationException("Lines can only be edited on draft purchase orders.");
+
+        ValidateLine(line);
 
         _dbContext.Set<PurchaseOrderLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -610,6 +614,20 @@ public class PurchaseOrderService : IPurchaseOrderService
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.PurchaseOrders);
+
+    private static void ValidateLine(PurchaseOrderLine line)
+    {
+        if (string.IsNullOrWhiteSpace(line.Description))
+            throw new InvalidOperationException("Line description is required.");
+        if (line.Quantity <= 0)
+            throw new InvalidOperationException("Line quantity must be positive.");
+        if (line.UnitPrice < 0)
+            throw new InvalidOperationException("Line unit price cannot be negative.");
+
+        line.Description = line.Description.Trim();
+        if (!string.IsNullOrWhiteSpace(line.Unit))
+            line.Unit = line.Unit.Trim();
+    }
 
     private static void RecalculateTotals(PurchaseOrder po)
     {

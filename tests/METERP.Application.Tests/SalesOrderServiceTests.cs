@@ -243,4 +243,46 @@ public class SalesOrderServiceTests
             Assert.Contains("already converted", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    [Fact]
+    public async Task AddLineAsync_ThrowsWhenQuantityNotPositive()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder { QuoteId = quoteId, CustomerId = customerId, TaxRate = 0.15m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new SalesOrderLine
+                {
+                    SalesOrderId = soId,
+                    Description = "Bad qty",
+                    Quantity = 0,
+                    UnitPrice = 100m
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task AddLineAsync_ThrowsWhenDescriptionMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder { QuoteId = quoteId, CustomerId = customerId, TaxRate = 0.15m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new SalesOrderLine
+                {
+                    SalesOrderId = soId,
+                    Description = "  ",
+                    Quantity = 1,
+                    UnitPrice = 100m
+                }));
+        }
+    }
 }

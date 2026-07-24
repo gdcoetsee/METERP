@@ -169,6 +169,34 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_AddLine_ThrowsWhenDescriptionMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = Guid.NewGuid(),
+            TaxRate = 0.15m,
+            Lines = new List<InvoiceLine>()
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLineAsync(new InvoiceLine
+            {
+                InvoiceId = invoice.Id,
+                Description = " ",
+                Quantity = 1,
+                UnitPrice = 100
+            }));
+    }
+
+    [Fact]
     public async Task InvoiceService_AddLine_RecalculatesTotals_ExcludesDeleted()
     {
         var tenantId = Guid.NewGuid();
@@ -186,7 +214,7 @@ public class InvoiceTests
 
         var service = new InvoiceService(db, null);
 
-        var line = new InvoiceLine { InvoiceId = invoice.Id, Quantity = 2, UnitPrice = 1000, IsDeleted = false };
+        var line = new InvoiceLine { InvoiceId = invoice.Id, Description = "Labour", Quantity = 2, UnitPrice = 1000, IsDeleted = false };
         await service.AddLineAsync(line);
 
         var reloaded = await db.Set<Invoice>().Include(i => i.Lines).FirstAsync(i => i.Id == invoice.Id);
@@ -200,7 +228,7 @@ public class InvoiceTests
         var tenantId = Guid.NewGuid();
         using var db = CreateInMemoryContext(tenantId);
 
-        var line = new InvoiceLine { Quantity = 1, UnitPrice = 1000, IsDeleted = false };
+        var line = new InvoiceLine { Description = "Materials", Quantity = 1, UnitPrice = 1000, IsDeleted = false };
         var invoice = new Invoice
         {
             TenantId = tenantId,

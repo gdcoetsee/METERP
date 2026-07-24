@@ -268,6 +268,50 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task AddLineAsync_ThrowsWhenQuantityNotPositive()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder { SupplierId = supplierId, TaxRate = 0m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new PurchaseOrderLine
+                {
+                    PurchaseOrderId = poId,
+                    Description = "Cable",
+                    Quantity = -1,
+                    UnitPrice = 10m
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task AddLineAsync_ThrowsWhenDescriptionMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var poId = await service.CreateAsync(new PurchaseOrder { SupplierId = supplierId, TaxRate = 0m });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new PurchaseOrderLine
+                {
+                    PurchaseOrderId = poId,
+                    Description = "",
+                    Quantity = 1,
+                    UnitPrice = 10m
+                }));
+        }
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_SetsPurchaseOrderStatus()
     {
         var tenantId = Guid.NewGuid();

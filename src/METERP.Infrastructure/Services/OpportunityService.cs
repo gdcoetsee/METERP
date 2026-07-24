@@ -214,8 +214,23 @@ public class OpportunityService : IOpportunityService
 
     public async Task MarkConvertedToQuoteAsync(Guid opportunityId, Guid quoteId, CancellationToken ct = default)
     {
+        if (quoteId == Guid.Empty)
+            throw new InvalidOperationException("Quote is required to convert an opportunity.");
+
         var opp = await _dbContext.Set<Opportunity>().FirstOrDefaultAsync(o => o.Id == opportunityId, ct);
-        if (opp == null) return;
+        if (opp == null)
+            throw new InvalidOperationException("Opportunity not found.");
+
+        if (opp.Stage == OpportunityStage.ClosedLost)
+            throw new InvalidOperationException("Cannot convert a Closed Lost opportunity to a quote.");
+
+        if (opp.QuoteId.HasValue && opp.QuoteId.Value != quoteId)
+            throw new InvalidOperationException(
+                "Opportunity is already linked to a different quote.");
+
+        // Idempotent when already linked to the same quote.
+        if (opp.QuoteId == quoteId)
+            return;
 
         opp.QuoteId = quoteId;
         if (opp.Stage is OpportunityStage.Lead or OpportunityStage.Qualified or OpportunityStage.Proposal or OpportunityStage.Negotiation)

@@ -175,7 +175,7 @@ public class InvoiceService : IInvoiceService
         if (invoice.Status != InvoiceStatus.Draft)
             throw new InvalidOperationException("Lines can only be added to draft invoices.");
 
-        // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
+        ValidateLine(line);
 
         _dbContext.Set<InvoiceLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -199,7 +199,7 @@ public class InvoiceService : IInvoiceService
         if (invoice.Status != InvoiceStatus.Draft)
             throw new InvalidOperationException("Lines can only be edited on draft invoices.");
 
-        // LineTotal is now a computed property on the entity (Quantity * UnitPrice)
+        ValidateLine(line);
 
         _dbContext.Set<InvoiceLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -692,6 +692,21 @@ public class InvoiceService : IInvoiceService
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Invoices);
+
+    private static void ValidateLine(InvoiceLine line)
+    {
+        if (string.IsNullOrWhiteSpace(line.Description))
+            throw new InvalidOperationException("Line description is required.");
+        if (line.Quantity == 0)
+            throw new InvalidOperationException("Line quantity cannot be zero.");
+        // Negative quantity is allowed for credit-style adjustments on draft invoices.
+        if (line.UnitPrice < 0)
+            throw new InvalidOperationException("Line unit price cannot be negative.");
+
+        line.Description = line.Description.Trim();
+        if (!string.IsNullOrWhiteSpace(line.Unit))
+            line.Unit = line.Unit.Trim();
+    }
 
     private async Task TryNotifyInvoiceCreatedAsync(Guid invoiceId, CancellationToken ct)
     {

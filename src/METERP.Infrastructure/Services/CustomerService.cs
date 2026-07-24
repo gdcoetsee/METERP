@@ -94,6 +94,22 @@ public class CustomerService : ICustomerService
 
         if (customer == null) return;
 
+        var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+            .AnyAsync(j => j.CustomerId == id
+                && j.Status != JobStatus.Cancelled
+                && j.Status != JobStatus.Closed, ct);
+        if (hasOpenJobs)
+            throw new InvalidOperationException(
+                "Cannot delete a customer with open jobs. Close or cancel them first.");
+
+        var hasOpenQuotes = await _dbContext.Set<Quote>().AsNoTracking()
+            .AnyAsync(q => q.CustomerId == id
+                && q.Status != QuoteStatus.Rejected
+                && q.Status != QuoteStatus.Expired, ct);
+        if (hasOpenQuotes)
+            throw new InvalidOperationException(
+                "Cannot delete a customer with open quotes. Reject or expire them first.");
+
         foreach (var contact in customer.Contacts)
         {
             contact.IsDeleted = true;

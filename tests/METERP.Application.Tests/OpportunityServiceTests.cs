@@ -34,14 +34,51 @@ public class OpportunityServiceTests
     }
 
     [Fact]
-    public async Task MarkConvertedToQuoteAsync_IsNoOp_WhenOpportunityMissing()
+    public async Task MarkConvertedToQuoteAsync_Throws_WhenOpportunityMissing()
     {
         using var db = CreateContext(Guid.NewGuid());
         var service = new OpportunityService(db);
 
-        await service.MarkConvertedToQuoteAsync(Guid.NewGuid(), Guid.NewGuid());
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MarkConvertedToQuoteAsync(Guid.NewGuid(), Guid.NewGuid()));
+    }
 
-        Assert.Empty(await service.GetAllAsync());
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_Throws_WhenAlreadyLinkedToDifferentQuote()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var oppId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Plant upgrade",
+            Stage = OpportunityStage.Qualified,
+            Value = 50000m
+        });
+        var firstQuote = Guid.NewGuid();
+        var secondQuote = Guid.NewGuid();
+        await service.MarkConvertedToQuoteAsync(oppId, firstQuote);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MarkConvertedToQuoteAsync(oppId, secondQuote));
+        Assert.Contains("already linked", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_Throws_WhenClosedLost()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var oppId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Lost deal",
+            Stage = OpportunityStage.ClosedLost,
+            Value = 1000m
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MarkConvertedToQuoteAsync(oppId, Guid.NewGuid()));
     }
 
     [Fact]
