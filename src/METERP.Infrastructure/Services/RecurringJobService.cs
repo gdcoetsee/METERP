@@ -58,6 +58,14 @@ public sealed class RecurringJobService : IRecurringJobService
         if (!customerExists)
             throw new InvalidOperationException("Customer not found for recurring schedule.");
 
+        if (schedule.DivisionId is { } divisionId && divisionId != Guid.Empty)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
+        }
+
         schedule.Title = schedule.Title.Trim();
         schedule.NextRunDate = schedule.NextRunDate == default
             ? DateTime.UtcNow.Date
@@ -100,6 +108,14 @@ public sealed class RecurringJobService : IRecurringJobService
             .AnyAsync(c => c.Id == schedule.CustomerId, ct);
         if (!customerExists)
             throw new InvalidOperationException("Customer not found for recurring schedule.");
+
+        if (schedule.DivisionId is { } divisionId && divisionId != Guid.Empty)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
+        }
 
         existing.Title = schedule.Title.Trim();
         existing.CustomerId = schedule.CustomerId;
