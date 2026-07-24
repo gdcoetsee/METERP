@@ -63,22 +63,48 @@ else
                     <th>Employee</th>
                     <th>Item</th>
                     <th class="text-end">Qty</th>
+                    <th class="text-end">Out</th>
                     <th>Job (optional)</th>
                     <th>Requisition</th>
                     <th>Notes</th>
+                    @if (CanIssue)
+                    {
+                        <th></th>
+                    }
                 </tr>
             </thead>
             <tbody>
                 @foreach (var issue in _issues)
                 {
-                    <tr data-testid="ppe-history-row">
+                    <tr data-testid="ppe-history-row" class="@(issue.IsFullyReturned ? "text-muted" : null)">
                         <td>@issue.IssuedAt.ToString("yyyy-MM-dd")</td>
                         <td>@(issue.Employee != null ? $"{issue.Employee.FirstName} {issue.Employee.LastName}" : "—")</td>
                         <td>@(issue.InventoryItem != null ? $"{issue.InventoryItem.Sku} — {issue.InventoryItem.Name}" : "—")</td>
                         <td class="text-end">@issue.Quantity.ToString("N2")</td>
+                        <td class="text-end">
+                            @if (issue.IsFullyReturned)
+                            {
+                                <span class="badge bg-success">Returned</span>
+                            }
+                            else
+                            {
+                                @issue.QuantityOutstanding.ToString("N2")
+                            }
+                        </td>
                         <td>@(issue.Job?.JobNumber ?? "—")</td>
                         <td>@(issue.StockRequisition?.RequisitionNumber ?? "—")</td>
                         <td class="small text-muted">@(issue.Notes ?? "—")</td>
+                        @if (CanIssue)
+                        {
+                            <td class="text-end">
+                                @if (!issue.IsFullyReturned)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            data-testid="ppe-return-btn"
+                                            @onclick="() => OpenReturnModal(issue)">Return</button>
+                                }
+                            </td>
+                        }
                     </tr>
                 }
             </tbody>
@@ -135,6 +161,30 @@ else
     </FormModal>
 }
 
+@if (_showReturnModal && _returnIssue != null)
+{
+    <FormModal IsOpen="true" Title="Return PPE to stock" TestId="ppe-return-modal" OnClose="CloseReturnModal">
+        <p class="small text-muted">
+            @( _returnIssue.InventoryItem?.Name ?? "Item" ) issued to
+            @( _returnIssue.Employee != null ? $"{_returnIssue.Employee.FirstName} {_returnIssue.Employee.LastName}" : "employee" ).
+            Outstanding: <strong>@_returnIssue.QuantityOutstanding.ToString("N2")</strong>
+        </p>
+        <div class="mb-3">
+            <label class="form-label">Quantity to return *</label>
+            <input type="number" min="0.01" step="0.01" class="form-control"
+                   @bind="_returnQty" data-testid="ppe-return-qty" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <input class="form-control" @bind="_returnNotes" data-testid="ppe-return-notes" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="CloseReturnModal">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="ppe-return-confirm" @onclick="ReturnAsync">Return to stock</button>
+        </div>
+    </FormModal>
+}
+
 @code {
     private List<EmployeePpeIssue> _issues = new();
     private List<Employee> _employees = new();
@@ -151,6 +201,11 @@ else
     private decimal _issueQty = 1;
     private string _issueNotes = "";
     private string _itemSearch = "";
+
+    private bool _showReturnModal;
+    private EmployeePpeIssue? _returnIssue;
+    private decimal _returnQty = 1;
+    private string _returnNotes = "";
 
     private bool CanIssue =>
         CurrentUser.Permissions.Contains(Permissions.InventoryManage)
@@ -225,6 +280,46 @@ else
     }
 
     private void CloseIssueModal() => _showIssueModal = false;
+
+    private void OpenReturnModal(EmployeePpeIssue issue)
+    {
+        _returnIssue = issue;
+        _returnQty = issue.QuantityOutstanding;
+        _returnNotes = "";
+        _showReturnModal = true;
+    }
+
+    private void CloseReturnModal()
+    {
+        _showReturnModal = false;
+        _returnIssue = null;
+    }
+
+    private async Task ReturnAsync()
+    {
+        if (_returnIssue == null || CurrentUser.UserId is not { } userId)
+        {
+            Toast.ShowError("Not signed in.");
+            return;
+        }
+
+        try
+        {
+            await PpeIssueService.ReturnFromEmployeeAsync(
+                _returnIssue.Id,
+                _returnQty,
+                userId,
+                string.IsNullOrWhiteSpace(_returnNotes) ? null : _returnNotes);
+            Toast.ShowSuccess("PPE returned to stock.");
+            CloseReturnModal();
+            await ReloadAsync();
+            await LoadItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
 
     private async Task IssueAsync()
     {

@@ -23,7 +23,18 @@ public class EmployeePpeIssue : BaseEntity
 
     public decimal Quantity { get; set; }
 
+    /// <summary>Quantity returned to stock (partial returns allowed).</summary>
+    public decimal QuantityReturned { get; set; }
+
+    public decimal QuantityOutstanding => Math.Max(0m, Quantity - QuantityReturned);
+
     public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
 
+    public DateTime? ReturnedAt { get; set; }
+
+    public Guid? ReturnedByUserId { get; set; }
+
     public string? Notes { get; set; }
+
+    public bool IsFullyReturned => QuantityReturned >= Quantity && Quantity > 0;
 }

@@ -84,6 +84,19 @@ public class FinanceService : IFinanceService
 
     public async Task<Guid> CreateAccountAsync(Account account, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(account.AccountCode))
+            throw new InvalidOperationException("Account code is required.");
+        if (string.IsNullOrWhiteSpace(account.Name))
+            throw new InvalidOperationException("Account name is required.");
+
+        account.AccountCode = account.AccountCode.Trim();
+        account.Name = account.Name.Trim();
+
+        var duplicate = await _dbContext.Set<Account>()
+            .AnyAsync(a => a.AccountCode == account.AccountCode, ct);
+        if (duplicate)
+            throw new InvalidOperationException($"Account code '{account.AccountCode}' already exists.");
+
         _dbContext.Set<Account>().Add(account);
         await _dbContext.SaveChangesAsync(ct);
         _cache?.InvalidateCategory(TenantCacheCategories.Finance);
@@ -97,8 +110,21 @@ public class FinanceService : IFinanceService
             entry.EntryNumber = $"JE-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
         }
 
-        var debits = entry.Lines.Sum(l => l.Debit);
-        var credits = entry.Lines.Sum(l => l.Credit);
+        var lines = entry.Lines.Where(l => !l.IsDeleted).ToList();
+        if (lines.Count < 2)
+            throw new InvalidOperationException("Journal must have at least two lines.");
+
+        if (lines.Any(l => l.Debit < 0 || l.Credit < 0))
+            throw new InvalidOperationException("Journal line amounts cannot be negative.");
+
+        if (lines.Any(l => l.Debit > 0 && l.Credit > 0))
+            throw new InvalidOperationException("A journal line cannot have both debit and credit.");
+
+        if (lines.Any(l => l.Debit == 0 && l.Credit == 0))
+            throw new InvalidOperationException("Journal lines must have a debit or credit amount.");
+
+        var debits = lines.Sum(l => l.Debit);
+        var credits = lines.Sum(l => l.Credit);
         if (Math.Abs(debits - credits) > 0.01m)
         {
             throw new InvalidOperationException("Journal does not balance (debits must equal credits).");

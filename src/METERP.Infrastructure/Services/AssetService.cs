@@ -66,6 +66,11 @@ public class AssetService : IAssetService
 
     public async Task<Guid> CreateAsync(Asset asset, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(asset.Name))
+            throw new InvalidOperationException("Asset name is required.");
+
+        asset.Name = asset.Name.Trim();
+
         if (string.IsNullOrWhiteSpace(asset.AssetNumber))
         {
             asset.AssetNumber = $"AST-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
@@ -106,13 +111,17 @@ public class AssetService : IAssetService
 
     public async Task AddMaintenanceNoteAsync(Guid assetId, string note, Guid? jobId = null, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(note))
+            throw new ArgumentException("Maintenance note is required.", nameof(note));
+
         var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == assetId, ct);
-        if (asset == null) return;
+        if (asset == null)
+            throw new InvalidOperationException("Asset not found.");
 
         var prefix = jobId.HasValue ? $"[Job {jobId}] " : "";
         asset.Notes = string.IsNullOrWhiteSpace(asset.Notes)
-            ? $"{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note}"
-            : $"{asset.Notes}\n{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note}";
+            ? $"{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note.Trim()}"
+            : $"{asset.Notes}\n{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note.Trim()}";
 
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();

@@ -25,4 +25,14 @@ public interface IPpeIssueService
 
     /// <summary>Records PPE register rows when a PPE-flagged job requisition is issued (optional job context).</summary>
     Task RecordFromRequisitionIssueAsync(StockRequisition requisition, CancellationToken ct = default);
+
+    /// <summary>
+    /// Return PPE stock from the employee register to inventory (partial returns allowed).
+    /// </summary>
+    Task<bool> ReturnFromEmployeeAsync(
+        Guid issueId,
+        decimal quantity,
+        Guid returnedByUserId,
+        string? notes = null,
+        CancellationToken ct = default);
 }

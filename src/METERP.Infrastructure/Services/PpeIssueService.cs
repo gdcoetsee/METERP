@@ -146,4 +146,65 @@ public sealed class PpeIssueService : IPpeIssueService
 
         await _dbContext.SaveChangesAsync(ct);
     }
+
+    public async Task<bool> ReturnFromEmployeeAsync(
+        Guid issueId,
+        decimal quantity,
+        Guid returnedByUserId,
+        string? notes = null,
+        CancellationToken ct = default)
+    {
+        if (quantity <= 0)
+            throw new InvalidOperationException("Return quantity must be positive.");
+
+        var issue = await _dbContext.Set<EmployeePpeIssue>()
+            .Include(i => i.InventoryItem)
+            .Include(i => i.Employee)
+            .FirstOrDefaultAsync(i => i.Id == issueId, ct);
+        if (issue == null)
+            return false;
+
+        var outstanding = issue.QuantityOutstanding;
+        if (outstanding <= 0)
+            throw new InvalidOperationException("This PPE issue is already fully returned.");
+
+        if (quantity > outstanding)
+            throw new InvalidOperationException(
+                $"Cannot return {quantity:N2} — only {outstanding:N2} outstanding on this issue.");
+
+        await _inventoryService.RecordStockTransactionAsync(
+            issue.InventoryItemId,
+            quantity,
+            StockTransactionType.Return,
+            $"PPE-RET-{DateTime.UtcNow:yyyyMMddHHmmss}",
+            issue.JobId,
+            $"PPE return from {(issue.Employee != null ? $"{issue.Employee.FirstName} {issue.Employee.LastName}" : "employee")}",
+            ct);
+
+        issue.QuantityReturned += quantity;
+        issue.ReturnedAt = DateTime.UtcNow;
+        issue.ReturnedByUserId = returnedByUserId;
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            var note = notes.Trim();
+            issue.Notes = string.IsNullOrWhiteSpace(issue.Notes)
+                ? $"Return: {note}"
+                : $"{issue.Notes} | Return: {note}";
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        if (_audit != null)
+        {
+            var sku = issue.InventoryItem?.Sku ?? issue.InventoryItemId.ToString("N")[..8];
+            await _audit.LogAsync(
+                "RETURN",
+                "EmployeePpeIssue",
+                sku,
+                $"Qty {quantity:N2} returned (outstanding {issue.QuantityOutstanding:N2})",
+                ct);
+        }
+
+        return true;
+    }
 }

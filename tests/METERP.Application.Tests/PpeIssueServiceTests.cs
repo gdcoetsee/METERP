@@ -253,4 +253,90 @@ public class PpeIssueServiceTests
             Assert.True(history[0].IssuedAt > history[1].IssuedAt);
         }
     }
+
+    [Fact]
+    public async Task ReturnFromEmployeeAsync_RestocksAndTracksOutstanding()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-RET",
+                FirstName = "Return",
+                LastName = "Tech",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "HARDHAT",
+                Name = "Hard hat",
+                QuantityOnHand = 10,
+                UnitCost = 50m,
+                IsActive = true
+            });
+
+            var userId = Guid.NewGuid();
+            var issueId = await service.IssueToEmployeeAsync(employee.Id, itemId, 4m, userId);
+
+            var afterIssue = await inventory.GetItemByIdAsync(itemId);
+            Assert.Equal(6m, afterIssue!.QuantityOnHand);
+
+            Assert.True(await service.ReturnFromEmployeeAsync(issueId, 1.5m, userId, "Damaged box OK"));
+            afterIssue = await inventory.GetItemByIdAsync(itemId);
+            Assert.Equal(7.5m, afterIssue!.QuantityOnHand);
+
+            var issue = await db.Set<EmployeePpeIssue>().FirstAsync(i => i.Id == issueId);
+            Assert.Equal(1.5m, issue.QuantityReturned);
+            Assert.Equal(2.5m, issue.QuantityOutstanding);
+            Assert.False(issue.IsFullyReturned);
+
+            Assert.True(await service.ReturnFromEmployeeAsync(issueId, 2.5m, userId));
+            issue = await db.Set<EmployeePpeIssue>().FirstAsync(i => i.Id == issueId);
+            Assert.True(issue.IsFullyReturned);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReturnFromEmployeeAsync(issueId, 1m, userId));
+        }
+    }
+
+    [Fact]
+    public async Task ReturnFromEmployeeAsync_RejectsOverReturn()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-OV",
+                FirstName = "Over",
+                LastName = "Return",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "GLOVE",
+                Name = "Gloves",
+                QuantityOnHand = 5,
+                UnitCost = 20m,
+                IsActive = true
+            });
+
+            var userId = Guid.NewGuid();
+            var issueId = await service.IssueToEmployeeAsync(employee.Id, itemId, 2m, userId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReturnFromEmployeeAsync(issueId, 3m, userId));
+        }
+    }
 }
