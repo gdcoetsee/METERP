@@ -63,10 +63,15 @@ else
                         </td>
                         <AuthorizeView Policy="Divisions.Manage">
                             <Authorized>
-                                <td class="text-end">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary me-1"
                                             data-testid="division-edit"
                                             @onclick="() => OpenEdit(div)">Edit</button>
+                                    <button type="button" class="btn btn-sm btn-outline-@(div.IsActive ? "warning" : "success")"
+                                            data-testid="division-toggle-active"
+                                            @onclick="() => ToggleActiveAsync(div)">
+                                        @(div.IsActive ? "Deactivate" : "Activate")
+                                    </button>
                                 </td>
                             </Authorized>
                         </AuthorizeView>
@@ -150,6 +155,20 @@ else
     {
         _modalOpen = false;
         _editing = null;
+    }
+
+    private async Task ToggleActiveAsync(Division div)
+    {
+        try
+        {
+            await DivisionService.SetActiveAsync(div.Id, !div.IsActive);
+            Toast.ShowSuccess(div.IsActive ? "Division deactivated." : "Division activated.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
     }
 
     private async Task SaveAsync()

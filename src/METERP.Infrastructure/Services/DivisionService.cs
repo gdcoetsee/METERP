@@ -53,7 +53,30 @@ public sealed class DivisionService : IDivisionService
 
     public async Task UpdateAsync(Division division, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(division.Name))
+            throw new InvalidOperationException("Division name is required.");
+
+        division.Name = division.Name.Trim();
+        if (string.IsNullOrWhiteSpace(division.Code))
+            throw new InvalidOperationException("Division code is required.");
+
+        division.Code = division.Code.Trim().ToUpperInvariant();
+
+        var duplicate = await _dbContext.Set<Division>()
+            .AnyAsync(d => d.Code == division.Code && d.Id != division.Id, ct);
+        if (duplicate)
+            throw new InvalidOperationException($"Division code '{division.Code}' already exists.");
+
         _dbContext.Set<Division>().Update(division);
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
+    {
+        var division = await _dbContext.Set<Division>().FirstOrDefaultAsync(d => d.Id == id, ct)
+            ?? throw new InvalidOperationException("Division not found.");
+
+        division.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
     }
 }

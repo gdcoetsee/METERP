@@ -92,4 +92,32 @@ public class DivisionServiceTests
             Assert.False(saved.IsActive);
         }
     }
+
+    [Fact]
+    public async Task CreateAsync_RejectsDuplicateCode()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            await service.CreateAsync(new Division { TenantId = tenantId, Code = "ELEC", Name = "Electrical" });
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new Division { TenantId = tenantId, Code = "elec", Name = "Other" }));
+        }
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_TogglesVisibility()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new Division { TenantId = tenantId, Code = "CIV", Name = "Civil" });
+            await service.SetActiveAsync(id, false);
+            var active = await service.GetAllAsync(activeOnly: true);
+            Assert.Empty(active);
+            await service.SetActiveAsync(id, true);
+            active = await service.GetAllAsync(activeOnly: true);
+            Assert.Single(active);
+        }
+    }
 }

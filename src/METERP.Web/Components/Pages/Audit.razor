@@ -83,8 +83,46 @@
 
     private async Task ExportLog()
     {
-        var csv = await AuditService.ExportCsvAsync();
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
-        ToastService.ShowSuccess("Audit log CSV copied to clipboard.");
+        try
+        {
+            // Export current filter view (not only unfiltered recent).
+            var rows = await AuditService.SearchAsync(
+                string.IsNullOrWhiteSpace(_entityType) ? null : _entityType,
+                string.IsNullOrWhiteSpace(_entityReference) ? null : _entityReference,
+                string.IsNullOrWhiteSpace(_userEmail) ? null : _userEmail,
+                page: 1,
+                pageSize: 5000);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("OccurredAtUtc,UserEmail,Action,EntityType,EntityReference,Details");
+            foreach (var r in rows)
+            {
+                sb.Append(Csv(r.OccurredAtUtc.ToString("O"))).Append(',')
+                    .Append(Csv(r.UserEmail)).Append(',')
+                    .Append(Csv(r.Action)).Append(',')
+                    .Append(Csv(r.EntityType)).Append(',')
+                    .Append(Csv(r.EntityReference)).Append(',')
+                    .Append(Csv(r.Details))
+                    .AppendLine();
+            }
+
+            await JS.InvokeVoidAsync("meterpUi.downloadText",
+                $"audit-log-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv",
+                sb.ToString(),
+                "text/csv;charset=utf-8");
+            ToastService.ShowSuccess($"Exported {rows.Count} audit row(s).");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private static string Csv(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        return value;
     }
 }

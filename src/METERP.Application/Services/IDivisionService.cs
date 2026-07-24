@@ -8,4 +8,5 @@ public interface IDivisionService
     Task<Division?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Guid> CreateAsync(Division division, CancellationToken ct = default);
     Task UpdateAsync(Division division, CancellationToken ct = default);
+    Task SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
 }
