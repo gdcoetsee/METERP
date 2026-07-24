@@ -96,9 +96,8 @@ public class InvoiceService : IInvoiceService
         if (invoice.CustomerId == Guid.Empty)
             throw new InvalidOperationException("Customer is required for an invoice.");
 
-        var customerExists = await _dbContext.Set<Customer>()
-            .AnyAsync(c => c.Id == invoice.CustomerId, ct);
-        if (!customerExists)
+        var customer = await _dbContext.Set<Customer>().FindAsync([invoice.CustomerId], ct);
+        if (customer == null || customer.IsDeleted)
             throw new InvalidOperationException("Customer not found.");
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? invoice.TenantId;

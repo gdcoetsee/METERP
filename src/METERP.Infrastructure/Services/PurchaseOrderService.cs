@@ -86,6 +86,14 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<Guid> CreateAsync(PurchaseOrder po, CancellationToken ct = default)
     {
+        if (po.SupplierId == Guid.Empty)
+            throw new InvalidOperationException("Supplier is required for a purchase order.");
+
+        // FindAsync sees tracked (unsaved) suppliers used by unit tests and the same request.
+        var supplier = await _dbContext.Set<Supplier>().FindAsync([po.SupplierId], ct);
+        if (supplier == null || supplier.IsDeleted)
+            throw new InvalidOperationException("Supplier not found.");
+
         if (string.IsNullOrWhiteSpace(po.PoNumber))
         {
             po.PoNumber = _documentSequence != null

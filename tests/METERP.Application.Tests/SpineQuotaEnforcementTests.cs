@@ -122,6 +122,10 @@ public class SpineQuotaEnforcementTests
         using var harness = new QuotaHarness(tenantId);
         await harness.SeedTenantAsync(periodInvoices: 10);
 
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Quota Customer" };
+        harness.Db.Set<Customer>().Add(customer);
+        await harness.Db.SaveChangesAsync();
+
         var service = new InvoiceService(
             harness.Db,
             tenantProvider: harness.TenantProvider.Object,
@@ -130,7 +134,7 @@ public class SpineQuotaEnforcementTests
         var invoice = new Invoice
         {
             TenantId = tenantId,
-            CustomerId = Guid.NewGuid(),
+            CustomerId = customer.Id,
             TaxRate = 0.15m
         };
 

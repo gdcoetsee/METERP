@@ -185,6 +185,15 @@ public class JobService : IJobService
 
     public async Task<Guid> CreateAsync(Job job, CancellationToken ct = default)
     {
+        if (job.CustomerId == Guid.Empty)
+            throw new InvalidOperationException("Customer is required for a job.");
+        if (string.IsNullOrWhiteSpace(job.Title))
+            throw new InvalidOperationException("Job title is required.");
+        if (job.QuotedTotal < 0)
+            throw new InvalidOperationException("Quoted total cannot be negative.");
+
+        job.Title = job.Title.Trim();
+
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? job.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Job, ct);

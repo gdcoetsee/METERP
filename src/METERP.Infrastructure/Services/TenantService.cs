@@ -62,19 +62,30 @@ public class TenantService : ITenantService
 
     public async Task<Guid> CreateAsync(string name, string subdomain, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidOperationException("Tenant name is required.");
+        if (string.IsNullOrWhiteSpace(subdomain))
+            throw new InvalidOperationException("Tenant subdomain is required.");
+
+        var normalizedSubdomain = subdomain.Trim().ToLowerInvariant();
+        if (normalizedSubdomain.Any(c => !(char.IsLetterOrDigit(c) || c is '-' or '_')))
+            throw new InvalidOperationException("Subdomain may only contain letters, digits, hyphens, and underscores.");
+
+        var taken = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .AnyAsync(t => !t.IsDeleted && t.Subdomain == normalizedSubdomain, ct);
+        if (taken)
+            throw new InvalidOperationException($"Subdomain '{normalizedSubdomain}' is already in use.");
+
         var tenant = new Tenant
         {
             Name = name.Trim(),
-            Subdomain = subdomain.Trim().ToLowerInvariant(),
+            Subdomain = normalizedSubdomain,
             IsActive = true,
             Tier = SubscriptionTier.Starter,
             UsagePeriodStartUtc = QuotaService.GetCurrentPeriodStartUtc()
         };
         TenantQuotaDefaults.ApplyTierDefaults(tenant);
-
-        // Note: TenantId will be set by DbContext SaveChanges, but for the very first tenant(s)
-        // we may want to allow empty or use a special value. For foundation we let it be Guid.Empty
-        // or the current one. In practice the first tenant creation often happens outside a tenant context.
 
         _dbContext.Tenants.Add(tenant);
         await _dbContext.SaveChangesAsync(ct);
