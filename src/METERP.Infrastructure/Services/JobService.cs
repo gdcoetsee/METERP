@@ -192,6 +192,36 @@ public class JobService : IJobService
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
 
+        var customer = await _dbContext.Set<Customer>().FindAsync([job.CustomerId], ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found.");
+
+        if (job.AssignedEmployeeId is { } leadId && leadId != Guid.Empty)
+        {
+            var leadOk = await _dbContext.Set<Employee>()
+                .AnyAsync(e => e.Id == leadId && e.IsActive, ct);
+            if (!leadOk)
+                throw new InvalidOperationException("Assigned lead employee not found or inactive.");
+        }
+
+        if (job.DivisionId is { } divisionId && divisionId != Guid.Empty)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
+        }
+
+        if (job.AssetId is { } assetId && assetId != Guid.Empty)
+        {
+            var asset = await _dbContext.Set<Asset>().AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == assetId, ct);
+            if (asset == null)
+                throw new InvalidOperationException("Asset not found.");
+            if (asset.Status == AssetStatus.Decommissioned)
+                throw new InvalidOperationException("Cannot assign a decommissioned asset.");
+        }
+
         job.Title = job.Title.Trim();
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? job.TenantId;
