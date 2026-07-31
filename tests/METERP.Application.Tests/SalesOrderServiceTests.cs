@@ -362,6 +362,34 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task AddLineAsync_AcceptsDescriptionAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                CustomerId = customerId,
+                QuoteId = quoteId,
+                SoDate = DateTime.UtcNow.Date,
+                TaxRate = 0.15m
+            });
+
+            var lineId = await service.AddLineAsync(new SalesOrderLine
+            {
+                SalesOrderId = soId,
+                Description = new string('D', 500),
+                Quantity = 1,
+                UnitPrice = 100m
+            });
+            var line = await db.Set<SalesOrderLine>().FirstAsync(l => l.Id == lineId);
+            Assert.Equal(500, line.Description.Length);
+        }
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenLineTypeTooLong()
     {
         var tenantId = Guid.NewGuid();
