@@ -207,6 +207,21 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("Use GRV receive to mark goods as received.");
 
         po.Status = newStatus;
+
+        // Cancelling a PO unhooks linked requisitions so procurement can re-quote.
+        if (newStatus == PurchaseOrderStatus.Cancelled)
+        {
+            var linkedReqs = await _dbContext.Set<StockRequisition>()
+                .Where(r => r.PurchaseOrderId == po.Id
+                    && r.Status == RequisitionStatus.ProcurementOrdered)
+                .ToListAsync(ct);
+            foreach (var req in linkedReqs)
+            {
+                req.PurchaseOrderId = null;
+                req.Status = RequisitionStatus.AwaitingProcurement;
+            }
+        }
+
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
 

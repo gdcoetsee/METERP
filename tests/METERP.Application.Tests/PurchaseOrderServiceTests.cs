@@ -429,6 +429,54 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_Cancel_UnhooksLinkedRequisition()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup" });
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                JobNumber = "J-PO-CANCEL",
+                Title = "Work",
+                Status = JobStatus.InProgress
+            };
+            db.Set<Job>().Add(job);
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 10m } }
+            });
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            var req = new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequisitionNumber = "REQ-PO-1",
+                Status = RequisitionStatus.ProcurementOrdered,
+                PurchaseOrderId = poId
+            };
+            db.Set<StockRequisition>().Add(req);
+            await db.SaveChangesAsync();
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Cancelled);
+
+            var reloaded = await db.Set<StockRequisition>().FirstAsync(r => r.Id == req.Id);
+            Assert.Null(reloaded.PurchaseOrderId);
+            Assert.Equal(RequisitionStatus.AwaitingProcurement, reloaded.Status);
+            Assert.Equal(PurchaseOrderStatus.Cancelled, (await service.GetByIdAsync(poId))!.Status);
+        }
+    }
+
+    [Fact]
     public async Task ReceiveAsync_WhenPoNotFound_DoesNotThrow()
     {
         var tenantId = Guid.NewGuid();
