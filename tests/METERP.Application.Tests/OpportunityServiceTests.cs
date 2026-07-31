@@ -216,6 +216,22 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsTitleAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = new string('T', 200),
+            Value = 1000m
+        });
+        var saved = await db.Set<Opportunity>().FirstAsync(o => o.Id == id);
+        Assert.Equal(200, saved.Title.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenTitleTooLong()
     {
         var tenantId = Guid.NewGuid();
