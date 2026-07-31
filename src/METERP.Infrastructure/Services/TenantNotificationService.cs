@@ -50,13 +50,17 @@ public sealed class TenantNotificationService : ITenantNotificationService
     {
         if (string.IsNullOrWhiteSpace(notification.Title))
             throw new InvalidOperationException("Notification title is required.");
+        if (string.IsNullOrWhiteSpace(notification.Message))
+            throw new InvalidOperationException("Notification message is required.");
 
         notification.Title = notification.Title.Trim();
-        notification.Message ??= string.Empty;
+        notification.Message = notification.Message.Trim();
         if (string.IsNullOrWhiteSpace(notification.TargetRoles))
             notification.TargetRoles = "*";
         if (string.IsNullOrWhiteSpace(notification.Category))
             notification.Category = "general";
+        else
+            notification.Category = notification.Category.Trim();
 
         _dbContext.Set<TenantNotification>().Add(notification);
         await _dbContext.SaveChangesAsync(ct);

@@ -202,6 +202,44 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task CancelAsync_ThrowsWhenLinkedPurchaseOrderIsOpen()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 10m);
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Cable Co" });
+            var po = new PurchaseOrder
+            {
+                TenantId = tenantId,
+                SupplierId = supplierId,
+                PoNumber = "PO-LINK-1",
+                Status = PurchaseOrderStatus.Sent
+            };
+            db.Set<PurchaseOrder>().Add(po);
+            await db.SaveChangesAsync();
+
+            var reqId = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+            });
+            var req = await db.Set<StockRequisition>().FirstAsync(r => r.Id == reqId);
+            req.Status = RequisitionStatus.ProcurementOrdered;
+            req.PurchaseOrderId = po.Id;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CancelAsync(reqId, Guid.NewGuid(), "Changed mind"));
+            Assert.Contains("purchase order", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(RequisitionStatus.ProcurementOrdered, (await service.GetByIdAsync(reqId))!.Status);
+        }
+    }
+
+    [Fact]
     public async Task RejectAsync_ReleasesReservations()
     {
         var (service, db, tenantId, _) = Create();

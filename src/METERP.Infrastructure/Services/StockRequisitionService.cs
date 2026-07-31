@@ -263,6 +263,16 @@ public sealed class StockRequisitionService : IStockRequisitionService
             throw new InvalidOperationException(
                 "Cannot cancel a requisition that already has issued stock. Complete or reverse issues first.");
 
+        // Linked open POs must be cancelled first so procurement does not orphan supplier orders.
+        if (req.PurchaseOrderId is { } poId && poId != Guid.Empty)
+        {
+            var po = await _dbContext.Set<PurchaseOrder>().AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == poId, ct);
+            if (po != null && po.Status != PurchaseOrderStatus.Cancelled)
+                throw new InvalidOperationException(
+                    $"Cannot cancel requisition {req.RequisitionNumber} — purchase order {po.PoNumber} is still open. Cancel the PO first.");
+        }
+
         await ReleaseReservationsAsync(req, ct);
         req.Status = RequisitionStatus.Cancelled;
         req.RejectionReason = string.IsNullOrWhiteSpace(reason)
