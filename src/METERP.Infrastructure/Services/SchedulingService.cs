@@ -104,6 +104,8 @@ public class SchedulingService : ISchedulingService
     {
         if (hours <= 0)
             throw new ArgumentOutOfRangeException(nameof(hours), "Hours must be greater than zero.");
+        if (hours > 24m)
+            throw new ArgumentOutOfRangeException(nameof(hours), "Hours cannot exceed 24 per crew labor entry.");
 
         var job = await _jobService.GetByIdAsync(jobId, ct)
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
@@ -131,9 +133,16 @@ public class SchedulingService : ISchedulingService
             throw new InvalidOperationException("No matching crew members selected.");
 
         var workDay = (workDate ?? DateTime.UtcNow).Date;
+        if (workDay > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Crew labor work date cannot be more than one day in the future.");
+        if (workDay < DateTime.UtcNow.Date.AddYears(-2))
+            throw new InvalidOperationException("Crew labor work date cannot be more than 2 years in the past.");
+
         var laborDescription = string.IsNullOrWhiteSpace(description)
             ? "Field work (scheduling)"
             : description.Trim();
+        if (laborDescription.Length > 500)
+            throw new InvalidOperationException("Labor description cannot exceed 500 characters.");
 
         var laborIds = new List<Guid>();
         foreach (var employee in targetList)

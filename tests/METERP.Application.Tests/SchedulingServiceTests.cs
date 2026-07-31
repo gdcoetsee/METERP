@@ -102,6 +102,40 @@ public class SchedulingServiceTests
     }
 
     [Fact]
+    public async Task AddCrewLaborAsync_ThrowsWhenHoursOver24()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Labor Co" });
+            await db.SaveChangesAsync();
+            var empId = await employeeService.CreateAsync(new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-LAB",
+                FirstName = "Lab",
+                LastName = "Tech",
+                DefaultHourlyRate = 100m,
+                IsActive = true
+            });
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Crew work",
+                Status = JobStatus.InProgress,
+                AssignedEmployeeId = empId
+            });
+            await service.AssignJobResourcesAsync(jobId, null, empId);
+
+            var ex = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+                service.AddCrewLaborAsync(jobId, 25m));
+            Assert.Contains("24", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task UpdateScheduledStartAsync_ThrowsWhenMoreThanOneYearPast()
     {
         var (db, service, jobService, _, _, tenantId) = CreateHarness();
