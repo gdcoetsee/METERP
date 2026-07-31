@@ -182,6 +182,23 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Note deal ok",
+            Value = 1000m,
+            Notes = new string('N', 2000)
+        });
+        var saved = await db.Set<Opportunity>().FirstAsync(o => o.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenCustomerNameTooLong()
     {
         var tenantId = Guid.NewGuid();

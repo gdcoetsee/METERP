@@ -106,6 +106,28 @@ public class RecurringJobServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsTitleAt200Characters()
+    {
+        var (db, service, _, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+
+            var id = await service.CreateAsync(new RecurringJobSchedule
+            {
+                CustomerId = customerId,
+                Title = new string('T', 200),
+                IntervalDays = 30,
+                NextRunDate = DateTime.UtcNow.Date.AddDays(7)
+            });
+            var saved = await db.Set<RecurringJobSchedule>().FirstAsync(s => s.Id == id);
+            Assert.Equal(200, saved.Title.Length);
+        }
+    }
+
+    [Fact]
     public async Task UpdateAsync_RejectsTitleTooLong()
     {
         var (db, service, _, tenantId) = Create();

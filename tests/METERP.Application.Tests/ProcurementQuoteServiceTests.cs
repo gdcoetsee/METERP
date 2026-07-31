@@ -158,6 +158,18 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_AcceptsNotesAt500Characters()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var id = await quotes.AddQuoteAsync(reqId, supplierA, 100m, new string('N', 500));
+            var saved = await db.Set<ProcurementSupplierQuote>().FirstAsync(q => q.Id == id);
+            Assert.Equal(500, saved.Notes!.Length);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenSupplierInactive()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

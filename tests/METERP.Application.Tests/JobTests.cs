@@ -1365,6 +1365,25 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddMilestoneAsync_AcceptsTitleAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-MS-OK", Title = "Site", Status = JobStatus.InProgress });
+        await db.SaveChangesAsync();
+
+        var id = await service.AddMilestoneAsync(new JobMilestone
+        {
+            JobId = jobId,
+            Title = new string('T', 200)
+        });
+        var saved = await db.Set<JobMilestone>().FirstAsync(m => m.Id == id);
+        Assert.Equal(200, saved.Title.Length);
+    }
+
+    [Fact]
     public async Task JobService_AddSnagAsync_RejectsDescriptionTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -1381,6 +1400,25 @@ public class JobTests
                 Description = new string('S', 2001)
             }));
         Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddSnagAsync_AcceptsDescriptionAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-SN-OK", Title = "Site", Status = JobStatus.InProgress });
+        await db.SaveChangesAsync();
+
+        var id = await service.AddSnagAsync(new JobSnagItem
+        {
+            JobId = jobId,
+            Description = new string('S', 2000)
+        });
+        var saved = await db.Set<JobSnagItem>().FirstAsync(s => s.Id == id);
+        Assert.Equal(2000, saved.Description.Length);
     }
 
     [Fact]
@@ -1401,6 +1439,47 @@ public class JobTests
                 Severity = SafetyIncidentSeverity.Medium
             }));
         Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddSafetyIncidentAsync_AcceptsDescriptionAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-SI-OK", Title = "Site" });
+        await db.SaveChangesAsync();
+
+        var id = await service.AddSafetyIncidentAsync(new JobSafetyIncident
+        {
+            JobId = jobId,
+            Description = new string('I', 2000),
+            Severity = SafetyIncidentSeverity.Medium
+        });
+        var saved = await db.Set<JobSafetyIncident>().FirstAsync(i => i.Id == id);
+        Assert.Equal(2000, saved.Description.Length);
+    }
+
+    [Fact]
+    public async Task JobService_CloseSafetyIncidentAsync_AcceptsCorrectiveActionAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-SI-CA", Title = "Site" });
+        await db.SaveChangesAsync();
+
+        var id = await service.AddSafetyIncidentAsync(new JobSafetyIncident
+        {
+            JobId = jobId,
+            Description = "Fall risk",
+            Severity = SafetyIncidentSeverity.Medium
+        });
+        await service.CloseSafetyIncidentAsync(id, Guid.NewGuid(), new string('C', 2000));
+        var saved = await db.Set<JobSafetyIncident>().FirstAsync(i => i.Id == id);
+        Assert.Equal(2000, saved.CorrectiveAction!.Length);
     }
 
     [Fact]
