@@ -110,6 +110,22 @@ public class DivisionServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsCodeAt20Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new Division
+            {
+                Name = "Ops",
+                Code = new string('C', 20)
+            });
+            var saved = await db.Set<Division>().FirstAsync(d => d.Id == id);
+            Assert.Equal(20, saved.Code.Length);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsNameTooLong()
     {
         var (service, db, tenantId) = Create();
@@ -123,6 +139,23 @@ public class DivisionServiceTests
                     Name = new string('X', 101)
                 }));
             Assert.Contains("100 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_AcceptsNameAt100Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new Division
+            {
+                TenantId = tenantId,
+                Code = "OK100",
+                Name = new string('X', 100)
+            });
+            var saved = await db.Set<Division>().FirstAsync(d => d.Id == id);
+            Assert.Equal(100, saved.Name.Length);
         }
     }
 

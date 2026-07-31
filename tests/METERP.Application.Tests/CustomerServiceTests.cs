@@ -80,6 +80,17 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var id = await service.CreateAsync(new Customer { Name = "Note Ok Co", Notes = new string('N', 2000) });
+        var saved = await db.Set<Customer>().FirstAsync(c => c.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenPhoneTooLong()
     {
         using var db = CreateContext(Guid.NewGuid());

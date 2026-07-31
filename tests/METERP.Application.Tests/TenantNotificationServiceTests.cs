@@ -231,6 +231,24 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsTitleAt200Characters()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var title = new string('T', 200);
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = title,
+                Message = "Body"
+            });
+            var saved = await harness.Db.Set<TenantNotification>().FirstAsync(n => n.Title == title);
+            Assert.Equal(200, saved.Title.Length);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsCategoryTooLong()
     {
         using var harness = new Harness("Executive");
@@ -245,6 +263,25 @@ public class TenantNotificationServiceTests
                     Category = new string('C', 51)
                 }));
             Assert.Contains("50 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_AcceptsCategoryAt50Characters()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var category = new string('C', 50);
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Ok",
+                Message = "Body",
+                Category = category
+            });
+            var saved = await harness.Db.Set<TenantNotification>().FirstAsync(n => n.Category == category);
+            Assert.Equal(50, saved.Category!.Length);
         }
     }
 
@@ -267,6 +304,25 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsTargetRolesAt200Characters()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var roles = new string('R', 200);
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Ok",
+                Message = "Body",
+                TargetRoles = roles
+            });
+            var saved = await harness.Db.Set<TenantNotification>().FirstAsync(n => n.TargetRoles == roles);
+            Assert.Equal(200, saved.TargetRoles!.Length);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsMessageTooLong()
     {
         using var harness = new Harness("Executive");
@@ -280,6 +336,24 @@ public class TenantNotificationServiceTests
                     Message = new string('M', 4001)
                 }));
             Assert.Contains("4000 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_AcceptsMessageAt4000Characters()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var message = new string('M', 4000);
+            await harness.Service.CreateAsync(new TenantNotification
+            {
+                TenantId = harness.TenantId,
+                Title = "Ok",
+                Message = message
+            });
+            var saved = await harness.Db.Set<TenantNotification>().FirstAsync(n => n.Message == message);
+            Assert.Equal(4000, saved.Message.Length);
         }
     }
 

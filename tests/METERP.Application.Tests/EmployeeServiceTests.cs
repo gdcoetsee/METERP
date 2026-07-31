@@ -76,6 +76,24 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsJobTitleAt100Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        var id = await service.CreateAsync(new Employee
+        {
+            FirstName = "Title",
+            LastName = "Ok",
+            JobTitle = new string('J', 100),
+            IsActive = true
+        });
+        var saved = await db.Set<Employee>().FirstAsync(e => e.Id == id);
+        Assert.Equal(100, saved.JobTitle!.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenNameTooLong()
     {
         var tenantId = Guid.NewGuid();

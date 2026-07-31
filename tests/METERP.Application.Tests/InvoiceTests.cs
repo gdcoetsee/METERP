@@ -482,6 +482,28 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new InvoiceService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        await db.SaveChangesAsync();
+
+        var id = await service.CreateAsync(new Invoice
+        {
+            CustomerId = customerId,
+            InvoiceDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(30),
+            TaxRate = 0.15m,
+            Notes = new string('N', 2000)
+        });
+        var saved = await db.Set<Invoice>().FirstAsync(i => i.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateAsync_RejectsDueDateTooFarFuture()
     {
         var tenantId = Guid.NewGuid();

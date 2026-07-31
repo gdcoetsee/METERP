@@ -281,6 +281,28 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        await db.SaveChangesAsync();
+
+        var id = await service.CreateAsync(new Quote
+        {
+            CustomerId = customerId,
+            QuoteDate = DateTime.UtcNow.Date,
+            ValidUntil = DateTime.UtcNow.Date.AddDays(30),
+            TaxRate = 0.15m,
+            Notes = new string('N', 2000)
+        });
+        var saved = await db.Set<Quote>().FirstAsync(q => q.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
     public async Task QuoteService_ExecutiveRejectAsync_RejectsReasonTooLong_OnPending()
     {
         // Covered more thoroughly in QuoteApprovalServiceTests; keep a service-level smoke check here.
