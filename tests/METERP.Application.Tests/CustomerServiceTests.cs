@@ -113,6 +113,17 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenPostalCodeTooLong()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Customer { Name = "Postal Co", PostalCode = new string('1', 21) }));
+        Assert.Contains("20 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task AddContactAsync_ThrowsWhenNameTooLong()
     {
         using var db = CreateContext(Guid.NewGuid());
