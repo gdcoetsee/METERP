@@ -134,6 +134,18 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_ThrowsWhenQuotedTotalTooHigh()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 100_000_001m));
+            Assert.Contains("100,000,000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenSupplierInactive()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

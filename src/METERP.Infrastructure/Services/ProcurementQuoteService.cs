@@ -44,6 +44,8 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
     {
         if (quotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
+        if (quotedTotal > 100_000_000m)
+            throw new InvalidOperationException("Quoted total cannot exceed 100,000,000.");
 
         var req = await _dbContext.Set<StockRequisition>().FirstOrDefaultAsync(r => r.Id == requisitionId, ct)
             ?? throw new InvalidOperationException("Requisition not found.");
@@ -78,15 +80,22 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             {
                 if (input.Quantity <= 0)
                     throw new InvalidOperationException("Quote line quantity must be positive.");
+                if (input.Quantity > 1_000_000m)
+                    throw new InvalidOperationException("Quote line quantity cannot exceed 1,000,000.");
                 if (input.UnitPrice < 0)
                     throw new InvalidOperationException("Quote line unit price cannot be negative.");
+                if (input.UnitPrice > 10_000_000m)
+                    throw new InvalidOperationException("Quote line unit price cannot exceed 10,000,000.");
                 if (string.IsNullOrWhiteSpace(input.Description))
                     throw new InvalidOperationException("Quote line description is required.");
+                var desc = input.Description.Trim();
+                if (desc.Length > 500)
+                    throw new InvalidOperationException("Quote line description cannot exceed 500 characters.");
 
                 var line = new ProcurementSupplierQuoteLine
                 {
                     StockRequisitionLineId = input.StockRequisitionLineId,
-                    Description = input.Description.Trim(),
+                    Description = desc,
                     Quantity = input.Quantity,
                     UnitPrice = input.UnitPrice
                 };
