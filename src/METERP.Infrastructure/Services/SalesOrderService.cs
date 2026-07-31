@@ -92,6 +92,12 @@ public class SalesOrderService : ISalesOrderService
             throw new InvalidOperationException("Delivery date cannot be before the sales order date.");
         if (so.DeliveryDate.HasValue && so.DeliveryDate.Value.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Delivery date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(so.Notes))
+        {
+            so.Notes = so.Notes.Trim();
+            if (so.Notes.Length > 2000)
+                throw new InvalidOperationException("Sales order notes cannot exceed 2000 characters.");
+        }
 
         if (string.IsNullOrWhiteSpace(so.SoNumber))
         {
@@ -132,6 +138,12 @@ public class SalesOrderService : ISalesOrderService
             throw new InvalidOperationException("Delivery date cannot be before the sales order date.");
         if (so.DeliveryDate.HasValue && so.DeliveryDate.Value.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Delivery date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(so.Notes))
+        {
+            so.Notes = so.Notes.Trim();
+            if (so.Notes.Length > 2000)
+                throw new InvalidOperationException("Sales order notes cannot exceed 2000 characters.");
+        }
 
         if (so.CustomerId == Guid.Empty)
             so.CustomerId = existing.CustomerId;

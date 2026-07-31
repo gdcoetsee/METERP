@@ -107,6 +107,12 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException("Due date cannot be before the invoice date.");
         if (invoice.DueDate != default && invoice.DueDate.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Due date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(invoice.Notes))
+        {
+            invoice.Notes = invoice.Notes.Trim();
+            if (invoice.Notes.Length > 2000)
+                throw new InvalidOperationException("Invoice notes cannot exceed 2000 characters.");
+        }
 
         await ValidateInvoiceJobLinkAsync(invoice.JobId, invoice.CustomerId, ct);
 
@@ -158,6 +164,12 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException("Due date cannot be before the invoice date.");
         if (invoice.DueDate != default && invoice.DueDate.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Due date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(invoice.Notes))
+        {
+            invoice.Notes = invoice.Notes.Trim();
+            if (invoice.Notes.Length > 2000)
+                throw new InvalidOperationException("Invoice notes cannot exceed 2000 characters.");
+        }
 
         if (invoice.CustomerId == Guid.Empty)
             invoice.CustomerId = existing.CustomerId;

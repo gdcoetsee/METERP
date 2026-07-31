@@ -354,6 +354,29 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "S", IsActive = true });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new PurchaseOrder
+                {
+                    SupplierId = supplierId,
+                    PoDate = DateTime.UtcNow.Date,
+                    TaxRate = 0.15m,
+                    Notes = new string('N', 2001)
+                }));
+            Assert.Contains("2000 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenExpectedDateBeforePoDate()
     {
         var tenantId = Guid.NewGuid();

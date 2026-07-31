@@ -192,6 +192,18 @@ public class JobService : IJobService
         job.Title = job.Title.Trim();
         if (job.Title.Length > 200)
             throw new InvalidOperationException("Job title cannot exceed 200 characters.");
+        if (!string.IsNullOrWhiteSpace(job.Description))
+        {
+            job.Description = job.Description.Trim();
+            if (job.Description.Length > 2000)
+                throw new InvalidOperationException("Job description cannot exceed 2000 characters.");
+        }
+        if (!string.IsNullOrWhiteSpace(job.Notes))
+        {
+            job.Notes = job.Notes.Trim();
+            if (job.Notes.Length > 2000)
+                throw new InvalidOperationException("Job notes cannot exceed 2000 characters.");
+        }
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
         if (job.QuotedTotal > 100_000_000m)
@@ -330,6 +342,18 @@ public class JobService : IJobService
         job.Title = job.Title.Trim();
         if (job.Title.Length > 200)
             throw new InvalidOperationException("Job title cannot exceed 200 characters.");
+        if (!string.IsNullOrWhiteSpace(job.Description))
+        {
+            job.Description = job.Description.Trim();
+            if (job.Description.Length > 2000)
+                throw new InvalidOperationException("Job description cannot exceed 2000 characters.");
+        }
+        if (!string.IsNullOrWhiteSpace(job.Notes))
+        {
+            job.Notes = job.Notes.Trim();
+            if (job.Notes.Length > 2000)
+                throw new InvalidOperationException("Job notes cannot exceed 2000 characters.");
+        }
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
         if (job.QuotedTotal > 100_000_000m)

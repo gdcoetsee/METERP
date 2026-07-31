@@ -102,6 +102,12 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("Expected delivery date cannot be before the PO date.");
         if (po.ExpectedDate.HasValue && po.ExpectedDate.Value.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Expected delivery date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(po.Notes))
+        {
+            po.Notes = po.Notes.Trim();
+            if (po.Notes.Length > 2000)
+                throw new InvalidOperationException("Purchase order notes cannot exceed 2000 characters.");
+        }
 
         if (string.IsNullOrWhiteSpace(po.PoNumber))
         {
@@ -150,6 +156,12 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("Expected delivery date cannot be before the PO date.");
         if (po.ExpectedDate.HasValue && po.ExpectedDate.Value.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Expected delivery date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(po.Notes))
+        {
+            po.Notes = po.Notes.Trim();
+            if (po.Notes.Length > 2000)
+                throw new InvalidOperationException("Purchase order notes cannot exceed 2000 characters.");
+        }
 
         // Preserve identity fields that must not drift via free-form update payloads.
         po.PoNumber = existing.PoNumber;

@@ -288,6 +288,28 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new SalesOrder
+                {
+                    CustomerId = customerId,
+                    QuoteId = quoteId,
+                    SoDate = DateTime.UtcNow.Date,
+                    TaxRate = 0.15m,
+                    Notes = new string('N', 2001)
+                }));
+            Assert.Contains("2000 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenTaxRateOutOfRange()
     {
         var tenantId = Guid.NewGuid();

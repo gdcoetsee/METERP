@@ -103,6 +103,12 @@ public class QuoteService : IQuoteService
             throw new InvalidOperationException("Valid-until date cannot be before the quote date.");
         if (quote.ValidUntil != default && quote.ValidUntil.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Valid-until date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(quote.Notes))
+        {
+            quote.Notes = quote.Notes.Trim();
+            if (quote.Notes.Length > 2000)
+                throw new InvalidOperationException("Quote notes cannot exceed 2000 characters.");
+        }
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? quote.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
@@ -172,6 +178,12 @@ public class QuoteService : IQuoteService
             throw new InvalidOperationException("Valid-until date cannot be before the quote date.");
         if (quote.ValidUntil != default && quote.ValidUntil.Date > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Valid-until date cannot be more than 2 years in the future.");
+        if (!string.IsNullOrWhiteSpace(quote.Notes))
+        {
+            quote.Notes = quote.Notes.Trim();
+            if (quote.Notes.Length > 2000)
+                throw new InvalidOperationException("Quote notes cannot exceed 2000 characters.");
+        }
 
         if (quote.CustomerId == Guid.Empty)
             quote.CustomerId = existing.CustomerId;

@@ -201,6 +201,28 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Quote
+            {
+                CustomerId = customerId,
+                QuoteDate = DateTime.UtcNow.Date,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(30),
+                TaxRate = 0.15m,
+                Notes = new string('N', 2001)
+            }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task QuoteService_CreateAsync_ThrowsWhenTaxRateOutOfRange()
     {
         var tenantId = Guid.NewGuid();
