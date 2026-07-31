@@ -74,6 +74,23 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_ThrowsWhenUnitTooLong()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateItemAsync(new InventoryItem
+            {
+                Name = "Unit item",
+                Unit = new string('U', 21),
+                QuantityOnHand = 1,
+                UnitCost = 1m
+            }));
+        Assert.Contains("20 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateItemAsync_ThrowsWhenOpeningQuantityTooHigh()
     {
         using var db = CreateContext();
