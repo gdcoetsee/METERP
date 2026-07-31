@@ -267,6 +267,23 @@ public class TenantNotificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsMessageTooLong()
+    {
+        using var harness = new Harness("Executive");
+        await using (harness.Db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                harness.Service.CreateAsync(new TenantNotification
+                {
+                    TenantId = harness.TenantId,
+                    Title = "Ok",
+                    Message = new string('M', 4001)
+                }));
+            Assert.Contains("4000 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task DismissAsync_SoftDeletesVisibleNotification()
     {
         using var harness = new Harness("Executive");
