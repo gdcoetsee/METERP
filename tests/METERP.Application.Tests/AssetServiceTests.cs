@@ -270,6 +270,25 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNameAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        await db.SaveChangesAsync();
+
+        var id = await service.CreateAsync(new Asset
+        {
+            CustomerId = customerId,
+            Name = new string('A', 200)
+        });
+        var saved = await db.Set<Asset>().FirstAsync(a => a.Id == id);
+        Assert.Equal(200, saved.Name.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenNotesTooLong()
     {
         var tenantId = Guid.NewGuid();

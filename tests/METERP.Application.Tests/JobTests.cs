@@ -387,6 +387,27 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_AcceptsTitleAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "T Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var id = await service.CreateAsync(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            Title = new string('J', 200),
+            QuotedTotal = 100m
+        });
+        var saved = await db.Set<Job>().FirstAsync(j => j.Id == id);
+        Assert.Equal(200, saved.Title.Length);
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_ThrowsWhenQuotedTotalTooHigh()
     {
         var tenantId = Guid.NewGuid();
