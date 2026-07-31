@@ -110,6 +110,8 @@ public class AssetService : IAssetService
         else
         {
             asset.AssetNumber = asset.AssetNumber.Trim();
+            if (asset.AssetNumber.Length > 50)
+                throw new InvalidOperationException("Asset number cannot exceed 50 characters.");
             var numberDup = await _dbContext.Set<Asset>()
                 .AnyAsync(a => a.AssetNumber == asset.AssetNumber, ct);
             if (numberDup)
