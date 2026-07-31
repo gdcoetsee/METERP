@@ -836,6 +836,41 @@ public class LeaveServiceTests
         }
     }
 
+    [Fact]
+    public async Task CancelAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-CAN",
+                FirstName = "Can",
+                LastName = "Long",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(1),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                IsPaid = false,
+                Reason = "Holiday"
+            });
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.CancelAsync(requestId, Guid.NewGuid(), new string('C', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
     private sealed class TestCurrentUser : ICurrentUserService
     {
         public Guid? UserId => Guid.NewGuid();
