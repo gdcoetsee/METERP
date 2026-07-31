@@ -524,6 +524,28 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_AcceptsMaterialsUsedAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 1000m });
+
+            var id = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                MaterialsUsed = new string('M', 2000)
+            });
+            Assert.NotEqual(Guid.Empty, id);
+        }
+    }
+
+    [Fact]
     public async Task RejectAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();
