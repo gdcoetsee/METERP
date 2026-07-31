@@ -628,6 +628,33 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_RejectsUnitTooLong()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = item.Id,
+                        QuantityRequested = 1,
+                        Unit = new string('U', 21)
+                    }
+                ]
+            }));
+            Assert.Contains("20 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_RejectsEstimatedUnitCostTooHigh()
     {
         var (service, db, tenantId, _) = Create();

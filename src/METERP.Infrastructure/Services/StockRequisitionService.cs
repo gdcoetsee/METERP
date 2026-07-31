@@ -135,6 +135,12 @@ public sealed class StockRequisitionService : IStockRequisitionService
                 throw new InvalidOperationException("Estimated unit cost cannot be negative.");
             if (line.EstimatedUnitCost > 10_000_000m)
                 throw new InvalidOperationException("Estimated unit cost cannot exceed 10,000,000.");
+            if (!string.IsNullOrWhiteSpace(line.Unit))
+            {
+                line.Unit = line.Unit.Trim();
+                if (line.Unit.Length > 20)
+                    throw new InvalidOperationException("Line unit cannot exceed 20 characters.");
+            }
         }
 
         requisition.Status = RequisitionStatus.PendingManager;
