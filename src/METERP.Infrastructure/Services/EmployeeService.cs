@@ -99,6 +99,8 @@ public class EmployeeService : IEmployeeService
 
         emp.FirstName = emp.FirstName.Trim();
         emp.LastName = emp.LastName.Trim();
+        if (emp.FirstName.Length > 100 || emp.LastName.Length > 100)
+            throw new InvalidOperationException("Employee first and last names cannot exceed 100 characters each.");
         if (!string.IsNullOrWhiteSpace(emp.Email))
         {
             emp.Email = emp.Email.Trim();
@@ -245,9 +247,14 @@ public class EmployeeService : IEmployeeService
                 throw new InvalidOperationException("That user is already linked to another employee.");
         }
 
+        var first = emp.FirstName.Trim();
+        var last = emp.LastName.Trim();
+        if (first.Length > 100 || last.Length > 100)
+            throw new InvalidOperationException("Employee first and last names cannot exceed 100 characters each.");
+
         existing.EmployeeNumber = number;
-        existing.FirstName = emp.FirstName.Trim();
-        existing.LastName = emp.LastName.Trim();
+        existing.FirstName = first;
+        existing.LastName = last;
         existing.JobTitle = emp.JobTitle;
         existing.DefaultHourlyRate = emp.DefaultHourlyRate;
         existing.IsActive = emp.IsActive;

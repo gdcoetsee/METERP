@@ -76,6 +76,8 @@ public class AssetService : IAssetService
             throw new InvalidOperationException("Customer not found.");
 
         asset.Name = asset.Name.Trim();
+        if (asset.Name.Length > 200)
+            throw new InvalidOperationException("Asset name cannot exceed 200 characters.");
         if (!string.IsNullOrWhiteSpace(asset.AssetType))
             asset.AssetType = asset.AssetType.Trim();
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
@@ -122,6 +124,8 @@ public class AssetService : IAssetService
             ?? throw new InvalidOperationException("Asset not found.");
 
         asset.Name = asset.Name.Trim();
+        if (asset.Name.Length > 200)
+            throw new InvalidOperationException("Asset name cannot exceed 200 characters.");
         asset.AssetNumber = existing.AssetNumber;
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
             asset.SerialNumber = asset.SerialNumber.Trim();
