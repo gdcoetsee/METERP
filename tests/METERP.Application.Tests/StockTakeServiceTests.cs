@@ -327,6 +327,53 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task StartSessionAsync_RejectsNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "N-1",
+                Name = "Note item",
+                QuantityOnHand = 1,
+                ReorderLevel = 0,
+                UnitCost = 1m,
+                IsActive = true
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.StartSessionAsync(TestUserId, new string('N', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CancelSessionAsync_RejectsReasonTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "C-1",
+                Name = "Cancel item",
+                QuantityOnHand = 1,
+                ReorderLevel = 0,
+                UnitCost = 1m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.CancelSessionAsync(sessionId, TestUserId, new string('R', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task GetVarianceSummaryAsync_ReflectsCountsAndGainsLosses()
     {
         var tenantId = Guid.NewGuid();

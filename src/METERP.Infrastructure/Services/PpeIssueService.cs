@@ -94,6 +94,12 @@ public sealed class PpeIssueService : IPpeIssueService
             $"PPE issue to {employee.FirstName} {employee.LastName}",
             ct);
 
+        var issueNotes = string.IsNullOrWhiteSpace(notes)
+            ? $"Issued to {employee.FirstName} {employee.LastName}"
+            : notes.Trim();
+        if (issueNotes.Length > 500)
+            throw new InvalidOperationException("PPE issue notes cannot exceed 500 characters.");
+
         var issue = new EmployeePpeIssue
         {
             EmployeeId = employeeId,
@@ -102,9 +108,7 @@ public sealed class PpeIssueService : IPpeIssueService
             InventoryItemId = inventoryItemId,
             Quantity = quantity,
             IssuedAt = DateTime.UtcNow,
-            Notes = string.IsNullOrWhiteSpace(notes)
-                ? $"Issued to {employee.FirstName} {employee.LastName}"
-                : notes.Trim()
+            Notes = issueNotes
         };
 
         _dbContext.Set<EmployeePpeIssue>().Add(issue);

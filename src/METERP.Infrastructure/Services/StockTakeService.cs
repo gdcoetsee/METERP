@@ -55,13 +55,21 @@ public sealed class StockTakeService : IStockTakeService
             throw new InvalidOperationException(
                 "Cannot start a stock take with no active inventory items. Add stock master records first.");
 
+        string? sessionNotes = null;
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            sessionNotes = notes.Trim();
+            if (sessionNotes.Length > 500)
+                throw new InvalidOperationException("Stock take notes cannot exceed 500 characters.");
+        }
+
         var session = new StockTakeSession
         {
             SessionNumber = _documentSequence != null
                 ? await _documentSequence.GetNextNumberAsync("StockTake", "STK", ct)
                 : $"STK-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}",
             StartedByUserId = userId,
-            Notes = notes,
+            Notes = sessionNotes,
             Status = StockTakeStatus.Open
         };
 
@@ -180,6 +188,8 @@ public sealed class StockTakeService : IStockTakeService
     {
         if (reason != null && string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Cancellation reason cannot be blank when provided.", nameof(reason));
+        if (!string.IsNullOrWhiteSpace(reason) && reason.Trim().Length > 500)
+            throw new ArgumentException("Cancellation reason cannot exceed 500 characters.", nameof(reason));
 
         var session = await _dbContext.Set<StockTakeSession>()
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
@@ -191,9 +201,12 @@ public sealed class StockTakeService : IStockTakeService
         session.PostedByUserId = userId;
         if (!string.IsNullOrWhiteSpace(reason))
         {
+            var cancelNote = $"Cancelled: {reason.Trim()}";
             session.Notes = string.IsNullOrWhiteSpace(session.Notes)
-                ? $"Cancelled: {reason.Trim()}"
-                : $"{session.Notes.Trim()} | Cancelled: {reason.Trim()}";
+                ? cancelNote
+                : $"{session.Notes.Trim()} | {cancelNote}";
+            if (session.Notes.Length > 1000)
+                session.Notes = session.Notes[..1000];
         }
 
         await _dbContext.SaveChangesAsync(ct);

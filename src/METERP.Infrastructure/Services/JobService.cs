@@ -941,11 +941,14 @@ public class JobService : IJobService
         if (string.IsNullOrWhiteSpace(snag.Description))
             throw new InvalidOperationException("Snag description is required.");
 
+        snag.Description = snag.Description.Trim();
+        if (snag.Description.Length > 2000)
+            throw new InvalidOperationException("Snag description cannot exceed 2000 characters.");
+
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == snag.JobId, ct)
             ?? throw new InvalidOperationException("Job not found.");
         await EnsureJobOpenAsync(job, ct);
 
-        snag.Description = snag.Description.Trim();
         _dbContext.Set<JobSnagItem>().Add(snag);
         await _dbContext.SaveChangesAsync(ct);
         return snag.Id;
@@ -978,6 +981,10 @@ public class JobService : IJobService
         if (string.IsNullOrWhiteSpace(incident.Description))
             throw new InvalidOperationException("Safety incident description is required.");
 
+        incident.Description = incident.Description.Trim();
+        if (incident.Description.Length > 2000)
+            throw new InvalidOperationException("Safety incident description cannot exceed 2000 characters.");
+
         // Safety logs remain allowed on closed jobs for post-incident compliance capture.
         if (incident.JobId != Guid.Empty)
         {
@@ -986,7 +993,6 @@ public class JobService : IJobService
                 throw new InvalidOperationException("Job not found.");
         }
 
-        incident.Description = incident.Description.Trim();
         _dbContext.Set<JobSafetyIncident>().Add(incident);
         await _dbContext.SaveChangesAsync(ct);
         return incident.Id;
@@ -996,11 +1002,16 @@ public class JobService : IJobService
     {
         var incident = await _dbContext.Set<JobSafetyIncident>().FirstOrDefaultAsync(i => i.Id == incidentId, ct);
         if (incident == null || incident.IsClosed) return;
+        if (!string.IsNullOrWhiteSpace(correctiveAction))
+        {
+            correctiveAction = correctiveAction.Trim();
+            if (correctiveAction.Length > 2000)
+                throw new InvalidOperationException("Corrective action cannot exceed 2000 characters.");
+            incident.CorrectiveAction = correctiveAction;
+        }
         incident.IsClosed = true;
         incident.ClosedAt = DateTime.UtcNow;
         incident.ClosedByUserId = userId;
-        if (!string.IsNullOrWhiteSpace(correctiveAction))
-            incident.CorrectiveAction = correctiveAction.Trim();
         await _dbContext.SaveChangesAsync(ct);
     }
 }

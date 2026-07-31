@@ -78,6 +78,20 @@ public sealed class FieldReportService : IFieldReportService
         if (report.WorkDate < DateTime.UtcNow.Date.AddYears(-2))
             throw new InvalidOperationException("Work date cannot be more than 2 years in the past.");
 
+        if (!string.IsNullOrWhiteSpace(report.MaterialsUsed))
+        {
+            report.MaterialsUsed = report.MaterialsUsed.Trim();
+            if (report.MaterialsUsed.Length > 2000)
+                throw new InvalidOperationException("Materials used cannot exceed 2000 characters.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.Comments))
+        {
+            report.Comments = report.Comments.Trim();
+            if (report.Comments.Length > 2000)
+                throw new InvalidOperationException("Comments cannot exceed 2000 characters.");
+        }
+
         var hasContent = report.HoursWorked > 0
             || report.TravelCost > 0
             || !string.IsNullOrWhiteSpace(report.MaterialsUsed)
@@ -178,6 +192,8 @@ public sealed class FieldReportService : IFieldReportService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new ArgumentException("Rejection reason must be at least 3 characters.", nameof(reason));
+        if (reason.Length > 500)
+            throw new ArgumentException("Rejection reason cannot exceed 500 characters.", nameof(reason));
 
         var report = await _dbContext.Set<FieldReport>().FirstOrDefaultAsync(r => r.Id == reportId, ct);
         if (report == null || report.Status != FieldReportStatus.PendingApproval)

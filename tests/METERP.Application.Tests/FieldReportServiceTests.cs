@@ -456,4 +456,72 @@ public class FieldReportServiceTests
             Assert.Empty(job.ActualCosts);
         }
     }
+
+    [Fact]
+    public async Task SubmitAsync_RejectsMaterialsUsedTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 1000m });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                MaterialsUsed = new string('M', 2001)
+            }));
+            Assert.Contains("2000 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_RejectsCommentsTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 1000m });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                Comments = new string('C', 2001)
+            }));
+            Assert.Contains("2000 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task RejectAsync_RejectsReasonTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 1000m });
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 2m
+            });
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.RejectAsync(reportId, TestUserId, new string('R', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
 }

@@ -227,6 +227,38 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task IssueToEmployeeAsync_RejectsNotesTooLong()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "EMP-NOTE",
+                FirstName = "A",
+                LastName = "B",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            var item = new InventoryItem
+            {
+                TenantId = tenantId,
+                Sku = "PPE-NOTE",
+                Name = "Boots",
+                QuantityOnHand = 10,
+                IsActive = true
+            };
+            db.Set<InventoryItem>().Add(item);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.IssueToEmployeeAsync(employee.Id, item.Id, 1m, Guid.NewGuid(), notes: new string('N', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task GetHistoryAsync_FiltersByEmployee()
     {
         var (service, db, tenantId, _) = Create();

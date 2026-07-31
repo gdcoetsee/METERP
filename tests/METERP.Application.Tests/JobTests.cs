@@ -1082,6 +1082,67 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddSnagAsync_RejectsDescriptionTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-SN", Title = "Site", Status = JobStatus.InProgress });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddSnagAsync(new JobSnagItem
+            {
+                JobId = jobId,
+                Description = new string('S', 2001)
+            }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddSafetyIncidentAsync_RejectsDescriptionTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-SI", Title = "Site" });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddSafetyIncidentAsync(new JobSafetyIncident
+            {
+                JobId = jobId,
+                Description = new string('I', 2001),
+                Severity = SafetyIncidentSeverity.Medium
+            }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_CloseSafetyIncidentAsync_RejectsCorrectiveActionTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-CA", Title = "Site" });
+        await db.SaveChangesAsync();
+
+        var incidentId = await service.AddSafetyIncidentAsync(new JobSafetyIncident
+        {
+            JobId = jobId,
+            Description = "Minor cut",
+            Severity = SafetyIncidentSeverity.Low
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseSafetyIncidentAsync(incidentId, Guid.NewGuid(), new string('C', 2001)));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task JobService_UpdateAsync_ThrowsWhenClosed()
     {
         var tenantId = Guid.NewGuid();
