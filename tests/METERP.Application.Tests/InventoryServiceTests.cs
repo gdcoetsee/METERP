@@ -308,6 +308,25 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task RecordStockTransactionAsync_ThrowsWhenQuantityMagnitudeTooHigh()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "HUGE",
+            Name = "Bulk",
+            QuantityOnHand = 0,
+            ReorderLevel = 1,
+            UnitCost = 1m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(id, 1_000_001m, StockTransactionType.Receipt));
+        Assert.Contains("1,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task RecordStockTransactionAsync_ThrowsWhenItemInactive()
     {
         using var db = CreateContext();

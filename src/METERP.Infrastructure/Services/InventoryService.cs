@@ -166,6 +166,8 @@ public class InventoryService : IInventoryService
 
         if (quantityChange == 0)
             throw new InvalidOperationException("Stock transaction quantity cannot be zero.");
+        if (Math.Abs(quantityChange) > 1_000_000m)
+            throw new InvalidOperationException("Stock transaction quantity magnitude cannot exceed 1,000,000.");
 
         if (!item.IsActive && type is StockTransactionType.Issue or StockTransactionType.Receipt)
             throw new InvalidOperationException(

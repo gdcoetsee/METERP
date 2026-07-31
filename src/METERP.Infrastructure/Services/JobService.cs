@@ -720,12 +720,16 @@ public class JobService : IJobService
     {
         if (cost.Amount < 0)
             throw new InvalidOperationException("Cost amount cannot be negative.");
+        if (cost.Amount > 10_000_000m)
+            throw new InvalidOperationException("Cost amount cannot exceed 10,000,000.");
 
         cost.Description = string.IsNullOrWhiteSpace(cost.Description)
             ? "Job cost"
             : cost.Description.Trim();
         if (string.IsNullOrWhiteSpace(cost.CostType))
             cost.CostType = "Other";
+        else
+            cost.CostType = cost.CostType.Trim();
 
         cost.CostDate = cost.CostDate == default ? DateTime.UtcNow.Date : cost.CostDate.Date;
         if (cost.CostDate > DateTime.UtcNow.Date.AddDays(1))
@@ -767,6 +771,8 @@ public class JobService : IJobService
             throw new InvalidOperationException("Labor hours cannot exceed 24 in a single entry.");
         if (labor.HourlyRate < 0)
             throw new InvalidOperationException("Hourly rate cannot be negative.");
+        if (labor.HourlyRate > 50_000m)
+            throw new InvalidOperationException("Hourly rate cannot exceed 50,000.");
 
         labor.WorkDate = labor.WorkDate == default ? DateTime.UtcNow.Date : labor.WorkDate.Date;
         if (labor.WorkDate > DateTime.UtcNow.Date.AddDays(1))

@@ -411,6 +411,41 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddLaborAsync_RejectsHourlyRateTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLaborAsync(new JobLabor { JobId = job.Id, Hours = 8, HourlyRate = 50_001m }));
+        Assert.Contains("50,000", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddCostAsync_RejectsAmountTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "C", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddCostAsync(new JobCost
+            {
+                JobId = job.Id,
+                Amount = 10_000_001m,
+                Description = "Mega cost"
+            }));
+        Assert.Contains("10,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task JobService_AddLaborAsync_RejectsWorkDateTooFarFuture()
     {
         var tenantId = Guid.NewGuid();
