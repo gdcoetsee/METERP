@@ -73,11 +73,15 @@ public class UserService : IUserService
     {
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
             return (false, new[] { "A valid email address is required." });
+        email = email.Trim();
+        if (email.Length > 200)
+            return (false, new[] { "Email cannot exceed 200 characters." });
         if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
             return (false, new[] { "Password must be at least 8 characters." });
+        if (password.Length > 128)
+            return (false, new[] { "Password cannot exceed 128 characters." });
 
         var currentTenant = _tenantProvider.GetCurrentTenantId();
-        email = email.Trim();
 
         var user = new ApplicationUser
         {

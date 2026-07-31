@@ -169,6 +169,30 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateUserAsync_FailsWhenEmailTooLong()
+    {
+        using var harness = new TestHarness(Guid.NewGuid());
+        var (ok, errors) = await harness.Service.CreateUserAsync(
+            new string('a', 195) + "@x.com",
+            "SecurePass1!",
+            "Viewer");
+        Assert.False(ok);
+        Assert.Contains(errors, e => e.Contains("200 characters", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CreateUserAsync_FailsWhenPasswordTooLong()
+    {
+        using var harness = new TestHarness(Guid.NewGuid());
+        var (ok, errors) = await harness.Service.CreateUserAsync(
+            "longpass@acme.demo",
+            new string('P', 129),
+            "Viewer");
+        Assert.False(ok);
+        Assert.Contains(errors, e => e.Contains("128 characters", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task CreateUserAsync_FailsWhenRoleDoesNotExist()
     {
         var tenantId = Guid.NewGuid();
