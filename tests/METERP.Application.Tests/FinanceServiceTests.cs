@@ -297,6 +297,31 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task PostJournalAsync_ThrowsWhenEntryNumberTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PostJournalAsync(new JournalEntry
+            {
+                TenantId = tenantId,
+                EntryNumber = new string('J', 51),
+                Lines =
+                {
+                    new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m },
+                    new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+                }
+            }));
+        Assert.Contains("50 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task PostJournalAsync_ThrowsWhenDescriptionTooLong()
     {
         var tenantId = Guid.NewGuid();

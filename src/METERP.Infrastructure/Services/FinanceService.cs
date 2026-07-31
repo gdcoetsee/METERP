@@ -126,6 +126,8 @@ public class FinanceService : IFinanceService
         else
         {
             entry.EntryNumber = entry.EntryNumber.Trim();
+            if (entry.EntryNumber.Length > 50)
+                throw new InvalidOperationException("Journal entry number cannot exceed 50 characters.");
             var numberTaken = await _dbContext.Set<JournalEntry>()
                 .AnyAsync(e => e.EntryNumber == entry.EntryNumber, ct);
             if (numberTaken)
