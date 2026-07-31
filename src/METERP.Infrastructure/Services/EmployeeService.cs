@@ -133,6 +133,8 @@ public class EmployeeService : IEmployeeService
         else
         {
             emp.EmployeeNumber = emp.EmployeeNumber.Trim();
+            if (emp.EmployeeNumber.Length > 50)
+                throw new InvalidOperationException("Employee number cannot exceed 50 characters.");
             var dup = await _dbContext.Set<Employee>()
                 .AnyAsync(e => e.EmployeeNumber == emp.EmployeeNumber, ct);
             if (dup)
@@ -204,6 +206,8 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("Mandatory hours per month cannot exceed 400.");
 
         var number = emp.EmployeeNumber.Trim();
+        if (number.Length > 50)
+            throw new InvalidOperationException("Employee number cannot exceed 50 characters.");
         var dup = await _dbContext.Set<Employee>()
             .AnyAsync(e => e.EmployeeNumber == number && e.Id != emp.Id, ct);
         if (dup)

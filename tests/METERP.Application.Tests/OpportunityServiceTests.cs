@@ -182,6 +182,23 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenCustomerNameTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "Name deal",
+                Value = 1000m,
+                CustomerName = new string('C', 201)
+            }));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenExpectedCloseTooFarFuture()
     {
         var tenantId = Guid.NewGuid();

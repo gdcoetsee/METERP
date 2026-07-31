@@ -42,6 +42,23 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenEmployeeNumberTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = new string('E', 51),
+                FirstName = "Num",
+                LastName = "Long"
+            }));
+        Assert.Contains("50 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenJobTitleTooLong()
     {
         var tenantId = Guid.NewGuid();

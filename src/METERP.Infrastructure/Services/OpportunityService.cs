@@ -126,6 +126,12 @@ public class OpportunityService : IOpportunityService
                 throw new InvalidOperationException("Customer not found.");
             opportunity.CustomerName ??= customer.Name;
         }
+        if (!string.IsNullOrWhiteSpace(opportunity.CustomerName))
+        {
+            opportunity.CustomerName = opportunity.CustomerName.Trim();
+            if (opportunity.CustomerName.Length > 200)
+                throw new InvalidOperationException("Customer name cannot exceed 200 characters.");
+        }
 
         _dbContext.Set<Opportunity>().Add(opportunity);
         await _dbContext.SaveChangesAsync(ct);
