@@ -269,6 +269,55 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task ApproveManagerAsync_ThrowsWhenJobClosed()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            job.Status = JobStatus.Closed;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                service.ApproveManagerAsync(id, Guid.NewGuid()));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveExecutiveAsync_ThrowsWhenJobClosed()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+            Assert.True(await service.ApproveManagerAsync(id, Guid.NewGuid()));
+
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_ThrowsWhenJobMissing()
     {
         var (service, db, tenantId, _) = Create();

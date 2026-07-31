@@ -188,6 +188,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         if (req == null || req.Status != RequisitionStatus.PendingManager)
             return false;
 
+        await EnsureJobOpenForRequisitionAsync(req, ct);
+
         req.Status = RequisitionStatus.PendingExecutive;
         req.ManagerApprovedByUserId = approverUserId;
         req.ManagerApprovedAt = DateTime.UtcNow;
@@ -201,6 +203,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         var req = await LoadForUpdateAsync(requisitionId, ct);
         if (req == null || req.Status != RequisitionStatus.PendingExecutive)
             return false;
+
+        await EnsureJobOpenForRequisitionAsync(req, ct);
 
         var anyShort = false;
 
@@ -464,6 +468,16 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
             line.QuantityReserved = line.QuantityIssued;
         }
+    }
+
+    private async Task EnsureJobOpenForRequisitionAsync(StockRequisition req, CancellationToken ct)
+    {
+        var job = await _dbContext.Set<Job>().AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
+        if (job == null)
+            throw new InvalidOperationException("Job not found for this requisition.");
+        if (!job.IsOpenForOperations())
+            throw JobClosedException.ForJob(job.JobNumber);
     }
 
     private async Task LogAsync(string action, StockRequisition req, CancellationToken ct) =>
