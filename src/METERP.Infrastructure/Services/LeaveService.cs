@@ -91,6 +91,8 @@ public sealed class LeaveService : ILeaveService
                 1m,
                 (decimal)(request.EndDate - request.StartDate).TotalDays + 1m);
         }
+        if (request.DaysRequested > 120m)
+            throw new InvalidOperationException("Leave days requested cannot exceed 120 days.");
 
         if (request.IsPaid)
         {
