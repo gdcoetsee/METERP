@@ -366,6 +366,46 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        await db.SaveChangesAsync();
+
+        var id = await service.CreateAsync(new Job
+        {
+            CustomerId = customerId,
+            Title = "Install",
+            Notes = new string('N', 2000)
+        });
+        var saved = await db.Set<Job>().FirstAsync(j => j.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
+    public async Task JobService_CreateAsync_AcceptsDescriptionAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        await db.SaveChangesAsync();
+
+        var id = await service.CreateAsync(new Job
+        {
+            CustomerId = customerId,
+            Title = "Install",
+            Description = new string('D', 2000)
+        });
+        var saved = await db.Set<Job>().FirstAsync(j => j.Id == id);
+        Assert.Equal(2000, saved.Description!.Length);
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_ThrowsWhenTitleTooLong()
     {
         var tenantId = Guid.NewGuid();

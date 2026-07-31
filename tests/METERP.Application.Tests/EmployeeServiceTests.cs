@@ -42,6 +42,24 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        var id = await service.CreateAsync(new Employee
+        {
+            FirstName = "Note",
+            LastName = "Ok",
+            Notes = new string('N', 2000),
+            IsActive = true
+        });
+        var saved = await db.Set<Employee>().FirstAsync(e => e.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenEmployeeNumberTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -56,6 +74,24 @@ public class EmployeeServiceTests
                 LastName = "Long"
             }));
         Assert.Contains("50 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AcceptsEmployeeNumberAt50Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        var id = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = new string('E', 50),
+            FirstName = "Num",
+            LastName = "Ok",
+            IsActive = true
+        });
+        var saved = await db.Set<Employee>().FirstAsync(e => e.Id == id);
+        Assert.Equal(50, saved.EmployeeNumber.Length);
     }
 
     [Fact]
