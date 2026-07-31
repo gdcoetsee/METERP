@@ -78,6 +78,24 @@ public class EmployeeCertificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsFileNameTooLong()
+    {
+        var (service, db, _, employee) = Create();
+        await using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new EmployeeCertification
+                {
+                    EmployeeId = employee.Id,
+                    CertificationType = "Red Card",
+                    FileName = new string('F', 256),
+                    NoExpiry = true
+                }));
+            Assert.Contains("255 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsTypeTooLong()
     {
         var (service, db, _, employee) = Create();

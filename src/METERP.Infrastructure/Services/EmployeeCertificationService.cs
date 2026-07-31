@@ -111,6 +111,12 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
             if (cert.CertificateNumber.Length > 100)
                 throw new InvalidOperationException("Certificate number cannot exceed 100 characters.");
         }
+        if (!string.IsNullOrWhiteSpace(cert.FileName))
+        {
+            cert.FileName = cert.FileName.Trim();
+            if (cert.FileName.Length > 255)
+                throw new InvalidOperationException("Certificate file name cannot exceed 255 characters.");
+        }
         if (!cert.NoExpiry && cert.ExpiryDate.HasValue)
             cert.ExpiryDate = cert.ExpiryDate.Value.Date;
         if (!cert.NoExpiry && cert.ExpiryDate.HasValue
