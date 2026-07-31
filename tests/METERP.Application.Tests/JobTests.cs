@@ -323,6 +323,35 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenJobNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Dup Job Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        await service.CreateAsync(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-DUP-1",
+            Title = "First"
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-DUP-1",
+                Title = "Second"
+            }));
+        Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task JobService_AddLaborAsync_RejectsHoursOver24()
     {
         var tenantId = Guid.NewGuid();

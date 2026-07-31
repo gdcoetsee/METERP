@@ -95,6 +95,15 @@ public class SalesOrderService : ISalesOrderService
         {
             so.SoNumber = $"SO-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
         }
+        else
+        {
+            so.SoNumber = so.SoNumber.Trim();
+            var numberTaken = await _dbContext.Set<SalesOrder>()
+                .AnyAsync(s => s.SoNumber == so.SoNumber, ct);
+            if (numberTaken)
+                throw new InvalidOperationException(
+                    $"Sales order number '{so.SoNumber}' already exists.");
+        }
 
         RecalculateTotals(so);
 

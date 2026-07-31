@@ -306,6 +306,34 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenSoNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                SoNumber = "SO-DUP-1",
+                TaxRate = 0.15m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new SalesOrder
+                {
+                    QuoteId = quoteId,
+                    CustomerId = customerId,
+                    SoNumber = "SO-DUP-1",
+                    TaxRate = 0.15m
+                }));
+            Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenQuoteMissing()
     {
         var tenantId = Guid.NewGuid();

@@ -234,6 +234,15 @@ public class JobService : IJobService
                 ? await _documentSequence.GetNextNumberAsync("Job", "J", ct)
                 : $"J-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
+        else
+        {
+            job.JobNumber = job.JobNumber.Trim();
+            var numberTaken = await _dbContext.Set<Job>()
+                .AnyAsync(j => j.JobNumber == job.JobNumber, ct);
+            if (numberTaken)
+                throw new InvalidOperationException(
+                    $"Job number '{job.JobNumber}' already exists.");
+        }
 
         _dbContext.Set<Job>().Add(job);
         await _dbContext.SaveChangesAsync(ct);
