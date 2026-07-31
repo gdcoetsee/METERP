@@ -42,6 +42,18 @@ public class SupplierServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNameAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+
+        var id = await service.CreateAsync(new Supplier { Name = new string('S', 200) });
+        var saved = await db.Set<Supplier>().FirstAsync(s => s.Id == id);
+        Assert.Equal(200, saved.Name.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenNotesTooLong()
     {
         var tenantId = Guid.NewGuid();
