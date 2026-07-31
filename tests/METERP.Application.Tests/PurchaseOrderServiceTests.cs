@@ -696,6 +696,48 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task ReceiveAsync_RejectsLineQuantityTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "S", IsActive = true });
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "RCV-HI",
+                Name = "Cable",
+                QuantityOnHand = 0,
+                UnitCost = 10m,
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines =
+                [
+                    new PurchaseOrderLine
+                    {
+                        Description = "Cable",
+                        Quantity = 5,
+                        UnitPrice = 10m,
+                        InventoryItemId = itemId
+                    }
+                ]
+            });
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+            var lineId = (await db.Set<PurchaseOrderLine>().FirstAsync(l => l.PurchaseOrderId == poId)).Id;
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReceiveAsync(poId, TestUserId, null, new Dictionary<Guid, decimal> { [lineId] = 1_000_001m }));
+            Assert.Contains("1,000,000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task ReceiveAsync_RejectsNegativeLineQuantity()
     {
         var tenantId = Guid.NewGuid();
