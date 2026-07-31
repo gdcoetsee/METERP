@@ -369,6 +369,35 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task AddLineAsync_ThrowsWhenUnitTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                CustomerId = customerId,
+                QuoteId = quoteId,
+                SoDate = DateTime.UtcNow.Date,
+                TaxRate = 0.15m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new SalesOrderLine
+                {
+                    SalesOrderId = soId,
+                    Description = "Work",
+                    Quantity = 1,
+                    UnitPrice = 100m,
+                    Unit = new string('U', 21)
+                }));
+            Assert.Contains("20 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenTaxRateOutOfRange()
     {
         var tenantId = Guid.NewGuid();
