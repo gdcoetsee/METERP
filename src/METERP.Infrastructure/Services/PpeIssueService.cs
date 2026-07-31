@@ -195,9 +195,13 @@ public sealed class PpeIssueService : IPpeIssueService
         if (!string.IsNullOrWhiteSpace(notes))
         {
             var note = notes.Trim();
+            if (note.Length > 500)
+                throw new InvalidOperationException("PPE return notes cannot exceed 500 characters.");
             issue.Notes = string.IsNullOrWhiteSpace(issue.Notes)
                 ? $"Return: {note}"
                 : $"{issue.Notes} | Return: {note}";
+            if (issue.Notes.Length > 1000)
+                issue.Notes = issue.Notes[..1000];
         }
 
         await _dbContext.SaveChangesAsync(ct);

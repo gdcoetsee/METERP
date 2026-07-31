@@ -709,6 +709,100 @@ public class LeaveServiceTests
         }
     }
 
+    [Fact]
+    public async Task SubmitRequestAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-RSN",
+                FirstName = "Reason",
+                LastName = "Long",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.SubmitRequestAsync(new LeaveRequest
+                {
+                    TenantId = tenantId,
+                    EmployeeId = employee.Id,
+                    StartDate = DateTime.UtcNow.Date.AddDays(1),
+                    EndDate = DateTime.UtcNow.Date.AddDays(2),
+                    IsPaid = false,
+                    Reason = new string('R', 501)
+                }));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task RejectAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-REJ",
+                FirstName = "Reject",
+                LastName = "Long",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(1),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                IsPaid = false,
+                Reason = "Holiday"
+            });
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.RejectAsync(requestId, Guid.NewGuid(), new string('X', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task AdjustLeaveBalanceAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-ADJ",
+                FirstName = "Adj",
+                LastName = "Long",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 5,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.AdjustLeaveBalanceAsync(employee.Id, 8m, new string('A', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
     private sealed class TestCurrentUser : ICurrentUserService
     {
         public Guid? UserId => Guid.NewGuid();

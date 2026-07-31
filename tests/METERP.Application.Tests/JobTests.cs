@@ -1082,6 +1082,65 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CloseAsync_RejectsNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CloseAsync(jobId, Guid.NewGuid(), new string('N', 501)));
+        Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_CancelAsync_RejectsReasonTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CancelAsync(jobId, Guid.NewGuid(), new string('C', 501)));
+        Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_ReopenAsync_RejectsReasonTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Done"));
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.ReopenAsync(jobId, Guid.NewGuid(), new string('R', 501)));
+        Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddMilestoneAsync_RejectsTitleTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = Guid.NewGuid();
+        db.Set<Job>().Add(new Job { Id = jobId, TenantId = tenantId, JobNumber = "J-MS", Title = "Site", Status = JobStatus.InProgress });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddMilestoneAsync(new JobMilestone
+            {
+                JobId = jobId,
+                Title = new string('T', 201)
+            }));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task JobService_AddSnagAsync_RejectsDescriptionTooLong()
     {
         var tenantId = Guid.NewGuid();

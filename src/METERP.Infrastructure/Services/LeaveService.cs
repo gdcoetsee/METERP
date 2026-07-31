@@ -114,6 +114,13 @@ public sealed class LeaveService : ILeaveService
             throw new InvalidOperationException(
                 "This leave request overlaps an existing pending or approved leave request.");
 
+        if (!string.IsNullOrWhiteSpace(request.Reason))
+        {
+            request.Reason = request.Reason.Trim();
+            if (request.Reason.Length > 500)
+                throw new InvalidOperationException("Leave reason cannot exceed 500 characters.");
+        }
+
         request.Status = LeaveRequestStatus.PendingManager;
 
         // Stamp tenant from employee so field-portal circuits never insert Guid.Empty TenantId.
@@ -186,6 +193,8 @@ public sealed class LeaveService : ILeaveService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new ArgumentException("Rejection reason must be at least 3 characters.", nameof(reason));
+        if (reason.Length > 500)
+            throw new ArgumentException("Rejection reason cannot exceed 500 characters.", nameof(reason));
 
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status is LeaveRequestStatus.Approved or LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
@@ -221,6 +230,9 @@ public sealed class LeaveService : ILeaveService
             return false;
         }
 
+        if (!string.IsNullOrWhiteSpace(reason) && reason.Trim().Length > 500)
+            throw new ArgumentException("Cancellation reason cannot exceed 500 characters.", nameof(reason));
+
         request.Status = LeaveRequestStatus.Cancelled;
         request.RejectionReason = string.IsNullOrWhiteSpace(reason)
             ? "Cancelled by requester"
@@ -251,6 +263,8 @@ public sealed class LeaveService : ILeaveService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new ArgumentException("Adjustment reason must be at least 3 characters.", nameof(reason));
+        if (reason.Length > 500)
+            throw new ArgumentException("Adjustment reason cannot exceed 500 characters.", nameof(reason));
         if (newBalanceDays < 0)
             throw new InvalidOperationException("Leave balance cannot be negative.");
         if (newBalanceDays > 365m)

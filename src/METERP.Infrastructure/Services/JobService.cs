@@ -525,6 +525,9 @@ public class JobService : IJobService
         if (job == null || job.IsClosed() || job.IsCancelled())
             return false;
 
+        if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > 500)
+            throw new ArgumentException("Close notes cannot exceed 500 characters.", nameof(notes));
+
         job.Status = JobStatus.Closed;
         job.ClosedAt = DateTime.UtcNow;
         job.ClosedByUserId = executiveUserId;
@@ -555,6 +558,8 @@ public class JobService : IJobService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new ArgumentException("Reopen reason must be at least 3 characters.", nameof(reason));
+        if (reason.Length > 500)
+            throw new ArgumentException("Reopen reason cannot exceed 500 characters.", nameof(reason));
 
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null || !job.IsClosed())
@@ -691,6 +696,8 @@ public class JobService : IJobService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new ArgumentException("Cancellation reason must be at least 3 characters.", nameof(reason));
+        if (reason.Length > 500)
+            throw new ArgumentException("Cancellation reason cannot exceed 500 characters.", nameof(reason));
 
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null)
@@ -889,11 +896,14 @@ public class JobService : IJobService
         if (string.IsNullOrWhiteSpace(milestone.Title))
             throw new InvalidOperationException("Milestone title is required.");
 
+        milestone.Title = milestone.Title.Trim();
+        if (milestone.Title.Length > 200)
+            throw new InvalidOperationException("Milestone title cannot exceed 200 characters.");
+
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct)
             ?? throw new InvalidOperationException("Job not found.");
         await EnsureJobOpenAsync(job, ct);
 
-        milestone.Title = milestone.Title.Trim();
         _dbContext.Set<JobMilestone>().Add(milestone);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
@@ -909,6 +919,8 @@ public class JobService : IJobService
         if (string.IsNullOrWhiteSpace(milestone.Title))
             throw new InvalidOperationException("Milestone title is required.");
         milestone.Title = milestone.Title.Trim();
+        if (milestone.Title.Length > 200)
+            throw new InvalidOperationException("Milestone title cannot exceed 200 characters.");
 
         _dbContext.Set<JobMilestone>().Update(milestone);
         await _dbContext.SaveChangesAsync(ct);

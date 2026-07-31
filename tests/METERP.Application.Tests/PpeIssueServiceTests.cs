@@ -403,4 +403,40 @@ public class PpeIssueServiceTests
                 service.ReturnFromEmployeeAsync(issueId, 3m, userId));
         }
     }
+
+    [Fact]
+    public async Task ReturnFromEmployeeAsync_RejectsNotesTooLong()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-RN",
+                FirstName = "Return",
+                LastName = "Notes",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "HELMET",
+                Name = "Helmet",
+                QuantityOnHand = 5,
+                UnitCost = 50m,
+                IsActive = true
+            });
+
+            var userId = Guid.NewGuid();
+            var issueId = await service.IssueToEmployeeAsync(employee.Id, itemId, 1m, userId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReturnFromEmployeeAsync(issueId, 1m, userId, new string('N', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
 }
