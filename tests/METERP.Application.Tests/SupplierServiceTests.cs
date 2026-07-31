@@ -86,6 +86,22 @@ public class SupplierServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenContactPersonTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Supplier
+            {
+                Name = "Contact Supplier",
+                ContactPerson = new string('C', 201)
+            }));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task GetAllAsync_ExcludesInactiveSuppliers()
     {
         var tenantId = Guid.NewGuid();
