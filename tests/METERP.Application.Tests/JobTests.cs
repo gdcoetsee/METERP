@@ -1196,6 +1196,19 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CloseAsync_AcceptsNotesAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), new string('N', 500)));
+        var job = await service.GetByIdAsync(jobId);
+        Assert.Equal(JobStatus.Closed, job!.Status);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -1206,6 +1219,19 @@ public class JobTests
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.CancelAsync(jobId, Guid.NewGuid(), new string('C', 501)));
         Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_CancelAsync_AcceptsReasonAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        Assert.True(await service.CancelAsync(jobId, Guid.NewGuid(), new string('C', 500)));
+        var job = await service.GetByIdAsync(jobId);
+        Assert.Equal(JobStatus.Cancelled, job!.Status);
     }
 
     [Fact]
@@ -1220,6 +1246,20 @@ public class JobTests
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ReopenAsync(jobId, Guid.NewGuid(), new string('R', 501)));
         Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_ReopenAsync_AcceptsReasonAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Done"));
+
+        Assert.True(await service.ReopenAsync(jobId, Guid.NewGuid(), new string('R', 500)));
+        var job = await service.GetByIdAsync(jobId);
+        Assert.NotEqual(JobStatus.Closed, job!.Status);
     }
 
     [Fact]

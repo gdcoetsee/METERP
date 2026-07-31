@@ -437,6 +437,42 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task ReturnFromEmployeeAsync_AcceptsNotesAt500Characters()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-RET-OK",
+                FirstName = "Return",
+                LastName = "Ok",
+                IsActive = true
+            };
+            var item = new InventoryItem
+            {
+                TenantId = tenantId,
+                Sku = "PPE-RET-OK",
+                Name = "Hard Hat",
+                QuantityOnHand = 10m,
+                UnitCost = 50m,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            db.Set<InventoryItem>().Add(item);
+            await db.SaveChangesAsync();
+
+            var userId = Guid.NewGuid();
+            var issueId = await service.IssueToEmployeeAsync(employee.Id, item.Id, 1m, userId);
+            Assert.True(await service.ReturnFromEmployeeAsync(issueId, 1m, userId, new string('N', 500)));
+            var issue = await db.Set<EmployeePpeIssue>().FirstAsync(i => i.Id == issueId);
+            Assert.Contains("Return:", issue.Notes);
+            Assert.True(issue.Notes!.Length <= 1000);
+        }
+    }
+
+    [Fact]
     public async Task ReturnFromEmployeeAsync_RejectsNotesTooLong()
     {
         var (service, db, tenantId, inventory) = Create();

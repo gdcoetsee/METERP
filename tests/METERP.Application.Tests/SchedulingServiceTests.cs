@@ -136,6 +136,75 @@ public class SchedulingServiceTests
     }
 
     [Fact]
+    public async Task AddCrewLaborAsync_RejectsDescriptionTooLong()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Labor Co" });
+            await db.SaveChangesAsync();
+            var empId = await employeeService.CreateAsync(new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-DESC",
+                FirstName = "Desc",
+                LastName = "Tech",
+                DefaultHourlyRate = 100m,
+                IsActive = true
+            });
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Crew work",
+                Status = JobStatus.InProgress,
+                AssignedEmployeeId = empId
+            });
+            await service.AssignJobResourcesAsync(jobId, null, empId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddCrewLaborAsync(jobId, 4m, description: new string('D', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task AddCrewLaborAsync_AcceptsDescriptionAt500Characters()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Labor Co" });
+            await db.SaveChangesAsync();
+            var empId = await employeeService.CreateAsync(new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-DESC-OK",
+                FirstName = "Desc",
+                LastName = "Ok",
+                DefaultHourlyRate = 100m,
+                IsActive = true
+            });
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Crew work",
+                Status = JobStatus.InProgress,
+                AssignedEmployeeId = empId
+            });
+            await service.AssignJobResourcesAsync(jobId, null, empId);
+
+            var result = await service.AddCrewLaborAsync(jobId, 4m, description: new string('D', 500));
+            Assert.Equal(1, result.EntriesAdded);
+            var job = await jobService.GetByIdAsync(jobId);
+            Assert.Equal(500, job!.Labors.First().Description!.Length);
+        }
+    }
+
+    [Fact]
     public async Task UpdateScheduledStartAsync_ThrowsWhenMoreThanOneYearPast()
     {
         var (db, service, jobService, _, _, tenantId) = CreateHarness();

@@ -811,6 +811,42 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task RejectAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-REJ-OK",
+                FirstName = "Reject",
+                LastName = "Ok",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(1),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                IsPaid = false,
+                Reason = "Holiday"
+            });
+
+            Assert.True(await service.RejectAsync(requestId, Guid.NewGuid(), new string('X', 500)));
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(LeaveRequestStatus.Rejected, saved.Status);
+            Assert.Equal(500, saved.RejectionReason!.Length);
+        }
+    }
+
+    [Fact]
     public async Task AdjustLeaveBalanceAsync_RejectsReasonTooLong()
     {
         var (service, db, tenantId) = Create();
@@ -833,6 +869,32 @@ public class LeaveServiceTests
             var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
                 service.AdjustLeaveBalanceAsync(employee.Id, 8m, new string('A', 501)));
             Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task AdjustLeaveBalanceAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-ADJ-OK",
+                FirstName = "Adj",
+                LastName = "Ok",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 5,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            await service.AdjustLeaveBalanceAsync(employee.Id, 8m, new string('A', 500));
+            var updated = await db.Set<Employee>().FirstAsync(e => e.Id == employee.Id);
+            Assert.Equal(8m, updated.LeaveBalanceDays);
         }
     }
 
@@ -868,6 +930,41 @@ public class LeaveServiceTests
             var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
                 service.CancelAsync(requestId, Guid.NewGuid(), new string('C', 501)));
             Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CancelAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-CAN-OK",
+                FirstName = "Can",
+                LastName = "Ok",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(1),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                IsPaid = false,
+                Reason = "Holiday"
+            });
+
+            Assert.True(await service.CancelAsync(requestId, Guid.NewGuid(), new string('C', 500)));
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(LeaveRequestStatus.Cancelled, saved.Status);
         }
     }
 

@@ -556,6 +556,28 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task RejectAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            Assert.True(await service.RejectAsync(id, Guid.NewGuid(), new string('R', 500)));
+            var saved = await db.Set<StockRequisition>().FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.Rejected, saved.Status);
+            Assert.Equal(500, saved.RejectionReason!.Length);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_NonCatalogLine_RequiresDescription()
     {
         var (service, db, tenantId, _) = Create();
@@ -672,6 +694,27 @@ public class StockRequisitionServiceTests
             var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
                 service.CancelAsync(id, Guid.NewGuid(), new string('C', 501)));
             Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CancelAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            Assert.True(await service.CancelAsync(id, Guid.NewGuid(), new string('C', 500)));
+            var saved = await db.Set<StockRequisition>().FirstAsync(r => r.Id == id);
+            Assert.Equal(RequisitionStatus.Cancelled, saved.Status);
         }
     }
 

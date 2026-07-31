@@ -334,6 +334,33 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_AcceptsNotesAt500Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-NOTE-OK",
+                Status = InvoiceStatus.Sent,
+                Subtotal = 500m,
+                Tax = 0m,
+                Total = 500m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            await service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date, null, null, new string('N', 500));
+            var payment = await db.Set<InvoicePayment>().FirstAsync(p => p.InvoiceId == invoice.Id);
+            Assert.Equal(500, payment.Notes!.Length);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsReferenceTooLong()
     {
         var (service, db, tenantId) = Create();
@@ -357,6 +384,33 @@ public class InvoiceBillingServiceTests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date, new string('R', 101), null, null));
             Assert.Contains("100 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task RecordPaymentAsync_AcceptsReferenceAt100Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-REF-OK",
+                Status = InvoiceStatus.Sent,
+                Subtotal = 500m,
+                Tax = 0m,
+                Total = 500m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            await service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date, new string('R', 100), null, null);
+            var payment = await db.Set<InvoicePayment>().FirstAsync(p => p.InvoiceId == invoice.Id);
+            Assert.Equal(100, payment.Reference!.Length);
         }
     }
 
