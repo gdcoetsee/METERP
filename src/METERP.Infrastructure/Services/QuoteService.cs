@@ -508,9 +508,17 @@ public class QuoteService : IQuoteService
         if (line.Description.Length > 500)
             throw new InvalidOperationException("Line description cannot exceed 500 characters.");
         if (!string.IsNullOrWhiteSpace(line.Unit))
+        {
             line.Unit = line.Unit.Trim();
+            if (line.Unit.Length > 20)
+                throw new InvalidOperationException("Line unit cannot exceed 20 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(line.LineType))
+        {
             line.LineType = line.LineType.Trim();
+            if (line.LineType.Length > 50)
+                throw new InvalidOperationException("Line type cannot exceed 50 characters.");
+        }
     }
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)
