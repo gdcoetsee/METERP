@@ -297,6 +297,55 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task PostJournalAsync_ThrowsWhenDescriptionTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PostJournalAsync(new JournalEntry
+            {
+                TenantId = tenantId,
+                Description = new string('D', 501),
+                Lines =
+                {
+                    new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m },
+                    new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+                }
+            }));
+        Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task PostJournalAsync_ThrowsWhenLineAmountTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PostJournalAsync(new JournalEntry
+            {
+                TenantId = tenantId,
+                Lines =
+                {
+                    new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 100_000_001m },
+                    new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 100_000_001m }
+                }
+            }));
+        Assert.Contains("100,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task GetAccountBalanceAsync_ReturnsNetDebitMinusCredit_ForAssetAccount()
     {
         var tenantId = Guid.NewGuid();

@@ -101,6 +101,18 @@ public class EmployeeService : IEmployeeService
         emp.LastName = emp.LastName.Trim();
         if (emp.FirstName.Length > 100 || emp.LastName.Length > 100)
             throw new InvalidOperationException("Employee first and last names cannot exceed 100 characters each.");
+        if (!string.IsNullOrWhiteSpace(emp.JobTitle))
+        {
+            emp.JobTitle = emp.JobTitle.Trim();
+            if (emp.JobTitle.Length > 100)
+                throw new InvalidOperationException("Job title cannot exceed 100 characters.");
+        }
+        if (!string.IsNullOrWhiteSpace(emp.Notes))
+        {
+            emp.Notes = emp.Notes.Trim();
+            if (emp.Notes.Length > 2000)
+                throw new InvalidOperationException("Employee notes cannot exceed 2000 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(emp.Email))
         {
             emp.Email = emp.Email.Trim();
@@ -252,13 +264,29 @@ public class EmployeeService : IEmployeeService
         if (first.Length > 100 || last.Length > 100)
             throw new InvalidOperationException("Employee first and last names cannot exceed 100 characters each.");
 
+        string? jobTitle = null;
+        if (!string.IsNullOrWhiteSpace(emp.JobTitle))
+        {
+            jobTitle = emp.JobTitle.Trim();
+            if (jobTitle.Length > 100)
+                throw new InvalidOperationException("Job title cannot exceed 100 characters.");
+        }
+
+        string? notes = null;
+        if (!string.IsNullOrWhiteSpace(emp.Notes))
+        {
+            notes = emp.Notes.Trim();
+            if (notes.Length > 2000)
+                throw new InvalidOperationException("Employee notes cannot exceed 2000 characters.");
+        }
+
         existing.EmployeeNumber = number;
         existing.FirstName = first;
         existing.LastName = last;
-        existing.JobTitle = emp.JobTitle;
+        existing.JobTitle = jobTitle;
         existing.DefaultHourlyRate = emp.DefaultHourlyRate;
         existing.IsActive = emp.IsActive;
-        existing.Notes = emp.Notes;
+        existing.Notes = notes;
         existing.DivisionId = emp.DivisionId;
         existing.LinkedUserId = emp.LinkedUserId;
         existing.ManagerEmployeeId = emp.ManagerEmployeeId;

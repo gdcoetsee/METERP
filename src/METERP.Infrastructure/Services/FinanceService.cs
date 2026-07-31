@@ -172,7 +172,29 @@ public class FinanceService : IFinanceService
         }
 
         if (!string.IsNullOrWhiteSpace(entry.Description))
+        {
             entry.Description = entry.Description.Trim();
+            if (entry.Description.Length > 500)
+                throw new InvalidOperationException("Journal description cannot exceed 500 characters.");
+        }
+        if (!string.IsNullOrWhiteSpace(entry.Reference))
+        {
+            entry.Reference = entry.Reference.Trim();
+            if (entry.Reference.Length > 100)
+                throw new InvalidOperationException("Journal reference cannot exceed 100 characters.");
+        }
+
+        foreach (var line in lines)
+        {
+            if (line.Debit > 100_000_000m || line.Credit > 100_000_000m)
+                throw new InvalidOperationException("Journal line amount cannot exceed 100,000,000.");
+            if (!string.IsNullOrWhiteSpace(line.Memo))
+            {
+                line.Memo = line.Memo.Trim();
+                if (line.Memo.Length > 500)
+                    throw new InvalidOperationException("Journal line memo cannot exceed 500 characters.");
+            }
+        }
 
         _dbContext.Set<JournalEntry>().Add(entry);
         await _dbContext.SaveChangesAsync(ct);

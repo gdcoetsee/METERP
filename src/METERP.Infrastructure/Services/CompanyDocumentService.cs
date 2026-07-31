@@ -129,6 +129,12 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
             throw new InvalidOperationException("Document type cannot exceed 100 characters.");
         if (document.Title.Length > 200)
             throw new InvalidOperationException("Document title cannot exceed 200 characters.");
+        if (!string.IsNullOrWhiteSpace(document.Notes))
+        {
+            document.Notes = document.Notes.Trim();
+            if (document.Notes.Length > 500)
+                throw new InvalidOperationException("Document notes cannot exceed 500 characters.");
+        }
         if (!document.NoExpiry && document.ExpiryDate.HasValue)
             document.ExpiryDate = document.ExpiryDate.Value.Date;
 
