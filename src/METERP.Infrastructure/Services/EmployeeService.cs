@@ -94,7 +94,13 @@ public class EmployeeService : IEmployeeService
         emp.FirstName = emp.FirstName.Trim();
         emp.LastName = emp.LastName.Trim();
         if (!string.IsNullOrWhiteSpace(emp.Email))
+        {
             emp.Email = emp.Email.Trim();
+            if (!IsPlausibleEmail(emp.Email))
+                throw new InvalidOperationException("Employee email must be a valid address.");
+        }
+        if (!string.IsNullOrWhiteSpace(emp.Phone))
+            emp.Phone = emp.Phone.Trim();
 
         if (string.IsNullOrWhiteSpace(emp.EmployeeNumber))
         {
@@ -176,11 +182,15 @@ public class EmployeeService : IEmployeeService
         if (!string.IsNullOrWhiteSpace(emp.Email))
         {
             emp.Email = emp.Email.Trim();
+            if (!IsPlausibleEmail(emp.Email))
+                throw new InvalidOperationException("Employee email must be a valid address.");
             var emailDup = await _dbContext.Set<Employee>()
                 .AnyAsync(e => e.Email == emp.Email && e.Id != emp.Id, ct);
             if (emailDup)
                 throw new InvalidOperationException($"Employee email '{emp.Email}' is already in use.");
         }
+        if (!string.IsNullOrWhiteSpace(emp.Phone))
+            emp.Phone = emp.Phone.Trim();
 
         if (!emp.IsActive && existing.IsActive)
         {
@@ -302,4 +312,7 @@ public class EmployeeService : IEmployeeService
         if (_cache != null)
             TenantCacheInvalidation.OnEmployeeMasterDataChanged(_cache);
     }
+
+    private static bool IsPlausibleEmail(string email) =>
+        email.Contains('@') && !email.StartsWith('@') && !email.EndsWith('@');
 }

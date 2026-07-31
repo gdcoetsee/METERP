@@ -67,7 +67,13 @@ public class CustomerService : ICustomerService
 
         customer.Name = customer.Name.Trim();
         if (!string.IsNullOrWhiteSpace(customer.Email))
+        {
             customer.Email = customer.Email.Trim();
+            if (!IsPlausibleEmail(customer.Email))
+                throw new InvalidOperationException("Customer email must be a valid address.");
+        }
+        if (!string.IsNullOrWhiteSpace(customer.Phone))
+            customer.Phone = customer.Phone.Trim();
 
         var nameTaken = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Name == customer.Name, ct);
@@ -95,7 +101,13 @@ public class CustomerService : ICustomerService
 
         customer.Name = customer.Name.Trim();
         if (!string.IsNullOrWhiteSpace(customer.Email))
+        {
             customer.Email = customer.Email.Trim();
+            if (!IsPlausibleEmail(customer.Email))
+                throw new InvalidOperationException("Customer email must be a valid address.");
+        }
+        if (!string.IsNullOrWhiteSpace(customer.Phone))
+            customer.Phone = customer.Phone.Trim();
 
         var nameTaken = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Name == customer.Name && c.Id != customer.Id, ct);
@@ -228,12 +240,15 @@ public class CustomerService : ICustomerService
         if (!string.IsNullOrWhiteSpace(contact.Email))
         {
             contact.Email = contact.Email.Trim();
-            if (!contact.Email.Contains('@') || contact.Email.StartsWith('@') || contact.Email.EndsWith('@'))
+            if (!IsPlausibleEmail(contact.Email))
                 throw new InvalidOperationException("Contact email must be a valid address.");
         }
         if (!string.IsNullOrWhiteSpace(contact.Phone))
             contact.Phone = contact.Phone.Trim();
     }
+
+    private static bool IsPlausibleEmail(string email) =>
+        email.Contains('@') && !email.StartsWith('@') && !email.EndsWith('@');
 
     public async Task DeleteContactAsync(Guid contactId, CancellationToken ct = default)
     {

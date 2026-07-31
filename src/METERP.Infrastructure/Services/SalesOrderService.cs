@@ -130,6 +130,8 @@ public class SalesOrderService : ISalesOrderService
         if (so.DeliveryDate.HasValue && so.SoDate != default
             && so.DeliveryDate.Value.Date < so.SoDate.Date)
             throw new InvalidOperationException("Delivery date cannot be before the sales order date.");
+        if (so.DeliveryDate.HasValue && so.DeliveryDate.Value.Date > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Delivery date cannot be more than 2 years in the future.");
 
         if (so.CustomerId == Guid.Empty)
             so.CustomerId = existing.CustomerId;

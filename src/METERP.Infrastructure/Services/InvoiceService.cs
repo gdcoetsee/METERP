@@ -156,6 +156,8 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");
         if (invoice.InvoiceDate != default && invoice.DueDate.Date < invoice.InvoiceDate.Date)
             throw new InvalidOperationException("Due date cannot be before the invoice date.");
+        if (invoice.DueDate != default && invoice.DueDate.Date > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Due date cannot be more than 2 years in the future.");
 
         if (invoice.CustomerId == Guid.Empty)
             invoice.CustomerId = existing.CustomerId;

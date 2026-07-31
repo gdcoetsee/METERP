@@ -148,6 +148,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (po.ExpectedDate.HasValue && po.PoDate != default
             && po.ExpectedDate.Value.Date < po.PoDate.Date)
             throw new InvalidOperationException("Expected delivery date cannot be before the PO date.");
+        if (po.ExpectedDate.HasValue && po.ExpectedDate.Value.Date > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Expected delivery date cannot be more than 2 years in the future.");
 
         // Preserve identity fields that must not drift via free-form update payloads.
         po.PoNumber = existing.PoNumber;

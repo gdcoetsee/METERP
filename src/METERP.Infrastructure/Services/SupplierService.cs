@@ -68,7 +68,13 @@ public class SupplierService : ISupplierService
 
         supplier.Name = supplier.Name.Trim();
         if (!string.IsNullOrWhiteSpace(supplier.Email))
+        {
             supplier.Email = supplier.Email.Trim();
+            if (!IsPlausibleEmail(supplier.Email))
+                throw new InvalidOperationException("Supplier email must be a valid address.");
+        }
+        if (!string.IsNullOrWhiteSpace(supplier.Phone))
+            supplier.Phone = supplier.Phone.Trim();
 
         var nameTaken = await _dbContext.Set<Supplier>()
             .AnyAsync(s => s.Name == supplier.Name && s.IsActive, ct);
@@ -96,7 +102,13 @@ public class SupplierService : ISupplierService
 
         supplier.Name = supplier.Name.Trim();
         if (!string.IsNullOrWhiteSpace(supplier.Email))
+        {
             supplier.Email = supplier.Email.Trim();
+            if (!IsPlausibleEmail(supplier.Email))
+                throw new InvalidOperationException("Supplier email must be a valid address.");
+        }
+        if (!string.IsNullOrWhiteSpace(supplier.Phone))
+            supplier.Phone = supplier.Phone.Trim();
 
         var nameTaken = await _dbContext.Set<Supplier>()
             .AnyAsync(s => s.Name == supplier.Name && s.Id != supplier.Id && s.IsActive, ct);
@@ -141,4 +153,7 @@ public class SupplierService : ISupplierService
         if (_cache != null)
             TenantCacheInvalidation.OnSupplierMasterDataChanged(_cache);
     }
+
+    private static bool IsPlausibleEmail(string email) =>
+        email.Contains('@') && !email.StartsWith('@') && !email.EndsWith('@');
 }
