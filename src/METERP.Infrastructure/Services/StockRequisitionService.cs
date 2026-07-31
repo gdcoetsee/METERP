@@ -105,6 +105,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         {
             if (line.QuantityRequested <= 0)
                 throw new InvalidOperationException("Line quantity must be positive.");
+            if (line.QuantityRequested > 1_000_000m)
+                throw new InvalidOperationException("Line quantity cannot exceed 1,000,000.");
 
             var hasItem = line.InventoryItemId.HasValue && line.InventoryItemId != Guid.Empty;
             if (hasItem)

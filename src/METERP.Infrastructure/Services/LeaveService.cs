@@ -248,8 +248,13 @@ public sealed class LeaveService : ILeaveService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Reason is required for leave balance adjustment.", nameof(reason));
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new ArgumentException("Adjustment reason must be at least 3 characters.", nameof(reason));
         if (newBalanceDays < 0)
             throw new InvalidOperationException("Leave balance cannot be negative.");
+        if (newBalanceDays > 365m)
+            throw new InvalidOperationException("Leave balance cannot exceed 365 days.");
 
         var emp = await _dbContext.Set<Employee>().FirstOrDefaultAsync(e => e.Id == employeeId, ct)
             ?? throw new InvalidOperationException("Employee not found.");
@@ -260,8 +265,8 @@ public sealed class LeaveService : ILeaveService
         var previous = emp.LeaveBalanceDays;
         emp.LeaveBalanceDays = newBalanceDays;
         emp.Notes = string.IsNullOrWhiteSpace(emp.Notes)
-            ? $"[Leave adj] {reason.Trim()} (was {previous:N1})"
-            : emp.Notes + $"\n[Leave adj {DateTime.UtcNow:yyyy-MM-dd}] {reason.Trim()} (was {previous:N1})";
+            ? $"[Leave adj] {reason} (was {previous:N1})"
+            : emp.Notes + $"\n[Leave adj {DateTime.UtcNow:yyyy-MM-dd}] {reason} (was {previous:N1})";
 
         await _dbContext.SaveChangesAsync(ct);
     }

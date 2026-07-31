@@ -55,6 +55,10 @@ public sealed class TenantNotificationService : ITenantNotificationService
 
         notification.Title = notification.Title.Trim();
         notification.Message = notification.Message.Trim();
+        if (notification.Title.Length > 200)
+            throw new InvalidOperationException("Notification title cannot exceed 200 characters.");
+        if (notification.Message.Length > 4000)
+            throw new InvalidOperationException("Notification message cannot exceed 4000 characters.");
         if (string.IsNullOrWhiteSpace(notification.TargetRoles))
             notification.TargetRoles = "*";
         if (string.IsNullOrWhiteSpace(notification.Category))

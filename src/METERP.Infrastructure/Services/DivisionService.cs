@@ -34,12 +34,16 @@ public sealed class DivisionService : IDivisionService
             throw new InvalidOperationException("Division name is required.");
 
         division.Name = division.Name.Trim();
+        if (division.Name.Length > 100)
+            throw new InvalidOperationException("Division name cannot exceed 100 characters.");
         if (string.IsNullOrWhiteSpace(division.Code))
             division.Code = division.Name.Length <= 6
                 ? division.Name.ToUpperInvariant()
                 : division.Name[..6].ToUpperInvariant();
         else
             division.Code = division.Code.Trim().ToUpperInvariant();
+        if (division.Code.Length > 20)
+            throw new InvalidOperationException("Division code cannot exceed 20 characters.");
 
         var duplicate = await _dbContext.Set<Division>()
             .AnyAsync(d => d.Code == division.Code, ct);
@@ -62,10 +66,14 @@ public sealed class DivisionService : IDivisionService
             throw new InvalidOperationException("Division name is required.");
 
         division.Name = division.Name.Trim();
+        if (division.Name.Length > 100)
+            throw new InvalidOperationException("Division name cannot exceed 100 characters.");
         if (string.IsNullOrWhiteSpace(division.Code))
             throw new InvalidOperationException("Division code is required.");
 
         division.Code = division.Code.Trim().ToUpperInvariant();
+        if (division.Code.Length > 20)
+            throw new InvalidOperationException("Division code cannot exceed 20 characters.");
 
         var duplicate = await _dbContext.Set<Division>()
             .AnyAsync(d => d.Code == division.Code && d.Id != division.Id, ct);

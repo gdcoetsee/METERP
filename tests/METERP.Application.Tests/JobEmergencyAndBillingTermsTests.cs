@@ -56,6 +56,22 @@ public class JobEmergencyAndBillingTermsTests
     }
 
     [Fact]
+    public async Task CreateEmergencyAsync_RejectsQuotedEstimateTooHigh()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "E Co" };
+            db.Set<Customer>().Add(customer);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateEmergencyAsync(customer.Id, "Emergency", null, 100_000_001m));
+            Assert.Contains("100,000,000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateEmergencyAsync_RequiresCustomerAndTitle()
     {
         var (service, db, _) = Create();

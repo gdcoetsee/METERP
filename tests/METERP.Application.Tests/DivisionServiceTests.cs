@@ -94,6 +94,23 @@ public class DivisionServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsNameTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new Division
+                {
+                    TenantId = tenantId,
+                    Code = "LONG",
+                    Name = new string('X', 101)
+                }));
+            Assert.Contains("100 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsDuplicateCode()
     {
         var (service, db, tenantId) = Create();

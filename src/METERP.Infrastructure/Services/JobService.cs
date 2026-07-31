@@ -270,6 +270,8 @@ public class JobService : IJobService
             throw new InvalidOperationException("Title is required.");
         if (quotedEstimate < 0)
             throw new InvalidOperationException("Quoted estimate cannot be negative.");
+        if (quotedEstimate > 100_000_000m)
+            throw new InvalidOperationException("Quoted estimate cannot exceed 100,000,000.");
         if (depositPercent is < 0 or > 100)
             throw new InvalidOperationException("Deposit % must be between 0 and 100.");
         if (retentionPercent is < 0 or > 100)
