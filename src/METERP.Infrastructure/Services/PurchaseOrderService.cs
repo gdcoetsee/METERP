@@ -378,6 +378,13 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (req.PurchaseOrderId.HasValue)
             throw new InvalidOperationException("A purchase order already exists for this requisition.");
 
+        var job = await _dbContext.Set<Job>().AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
+        if (job == null)
+            throw new InvalidOperationException("Job not found for this requisition.");
+        if (!job.IsOpenForOperations())
+            throw JobClosedException.ForJob(job.JobNumber);
+
         var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId, ct);
         if (supplier == null)
             throw new InvalidOperationException("Supplier not found.");

@@ -1080,6 +1080,60 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateFromRequisitionAsync_ThrowsWhenJobClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var inventory = new InventoryService(db);
+        var requisitions = new StockRequisitionService(db, inventory);
+        var service = new PurchaseOrderService(db, inventory, requisitions);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Cust" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job { TenantId = tenantId, CustomerId = customer.Id, Title = "Job", QuotedTotal = 1000m };
+        db.Set<Job>().Add(job);
+        var supplier = new Supplier { TenantId = tenantId, Name = "Sup", IsActive = true };
+        db.Set<Supplier>().Add(supplier);
+        var item = new InventoryItem
+        {
+            TenantId = tenantId,
+            Sku = "PO-CL",
+            Name = "Part",
+            QuantityOnHand = 0,
+            UnitCost = 10m,
+            IsActive = true
+        };
+        db.Set<InventoryItem>().Add(item);
+        await db.SaveChangesAsync();
+
+        var reqId = await requisitions.SubmitAsync(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequestedByUserId = TestUserId,
+            Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+        });
+        await requisitions.ApproveManagerAsync(reqId, TestUserId);
+        await requisitions.ApproveExecutiveAsync(reqId, TestUserId);
+
+        job.Status = JobStatus.Closed;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+            service.CreateFromRequisitionAsync(reqId, supplier.Id));
+        Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CreateSkuFromPoLineAsync_LinksMatchingRequisitionLine_AndCarriesReservation()
     {
         var tenantId = Guid.NewGuid();
