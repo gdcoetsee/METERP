@@ -145,6 +145,24 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_AcceptsUnitAt20Characters()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Name = "Unit ok",
+            Unit = new string('U', 20),
+            QuantityOnHand = 1,
+            UnitCost = 1m,
+            IsActive = true
+        });
+        var saved = await db.Set<InventoryItem>().FirstAsync(i => i.Id == id);
+        Assert.Equal(20, saved.Unit!.Length);
+    }
+
+    [Fact]
     public async Task CreateItemAsync_ThrowsWhenUnitTooLong()
     {
         using var db = CreateContext();
