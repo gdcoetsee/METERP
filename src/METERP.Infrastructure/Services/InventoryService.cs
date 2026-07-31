@@ -82,6 +82,8 @@ public class InventoryService : IInventoryService
         else
         {
             item.Sku = item.Sku.Trim().ToUpperInvariant();
+            if (item.Sku.Length > 50)
+                throw new InvalidOperationException("SKU cannot exceed 50 characters.");
             var dup = await _dbContext.Set<InventoryItem>()
                 .AnyAsync(i => i.Sku == item.Sku, ct);
             if (dup)
@@ -97,9 +99,17 @@ public class InventoryService : IInventoryService
         if (item.UnitCost > 1_000_000m)
             throw new InvalidOperationException("Unit cost cannot exceed 1,000,000.");
         if (!string.IsNullOrWhiteSpace(item.Unit))
+        {
             item.Unit = item.Unit.Trim();
+            if (item.Unit.Length > 20)
+                throw new InvalidOperationException("Unit cannot exceed 20 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(item.Category))
+        {
             item.Category = item.Category.Trim();
+            if (item.Category.Length > 100)
+                throw new InvalidOperationException("Category cannot exceed 100 characters.");
+        }
 
         _dbContext.Set<InventoryItem>().Add(item);
         await _dbContext.SaveChangesAsync(ct);
@@ -121,9 +131,17 @@ public class InventoryService : IInventoryService
         if (item.UnitCost > 1_000_000m)
             throw new InvalidOperationException("Unit cost cannot exceed 1,000,000.");
         if (!string.IsNullOrWhiteSpace(item.Unit))
+        {
             item.Unit = item.Unit.Trim();
+            if (item.Unit.Length > 20)
+                throw new InvalidOperationException("Unit cannot exceed 20 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(item.Category))
+        {
             item.Category = item.Category.Trim();
+            if (item.Category.Length > 100)
+                throw new InvalidOperationException("Category cannot exceed 100 characters.");
+        }
 
         // Do not allow direct QuantityOnHand edits via Update — use stock transactions.
         var existing = await _dbContext.Set<InventoryItem>().AsNoTracking()

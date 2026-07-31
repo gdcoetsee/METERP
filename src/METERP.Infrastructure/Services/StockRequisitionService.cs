@@ -247,6 +247,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new ArgumentException("Rejection reason must be at least 3 characters.", nameof(reason));
+        if (reason.Length > 500)
+            throw new ArgumentException("Rejection reason cannot exceed 500 characters.", nameof(reason));
 
         var req = await LoadForUpdateAsync(requisitionId, ct);
         if (req == null || req.Status is RequisitionStatus.Issued or RequisitionStatus.Rejected or RequisitionStatus.Cancelled)
@@ -287,6 +289,9 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
         await ReleaseReservationsAsync(req, ct);
         req.Status = RequisitionStatus.Cancelled;
+        if (!string.IsNullOrWhiteSpace(reason) && reason.Trim().Length > 500)
+            throw new ArgumentException("Cancellation reason cannot exceed 500 characters.", nameof(reason));
+
         req.RejectionReason = string.IsNullOrWhiteSpace(reason)
             ? "Cancelled"
             : reason.Trim();
