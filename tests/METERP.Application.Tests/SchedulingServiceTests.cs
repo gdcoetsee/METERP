@@ -101,6 +101,29 @@ public class SchedulingServiceTests
         }
     }
 
+    [Fact]
+    public async Task UpdateScheduledStartAsync_ThrowsWhenMoreThanOneYearPast()
+    {
+        var (db, service, jobService, _, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Date Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Far past",
+                Status = JobStatus.Scheduled
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateScheduledStartAsync(jobId, DateTime.UtcNow.Date.AddYears(-2)));
+            Assert.Contains("past", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private (AppDbContext Db, SchedulingService Service, JobService Jobs, AssetService Assets, EmployeeService Employees, Guid TenantId) CreateHarness()
     {
         var tenantId = Guid.NewGuid();

@@ -169,6 +169,8 @@ public class SchedulingService : ISchedulingService
             var date = scheduledStart.Value.Date;
             if (date > DateTime.UtcNow.Date.AddYears(2))
                 throw new InvalidOperationException("Scheduled start cannot be more than 2 years in the future.");
+            if (date < DateTime.UtcNow.Date.AddYears(-1))
+                throw new InvalidOperationException("Scheduled start cannot be more than 1 year in the past.");
             job.ScheduledStart = date;
         }
         else

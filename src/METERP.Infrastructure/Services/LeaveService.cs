@@ -63,6 +63,12 @@ public sealed class LeaveService : ILeaveService
 
         if (request.EndDate < request.StartDate)
             throw new InvalidOperationException("Leave end date cannot be before the start date.");
+        if (request.StartDate < DateTime.UtcNow.Date.AddYears(-1))
+            throw new InvalidOperationException("Leave start date cannot be more than 1 year in the past.");
+        if (request.EndDate > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Leave end date cannot be more than 2 years in the future.");
+        if ((request.EndDate - request.StartDate).TotalDays > 120)
+            throw new InvalidOperationException("Leave requests cannot exceed 120 calendar days. Split long absences.");
 
         var emp = await _dbContext.Set<Employee>().AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct)

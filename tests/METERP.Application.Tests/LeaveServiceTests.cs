@@ -648,6 +648,38 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task SubmitRequestAsync_RejectsRangeLongerThan120Days()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-LONG",
+                FirstName = "Long",
+                LastName = "Leave",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 200,
+                LeaveBalanceDays = 200
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.SubmitRequestAsync(new LeaveRequest
+                {
+                    TenantId = tenantId,
+                    EmployeeId = employee.Id,
+                    StartDate = DateTime.UtcNow.Date.AddDays(1),
+                    EndDate = DateTime.UtcNow.Date.AddDays(150),
+                    IsPaid = true
+                }));
+            Assert.Contains("120", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_RejectsEndBeforeStart()
     {
         var (service, db, tenantId) = Create();
