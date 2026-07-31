@@ -103,8 +103,13 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
             throw new InvalidOperationException("Expiry date is required unless marked no expiry.");
 
         cert.CertificationType = cert.CertificationType.Trim();
+        if (cert.CertificationType.Length > 100)
+            throw new InvalidOperationException("Certification type cannot exceed 100 characters.");
         if (!cert.NoExpiry && cert.ExpiryDate.HasValue)
             cert.ExpiryDate = cert.ExpiryDate.Value.Date;
+        if (!cert.NoExpiry && cert.ExpiryDate.HasValue
+            && cert.ExpiryDate.Value.Date > DateTime.UtcNow.Date.AddYears(20))
+            throw new InvalidOperationException("Certification expiry cannot be more than 20 years in the future.");
 
         var empExists = await _dbContext.Set<Employee>()
             .AnyAsync(e => e.Id == cert.EmployeeId && e.IsActive, ct);

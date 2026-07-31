@@ -60,6 +60,23 @@ public class EmployeeCertificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsTypeTooLong()
+    {
+        var (service, db, _, employee) = Create();
+        await using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new EmployeeCertification
+                {
+                    EmployeeId = employee.Id,
+                    CertificationType = new string('C', 101),
+                    NoExpiry = true
+                }));
+            Assert.Contains("100 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsDuplicateTypeForSameEmployee()
     {
         var (service, db, _, employee) = Create();
