@@ -460,6 +460,27 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateAsync_RejectsDueDateTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Due Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new InvoiceService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceDate = DateTime.UtcNow.Date,
+                DueDate = DateTime.UtcNow.Date.AddYears(3)
+            }));
+        Assert.Contains("2 years", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateAsync_RejectsDuplicateInvoiceNumber()
     {
         var tenantId = Guid.NewGuid();

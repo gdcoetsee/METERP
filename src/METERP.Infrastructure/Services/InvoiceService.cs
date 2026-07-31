@@ -105,6 +105,8 @@ public class InvoiceService : IInvoiceService
 
         if (invoice.InvoiceDate != default && invoice.DueDate.Date < invoice.InvoiceDate.Date)
             throw new InvalidOperationException("Due date cannot be before the invoice date.");
+        if (invoice.DueDate != default && invoice.DueDate.Date > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Due date cannot be more than 2 years in the future.");
 
         await ValidateInvoiceJobLinkAsync(invoice.JobId, invoice.CustomerId, ct);
 
