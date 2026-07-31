@@ -91,6 +91,28 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNameAt200Characters()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var id = await service.CreateAsync(new Customer { Name = new string('C', 200) });
+        var saved = await db.Set<Customer>().FirstAsync(c => c.Id == id);
+        Assert.Equal(200, saved.Name.Length);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AcceptsPhoneAt50Characters()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var id = await service.CreateAsync(new Customer { Name = "Phone Ok Co", Phone = new string('1', 50) });
+        var saved = await db.Set<Customer>().FirstAsync(c => c.Id == id);
+        Assert.Equal(50, saved.Phone!.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenPhoneTooLong()
     {
         using var db = CreateContext(Guid.NewGuid());

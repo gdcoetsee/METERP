@@ -110,6 +110,24 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_AcceptsCategoryAt100Characters()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Name = "Cat ok",
+            Category = new string('C', 100),
+            QuantityOnHand = 1,
+            UnitCost = 1m,
+            IsActive = true
+        });
+        var saved = await db.Set<InventoryItem>().FirstAsync(i => i.Id == id);
+        Assert.Equal(100, saved.Category!.Length);
+    }
+
+    [Fact]
     public async Task CreateItemAsync_ThrowsWhenReorderLevelTooHigh()
     {
         using var db = CreateContext();
