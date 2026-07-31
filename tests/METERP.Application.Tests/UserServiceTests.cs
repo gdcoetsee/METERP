@@ -205,6 +205,18 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateUserAsync_FailsWhenPasswordTooShort()
+    {
+        using var harness = new TestHarness(Guid.NewGuid());
+        var (ok, errors) = await harness.Service.CreateUserAsync(
+            "shortpass@acme.demo",
+            "Short1!",
+            "Viewer");
+        Assert.False(ok);
+        Assert.Contains(errors, e => e.Contains("8 characters", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task CreateUserAsync_FailsWhenRoleDoesNotExist()
     {
         var tenantId = Guid.NewGuid();
