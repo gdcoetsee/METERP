@@ -138,6 +138,21 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task AddMaintenanceNoteAsync_ThrowsWhenNoteTooShort()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "TRF-4" });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.AddMaintenanceNoteAsync(id, "ab"));
+        Assert.Contains("3 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task UpdateAsync_PersistsLocationAndSerialNumber()
     {
         var tenantId = Guid.NewGuid();
