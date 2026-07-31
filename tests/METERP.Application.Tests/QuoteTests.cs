@@ -570,6 +570,45 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_ConvertToJobAsync_ThrowsWhenCustomerDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer
+        {
+            Id = customerId,
+            TenantId = tenantId,
+            Name = "Gone Co",
+            IsDeleted = true
+        });
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            QuoteNumber = "Q-DEL-CUST",
+            Status = QuoteStatus.Draft,
+            TaxRate = 0.15m
+        };
+        db.Set<Quote>().Add(quote);
+        db.Set<QuoteLine>().Add(new QuoteLine
+        {
+            TenantId = tenantId,
+            QuoteId = quote.Id,
+            Description = "Work",
+            Quantity = 1,
+            UnitPrice = 100m
+        });
+        await db.SaveChangesAsync();
+
+        // Global soft-delete filter hides deleted customer on Include → Customer null.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConvertToJobAsync(quote.Id));
+        Assert.Contains("customer", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task QuoteService_ConvertToJobAsync_ThrowsWhenQuoteNotFound()
     {
         var tenantId = Guid.NewGuid();

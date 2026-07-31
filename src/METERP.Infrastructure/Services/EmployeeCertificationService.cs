@@ -105,6 +105,12 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
         cert.CertificationType = cert.CertificationType.Trim();
         if (cert.CertificationType.Length > 100)
             throw new InvalidOperationException("Certification type cannot exceed 100 characters.");
+        if (!string.IsNullOrWhiteSpace(cert.CertificateNumber))
+        {
+            cert.CertificateNumber = cert.CertificateNumber.Trim();
+            if (cert.CertificateNumber.Length > 100)
+                throw new InvalidOperationException("Certificate number cannot exceed 100 characters.");
+        }
         if (!cert.NoExpiry && cert.ExpiryDate.HasValue)
             cert.ExpiryDate = cert.ExpiryDate.Value.Date;
         if (!cert.NoExpiry && cert.ExpiryDate.HasValue

@@ -515,14 +515,21 @@ public class QuoteService : IQuoteService
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)
     {
-        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+        var tenantId = _tenantProvider?.GetCurrentTenantId()
+            ?? _dbContext.CurrentTenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Job, ct);
 
+        // IgnoreQueryFilters: required Customer navigation + soft-delete filter would hide
+        // quotes for deleted customers; we still need a clear rejection message.
         var quote = await _dbContext.Set<Quote>()
+            .IgnoreQueryFilters()
             .Include(q => q.Lines)
             .Include(q => q.Customer)
-            .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
+            .FirstOrDefaultAsync(q =>
+                q.Id == quoteId
+                && !q.IsDeleted
+                && (tenantId == Guid.Empty || q.TenantId == tenantId), ct);
 
         if (quote == null)
             throw new InvalidOperationException("Quote not found.");
@@ -532,6 +539,9 @@ public class QuoteService : IQuoteService
 
         if (!quote.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot convert a quote with no lines to a job.");
+
+        if (quote.Customer == null || quote.Customer.IsDeleted)
+            throw new InvalidOperationException("Cannot convert a quote whose customer is missing or deleted.");
 
         var alreadyConverted = await _dbContext.Set<Job>()
             .AsNoTracking()
