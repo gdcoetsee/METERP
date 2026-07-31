@@ -254,6 +254,8 @@ public class JobService : IJobService
         else
         {
             job.JobNumber = job.JobNumber.Trim();
+            if (job.JobNumber.Length > 50)
+                throw new InvalidOperationException("Job number cannot exceed 50 characters.");
             var numberTaken = await _dbContext.Set<Job>()
                 .AnyAsync(j => j.JobNumber == job.JobNumber, ct);
             if (numberTaken)

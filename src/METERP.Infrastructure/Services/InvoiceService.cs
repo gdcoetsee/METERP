@@ -129,6 +129,8 @@ public class InvoiceService : IInvoiceService
         else
         {
             invoice.InvoiceNumber = invoice.InvoiceNumber.Trim();
+            if (invoice.InvoiceNumber.Length > 50)
+                throw new InvalidOperationException("Invoice number cannot exceed 50 characters.");
             var numberTaken = await _dbContext.Set<Invoice>()
                 .AnyAsync(i => i.InvoiceNumber == invoice.InvoiceNumber, ct);
             if (numberTaken)

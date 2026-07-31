@@ -118,6 +118,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         else
         {
             po.PoNumber = po.PoNumber.Trim();
+            if (po.PoNumber.Length > 50)
+                throw new InvalidOperationException("Purchase order number cannot exceed 50 characters.");
             var numberTaken = await _dbContext.Set<PurchaseOrder>()
                 .AnyAsync(p => p.PoNumber == po.PoNumber, ct);
             if (numberTaken)

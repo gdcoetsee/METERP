@@ -124,6 +124,8 @@ public class QuoteService : IQuoteService
         else
         {
             quote.QuoteNumber = quote.QuoteNumber.Trim();
+            if (quote.QuoteNumber.Length > 50)
+                throw new InvalidOperationException("Quote number cannot exceed 50 characters.");
             var numberTaken = await _dbContext.Set<Quote>()
                 .AnyAsync(q => q.QuoteNumber == quote.QuoteNumber, ct);
             if (numberTaken)

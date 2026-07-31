@@ -106,6 +106,8 @@ public class SalesOrderService : ISalesOrderService
         else
         {
             so.SoNumber = so.SoNumber.Trim();
+            if (so.SoNumber.Length > 50)
+                throw new InvalidOperationException("Sales order number cannot exceed 50 characters.");
             var numberTaken = await _dbContext.Set<SalesOrder>()
                 .AnyAsync(s => s.SoNumber == so.SoNumber, ct);
             if (numberTaken)

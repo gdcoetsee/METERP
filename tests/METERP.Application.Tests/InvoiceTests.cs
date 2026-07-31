@@ -503,6 +503,28 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateAsync_RejectsInvoiceNumberTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Num Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new InvoiceService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = new string('I', 51),
+                InvoiceDate = DateTime.UtcNow.Date,
+                DueDate = DateTime.UtcNow.Date.AddDays(14)
+            }));
+        Assert.Contains("50 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateAsync_RejectsDuplicateInvoiceNumber()
     {
         var tenantId = Guid.NewGuid();
