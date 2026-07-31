@@ -190,6 +190,18 @@ public class TenantServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenSubdomainTooShort()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync("Ok Tenant", "a"));
+        Assert.Contains("2 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ThrowsWhenNameMissing()
     {
         var dbName = Guid.NewGuid().ToString();
