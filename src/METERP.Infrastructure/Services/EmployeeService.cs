@@ -118,6 +118,8 @@ public class EmployeeService : IEmployeeService
             emp.Email = emp.Email.Trim();
             if (!IsPlausibleEmail(emp.Email))
                 throw new InvalidOperationException("Employee email must be a valid address.");
+            if (emp.Email.Length > 200)
+                throw new InvalidOperationException("Employee email cannot exceed 200 characters.");
         }
         if (!string.IsNullOrWhiteSpace(emp.Phone))
         {
@@ -218,6 +220,8 @@ public class EmployeeService : IEmployeeService
             emp.Email = emp.Email.Trim();
             if (!IsPlausibleEmail(emp.Email))
                 throw new InvalidOperationException("Employee email must be a valid address.");
+            if (emp.Email.Length > 200)
+                throw new InvalidOperationException("Employee email cannot exceed 200 characters.");
             var emailDup = await _dbContext.Set<Employee>()
                 .AnyAsync(e => e.Email == emp.Email && e.Id != emp.Id, ct);
             if (emailDup)

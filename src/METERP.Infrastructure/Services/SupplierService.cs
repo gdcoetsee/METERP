@@ -74,6 +74,8 @@ public class SupplierService : ISupplierService
             supplier.Email = supplier.Email.Trim();
             if (!IsPlausibleEmail(supplier.Email))
                 throw new InvalidOperationException("Supplier email must be a valid address.");
+            if (supplier.Email.Length > 200)
+                throw new InvalidOperationException("Supplier email cannot exceed 200 characters.");
         }
         if (!string.IsNullOrWhiteSpace(supplier.Phone))
         {
@@ -121,6 +123,8 @@ public class SupplierService : ISupplierService
             supplier.Email = supplier.Email.Trim();
             if (!IsPlausibleEmail(supplier.Email))
                 throw new InvalidOperationException("Supplier email must be a valid address.");
+            if (supplier.Email.Length > 200)
+                throw new InvalidOperationException("Supplier email cannot exceed 200 characters.");
         }
         if (!string.IsNullOrWhiteSpace(supplier.Phone))
         {
