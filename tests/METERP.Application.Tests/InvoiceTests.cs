@@ -532,4 +532,33 @@ public class InvoiceTests
             }));
         Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task InvoiceService_AddLineAsync_RejectsLineTypeTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Line Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new InvoiceService(db, null);
+        var invoiceId = await service.CreateAsync(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(14)
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLineAsync(new InvoiceLine
+            {
+                InvoiceId = invoiceId,
+                Description = "Work",
+                Quantity = 1,
+                UnitPrice = 100m,
+                LineType = new string('T', 51)
+            }));
+        Assert.Contains("50 characters", ex.Message);
+    }
 }
