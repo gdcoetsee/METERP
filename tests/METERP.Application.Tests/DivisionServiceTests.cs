@@ -94,6 +94,22 @@ public class DivisionServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RejectsCodeTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new Division
+                {
+                    Name = "Ops",
+                    Code = new string('C', 21)
+                }));
+            Assert.Contains("20 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsNameTooLong()
     {
         var (service, db, tenantId) = Create();
