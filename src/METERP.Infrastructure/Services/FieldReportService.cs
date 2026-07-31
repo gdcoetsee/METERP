@@ -132,16 +132,28 @@ public sealed class FieldReportService : IFieldReportService
     public async Task<bool> ApproveAsync(Guid reportId, Guid approverUserId, CancellationToken ct = default)
     {
         var report = await _dbContext.Set<FieldReport>()
-            .Include(r => r.Job).ThenInclude(j => j!.AssignedEmployee)
             .FirstOrDefaultAsync(r => r.Id == reportId, ct);
 
         if (report == null || report.Status != FieldReportStatus.PendingApproval)
             return false;
 
+        // Ignore soft-delete filter so deleted jobs surface as an explicit integrity error.
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .Include(j => j.AssignedEmployee)
+            .FirstOrDefaultAsync(j =>
+                j.Id == report.JobId
+                && (report.TenantId == Guid.Empty || j.TenantId == report.TenantId), ct);
+
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Cannot approve field report — job is missing or deleted.");
+
         // Approving posts labor/travel to the job — only allowed while job is open for ops.
-        if (report.Job == null || !report.Job.IsOpenForOperations())
+        if (!job.IsOpenForOperations())
             throw new InvalidOperationException(
-                $"Cannot approve field report — job {(report.Job?.JobNumber ?? report.JobId.ToString("N")[..8])} is closed or cancelled.");
+                $"Cannot approve field report — job {job.JobNumber} is closed or cancelled.");
+
+        report.Job = job;
 
         var hourlyRate = report.Job.AssignedEmployee?.DefaultHourlyRate ?? 195m;
 
