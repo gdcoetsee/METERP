@@ -18,9 +18,21 @@ public sealed class DocumentSequenceService : IDocumentSequenceService
 
     public async Task<string> GetNextNumberAsync(string documentType, string prefix, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(documentType))
+            throw new ArgumentException("Document type is required.", nameof(documentType));
+        if (string.IsNullOrWhiteSpace(prefix))
+            throw new ArgumentException("Document number prefix is required.", nameof(prefix));
+
+        documentType = documentType.Trim();
+        prefix = prefix.Trim();
+        if (documentType.Length > 50)
+            throw new ArgumentException("Document type cannot exceed 50 characters.", nameof(documentType));
+        if (prefix.Length > 20)
+            throw new ArgumentException("Document number prefix cannot exceed 20 characters.", nameof(prefix));
+
         var tenantId = _tenantProvider.GetCurrentTenantId();
         var year = DateTime.UtcNow.Year;
-        var typeKey = documentType.Trim();
+        var typeKey = documentType;
 
         var sequence = await _dbContext.Set<TenantDocumentSequence>()
             .FirstOrDefaultAsync(s => s.DocumentType == typeKey && s.Year == year, ct);
