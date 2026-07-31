@@ -218,6 +218,67 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task PostJournalAsync_ThrowsWhenEntryNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        await service.PostJournalAsync(new JournalEntry
+        {
+            TenantId = tenantId,
+            EntryNumber = "JE-DUP-1",
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+            }
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PostJournalAsync(new JournalEntry
+            {
+                TenantId = tenantId,
+                EntryNumber = "JE-DUP-1",
+                Lines =
+                {
+                    new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 5m },
+                    new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 5m }
+                }
+            }));
+        Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PostJournalAsync_ThrowsWhenEntryDateTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PostJournalAsync(new JournalEntry
+            {
+                TenantId = tenantId,
+                EntryDate = DateTime.UtcNow.Date.AddDays(14),
+                Lines =
+                {
+                    new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m },
+                    new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+                }
+            }));
+        Assert.Contains("future", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GetAccountBalanceAsync_ReturnsNetDebitMinusCredit_ForAssetAccount()
     {
         var tenantId = Guid.NewGuid();

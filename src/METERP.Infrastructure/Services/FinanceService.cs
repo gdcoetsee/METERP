@@ -119,6 +119,21 @@ public class FinanceService : IFinanceService
         {
             entry.EntryNumber = $"JE-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
         }
+        else
+        {
+            entry.EntryNumber = entry.EntryNumber.Trim();
+            var numberTaken = await _dbContext.Set<JournalEntry>()
+                .AnyAsync(e => e.EntryNumber == entry.EntryNumber, ct);
+            if (numberTaken)
+                throw new InvalidOperationException(
+                    $"Journal entry number '{entry.EntryNumber}' already exists.");
+        }
+
+        entry.EntryDate = entry.EntryDate == default ? DateTime.UtcNow.Date : entry.EntryDate.Date;
+        if (entry.EntryDate > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Journal entry date cannot be more than one day in the future.");
+        if (entry.EntryDate < DateTime.UtcNow.Date.AddYears(-10))
+            throw new InvalidOperationException("Journal entry date cannot be more than 10 years in the past.");
 
         var lines = entry.Lines.Where(l => !l.IsDeleted).ToList();
         if (lines.Count < 2)
