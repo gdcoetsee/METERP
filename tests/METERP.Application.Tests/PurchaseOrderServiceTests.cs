@@ -31,6 +31,28 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenPoNumberTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "S", IsActive = true });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new PurchaseOrder
+                {
+                    SupplierId = supplierId,
+                    PoNumber = new string('P', 51),
+                    TaxRate = 0m
+                }));
+            Assert.Contains("50 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenPoNumberDuplicate()
     {
         var tenantId = Guid.NewGuid();
