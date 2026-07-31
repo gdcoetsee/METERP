@@ -399,6 +399,29 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "S", IsActive = true });
+            await db.SaveChangesAsync();
+
+            var id = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                PoDate = DateTime.UtcNow.Date,
+                TaxRate = 0.15m,
+                Notes = new string('N', 2000)
+            });
+            var saved = await db.Set<PurchaseOrder>().FirstAsync(p => p.Id == id);
+            Assert.Equal(2000, saved.Notes!.Length);
+        }
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenUnitTooLong()
     {
         var tenantId = Guid.NewGuid();

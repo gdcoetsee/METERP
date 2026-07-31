@@ -340,6 +340,28 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+
+            var id = await service.CreateAsync(new SalesOrder
+            {
+                CustomerId = customerId,
+                QuoteId = quoteId,
+                SoDate = DateTime.UtcNow.Date,
+                TaxRate = 0.15m,
+                Notes = new string('N', 2000)
+            });
+            var saved = await db.Set<SalesOrder>().FirstAsync(s => s.Id == id);
+            Assert.Equal(2000, saved.Notes!.Length);
+        }
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenLineTypeTooLong()
     {
         var tenantId = Guid.NewGuid();

@@ -163,10 +163,30 @@ public sealed class LeaveService : ILeaveService
     public async Task<bool> ApproveHrAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default)
     {
         var request = await _dbContext.Set<LeaveRequest>()
-            .Include(r => r.Employee)
             .FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status != LeaveRequestStatus.PendingHr)
             return false;
+
+        // Re-load employee without soft-delete filter so we can reject deleted staff explicitly.
+        var employee = await _dbContext.Set<Employee>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e =>
+                e.Id == request.EmployeeId
+                && (request.TenantId == Guid.Empty || e.TenantId == request.TenantId), ct);
+
+        if (employee == null || employee.IsDeleted)
+            throw new InvalidOperationException("Cannot approve leave — employee is missing or deleted.");
+        if (!employee.IsActive)
+            throw new InvalidOperationException("Cannot approve leave for an inactive employee.");
+
+        // Balance can change between submit and final HR approval (other paid leave approved).
+        if (request.IsPaid)
+        {
+            var available = await GetAvailableLeaveDaysAsync(request.EmployeeId, ct);
+            if (request.DaysRequested > available)
+                throw new InvalidOperationException(
+                    $"Insufficient leave balance at final approval. Available: {available:N1} days, requested: {request.DaysRequested:N1}.");
+        }
 
         request.Status = LeaveRequestStatus.Approved;
         request.HrApprovedByUserId = approverUserId;

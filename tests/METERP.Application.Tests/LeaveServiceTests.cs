@@ -37,7 +37,8 @@ public class LeaveServiceTests
                 FirstName = "Test",
                 LastName = "User",
                 HireDate = DateTime.UtcNow.AddYears(-1),
-                AnnualLeaveEntitlementDays = 20
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
             };
             db.Set<Employee>().Add(employee);
             await db.SaveChangesAsync();
@@ -64,6 +65,142 @@ public class LeaveServiceTests
             var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
             Assert.Equal(LeaveRequestStatus.Approved, saved.Status);
             Assert.True(saved.DaysRequested > 0);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveHrAsync_ThrowsWhenEmployeeDeleted()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-DEL",
+                FirstName = "Gone",
+                LastName = "User",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(10),
+                EndDate = DateTime.UtcNow.Date.AddDays(11),
+                IsPaid = false,
+                Reason = "Personal"
+            });
+            Assert.True(await service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+            Assert.True(await service.ApproveExecutiveAsync(requestId, Guid.NewGuid()));
+
+            employee.IsDeleted = true;
+            employee.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveHrAsync(requestId, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveHrAsync_ThrowsWhenEmployeeInactive()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-INACT",
+                FirstName = "Inact",
+                LastName = "User",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(10),
+                EndDate = DateTime.UtcNow.Date.AddDays(11),
+                IsPaid = false,
+                Reason = "Personal"
+            });
+            Assert.True(await service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+            Assert.True(await service.ApproveExecutiveAsync(requestId, Guid.NewGuid()));
+
+            employee.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveHrAsync(requestId, Guid.NewGuid()));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveHrAsync_ThrowsWhenPaidBalanceExhaustedBeforeFinalApproval()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-BAL",
+                FirstName = "Bal",
+                LastName = "User",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 5,
+                LeaveBalanceDays = 0,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            // Seed another already-approved paid leave that consumes the full accrual.
+            db.Set<LeaveRequest>().Add(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(-20),
+                EndDate = DateTime.UtcNow.Date.AddDays(-16),
+                DaysRequested = 5,
+                IsPaid = true,
+                Status = LeaveRequestStatus.Approved,
+                Reason = "Already taken"
+            });
+            await db.SaveChangesAsync();
+
+            // Unpaid path would skip balance; force a pending-HR paid request via direct seed after manager stages.
+            var pending = new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(14),
+                EndDate = DateTime.UtcNow.Date.AddDays(15),
+                DaysRequested = 2,
+                IsPaid = true,
+                Status = LeaveRequestStatus.PendingHr,
+                Reason = "Later request"
+            };
+            db.Set<LeaveRequest>().Add(pending);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveHrAsync(pending.Id, Guid.NewGuid()));
+            Assert.Contains("Insufficient leave balance", ex.Message);
         }
     }
 
