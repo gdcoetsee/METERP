@@ -294,11 +294,17 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task<Job> ConvertToJobAsync(Guid soId, CancellationToken ct = default)
     {
+        var tenantId = _dbContext.CurrentTenantId;
+        // IgnoreQueryFilters so soft-deleted customers still yield a clear conversion error.
         var so = await _dbContext.Set<SalesOrder>()
+            .IgnoreQueryFilters()
             .Include(s => s.Lines)
             .Include(s => s.Customer)
             .Include(s => s.Quote)
-            .FirstOrDefaultAsync(s => s.Id == soId, ct);
+            .FirstOrDefaultAsync(s =>
+                s.Id == soId
+                && !s.IsDeleted
+                && (tenantId == Guid.Empty || s.TenantId == tenantId), ct);
 
         if (so == null)
             throw new InvalidOperationException("Sales Order not found.");
@@ -316,12 +322,13 @@ public class SalesOrderService : ISalesOrderService
         if (!so.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot convert a sales order with no lines to a job.");
 
+        if (so.Customer == null || so.Customer.IsDeleted)
+            throw new InvalidOperationException("Cannot convert a sales order whose customer is missing or deleted.");
+
         if (so.Status != SalesOrderStatus.Confirmed && so.Status != SalesOrderStatus.InProgress)
             so.Status = SalesOrderStatus.Confirmed;
 
-        var title = so.Customer != null
-            ? $"{so.Customer.Name} - {so.SoNumber}"
-            : $"Job from {so.SoNumber}";
+        var title = $"{so.Customer.Name} - {so.SoNumber}";
 
         // Route through JobService so quota enforcement and usage counters apply.
         var jobId = await _jobService.CreateAsync(new Job

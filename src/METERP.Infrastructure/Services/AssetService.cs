@@ -146,11 +146,29 @@ public class AssetService : IAssetService
             throw new InvalidOperationException("Asset name cannot exceed 200 characters.");
         asset.AssetNumber = existing.AssetNumber;
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
+        {
             asset.SerialNumber = asset.SerialNumber.Trim();
+            if (asset.SerialNumber.Length > 100)
+                throw new InvalidOperationException("Asset serial number cannot exceed 100 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(asset.Location))
+        {
             asset.Location = asset.Location.Trim();
+            if (asset.Location.Length > 200)
+                throw new InvalidOperationException("Asset location cannot exceed 200 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(asset.AssetType))
+        {
             asset.AssetType = asset.AssetType.Trim();
+            if (asset.AssetType.Length > 100)
+                throw new InvalidOperationException("Asset type cannot exceed 100 characters.");
+        }
+        if (!string.IsNullOrWhiteSpace(asset.Notes))
+        {
+            asset.Notes = asset.Notes.Trim();
+            if (asset.Notes.Length > 2000)
+                throw new InvalidOperationException("Asset notes cannot exceed 2000 characters.");
+        }
 
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber)
             && !string.Equals(asset.SerialNumber, existing.SerialNumber, StringComparison.Ordinal))
