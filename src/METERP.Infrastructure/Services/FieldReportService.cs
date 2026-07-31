@@ -173,6 +173,9 @@ public sealed class FieldReportService : IFieldReportService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Rejection reason is required.", nameof(reason));
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new ArgumentException("Rejection reason must be at least 3 characters.", nameof(reason));
 
         var report = await _dbContext.Set<FieldReport>().FirstOrDefaultAsync(r => r.Id == reportId, ct);
         if (report == null || report.Status != FieldReportStatus.PendingApproval)
@@ -181,7 +184,7 @@ public sealed class FieldReportService : IFieldReportService
         report.Status = FieldReportStatus.Rejected;
         report.ApprovedByUserId = approverUserId;
         report.ApprovedAt = DateTime.UtcNow;
-        report.RejectionReason = reason.Trim();
+        report.RejectionReason = reason;
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)

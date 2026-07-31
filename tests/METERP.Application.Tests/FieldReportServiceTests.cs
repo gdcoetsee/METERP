@@ -399,7 +399,7 @@ public class FieldReportServiceTests
                 HoursWorked = 4m
             });
 
-            Assert.True(await service.RejectAsync(reportId, TestUserId, "No"));
+            Assert.True(await service.RejectAsync(reportId, TestUserId, "Not accurate"));
             Assert.False(await service.RejectAsync(reportId, TestUserId, "Again"));
         }
     }
