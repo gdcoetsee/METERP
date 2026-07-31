@@ -321,8 +321,10 @@ public sealed class StockRequisitionService : IStockRequisitionService
             return false;
 
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
-        if (job == null || !job.IsOpenForOperations())
-            return false;
+        if (job == null)
+            throw new InvalidOperationException("Job not found for this requisition.");
+        if (!job.IsOpenForOperations())
+            throw JobClosedException.ForJob(job.JobNumber);
 
         var issuedAny = false;
         foreach (var line in req.Lines.Where(l => !l.IsDeleted && l.QuantityReserved > 0))
