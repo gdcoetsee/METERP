@@ -215,6 +215,28 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_ThrowsWhenValidUntilTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Valid Co" });
+        await db.SaveChangesAsync();
+        var service = new QuoteService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                QuoteDate = DateTime.UtcNow.Date,
+                ValidUntil = DateTime.UtcNow.Date.AddYears(3),
+                TaxRate = 0.15m
+            }));
+        Assert.Contains("2 years", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task QuoteService_CreateAsync_ThrowsWhenValidUntilBeforeQuoteDate()
     {
         var tenantId = Guid.NewGuid();

@@ -149,6 +149,23 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenExpectedCloseTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "Far deal",
+                Value = 1000m,
+                ExpectedClose = DateTime.UtcNow.Date.AddYears(3)
+            }));
+        Assert.Contains("2 years", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GetAllAsync_FiltersByCustomerName()
     {
         var tenantId = Guid.NewGuid();

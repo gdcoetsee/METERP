@@ -101,6 +101,8 @@ public class QuoteService : IQuoteService
 
         if (quote.QuoteDate != default && quote.ValidUntil.Date < quote.QuoteDate.Date)
             throw new InvalidOperationException("Valid-until date cannot be before the quote date.");
+        if (quote.ValidUntil != default && quote.ValidUntil.Date > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Valid-until date cannot be more than 2 years in the future.");
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? quote.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)

@@ -99,6 +99,13 @@ public class OpportunityService : IOpportunityService
         opportunity.Title = opportunity.Title.Trim();
         if (opportunity.ExpectedClose == default)
             opportunity.ExpectedClose = DateTime.UtcNow.Date.AddDays(30);
+        else
+            opportunity.ExpectedClose = opportunity.ExpectedClose.Date;
+
+        if (opportunity.ExpectedClose > DateTime.UtcNow.Date.AddYears(2))
+            throw new InvalidOperationException("Expected close date cannot be more than 2 years in the future.");
+        if (opportunity.ExpectedClose < DateTime.UtcNow.Date.AddYears(-1))
+            throw new InvalidOperationException("Expected close date cannot be more than 1 year in the past.");
 
         if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty)
         {
@@ -135,6 +142,14 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException("Opportunity value cannot be negative.");
 
         opportunity.Title = opportunity.Title.Trim();
+        if (opportunity.ExpectedClose != default)
+        {
+            opportunity.ExpectedClose = opportunity.ExpectedClose.Date;
+            if (opportunity.ExpectedClose > DateTime.UtcNow.Date.AddYears(2))
+                throw new InvalidOperationException("Expected close date cannot be more than 2 years in the future.");
+            if (opportunity.ExpectedClose < DateTime.UtcNow.Date.AddYears(-1))
+                throw new InvalidOperationException("Expected close date cannot be more than 1 year in the past.");
+        }
 
         var existing = await _dbContext.Set<Opportunity>().AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == opportunity.Id, ct);
