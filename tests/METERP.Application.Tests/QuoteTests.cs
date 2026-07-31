@@ -232,6 +232,33 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_AddLineAsync_AcceptsDescriptionAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Desc Co" });
+        await db.SaveChangesAsync();
+        var service = new QuoteService(db, null);
+        var quoteId = await service.CreateAsync(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            TaxRate = 0.15m
+        });
+
+        var lineId = await service.AddLineAsync(new QuoteLine
+        {
+            QuoteId = quoteId,
+            Description = new string('D', 500),
+            Quantity = 1,
+            UnitPrice = 10m
+        });
+        var line = await db.Set<QuoteLine>().FirstAsync(l => l.Id == lineId);
+        Assert.Equal(500, line.Description.Length);
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_ThrowsWhenUnitPriceTooHigh()
     {
         var tenantId = Guid.NewGuid();
