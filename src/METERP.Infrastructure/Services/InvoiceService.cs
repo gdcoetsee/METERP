@@ -298,14 +298,22 @@ public class InvoiceService : IInvoiceService
         decimal? percentOfQuotedTotal = null,
         CancellationToken ct = default)
     {
+        var tenantIdForJob = _tenantProvider?.GetCurrentTenantId() ?? _dbContext.CurrentTenantId;
         var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
             .Include(j => j.Customer)
             .Include(j => j.Quote)
                 .ThenInclude(q => q != null ? q.Lines : null)
-            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+            .FirstOrDefaultAsync(j =>
+                j.Id == jobId
+                && !j.IsDeleted
+                && (tenantIdForJob == Guid.Empty || j.TenantId == tenantIdForJob), ct);
 
         if (job == null)
             throw new InvalidOperationException("Job not found.");
+
+        if (job.Customer == null || job.Customer.IsDeleted)
+            throw new InvalidOperationException("Cannot invoice a job whose customer is missing or deleted.");
 
         if (!job.IsOpenForOperations())
             throw JobClosedException.ForJob(job.JobNumber);

@@ -47,6 +47,35 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task CreateFromJobAsync_RejectsDeletedCustomer()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Gone Co" };
+            db.Set<Customer>().Add(customer);
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuotedTotal = 1000m,
+                Title = "Orphan bill",
+                SignOffStatus = JobSignOffStatus.SignedOff,
+                Status = JobStatus.Completed
+            };
+            db.Set<Job>().Add(job);
+            await db.SaveChangesAsync();
+
+            customer.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateFromJobAsync(job.Id));
+            Assert.Contains("customer", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_UpdatesAmountPaidAndStatus()
     {
         var (service, db, tenantId) = Create();
