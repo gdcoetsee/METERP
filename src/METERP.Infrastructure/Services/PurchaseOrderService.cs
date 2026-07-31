@@ -707,7 +707,11 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (line.Description.Length > 500)
             throw new InvalidOperationException("Line description cannot exceed 500 characters.");
         if (!string.IsNullOrWhiteSpace(line.Unit))
+        {
             line.Unit = line.Unit.Trim();
+            if (line.Unit.Length > 20)
+                throw new InvalidOperationException("Line unit cannot exceed 20 characters.");
+        }
     }
 
     private static void RecalculateTotals(PurchaseOrder po)
