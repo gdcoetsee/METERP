@@ -527,6 +527,26 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddCostAsync_AcceptsDescriptionAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "C", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var costId = await service.AddCostAsync(new JobCost
+        {
+            JobId = job.Id,
+            Amount = 10m,
+            Description = new string('D', 500)
+        });
+        var cost = await db.Set<JobCost>().FirstAsync(c => c.Id == costId);
+        Assert.Equal(500, cost.Description.Length);
+    }
+
+    [Fact]
     public async Task JobService_AddCostAsync_RejectsCostTypeTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -545,6 +565,27 @@ public class JobTests
                 CostType = new string('T', 51)
             }));
         Assert.Contains("50 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddCostAsync_AcceptsCostTypeAt50Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "C", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var costId = await service.AddCostAsync(new JobCost
+        {
+            JobId = job.Id,
+            Amount = 10m,
+            Description = "Ok",
+            CostType = new string('T', 50)
+        });
+        var cost = await db.Set<JobCost>().FirstAsync(c => c.Id == costId);
+        Assert.Equal(50, cost.CostType!.Length);
     }
 
     [Fact]
@@ -569,6 +610,27 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddLaborAsync_AcceptsDescriptionAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var laborId = await service.AddLaborAsync(new JobLabor
+        {
+            JobId = job.Id,
+            Hours = 4,
+            HourlyRate = 100m,
+            Description = new string('L', 500)
+        });
+        var labor = await db.Set<JobLabor>().FirstAsync(l => l.Id == laborId);
+        Assert.Equal(500, labor.Description!.Length);
+    }
+
+    [Fact]
     public async Task JobService_AddLaborAsync_RejectsTechnicianTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -587,6 +649,27 @@ public class JobTests
                 Technician = new string('T', 201)
             }));
         Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task JobService_AddLaborAsync_AcceptsTechnicianAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var laborId = await service.AddLaborAsync(new JobLabor
+        {
+            JobId = job.Id,
+            Hours = 4,
+            HourlyRate = 100m,
+            Technician = new string('T', 200)
+        });
+        var labor = await db.Set<JobLabor>().FirstAsync(l => l.Id == laborId);
+        Assert.Equal(200, labor.Technician!.Length);
     }
 
     [Fact]

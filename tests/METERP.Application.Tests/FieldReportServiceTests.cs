@@ -297,6 +297,64 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_AcceptsHoursAt24()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Hrs Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Long day",
+                QuotedTotal = 1000m
+            });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 24m
+            });
+            Assert.NotEqual(Guid.Empty, reportId);
+            var saved = await db.Set<FieldReport>().FirstAsync(r => r.Id == reportId);
+            Assert.Equal(24m, saved.HoursWorked);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_AcceptsTravelCostAt1_000_000()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Travel Co" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Remote",
+                QuotedTotal = 1000m
+            });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                TravelCost = 1_000_000m
+            });
+            Assert.NotEqual(Guid.Empty, reportId);
+            var saved = await db.Set<FieldReport>().FirstAsync(r => r.Id == reportId);
+            Assert.Equal(1_000_000m, saved.TravelCost);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_ThrowsWhenHoursOver24()
     {
         var tenantId = Guid.NewGuid();

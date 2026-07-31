@@ -128,6 +128,20 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_AcceptsTitleAt200Characters()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            var id = await service.UploadAsync(
+                "COID", new string('T', 200), "a.pdf", content, "application/pdf", true, null, null);
+            var doc = await db.Set<CompanyDocument>().FirstAsync(d => d.Id == id);
+            Assert.Equal(200, doc.Title.Length);
+        }
+    }
+
+    [Fact]
     public async Task UploadAsync_RejectsNotesTooLong()
     {
         var (service, db, _, _) = Create();
@@ -149,6 +163,20 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_AcceptsNotesAt500Characters()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            var id = await service.UploadAsync(
+                "COID", "Policy", "a.pdf", content, "application/pdf", true, null, new string('N', 500));
+            var doc = await db.Set<CompanyDocument>().FirstAsync(d => d.Id == id);
+            Assert.Equal(500, doc.Notes!.Length);
+        }
+    }
+
+    [Fact]
     public async Task UploadAsync_RejectsFileNameTooLong()
     {
         var (service, db, _, _) = Create();
@@ -166,6 +194,28 @@ public class CompanyDocumentServiceTests
                     null,
                     null));
             Assert.Contains("255 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task UploadAsync_AcceptsFileNameAt255Characters()
+    {
+        var (service, db, tenantId, storage) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            var fileName = new string('F', 251) + ".pdf"; // 255
+            var id = await service.UploadAsync(
+                "COID", "Policy", fileName, content, "application/pdf", true, null, null);
+            Assert.NotEqual(Guid.Empty, id);
+            // Storage mock returns a fixed stored name; service validates the inbound name before save.
+            storage.Verify(s => s.SaveAsync(
+                tenantId,
+                "company-docs",
+                fileName,
+                It.IsAny<Stream>(),
+                "application/pdf",
+                It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 

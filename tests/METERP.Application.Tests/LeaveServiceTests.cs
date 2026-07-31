@@ -743,6 +743,39 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task SubmitRequestAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-REASON-OK",
+                FirstName = "Reason",
+                LastName = "Ok",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(1),
+                EndDate = DateTime.UtcNow.Date.AddDays(2),
+                IsPaid = false,
+                Reason = new string('R', 500)
+            });
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(500, saved.Reason!.Length);
+        }
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_RejectsReasonTooLong()
     {
         var (service, db, tenantId) = Create();

@@ -201,6 +201,53 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task WithdrawFromApprovalAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-WD-LONG",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.WithdrawFromApprovalAsync(quote.Id, Guid.NewGuid(), new string('W', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task WithdrawFromApprovalAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-WD-OK",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.WithdrawFromApprovalAsync(quote.Id, Guid.NewGuid(), new string('W', 500));
+            var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(QuoteApprovalStatus.None, saved.ApprovalStatus);
+            Assert.Equal(500, saved.ExecutiveRejectionReason!.Length);
+        }
+    }
+
+    [Fact]
     public async Task WithdrawFromApprovalAsync_ReturnsToNoneAndAllowsLineEdits()
     {
         var (service, db, tenantId, customer) = Create();

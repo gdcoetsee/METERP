@@ -68,6 +68,24 @@ public class DocumentSequenceServiceTests
     }
 
     [Fact]
+    public async Task GetNextNumberAsync_AcceptsDocumentTypeAt50Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"seq-{Guid.NewGuid():N}")
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, new TestCurrentUser());
+        var service = new DocumentSequenceService(db, tenantProvider.Object);
+
+        var number = await service.GetNextNumberAsync(new string('D', 50), "Q");
+        Assert.StartsWith("Q-", number);
+    }
+
+    [Fact]
     public async Task GetNextNumberAsync_RejectsPrefixTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -84,6 +102,25 @@ public class DocumentSequenceServiceTests
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.GetNextNumberAsync("Quote", new string('P', 21)));
         Assert.Contains("20 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetNextNumberAsync_AcceptsPrefixAt20Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"seq-{Guid.NewGuid():N}")
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, new TestCurrentUser());
+        var service = new DocumentSequenceService(db, tenantProvider.Object);
+
+        var prefix = new string('P', 20);
+        var number = await service.GetNextNumberAsync("Quote", prefix);
+        Assert.StartsWith(prefix + "-", number);
     }
 
     [Fact]

@@ -123,6 +123,21 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task AddMaintenanceNoteAsync_AcceptsNoteAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "TRF-OK" });
+
+        await service.AddMaintenanceNoteAsync(id, new string('N', 500));
+        var asset = await service.GetByIdAsync(id);
+        Assert.Contains(new string('N', 500), asset!.Notes);
+    }
+
+    [Fact]
     public async Task AddMaintenanceNoteAsync_ThrowsWhenNoteTooLong()
     {
         var tenantId = Guid.NewGuid();
