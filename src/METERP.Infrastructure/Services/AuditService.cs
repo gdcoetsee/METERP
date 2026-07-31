@@ -32,13 +32,27 @@ public class AuditService : IAuditService
         if (string.IsNullOrWhiteSpace(entityReference))
             entityReference = "—";
 
+        action = action.Trim();
+        entityType = entityType.Trim();
+        entityReference = entityReference.Trim();
+        details ??= string.Empty;
+
+        if (action.Length > 50)
+            action = action[..50];
+        if (entityType.Length > 100)
+            entityType = entityType[..100];
+        if (entityReference.Length > 200)
+            entityReference = entityReference[..200];
+        if (details.Length > 4000)
+            details = details[..4000];
+
         var entry = new AuditLogEntry
         {
             UserEmail = _currentUser?.UserName ?? _currentUser?.UserId?.ToString() ?? "system",
-            Action = action.Trim(),
-            EntityType = entityType.Trim(),
-            EntityReference = entityReference.Trim(),
-            Details = details ?? string.Empty,
+            Action = action,
+            EntityType = entityType,
+            EntityReference = entityReference,
+            Details = details,
             OccurredAtUtc = DateTime.UtcNow
         };
 

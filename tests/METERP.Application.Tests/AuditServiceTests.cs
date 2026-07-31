@@ -44,6 +44,27 @@ public class AuditServiceTests
     }
 
     [Fact]
+    public async Task LogAsync_TruncatesOversizedFields()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateContext(tenantId);
+        var service = new AuditService(db, new Mock<ICurrentUserService>().Object);
+
+        await service.LogAsync(
+            new string('A', 80),
+            new string('E', 150),
+            new string('R', 250),
+            new string('D', 5000));
+
+        var rows = await service.GetRecentAsync();
+        var row = Assert.Single(rows);
+        Assert.Equal(50, row.Action.Length);
+        Assert.Equal(100, row.EntityType.Length);
+        Assert.Equal(200, row.EntityReference.Length);
+        Assert.Equal(4000, row.Details.Length);
+    }
+
+    [Fact]
     public async Task SearchAsync_FiltersByEntityType()
     {
         var tenantId = Guid.NewGuid();
