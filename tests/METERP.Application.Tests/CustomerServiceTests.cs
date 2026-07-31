@@ -69,6 +69,17 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Customer { Name = "Note Co", Notes = new string('N', 2001) }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenNameTooLong()
     {
         var tenantId = Guid.NewGuid();

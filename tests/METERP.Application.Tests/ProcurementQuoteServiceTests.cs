@@ -146,6 +146,18 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_ThrowsWhenNotesTooLong()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 100m, new string('N', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenSupplierInactive()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

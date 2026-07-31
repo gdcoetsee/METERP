@@ -76,6 +76,12 @@ public class CustomerService : ICustomerService
         }
         if (!string.IsNullOrWhiteSpace(customer.Phone))
             customer.Phone = customer.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(customer.Notes))
+        {
+            customer.Notes = customer.Notes.Trim();
+            if (customer.Notes.Length > 2000)
+                throw new InvalidOperationException("Customer notes cannot exceed 2000 characters.");
+        }
 
         var nameTaken = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Name == customer.Name, ct);
@@ -112,6 +118,12 @@ public class CustomerService : ICustomerService
         }
         if (!string.IsNullOrWhiteSpace(customer.Phone))
             customer.Phone = customer.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(customer.Notes))
+        {
+            customer.Notes = customer.Notes.Trim();
+            if (customer.Notes.Length > 2000)
+                throw new InvalidOperationException("Customer notes cannot exceed 2000 characters.");
+        }
 
         var nameTaken = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Name == customer.Name && c.Id != customer.Id, ct);

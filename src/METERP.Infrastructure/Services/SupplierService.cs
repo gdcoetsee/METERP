@@ -77,6 +77,12 @@ public class SupplierService : ISupplierService
         }
         if (!string.IsNullOrWhiteSpace(supplier.Phone))
             supplier.Phone = supplier.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(supplier.Notes))
+        {
+            supplier.Notes = supplier.Notes.Trim();
+            if (supplier.Notes.Length > 2000)
+                throw new InvalidOperationException("Supplier notes cannot exceed 2000 characters.");
+        }
 
         var nameTaken = await _dbContext.Set<Supplier>()
             .AnyAsync(s => s.Name == supplier.Name && s.IsActive, ct);
@@ -113,6 +119,12 @@ public class SupplierService : ISupplierService
         }
         if (!string.IsNullOrWhiteSpace(supplier.Phone))
             supplier.Phone = supplier.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(supplier.Notes))
+        {
+            supplier.Notes = supplier.Notes.Trim();
+            if (supplier.Notes.Length > 2000)
+                throw new InvalidOperationException("Supplier notes cannot exceed 2000 characters.");
+        }
 
         var nameTaken = await _dbContext.Set<Supplier>()
             .AnyAsync(s => s.Name == supplier.Name && s.Id != supplier.Id && s.IsActive, ct);

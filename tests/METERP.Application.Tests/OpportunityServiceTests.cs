@@ -165,6 +165,23 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "Note deal",
+                Value = 1000m,
+                Notes = new string('N', 2001)
+            }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenExpectedCloseTooFarFuture()
     {
         var tenantId = Guid.NewGuid();

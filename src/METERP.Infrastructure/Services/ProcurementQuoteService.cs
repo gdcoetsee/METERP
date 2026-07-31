@@ -65,11 +65,19 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             throw new InvalidOperationException(
                 $"Supplier '{supplier.Name}' already has a quote on this requisition. Update or select it instead.");
 
+        string? quoteNotes = null;
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            quoteNotes = notes.Trim();
+            if (quoteNotes.Length > 500)
+                throw new InvalidOperationException("Quote notes cannot exceed 500 characters.");
+        }
+
         var quote = new ProcurementSupplierQuote
         {
             StockRequisitionId = requisitionId,
             SupplierId = supplierId,
-            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            Notes = quoteNotes,
             QuotedAt = DateTime.UtcNow
         };
 

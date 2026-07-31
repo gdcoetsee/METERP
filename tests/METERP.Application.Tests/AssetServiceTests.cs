@@ -225,6 +225,26 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Panel",
+                Notes = new string('N', 2001)
+            }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenCustomerMissing()
     {
         var tenantId = Guid.NewGuid();

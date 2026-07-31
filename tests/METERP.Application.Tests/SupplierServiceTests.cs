@@ -42,6 +42,18 @@ public class SupplierServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNotesTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Supplier { Name = "Note Supplier", Notes = new string('N', 2001) }));
+        Assert.Contains("2000 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task GetAllAsync_ExcludesInactiveSuppliers()
     {
         var tenantId = Guid.NewGuid();

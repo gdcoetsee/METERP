@@ -101,6 +101,12 @@ public class OpportunityService : IOpportunityService
         opportunity.Title = opportunity.Title.Trim();
         if (opportunity.Title.Length > 200)
             throw new InvalidOperationException("Opportunity title cannot exceed 200 characters.");
+        if (!string.IsNullOrWhiteSpace(opportunity.Notes))
+        {
+            opportunity.Notes = opportunity.Notes.Trim();
+            if (opportunity.Notes.Length > 2000)
+                throw new InvalidOperationException("Opportunity notes cannot exceed 2000 characters.");
+        }
         if (opportunity.ExpectedClose == default)
             opportunity.ExpectedClose = DateTime.UtcNow.Date.AddDays(30);
         else
@@ -150,6 +156,12 @@ public class OpportunityService : IOpportunityService
         opportunity.Title = opportunity.Title.Trim();
         if (opportunity.Title.Length > 200)
             throw new InvalidOperationException("Opportunity title cannot exceed 200 characters.");
+        if (!string.IsNullOrWhiteSpace(opportunity.Notes))
+        {
+            opportunity.Notes = opportunity.Notes.Trim();
+            if (opportunity.Notes.Length > 2000)
+                throw new InvalidOperationException("Opportunity notes cannot exceed 2000 characters.");
+        }
         if (opportunity.ExpectedClose != default)
         {
             opportunity.ExpectedClose = opportunity.ExpectedClose.Date;
