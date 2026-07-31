@@ -67,6 +67,8 @@ public class SupplierService : ISupplierService
             throw new InvalidOperationException("Supplier name is required.");
 
         supplier.Name = supplier.Name.Trim();
+        if (supplier.Name.Length > 200)
+            throw new InvalidOperationException("Supplier name cannot exceed 200 characters.");
         if (!string.IsNullOrWhiteSpace(supplier.Email))
         {
             supplier.Email = supplier.Email.Trim();
@@ -101,6 +103,8 @@ public class SupplierService : ISupplierService
             throw new InvalidOperationException("Supplier name is required.");
 
         supplier.Name = supplier.Name.Trim();
+        if (supplier.Name.Length > 200)
+            throw new InvalidOperationException("Supplier name cannot exceed 200 characters.");
         if (!string.IsNullOrWhiteSpace(supplier.Email))
         {
             supplier.Email = supplier.Email.Trim();

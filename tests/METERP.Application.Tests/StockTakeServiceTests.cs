@@ -66,6 +66,28 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task RecordCountAsync_ThrowsWhenCountedQuantityTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        using (db)
+        {
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "STK-HI",
+                Name = "Widget",
+                QuantityOnHand = 10,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordCountAsync(sessionId, itemId, 1_000_001m));
+            Assert.Contains("1,000,000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task StartSessionAsync_ThrowsWhenNoActiveItems()
     {
         var tenantId = Guid.NewGuid();

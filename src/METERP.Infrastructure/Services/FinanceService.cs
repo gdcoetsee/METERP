@@ -91,6 +91,10 @@ public class FinanceService : IFinanceService
 
         account.AccountCode = account.AccountCode.Trim();
         account.Name = account.Name.Trim();
+        if (account.AccountCode.Length > 20)
+            throw new InvalidOperationException("Account code cannot exceed 20 characters.");
+        if (account.Name.Length > 200)
+            throw new InvalidOperationException("Account name cannot exceed 200 characters.");
 
         var duplicate = await _dbContext.Set<Account>()
             .AnyAsync(a => a.AccountCode == account.AccountCode, ct);

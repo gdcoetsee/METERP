@@ -90,6 +90,8 @@ public sealed class StockTakeService : IStockTakeService
     {
         if (countedQuantity < 0)
             throw new InvalidOperationException("Counted quantity cannot be negative.");
+        if (countedQuantity > 1_000_000m)
+            throw new InvalidOperationException("Counted quantity cannot exceed 1,000,000.");
 
         var line = await _dbContext.Set<StockTakeLine>()
             .FirstOrDefaultAsync(l => l.StockTakeSessionId == sessionId && l.InventoryItemId == inventoryItemId, ct);
