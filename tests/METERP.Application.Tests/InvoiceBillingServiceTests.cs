@@ -307,6 +307,33 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_RejectsNotesTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-NOTE",
+                Status = InvoiceStatus.Sent,
+                Subtotal = 500m,
+                Tax = 0m,
+                Total = 500m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date, null, null, new string('N', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsReferenceTooLong()
     {
         var (service, db, tenantId) = Create();
