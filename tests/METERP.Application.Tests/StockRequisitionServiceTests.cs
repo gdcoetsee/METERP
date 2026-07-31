@@ -698,6 +698,35 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_NonCatalogLine_AcceptsDescriptionAt500Characters()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, _) = await SeedJobAndItemAsync(db, tenantId);
+
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = null,
+                        Description = new string('X', 500),
+                        QuantityRequested = 1,
+                        EstimatedUnitCost = 10m
+                    }
+                ]
+            });
+            var line = await db.Set<StockRequisitionLine>().FirstAsync(l => l.StockRequisitionId == id);
+            Assert.Equal(500, line.Description!.Length);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_RejectsNegativeEstimatedUnitCost()
     {
         var (service, db, tenantId, _) = Create();
