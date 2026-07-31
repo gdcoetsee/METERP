@@ -655,6 +655,27 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task CancelAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.CancelAsync(id, Guid.NewGuid(), new string('C', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_RejectsEstimatedUnitCostTooHigh()
     {
         var (service, db, tenantId, _) = Create();
