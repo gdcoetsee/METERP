@@ -170,6 +170,26 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_RejectsEmptyFileName()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UploadAsync(
+                    "COID",
+                    "Policy",
+                    "  ",
+                    content,
+                    "application/pdf",
+                    true,
+                    null,
+                    null));
+        }
+    }
+
+    [Fact]
     public async Task UploadAsync_RejectsDuplicateTypeAndTitle()
     {
         var (service, db, _, _) = Create();
