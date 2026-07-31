@@ -204,4 +204,15 @@ public class TwoFactorAuthServiceTests
 
         Assert.False(await h.Service.VerifyCodeAsync(h.User.Id, "123456789"));
     }
+
+    [Fact]
+    public async Task VerifyCode_ReturnsFalse_ForTooShortCode()
+    {
+        using var h = new Harness();
+        await h.Service.BeginSetupAsync(h.User.Id);
+        var rawKey = (await h.UserManager.GetAuthenticatorKeyAsync(h.User))!;
+        await h.Service.ConfirmSetupAsync(h.User.Id, ComputeTotp(rawKey));
+
+        Assert.False(await h.Service.VerifyCodeAsync(h.User.Id, "12345"));
+    }
 }
