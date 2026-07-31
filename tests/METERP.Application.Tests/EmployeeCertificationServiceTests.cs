@@ -113,6 +113,43 @@ public class EmployeeCertificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsTypeAt100Characters()
+    {
+        var (service, db, _, employee) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new EmployeeCertification
+            {
+                EmployeeId = employee.Id,
+                CertificationType = new string('T', 100),
+                NoExpiry = true
+            });
+            var saved = await db.Set<EmployeeCertification>().FirstAsync(c => c.Id == id);
+            Assert.Equal(100, saved.CertificationType.Length);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_RejectsInactiveEmployee()
+    {
+        var (service, db, tenantId, employee) = Create();
+        await using (db)
+        {
+            employee.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new EmployeeCertification
+                {
+                    EmployeeId = employee.Id,
+                    CertificationType = "First Aid",
+                    NoExpiry = true
+                }));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsTypeTooLong()
     {
         var (service, db, _, employee) = Create();
