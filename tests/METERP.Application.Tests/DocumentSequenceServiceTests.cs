@@ -31,6 +31,24 @@ public class DocumentSequenceServiceTests
     }
 
     [Fact]
+    public async Task GetNextNumberAsync_RejectsEmptyDocumentType()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"seq-{Guid.NewGuid():N}")
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, new TestCurrentUser());
+        var service = new DocumentSequenceService(db, tenantProvider.Object);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.GetNextNumberAsync("  ", "Q"));
+    }
+
+    [Fact]
     public async Task GetNextNumberAsync_RejectsDocumentTypeTooLong()
     {
         var tenantId = Guid.NewGuid();
