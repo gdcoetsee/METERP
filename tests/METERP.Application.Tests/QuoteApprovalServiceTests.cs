@@ -153,6 +153,30 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveRejectAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-REJ-OK",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), new string('R', 500));
+            var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(QuoteApprovalStatus.Rejected, saved.ApprovalStatus);
+            Assert.Equal(500, saved.ExecutiveRejectionReason!.Length);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveRejectAsync_RequiresReason()
     {
         var (service, db, tenantId, customer) = Create();

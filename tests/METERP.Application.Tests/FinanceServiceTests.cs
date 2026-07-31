@@ -408,6 +408,31 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task PostJournalAsync_AcceptsDescriptionAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var id = await service.PostJournalAsync(new JournalEntry
+        {
+            TenantId = tenantId,
+            Description = new string('D', 500),
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+            }
+        });
+        var saved = await db.Set<JournalEntry>().FirstAsync(e => e.Id == id);
+        Assert.Equal(500, saved.Description!.Length);
+    }
+
+    [Fact]
     public async Task PostJournalAsync_ThrowsWhenLineMemoTooLong()
     {
         var tenantId = Guid.NewGuid();
@@ -429,6 +454,55 @@ public class FinanceServiceTests
                 }
             }));
         Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task PostJournalAsync_AcceptsLineMemoAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var id = await service.PostJournalAsync(new JournalEntry
+        {
+            TenantId = tenantId,
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m, Memo = new string('M', 500) },
+                new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+            }
+        });
+        var line = await db.Set<JournalEntryLine>().FirstAsync(l => l.JournalEntryId == id && l.Debit > 0);
+        Assert.Equal(500, line.Memo!.Length);
+    }
+
+    [Fact]
+    public async Task PostJournalAsync_AcceptsReferenceAt100Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var cash = new Account { TenantId = tenantId, AccountCode = "1000", Name = "Cash", Type = AccountType.Asset };
+        var revenue = new Account { TenantId = tenantId, AccountCode = "4000", Name = "Revenue", Type = AccountType.Revenue };
+        db.Set<Account>().AddRange(cash, revenue);
+        await db.SaveChangesAsync();
+
+        var service = new FinanceService(db);
+        var id = await service.PostJournalAsync(new JournalEntry
+        {
+            TenantId = tenantId,
+            Reference = new string('R', 100),
+            Lines =
+            {
+                new JournalEntryLine { TenantId = tenantId, AccountId = cash.Id, Debit = 10m },
+                new JournalEntryLine { TenantId = tenantId, AccountId = revenue.Id, Credit = 10m }
+            }
+        });
+        var saved = await db.Set<JournalEntry>().FirstAsync(e => e.Id == id);
+        Assert.Equal(100, saved.Reference!.Length);
     }
 
     [Fact]

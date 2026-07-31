@@ -307,6 +307,39 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task CreateCreditNoteAsync_AcceptsReasonAt500Characters()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-CN-OK",
+                Status = InvoiceStatus.Sent,
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            var credit = await service.CreateCreditNoteAsync(source.Id, new string('R', 500));
+            Assert.Equal(InvoiceDocumentType.CreditNote, credit.DocumentType);
+            Assert.Equal(500, credit.Notes!.Length);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsNotesTooLong()
     {
         var (service, db, tenantId) = Create();

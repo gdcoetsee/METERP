@@ -411,6 +411,25 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task RecordStockTransactionAsync_AcceptsReferenceAt100Characters()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "REF-OK",
+            Name = "Item",
+            QuantityOnHand = 10,
+            UnitCost = 1m,
+            IsActive = true
+        });
+
+        await service.RecordStockTransactionAsync(id, 1, StockTransactionType.Receipt, reference: new string('R', 100));
+        var tx = (await service.GetRecentTransactionsAsync(1)).First();
+        Assert.Equal(100, tx.Reference!.Length);
+    }
+
+    [Fact]
     public async Task RecordStockTransactionAsync_RejectsNotesTooLong()
     {
         using var db = CreateContext();
@@ -427,6 +446,25 @@ public class InventoryServiceTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.RecordStockTransactionAsync(id, 1, StockTransactionType.Receipt, notes: new string('N', 501)));
         Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task RecordStockTransactionAsync_AcceptsNotesAt500Characters()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "NOTE-OK",
+            Name = "Item",
+            QuantityOnHand = 10,
+            UnitCost = 1m,
+            IsActive = true
+        });
+
+        await service.RecordStockTransactionAsync(id, 1, StockTransactionType.Receipt, notes: new string('N', 500));
+        var tx = (await service.GetRecentTransactionsAsync(1)).First();
+        Assert.Equal(500, tx.Notes!.Length);
     }
 
     [Fact]

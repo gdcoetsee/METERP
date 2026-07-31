@@ -696,6 +696,31 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task ReceiveAsync_AcceptsDeliveryNoteAt100Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "S", IsActive = true });
+            await db.SaveChangesAsync();
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                Status = PurchaseOrderStatus.Draft,
+                TaxRate = 0m,
+                Lines = [new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 10m }]
+            });
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            var grv = await service.ReceiveAsync(poId, TestUserId, new string('D', 100));
+            Assert.NotNull(grv);
+            Assert.Equal(100, grv!.SupplierDeliveryNote!.Length);
+        }
+    }
+
+    [Fact]
     public async Task ReceiveAsync_RejectsLineQuantityTooHigh()
     {
         var tenantId = Guid.NewGuid();

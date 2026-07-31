@@ -374,6 +374,29 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task CancelSessionAsync_AcceptsReasonAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "C-OK",
+                Name = "Cancel ok",
+                QuantityOnHand = 1,
+                ReorderLevel = 0,
+                UnitCost = 1m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+            Assert.True(await service.CancelSessionAsync(sessionId, TestUserId, new string('R', 500)));
+            var session = await service.GetByIdAsync(sessionId);
+            Assert.Equal(StockTakeStatus.Cancelled, session!.Status);
+        }
+    }
+
+    [Fact]
     public async Task StartSessionAsync_AcceptsNotesAt500Characters()
     {
         var tenantId = Guid.NewGuid();
