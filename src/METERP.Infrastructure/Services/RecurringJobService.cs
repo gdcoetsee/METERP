@@ -72,6 +72,8 @@ public sealed class RecurringJobService : IRecurringJobService
             : schedule.NextRunDate.Date;
         if (schedule.NextRunDate > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Next run date cannot be more than 2 years in the future.");
+        if (schedule.NextRunDate < DateTime.UtcNow.Date.AddYears(-1))
+            throw new InvalidOperationException("Next run date cannot be more than 1 year in the past.");
 
         _dbContext.Set<RecurringJobSchedule>().Add(schedule);
         await _dbContext.SaveChangesAsync(ct);
@@ -126,6 +128,8 @@ public sealed class RecurringJobService : IRecurringJobService
             : schedule.NextRunDate.Date;
         if (existing.NextRunDate > DateTime.UtcNow.Date.AddYears(2))
             throw new InvalidOperationException("Next run date cannot be more than 2 years in the future.");
+        if (existing.NextRunDate < DateTime.UtcNow.Date.AddYears(-1))
+            throw new InvalidOperationException("Next run date cannot be more than 1 year in the past.");
         existing.DefaultQuotedTotal = schedule.DefaultQuotedTotal;
         existing.IsActive = schedule.IsActive;
 

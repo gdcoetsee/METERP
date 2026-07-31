@@ -56,6 +56,8 @@ public sealed class PpeIssueService : IPpeIssueService
     {
         if (quantity <= 0)
             throw new InvalidOperationException("Quantity must be positive.");
+        if (quantity > 1000m)
+            throw new InvalidOperationException("PPE issue quantity cannot exceed 1000 in a single transaction.");
 
         var employee = await _dbContext.Set<Employee>().FirstOrDefaultAsync(e => e.Id == employeeId && e.IsActive, ct);
         if (employee == null)
@@ -156,6 +158,8 @@ public sealed class PpeIssueService : IPpeIssueService
     {
         if (quantity <= 0)
             throw new InvalidOperationException("Return quantity must be positive.");
+        if (quantity > 1000m)
+            throw new InvalidOperationException("PPE return quantity cannot exceed 1000 in a single transaction.");
 
         var issue = await _dbContext.Set<EmployeePpeIssue>()
             .Include(i => i.InventoryItem)

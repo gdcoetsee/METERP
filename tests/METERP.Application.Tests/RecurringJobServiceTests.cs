@@ -29,6 +29,30 @@ public class RecurringJobServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNextRunTooFarPast()
+    {
+        var (db, service, _, tenantId) = Create();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Maint Co" });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new RecurringJobSchedule
+                {
+                    TenantId = tenantId,
+                    CustomerId = customerId,
+                    Title = "Old schedule",
+                    IntervalDays = 30,
+                    NextRunDate = DateTime.UtcNow.Date.AddYears(-2),
+                    DefaultQuotedTotal = 1000m
+                }));
+            Assert.Contains("past", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ProcessDueAsync_SpawnsJobAndAdvancesNextRunDate()
     {
         var (db, service, jobs, tenantId) = Create();

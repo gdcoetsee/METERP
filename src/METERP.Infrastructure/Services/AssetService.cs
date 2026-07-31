@@ -80,6 +80,8 @@ public class AssetService : IAssetService
             asset.AssetType = asset.AssetType.Trim();
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
             asset.SerialNumber = asset.SerialNumber.Trim();
+        if (!string.IsNullOrWhiteSpace(asset.Location))
+            asset.Location = asset.Location.Trim();
 
         if (string.IsNullOrWhiteSpace(asset.AssetNumber))
         {
@@ -123,6 +125,10 @@ public class AssetService : IAssetService
         asset.AssetNumber = existing.AssetNumber;
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
             asset.SerialNumber = asset.SerialNumber.Trim();
+        if (!string.IsNullOrWhiteSpace(asset.Location))
+            asset.Location = asset.Location.Trim();
+        if (!string.IsNullOrWhiteSpace(asset.AssetType))
+            asset.AssetType = asset.AssetType.Trim();
 
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber)
             && !string.Equals(asset.SerialNumber, existing.SerialNumber, StringComparison.Ordinal))

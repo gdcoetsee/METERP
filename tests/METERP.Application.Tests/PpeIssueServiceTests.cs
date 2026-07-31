@@ -195,6 +195,38 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task IssueToEmployeeAsync_ThrowsWhenQuantityExceedsCap()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "EMP-CAP",
+                FirstName = "A",
+                LastName = "B",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            var item = new InventoryItem
+            {
+                TenantId = tenantId,
+                Sku = "PPE-CAP",
+                Name = "Gloves",
+                QuantityOnHand = 5000,
+                IsActive = true
+            };
+            db.Set<InventoryItem>().Add(item);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.IssueToEmployeeAsync(employee.Id, item.Id, 1001m, Guid.NewGuid()));
+            Assert.Contains("1000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task GetHistoryAsync_FiltersByEmployee()
     {
         var (service, db, tenantId, _) = Create();
