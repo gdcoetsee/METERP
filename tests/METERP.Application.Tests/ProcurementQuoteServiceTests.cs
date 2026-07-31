@@ -170,6 +170,23 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_ThrowsWhenJobClosed()
+    {
+        var (db, quotes, _, tenantId, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var req = await db.Set<StockRequisition>().FirstAsync(r => r.Id == reqId);
+            var job = await db.Set<Job>().FirstAsync(j => j.Id == req.JobId);
+            job.Status = JobStatus.Closed;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 100m));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenSupplierInactive()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

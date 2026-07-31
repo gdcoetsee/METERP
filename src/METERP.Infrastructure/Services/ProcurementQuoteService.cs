@@ -56,6 +56,8 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         if (req.PurchaseOrderId.HasValue)
             throw new InvalidOperationException("A purchase order already exists for this requisition.");
 
+        await EnsureRequisitionJobOpenAsync(req, ct);
+
         var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId && s.IsActive, ct)
             ?? throw new InvalidOperationException("Supplier not found or inactive.");
 
@@ -153,6 +155,8 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         if (req.Status is not (RequisitionStatus.AwaitingProcurement or RequisitionStatus.ProcurementOrdered))
             throw new InvalidOperationException("Quotes can only be selected while the requisition awaits procurement.");
 
+        await EnsureRequisitionJobOpenAsync(req, ct);
+
         var siblings = await _dbContext.Set<ProcurementSupplierQuote>()
             .Where(q => q.StockRequisitionId == quote.StockRequisitionId)
             .ToListAsync(ct);
@@ -198,6 +202,10 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             throw new InvalidOperationException(
                 "Selected supplier quote total must be greater than zero before creating a PO.");
 
+        var req = await _dbContext.Set<StockRequisition>().FirstOrDefaultAsync(r => r.Id == requisitionId, ct)
+            ?? throw new InvalidOperationException("Requisition not found.");
+        await EnsureRequisitionJobOpenAsync(req, ct);
+
         var poId = await _purchaseOrders.CreateFromRequisitionAsync(requisitionId, selected.SupplierId, ct);
 
         if (selected.Lines.Count > 0)
@@ -242,5 +250,15 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         po.Tax = Math.Round(po.Subtotal * po.TaxRate, 2);
         po.Total = po.Subtotal + po.Tax;
         await _dbContext.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsureRequisitionJobOpenAsync(StockRequisition req, CancellationToken ct)
+    {
+        var job = await _dbContext.Set<Job>().AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
+        if (job == null)
+            throw new InvalidOperationException("Job not found for this requisition.");
+        if (!job.IsOpenForOperations())
+            throw JobClosedException.ForJob(job.JobNumber);
     }
 }
