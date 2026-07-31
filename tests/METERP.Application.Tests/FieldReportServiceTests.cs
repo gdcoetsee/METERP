@@ -568,4 +568,26 @@ public class FieldReportServiceTests
             Assert.Contains("500 characters", ex.Message);
         }
     }
+
+    [Fact]
+    public async Task RejectAsync_AcceptsReasonAt500Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 1000m });
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 2m
+            });
+
+            Assert.True(await service.RejectAsync(reportId, TestUserId, new string('R', 500)));
+        }
+    }
 }
