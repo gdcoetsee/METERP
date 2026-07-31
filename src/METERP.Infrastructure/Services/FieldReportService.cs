@@ -69,6 +69,8 @@ public sealed class FieldReportService : IFieldReportService
             throw new InvalidOperationException("Hours and travel cost cannot be negative.");
         if (report.HoursWorked > 24m)
             throw new InvalidOperationException("Hours worked cannot exceed 24 in a single field report.");
+        if (report.TravelCost > 1_000_000m)
+            throw new InvalidOperationException("Travel cost cannot exceed 1,000,000 on a field report.");
 
         report.WorkDate = report.WorkDate == default ? DateTime.UtcNow.Date : report.WorkDate.Date;
         if (report.WorkDate > DateTime.UtcNow.Date.AddDays(1))

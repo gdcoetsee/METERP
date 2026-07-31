@@ -52,6 +52,8 @@ public sealed class RecurringJobService : IRecurringJobService
 
         if (schedule.DefaultQuotedTotal < 0)
             throw new InvalidOperationException("Default quoted total cannot be negative.");
+        if (schedule.DefaultQuotedTotal > 100_000_000m)
+            throw new InvalidOperationException("Default quoted total cannot exceed 100,000,000.");
 
         var customerExists = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Id == schedule.CustomerId, ct);
@@ -101,6 +103,8 @@ public sealed class RecurringJobService : IRecurringJobService
             throw new InvalidOperationException("Interval cannot exceed 10 years (3650 days).");
         if (schedule.DefaultQuotedTotal < 0)
             throw new InvalidOperationException("Default quoted total cannot be negative.");
+        if (schedule.DefaultQuotedTotal > 100_000_000m)
+            throw new InvalidOperationException("Default quoted total cannot exceed 100,000,000.");
 
         var existing = await _dbContext.Set<RecurringJobSchedule>()
             .FirstOrDefaultAsync(s => s.Id == schedule.Id, ct)

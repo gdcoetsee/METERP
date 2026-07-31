@@ -331,6 +331,32 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_RejectsAmountTooHigh()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-BIG",
+                Status = InvoiceStatus.Sent,
+                Total = 200_000_000m,
+                Lines = { new InvoiceLine { Description = "Work", Quantity = 1, UnitPrice = 200_000_000m } }
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(invoice.Id, 100_000_001m, DateTime.UtcNow.Date, null, null, null));
+            Assert.Contains("100,000,000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsFuturePaymentDate()
     {
         var (service, db, tenantId) = Create();

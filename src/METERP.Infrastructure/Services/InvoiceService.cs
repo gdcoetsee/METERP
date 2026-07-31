@@ -661,6 +661,8 @@ public class InvoiceService : IInvoiceService
     {
         if (amount <= 0)
             throw new InvalidOperationException("Payment amount must be positive.");
+        if (amount > 100_000_000m)
+            throw new InvalidOperationException("Payment amount cannot exceed 100,000,000.");
 
         paymentDate = paymentDate == default ? DateTime.UtcNow.Date : paymentDate.Date;
         if (paymentDate > DateTime.UtcNow.Date.AddDays(1))
