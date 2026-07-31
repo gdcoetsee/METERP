@@ -149,6 +149,27 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_RejectsFileNameTooLong()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content = new MemoryStream("x"u8.ToArray());
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UploadAsync(
+                    "COID",
+                    "Policy",
+                    new string('F', 256) + ".pdf",
+                    content,
+                    "application/pdf",
+                    true,
+                    null,
+                    null));
+            Assert.Contains("255 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task UploadAsync_RejectsDuplicateTypeAndTitle()
     {
         var (service, db, _, _) = Create();

@@ -54,6 +54,9 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
             throw new InvalidOperationException("Document type and title are required.");
         if (string.IsNullOrWhiteSpace(fileName))
             throw new InvalidOperationException("File name is required.");
+        fileName = fileName.Trim();
+        if (fileName.Length > 255)
+            throw new InvalidOperationException("File name cannot exceed 255 characters.");
         if (content is null || !content.CanRead)
             throw new InvalidOperationException("Document content stream is required.");
 
