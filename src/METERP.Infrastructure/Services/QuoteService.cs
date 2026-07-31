@@ -113,6 +113,15 @@ public class QuoteService : IQuoteService
                 ? await _documentSequence.GetNextNumberAsync("Quote", "Q", ct)
                 : $"Q-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
+        else
+        {
+            quote.QuoteNumber = quote.QuoteNumber.Trim();
+            var numberTaken = await _dbContext.Set<Quote>()
+                .AnyAsync(q => q.QuoteNumber == quote.QuoteNumber, ct);
+            if (numberTaken)
+                throw new InvalidOperationException(
+                    $"Quote number '{quote.QuoteNumber}' already exists.");
+        }
 
         quote.RecalculateTotals();
 

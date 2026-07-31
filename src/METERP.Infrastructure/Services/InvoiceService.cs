@@ -118,6 +118,15 @@ public class InvoiceService : IInvoiceService
                 ? await _documentSequence.GetNextNumberAsync("Invoice", "INV", ct)
                 : $"INV-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
+        else
+        {
+            invoice.InvoiceNumber = invoice.InvoiceNumber.Trim();
+            var numberTaken = await _dbContext.Set<Invoice>()
+                .AnyAsync(i => i.InvoiceNumber == invoice.InvoiceNumber, ct);
+            if (numberTaken)
+                throw new InvalidOperationException(
+                    $"Invoice number '{invoice.InvoiceNumber}' already exists.");
+        }
 
         invoice.RecalculateTotals();
 

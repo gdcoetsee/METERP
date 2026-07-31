@@ -107,6 +107,15 @@ public class PurchaseOrderService : IPurchaseOrderService
                 ? await _documentSequence.GetNextNumberAsync("PurchaseOrder", "PO", ct)
                 : $"PO-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
         }
+        else
+        {
+            po.PoNumber = po.PoNumber.Trim();
+            var numberTaken = await _dbContext.Set<PurchaseOrder>()
+                .AnyAsync(p => p.PoNumber == po.PoNumber, ct);
+            if (numberTaken)
+                throw new InvalidOperationException(
+                    $"Purchase order number '{po.PoNumber}' already exists.");
+        }
 
         RecalculateTotals(po);
 

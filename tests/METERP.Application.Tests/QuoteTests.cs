@@ -166,6 +166,35 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_ThrowsWhenQuoteNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Num Co" });
+        await db.SaveChangesAsync();
+        var service = new QuoteService(db, null);
+
+        await service.CreateAsync(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            QuoteNumber = "Q-DUP-1",
+            TaxRate = 0.15m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                QuoteNumber = "Q-DUP-1",
+                TaxRate = 0.15m
+            }));
+        Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task QuoteService_CreateAsync_ThrowsWhenGrossProfitPercentInvalid()
     {
         var tenantId = Guid.NewGuid();

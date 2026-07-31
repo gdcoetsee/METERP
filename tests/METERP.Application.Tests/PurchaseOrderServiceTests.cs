@@ -31,6 +31,35 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenPoNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Cable Co" });
+            await db.SaveChangesAsync();
+
+            await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                PoNumber = "PO-DUP-1",
+                TaxRate = 0m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new PurchaseOrder
+                {
+                    SupplierId = supplierId,
+                    PoNumber = "PO-DUP-1",
+                    TaxRate = 0m
+                }));
+            Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_AssignsPoNumber_AndRecalculatesTotals()
     {
         var tenantId = Guid.NewGuid();
