@@ -383,6 +383,24 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task CreateAccountAsync_AcceptsNameAt200Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var service = new FinanceService(db);
+
+        var id = await service.CreateAccountAsync(new Account
+        {
+            TenantId = tenantId,
+            AccountCode = "1998",
+            Name = new string('N', 200),
+            Type = AccountType.Asset
+        });
+        var saved = await db.Set<Account>().FirstAsync(a => a.Id == id);
+        Assert.Equal(200, saved.Name.Length);
+    }
+
+    [Fact]
     public async Task PostJournalAsync_ThrowsWhenDescriptionTooLong()
     {
         var tenantId = Guid.NewGuid();
