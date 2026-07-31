@@ -67,7 +67,15 @@ public class TenantService : ITenantService
         if (string.IsNullOrWhiteSpace(subdomain))
             throw new InvalidOperationException("Tenant subdomain is required.");
 
+        name = name.Trim();
+        if (name.Length > 200)
+            throw new InvalidOperationException("Tenant name cannot exceed 200 characters.");
+
         var normalizedSubdomain = subdomain.Trim().ToLowerInvariant();
+        if (normalizedSubdomain.Length < 2)
+            throw new InvalidOperationException("Subdomain must be at least 2 characters.");
+        if (normalizedSubdomain.Length > 63)
+            throw new InvalidOperationException("Subdomain cannot exceed 63 characters.");
         if (normalizedSubdomain.Any(c => !(char.IsLetterOrDigit(c) || c is '-' or '_')))
             throw new InvalidOperationException("Subdomain may only contain letters, digits, hyphens, and underscores.");
 
@@ -79,7 +87,7 @@ public class TenantService : ITenantService
 
         var tenant = new Tenant
         {
-            Name = name.Trim(),
+            Name = name,
             Subdomain = normalizedSubdomain,
             IsActive = true,
             Tier = SubscriptionTier.Starter,
@@ -106,7 +114,15 @@ public class TenantService : ITenantService
         if (string.IsNullOrWhiteSpace(tenant.Subdomain))
             throw new InvalidOperationException("Tenant subdomain is required.");
 
+        var name = tenant.Name.Trim();
+        if (name.Length > 200)
+            throw new InvalidOperationException("Tenant name cannot exceed 200 characters.");
+
         var normalizedSubdomain = tenant.Subdomain.Trim().ToLowerInvariant();
+        if (normalizedSubdomain.Length < 2)
+            throw new InvalidOperationException("Subdomain must be at least 2 characters.");
+        if (normalizedSubdomain.Length > 63)
+            throw new InvalidOperationException("Subdomain cannot exceed 63 characters.");
         if (normalizedSubdomain.Any(c => !(char.IsLetterOrDigit(c) || c is '-' or '_')))
             throw new InvalidOperationException("Subdomain may only contain letters, digits, hyphens, and underscores.");
 
@@ -116,7 +132,7 @@ public class TenantService : ITenantService
         if (taken)
             throw new InvalidOperationException($"Subdomain '{normalizedSubdomain}' is already in use.");
 
-        existing.Name = tenant.Name.Trim();
+        existing.Name = name;
         existing.Subdomain = normalizedSubdomain;
         existing.IsActive = tenant.IsActive;
         existing.Tier = tenant.Tier;

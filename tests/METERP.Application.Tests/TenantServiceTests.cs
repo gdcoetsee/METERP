@@ -166,6 +166,30 @@ public class TenantServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenNameTooLong()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new string('T', 201), "longname"));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ThrowsWhenSubdomainTooLong()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync("Ok Tenant", new string('s', 64)));
+        Assert.Contains("63 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ThrowsWhenNameMissing()
     {
         var dbName = Guid.NewGuid().ToString();
