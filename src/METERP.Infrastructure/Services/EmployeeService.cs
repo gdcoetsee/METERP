@@ -84,12 +84,18 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("First and last name are required.");
         if (emp.DefaultHourlyRate < 0)
             throw new InvalidOperationException("Default hourly rate cannot be negative.");
+        if (emp.DefaultHourlyRate > 50_000m)
+            throw new InvalidOperationException("Default hourly rate cannot exceed 50,000.");
         if (emp.LeaveBalanceDays < 0)
             throw new InvalidOperationException("Leave balance cannot be negative.");
         if (emp.AnnualLeaveEntitlementDays < 0)
             throw new InvalidOperationException("Annual leave entitlement cannot be negative.");
+        if (emp.AnnualLeaveEntitlementDays > 60m)
+            throw new InvalidOperationException("Annual leave entitlement cannot exceed 60 days.");
         if (emp.MandatoryHoursPerMonth <= 0)
             emp.MandatoryHoursPerMonth = 160m;
+        if (emp.MandatoryHoursPerMonth > 400m)
+            throw new InvalidOperationException("Mandatory hours per month cannot exceed 400.");
 
         emp.FirstName = emp.FirstName.Trim();
         emp.LastName = emp.LastName.Trim();
@@ -168,10 +174,16 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("First and last name are required.");
         if (emp.DefaultHourlyRate < 0)
             throw new InvalidOperationException("Default hourly rate cannot be negative.");
+        if (emp.DefaultHourlyRate > 50_000m)
+            throw new InvalidOperationException("Default hourly rate cannot exceed 50,000.");
         if (emp.LeaveBalanceDays < 0)
             throw new InvalidOperationException("Leave balance cannot be negative.");
         if (emp.AnnualLeaveEntitlementDays < 0)
             throw new InvalidOperationException("Annual leave entitlement cannot be negative.");
+        if (emp.AnnualLeaveEntitlementDays > 60m)
+            throw new InvalidOperationException("Annual leave entitlement cannot exceed 60 days.");
+        if (emp.MandatoryHoursPerMonth > 0 && emp.MandatoryHoursPerMonth > 400m)
+            throw new InvalidOperationException("Mandatory hours per month cannot exceed 400.");
 
         var number = emp.EmployeeNumber.Trim();
         var dup = await _dbContext.Set<Employee>()

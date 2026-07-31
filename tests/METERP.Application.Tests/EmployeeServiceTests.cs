@@ -202,6 +202,24 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenHourlyRateTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Employee
+            {
+                EmployeeNumber = "E-RATE",
+                FirstName = "Hi",
+                LastName = "Rate",
+                DefaultHourlyRate = 50_001m
+            }));
+        Assert.Contains("50,000", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenHourlyRateNegative()
     {
         var tenantId = Guid.NewGuid();

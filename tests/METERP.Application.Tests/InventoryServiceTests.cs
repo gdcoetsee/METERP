@@ -40,6 +40,22 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_ThrowsWhenUnitCostTooHigh()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateItemAsync(new InventoryItem
+            {
+                Name = "Gold plate",
+                QuantityOnHand = 1,
+                UnitCost = 1_000_001m
+            }));
+        Assert.Contains("1,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task RecordStockTransactionAsync_UpdatesQuantityOnHand()
     {
         using var db = CreateContext();

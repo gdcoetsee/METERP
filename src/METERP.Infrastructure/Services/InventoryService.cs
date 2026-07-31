@@ -92,6 +92,8 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Opening quantity cannot be negative.");
         if (item.ReorderLevel < 0)
             throw new InvalidOperationException("Reorder level cannot be negative.");
+        if (item.UnitCost > 1_000_000m)
+            throw new InvalidOperationException("Unit cost cannot exceed 1,000,000.");
         if (!string.IsNullOrWhiteSpace(item.Unit))
             item.Unit = item.Unit.Trim();
         if (!string.IsNullOrWhiteSpace(item.Category))
@@ -111,6 +113,8 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Unit cost cannot be negative.");
         if (item.ReorderLevel < 0)
             throw new InvalidOperationException("Reorder level cannot be negative.");
+        if (item.UnitCost > 1_000_000m)
+            throw new InvalidOperationException("Unit cost cannot exceed 1,000,000.");
         if (!string.IsNullOrWhiteSpace(item.Unit))
             item.Unit = item.Unit.Trim();
         if (!string.IsNullOrWhiteSpace(item.Category))
