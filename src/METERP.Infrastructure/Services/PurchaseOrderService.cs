@@ -684,8 +684,12 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("Line description is required.");
         if (line.Quantity <= 0)
             throw new InvalidOperationException("Line quantity must be positive.");
+        if (line.Quantity > 1_000_000m)
+            throw new InvalidOperationException("Line quantity cannot exceed 1,000,000.");
         if (line.UnitPrice < 0)
             throw new InvalidOperationException("Line unit price cannot be negative.");
+        if (line.UnitPrice > 10_000_000m)
+            throw new InvalidOperationException("Line unit price cannot exceed 10,000,000.");
 
         line.Description = line.Description.Trim();
         if (!string.IsNullOrWhiteSpace(line.Unit))

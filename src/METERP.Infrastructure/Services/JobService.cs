@@ -191,6 +191,8 @@ public class JobService : IJobService
             throw new InvalidOperationException("Job title is required.");
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
+        if (job.QuotedTotal > 100_000_000m)
+            throw new InvalidOperationException("Quoted total cannot exceed 100,000,000.");
 
         var customer = await _dbContext.Set<Customer>().FindAsync([job.CustomerId], ct);
         if (customer == null || customer.IsDeleted)
@@ -322,6 +324,8 @@ public class JobService : IJobService
             throw new InvalidOperationException("Job title is required.");
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
+        if (job.QuotedTotal > 100_000_000m)
+            throw new InvalidOperationException("Quoted total cannot exceed 100,000,000.");
 
         var existing = await _dbContext.Set<Job>().AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == job.Id, ct)

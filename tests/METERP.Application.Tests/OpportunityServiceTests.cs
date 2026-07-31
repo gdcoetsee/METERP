@@ -149,6 +149,22 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenValueTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "Impossible deal",
+                Value = 100_000_001m
+            }));
+        Assert.Contains("100,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenExpectedCloseTooFarFuture()
     {
         var tenantId = Guid.NewGuid();

@@ -346,6 +346,27 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenQuotedTotalTooHigh()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Big Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = "Mega",
+                QuotedTotal = 100_000_001m
+            }));
+        Assert.Contains("100,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_ThrowsWhenJobNumberDuplicate()
     {
         var tenantId = Guid.NewGuid();

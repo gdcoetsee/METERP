@@ -473,10 +473,16 @@ public class QuoteService : IQuoteService
             throw new InvalidOperationException("Line description is required.");
         if (line.Quantity <= 0)
             throw new InvalidOperationException("Line quantity must be positive.");
+        if (line.Quantity > 1_000_000m)
+            throw new InvalidOperationException("Line quantity cannot exceed 1,000,000.");
         if (line.UnitPrice < 0)
             throw new InvalidOperationException("Line unit price cannot be negative.");
+        if (line.UnitPrice > 10_000_000m)
+            throw new InvalidOperationException("Line unit price cannot exceed 10,000,000.");
         if (line.UnitCost < 0)
             throw new InvalidOperationException("Line unit cost cannot be negative.");
+        if (line.UnitCost > 10_000_000m)
+            throw new InvalidOperationException("Line unit cost cannot exceed 10,000,000.");
         if (line.GrossProfitPercent < 0 || line.GrossProfitPercent >= 1m)
             throw new InvalidOperationException(
                 "Line gross profit percent must be between 0 and 1 exclusive of 100%.");

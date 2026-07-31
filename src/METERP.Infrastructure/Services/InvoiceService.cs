@@ -775,9 +775,13 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException("Line description is required.");
         if (line.Quantity == 0)
             throw new InvalidOperationException("Line quantity cannot be zero.");
+        if (Math.Abs(line.Quantity) > 1_000_000m)
+            throw new InvalidOperationException("Line quantity magnitude cannot exceed 1,000,000.");
         // Negative quantity is allowed for credit-style adjustments on draft invoices.
         if (line.UnitPrice < 0)
             throw new InvalidOperationException("Line unit price cannot be negative.");
+        if (line.UnitPrice > 10_000_000m)
+            throw new InvalidOperationException("Line unit price cannot exceed 10,000,000.");
 
         line.Description = line.Description.Trim();
         if (!string.IsNullOrWhiteSpace(line.Unit))

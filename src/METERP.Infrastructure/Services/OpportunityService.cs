@@ -95,6 +95,8 @@ public class OpportunityService : IOpportunityService
 
         if (opportunity.Value < 0)
             throw new InvalidOperationException("Opportunity value cannot be negative.");
+        if (opportunity.Value > 100_000_000m)
+            throw new InvalidOperationException("Opportunity value cannot exceed 100,000,000.");
 
         opportunity.Title = opportunity.Title.Trim();
         if (opportunity.ExpectedClose == default)
@@ -140,6 +142,8 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException("Opportunity title is required.");
         if (opportunity.Value < 0)
             throw new InvalidOperationException("Opportunity value cannot be negative.");
+        if (opportunity.Value > 100_000_000m)
+            throw new InvalidOperationException("Opportunity value cannot exceed 100,000,000.");
 
         opportunity.Title = opportunity.Title.Trim();
         if (opportunity.ExpectedClose != default)
