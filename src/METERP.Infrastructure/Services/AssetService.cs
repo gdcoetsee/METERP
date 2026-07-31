@@ -235,6 +235,11 @@ public class AssetService : IAssetService
     {
         if (string.IsNullOrWhiteSpace(note))
             throw new ArgumentException("Maintenance note is required.", nameof(note));
+        note = note.Trim();
+        if (note.Length < 3)
+            throw new ArgumentException("Maintenance note must be at least 3 characters.", nameof(note));
+        if (note.Length > 500)
+            throw new ArgumentException("Maintenance note cannot exceed 500 characters.", nameof(note));
 
         var asset = await _dbContext.Set<Asset>().FirstOrDefaultAsync(a => a.Id == assetId, ct);
         if (asset == null)
@@ -250,9 +255,12 @@ public class AssetService : IAssetService
         }
 
         var prefix = jobNumber != null ? $"[Job {jobNumber}] " : "";
+        var entry = $"{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note}";
         asset.Notes = string.IsNullOrWhiteSpace(asset.Notes)
-            ? $"{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note.Trim()}"
-            : $"{asset.Notes}\n{prefix}{DateTime.UtcNow:yyyy-MM-dd}: {note.Trim()}";
+            ? entry
+            : $"{asset.Notes}\n{entry}";
+        if (asset.Notes.Length > 4000)
+            asset.Notes = asset.Notes[^4000..];
 
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
