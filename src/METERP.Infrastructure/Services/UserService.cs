@@ -100,6 +100,12 @@ public class UserService : IUserService
         // Assign role
         if (!string.IsNullOrWhiteSpace(role))
         {
+            role = role.Trim();
+            if (role.Length > 100)
+            {
+                await _userManager.DeleteAsync(user);
+                return (false, new[] { "Role name cannot exceed 100 characters." });
+            }
             if (!await _roleManager.RoleExistsAsync(role))
             {
                 return (false, new[] { $"Role '{role}' does not exist for this tenant." });
