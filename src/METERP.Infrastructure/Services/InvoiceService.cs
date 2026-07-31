@@ -370,6 +370,8 @@ public class InvoiceService : IInvoiceService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new InvalidOperationException("Credit note reason must be at least 3 characters.");
+        if (reason.Length > 500)
+            throw new InvalidOperationException("Credit note reason cannot exceed 500 characters.");
 
         var source = await GetByIdAsync(sourceInvoiceId, ct);
         if (source == null)
@@ -696,14 +698,19 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException(
                 $"Payment R {amount:N2} exceeds balance due R {balance:N2}.");
 
+        if (!string.IsNullOrWhiteSpace(reference) && reference.Trim().Length > 100)
+            throw new InvalidOperationException("Payment reference cannot exceed 100 characters.");
+        if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > 500)
+            throw new InvalidOperationException("Payment notes cannot exceed 500 characters.");
+
         var payment = new InvoicePayment
         {
             InvoiceId = invoiceId,
             Amount = amount,
             PaymentDate = paymentDate,
-            Reference = reference,
+            Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim(),
             RecordedByUserId = recordedByUserId,
-            Notes = notes,
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
             PopStorageKey = popStorageKey,
             PopFileName = popFileName,
             PopContentType = popContentType

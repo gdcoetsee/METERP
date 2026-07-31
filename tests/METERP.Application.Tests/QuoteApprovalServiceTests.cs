@@ -130,6 +130,29 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveRejectAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-REJ-LONG",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), new string('R', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveRejectAsync_RequiresReason()
     {
         var (service, db, tenantId, customer) = Create();

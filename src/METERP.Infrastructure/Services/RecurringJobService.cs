@@ -69,6 +69,8 @@ public sealed class RecurringJobService : IRecurringJobService
         }
 
         schedule.Title = schedule.Title.Trim();
+        if (schedule.Title.Length > 200)
+            throw new InvalidOperationException("Recurring job title cannot exceed 200 characters.");
         schedule.NextRunDate = schedule.NextRunDate == default
             ? DateTime.UtcNow.Date
             : schedule.NextRunDate.Date;
@@ -124,6 +126,8 @@ public sealed class RecurringJobService : IRecurringJobService
         }
 
         existing.Title = schedule.Title.Trim();
+        if (existing.Title.Length > 200)
+            throw new InvalidOperationException("Recurring job title cannot exceed 200 characters.");
         existing.CustomerId = schedule.CustomerId;
         existing.DivisionId = schedule.DivisionId;
         existing.IntervalDays = schedule.IntervalDays;

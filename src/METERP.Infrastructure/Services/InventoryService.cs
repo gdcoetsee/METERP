@@ -197,6 +197,11 @@ public class InventoryService : IInventoryService
                     $"Cannot issue stock to job {job.JobNumber} — job is {job.Status}.");
         }
 
+        if (!string.IsNullOrWhiteSpace(reference) && reference.Trim().Length > 100)
+            throw new InvalidOperationException("Stock transaction reference cannot exceed 100 characters.");
+        if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > 500)
+            throw new InvalidOperationException("Stock transaction notes cannot exceed 500 characters.");
+
         // Update on-hand
         item.QuantityOnHand += quantityChange;
 
@@ -206,9 +211,9 @@ public class InventoryService : IInventoryService
             Type = type,
             Quantity = quantityChange,
             UnitCostAtTime = item.UnitCost,
-            Reference = reference,
+            Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim(),
             JobId = jobId,
-            Notes = notes
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()
         };
 
         _dbContext.Set<StockTransaction>().Add(transaction);

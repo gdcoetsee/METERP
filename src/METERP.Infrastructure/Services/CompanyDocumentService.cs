@@ -68,6 +68,13 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
             throw new InvalidOperationException("Document type cannot exceed 100 characters.");
         if (docTitle.Length > 200)
             throw new InvalidOperationException("Document title cannot exceed 200 characters.");
+        string? docNotes = null;
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            docNotes = notes.Trim();
+            if (docNotes.Length > 500)
+                throw new InvalidOperationException("Document notes cannot exceed 500 characters.");
+        }
         var titleTaken = await _dbContext.Set<CompanyDocument>()
             .AnyAsync(d => d.DocumentType == type && d.Title == docTitle, ct);
         if (titleTaken)
@@ -88,7 +95,7 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
             SizeBytes = stored.SizeBytes,
             NoExpiry = noExpiry,
             ExpiryDate = noExpiry ? null : expiryDate?.Date,
-            Notes = notes
+            Notes = docNotes
         };
 
         _dbContext.Set<CompanyDocument>().Add(doc);

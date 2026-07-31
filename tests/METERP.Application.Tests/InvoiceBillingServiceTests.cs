@@ -246,6 +246,65 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task CreateCreditNoteAsync_RejectsReasonTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-LONG",
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateCreditNoteAsync(source.Id, new string('R', 501)));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task RecordPaymentAsync_RejectsReferenceTooLong()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-REF",
+                Status = InvoiceStatus.Sent,
+                Subtotal = 500m,
+                Tax = 0m,
+                Total = 500m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date, new string('R', 101), null, null));
+            Assert.Contains("100 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task CreateCreditNoteAsync_RejectsShortReason()
     {
         var (service, db, tenantId) = Create();

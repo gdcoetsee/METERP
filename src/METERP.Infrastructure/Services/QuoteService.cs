@@ -273,6 +273,8 @@ public class QuoteService : IQuoteService
         reason = reason.Trim();
         if (reason.Length < 3)
             throw new InvalidOperationException("Rejection reason must be at least 3 characters.");
+        if (reason.Length > 500)
+            throw new InvalidOperationException("Rejection reason cannot exceed 500 characters.");
 
         var quote = await _dbContext.Set<Quote>().FirstOrDefaultAsync(q => q.Id == quoteId, ct)
             ?? throw new InvalidOperationException("Quote not found.");
@@ -309,6 +311,9 @@ public class QuoteService : IQuoteService
 
         if (quote.Status != QuoteStatus.Draft)
             throw new InvalidOperationException("Only draft quotes can be withdrawn from approval.");
+
+        if (!string.IsNullOrWhiteSpace(reason) && reason.Trim().Length > 500)
+            throw new InvalidOperationException("Withdrawal reason cannot exceed 500 characters.");
 
         quote.ApprovalStatus = QuoteApprovalStatus.None;
         quote.SubmittedForApprovalAt = null;

@@ -32,7 +32,14 @@ public class InventoryJobUsageIntegrationTests
 
         var customer = new Customer { TenantId = tenantId, Name = "Field Co" };
         db.Set<Customer>().Add(customer);
-        var job = new Job { TenantId = tenantId, CustomerId = customer.Id, Title = "Panel install", QuotedTotal = 8000m };
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-INV-01",
+            Title = "Panel install",
+            QuotedTotal = 8000m
+        };
         db.Set<Job>().Add(job);
         var item = new InventoryItem
         {
