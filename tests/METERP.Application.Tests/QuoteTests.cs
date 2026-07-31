@@ -281,6 +281,31 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_ExecutiveRejectAsync_RejectsReasonTooLong_OnPending()
+    {
+        // Covered more thoroughly in QuoteApprovalServiceTests; keep a service-level smoke check here.
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            QuoteNumber = "Q-REJ-LONG",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), new string('R', 501)));
+        Assert.Contains("500 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task QuoteService_CreateAsync_ThrowsWhenTaxRateOutOfRange()
     {
         var tenantId = Guid.NewGuid();
