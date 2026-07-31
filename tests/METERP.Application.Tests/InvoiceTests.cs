@@ -583,4 +583,33 @@ public class InvoiceTests
             }));
         Assert.Contains("50 characters", ex.Message);
     }
+
+    [Fact]
+    public async Task InvoiceService_AddLineAsync_RejectsUnitTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Unit Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new InvoiceService(db, null);
+        var invoiceId = await service.CreateAsync(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(14)
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLineAsync(new InvoiceLine
+            {
+                InvoiceId = invoiceId,
+                Description = "Work",
+                Quantity = 1,
+                UnitPrice = 100m,
+                Unit = new string('U', 21)
+            }));
+        Assert.Contains("20 characters", ex.Message);
+    }
 }
