@@ -86,6 +86,24 @@ public class DocumentSequenceServiceTests
         Assert.Contains("20 characters", ex.Message);
     }
 
+    [Fact]
+    public async Task GetNextNumberAsync_RejectsEmptyPrefix()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"seq-{Guid.NewGuid():N}")
+            .Options;
+
+        await using var db = new AppDbContext(options, tenantProvider.Object, new TestCurrentUser());
+        var service = new DocumentSequenceService(db, tenantProvider.Object);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.GetNextNumberAsync("Quote", "  "));
+    }
+
     private sealed class TestCurrentUser : ICurrentUserService
     {
         public Guid? UserId => Guid.NewGuid();
