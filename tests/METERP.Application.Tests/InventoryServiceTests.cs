@@ -40,6 +40,42 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_AcceptsSkuAt50Characters()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = new string('S', 50),
+            Name = "Long SKU item",
+            QuantityOnHand = 1,
+            UnitCost = 1m,
+            IsActive = true
+        });
+        var saved = await db.Set<InventoryItem>().FirstAsync(i => i.Id == id);
+        Assert.Equal(50, saved.Sku.Length);
+    }
+
+    [Fact]
+    public async Task CreateItemAsync_AcceptsNameAt200Characters()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "NAME-OK",
+            Name = new string('N', 200),
+            QuantityOnHand = 1,
+            UnitCost = 1m,
+            IsActive = true
+        });
+        var saved = await db.Set<InventoryItem>().FirstAsync(i => i.Id == id);
+        Assert.Equal(200, saved.Name.Length);
+    }
+
+    [Fact]
     public async Task CreateItemAsync_ThrowsWhenSkuTooLong()
     {
         using var db = CreateContext();

@@ -54,6 +54,18 @@ public class SupplierServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsNotesAt2000Characters()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+
+        var id = await service.CreateAsync(new Supplier { Name = "Note Ok Supplier", Notes = new string('N', 2000) });
+        var saved = await db.Set<Supplier>().FirstAsync(s => s.Id == id);
+        Assert.Equal(2000, saved.Notes!.Length);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenEmailTooLong()
     {
         var tenantId = Guid.NewGuid();
