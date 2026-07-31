@@ -246,6 +246,38 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task CreateCreditNoteAsync_RejectsShortReason()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-SHORT",
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateCreditNoteAsync(source.Id, "ab"));
+            Assert.Contains("3 characters", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_RejectsIllegalTransitions()
     {
         var (service, db, tenantId) = Create();

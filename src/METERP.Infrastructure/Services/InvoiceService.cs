@@ -354,6 +354,9 @@ public class InvoiceService : IInvoiceService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new InvalidOperationException("A reason is required for a credit note.");
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new InvalidOperationException("Credit note reason must be at least 3 characters.");
 
         var source = await GetByIdAsync(sourceInvoiceId, ct);
         if (source == null)

@@ -226,7 +226,13 @@ public class CustomerService : ICustomerService
         contact.FirstName = (contact.FirstName ?? string.Empty).Trim();
         contact.LastName = (contact.LastName ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(contact.Email))
+        {
             contact.Email = contact.Email.Trim();
+            if (!contact.Email.Contains('@') || contact.Email.StartsWith('@') || contact.Email.EndsWith('@'))
+                throw new InvalidOperationException("Contact email must be a valid address.");
+        }
+        if (!string.IsNullOrWhiteSpace(contact.Phone))
+            contact.Phone = contact.Phone.Trim();
     }
 
     public async Task DeleteContactAsync(Guid contactId, CancellationToken ct = default)

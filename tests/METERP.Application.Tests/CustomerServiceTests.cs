@@ -160,6 +160,25 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task AddContactAsync_ThrowsWhenEmailInvalid()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Contact Email Co" });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddContactAsync(new Contact
+            {
+                CustomerId = customerId,
+                FirstName = "Pat",
+                LastName = "Lee",
+                Email = "not-an-email"
+            }));
+        Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AddContactAsync_ClearsOtherPrimary_WhenSettingPrimary()
     {
         var tenantId = Guid.NewGuid();
