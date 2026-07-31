@@ -459,6 +459,24 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (po.Status is not (PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived))
             throw new InvalidOperationException("PO must be Sent before receiving (GRV).");
 
+        if (!string.IsNullOrWhiteSpace(supplierDeliveryNote))
+        {
+            supplierDeliveryNote = supplierDeliveryNote.Trim();
+            if (supplierDeliveryNote.Length > 100)
+                throw new InvalidOperationException("Supplier delivery note cannot exceed 100 characters.");
+        }
+
+        if (lineQuantities != null)
+        {
+            foreach (var qty in lineQuantities.Values)
+            {
+                if (qty < 0)
+                    throw new InvalidOperationException("Receive quantity cannot be negative.");
+                if (qty > 1_000_000m)
+                    throw new InvalidOperationException("Receive quantity cannot exceed 1,000,000.");
+            }
+        }
+
         if (createSkuForFreeTextLines)
         {
             foreach (var freeText in po.Lines.Where(l => !l.IsDeleted && !l.InventoryItemId.HasValue))

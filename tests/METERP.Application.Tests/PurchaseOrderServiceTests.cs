@@ -649,6 +649,31 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task ReceiveAsync_RejectsDeliveryNoteTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "S", IsActive = true });
+            await db.SaveChangesAsync();
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                Status = PurchaseOrderStatus.Draft,
+                TaxRate = 0m,
+                Lines = [new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 10m }]
+            });
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReceiveAsync(poId, TestUserId, new string('D', 101)));
+            Assert.Contains("100 characters", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task ReceiveAsync_WhenDraft_Throws()
     {
         var tenantId = Guid.NewGuid();
