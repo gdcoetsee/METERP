@@ -842,6 +842,16 @@ public class JobService : IJobService
                 throw new InvalidOperationException("Labor employee not found or inactive.");
         }
 
+        if (!string.IsNullOrWhiteSpace(labor.Technician))
+        {
+            labor.Technician = labor.Technician.Trim();
+            if (labor.Technician.Length > 200)
+                throw new InvalidOperationException("Technician name cannot exceed 200 characters.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(labor.Description))
+            labor.Description = labor.Description.Trim();
+
         _dbContext.Set<JobLabor>().Add(labor);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);

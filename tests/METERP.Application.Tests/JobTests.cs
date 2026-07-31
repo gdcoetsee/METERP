@@ -549,6 +549,27 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddLaborAsync_RejectsTechnicianTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLaborAsync(new JobLabor
+            {
+                JobId = job.Id,
+                Hours = 4,
+                HourlyRate = 100m,
+                Technician = new string('T', 201)
+            }));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task JobService_AddLaborAsync_RejectsWorkDateTooFarFuture()
     {
         var tenantId = Guid.NewGuid();
