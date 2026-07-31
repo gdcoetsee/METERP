@@ -62,14 +62,22 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
         if (!noExpiry && expiryDate.HasValue && expiryDate.Value.Date < DateTime.UtcNow.Date)
             throw new InvalidOperationException("Expiry date cannot be in the past for new uploads.");
 
+        var type = documentType.Trim();
+        var docTitle = title.Trim();
+        var titleTaken = await _dbContext.Set<CompanyDocument>()
+            .AnyAsync(d => d.DocumentType == type && d.Title == docTitle, ct);
+        if (titleTaken)
+            throw new InvalidOperationException(
+                $"A company document titled '{docTitle}' already exists for type '{type}'.");
+
         var tenantId = _tenantProvider.GetCurrentTenantId();
         var stored = await _storage.SaveAsync(tenantId, "company-docs", fileName, content, contentType, ct);
 
         var doc = new CompanyDocument
         {
             TenantId = tenantId,
-            DocumentType = documentType.Trim(),
-            Title = title.Trim(),
+            DocumentType = type,
+            Title = docTitle,
             StorageKey = stored.StorageKey,
             FileName = stored.FileName,
             ContentType = stored.ContentType,
@@ -108,6 +116,14 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
         document.DocumentType = document.DocumentType.Trim();
         if (!document.NoExpiry && document.ExpiryDate.HasValue)
             document.ExpiryDate = document.ExpiryDate.Value.Date;
+
+        var titleTaken = await _dbContext.Set<CompanyDocument>()
+            .AnyAsync(d => d.DocumentType == document.DocumentType
+                && d.Title == document.Title
+                && d.Id != document.Id, ct);
+        if (titleTaken)
+            throw new InvalidOperationException(
+                $"A company document titled '{document.Title}' already exists for type '{document.DocumentType}'.");
 
         _dbContext.Set<CompanyDocument>().Update(document);
         await _dbContext.SaveChangesAsync(ct);

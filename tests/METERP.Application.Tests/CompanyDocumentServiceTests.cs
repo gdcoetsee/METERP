@@ -115,6 +115,22 @@ public class CompanyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_RejectsDuplicateTypeAndTitle()
+    {
+        var (service, db, _, _) = Create();
+        await using (db)
+        {
+            await using var content1 = new MemoryStream("a"u8.ToArray());
+            await service.UploadAsync("COID", "Annual COID", "a.pdf", content1, "application/pdf", true, null, null);
+
+            await using var content2 = new MemoryStream("b"u8.ToArray());
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UploadAsync("COID", "Annual COID", "b.pdf", content2, "application/pdf", true, null, null));
+            Assert.Contains("already exists", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task GetExpiringAsync_ReturnsDocumentsWithinWindow()
     {
         var (service, db, tenantId, _) = Create();
