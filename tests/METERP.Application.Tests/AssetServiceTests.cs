@@ -244,6 +244,33 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenAssetNumberDuplicate()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        await db.SaveChangesAsync();
+
+        await service.CreateAsync(new Asset
+        {
+            CustomerId = customerId,
+            Name = "Gen A",
+            AssetNumber = "AST-FIXED-1"
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Gen B",
+                AssetNumber = "AST-FIXED-1"
+            }));
+        Assert.Contains("Asset number", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task UpdateAsync_PreservesAssetNumber()
     {
         var tenantId = Guid.NewGuid();

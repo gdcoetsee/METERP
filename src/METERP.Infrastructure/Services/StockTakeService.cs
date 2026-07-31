@@ -176,6 +176,9 @@ public sealed class StockTakeService : IStockTakeService
 
     public async Task<bool> CancelSessionAsync(Guid sessionId, Guid userId, string? reason = null, CancellationToken ct = default)
     {
+        if (reason != null && string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Cancellation reason cannot be blank when provided.", nameof(reason));
+
         var session = await _dbContext.Set<StockTakeSession>()
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
         if (session == null || session.Status != StockTakeStatus.Open)

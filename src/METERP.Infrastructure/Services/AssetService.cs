@@ -85,6 +85,15 @@ public class AssetService : IAssetService
         {
             asset.AssetNumber = $"AST-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper()}";
         }
+        else
+        {
+            asset.AssetNumber = asset.AssetNumber.Trim();
+            var numberDup = await _dbContext.Set<Asset>()
+                .AnyAsync(a => a.AssetNumber == asset.AssetNumber, ct);
+            if (numberDup)
+                throw new InvalidOperationException(
+                    $"Asset number '{asset.AssetNumber}' already exists.");
+        }
 
         if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
         {
