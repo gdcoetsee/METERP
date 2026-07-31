@@ -176,6 +176,35 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_AddLineAsync_ThrowsWhenUnitTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "C" });
+        await db.SaveChangesAsync();
+        var quoteId = await service.CreateAsync(new Quote
+        {
+            CustomerId = customerId,
+            QuoteDate = DateTime.UtcNow.Date,
+            ValidUntil = DateTime.UtcNow.Date.AddDays(30),
+            TaxRate = 0.15m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLineAsync(new QuoteLine
+            {
+                QuoteId = quoteId,
+                Description = "Work",
+                Quantity = 1,
+                UnitPrice = 100m,
+                Unit = new string('U', 21)
+            }));
+        Assert.Contains("20 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_ThrowsWhenDescriptionTooLong()
     {
         var tenantId = Guid.NewGuid();
