@@ -488,6 +488,8 @@ public class QuoteService : IQuoteService
                 "Line gross profit percent must be between 0 and 1 exclusive of 100%.");
 
         line.Description = line.Description.Trim();
+        if (line.Description.Length > 500)
+            throw new InvalidOperationException("Line description cannot exceed 500 characters.");
         if (!string.IsNullOrWhiteSpace(line.Unit))
             line.Unit = line.Unit.Trim();
         if (!string.IsNullOrWhiteSpace(line.LineType))

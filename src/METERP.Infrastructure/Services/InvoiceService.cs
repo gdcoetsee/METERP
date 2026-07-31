@@ -786,6 +786,8 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException("Line unit price cannot exceed 10,000,000.");
 
         line.Description = line.Description.Trim();
+        if (line.Description.Length > 500)
+            throw new InvalidOperationException("Line description cannot exceed 500 characters.");
         if (!string.IsNullOrWhiteSpace(line.Unit))
             line.Unit = line.Unit.Trim();
     }
