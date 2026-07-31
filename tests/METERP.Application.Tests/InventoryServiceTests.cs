@@ -74,6 +74,23 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task CreateItemAsync_ThrowsWhenReorderLevelTooHigh()
+    {
+        using var db = CreateContext();
+        var service = new InventoryService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateItemAsync(new InventoryItem
+            {
+                Name = "Reorder bulk",
+                QuantityOnHand = 1,
+                ReorderLevel = 1_000_001m,
+                UnitCost = 1m
+            }));
+        Assert.Contains("1,000,000", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateItemAsync_ThrowsWhenUnitTooLong()
     {
         using var db = CreateContext();
