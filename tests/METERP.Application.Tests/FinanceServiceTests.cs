@@ -347,6 +347,24 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task CreateAccountAsync_ThrowsWhenAccountCodeTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var service = new FinanceService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAccountAsync(new Account
+            {
+                TenantId = tenantId,
+                AccountCode = new string('1', 21),
+                Name = "Long code",
+                Type = AccountType.Asset
+            }));
+        Assert.Contains("20 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task PostJournalAsync_ThrowsWhenDescriptionTooLong()
     {
         var tenantId = Guid.NewGuid();
