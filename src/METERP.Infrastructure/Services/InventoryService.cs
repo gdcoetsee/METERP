@@ -92,6 +92,10 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Opening quantity cannot be negative.");
         if (item.ReorderLevel < 0)
             throw new InvalidOperationException("Reorder level cannot be negative.");
+        if (!string.IsNullOrWhiteSpace(item.Unit))
+            item.Unit = item.Unit.Trim();
+        if (!string.IsNullOrWhiteSpace(item.Category))
+            item.Category = item.Category.Trim();
 
         _dbContext.Set<InventoryItem>().Add(item);
         await _dbContext.SaveChangesAsync(ct);

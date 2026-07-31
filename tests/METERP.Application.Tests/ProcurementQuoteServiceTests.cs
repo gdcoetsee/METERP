@@ -104,6 +104,25 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task CreatePoFromSelectedQuote_ThrowsWhenSelectedTotalZero()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            // Header path normally rejects zero; force a zero total after select for the guard.
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            Assert.True(await quotes.SelectQuoteAsync(quoteId, Guid.NewGuid()));
+            var quote = await db.Set<ProcurementSupplierQuote>().FirstAsync(q => q.Id == quoteId);
+            quote.QuotedTotal = 0m;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.CreatePoFromSelectedQuoteAsync(reqId));
+            Assert.Contains("greater than zero", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenQuotedTotalZeroWithoutLines()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

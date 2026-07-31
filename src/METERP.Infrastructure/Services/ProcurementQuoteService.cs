@@ -177,6 +177,10 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             .FirstOrDefaultAsync(q => q.StockRequisitionId == requisitionId && q.IsSelected, ct)
             ?? throw new InvalidOperationException("Select a supplier quote before creating a PO.");
 
+        if (selected.QuotedTotal <= 0)
+            throw new InvalidOperationException(
+                "Selected supplier quote total must be greater than zero before creating a PO.");
+
         var poId = await _purchaseOrders.CreateFromRequisitionAsync(requisitionId, selected.SupplierId, ct);
 
         if (selected.Lines.Count > 0)
