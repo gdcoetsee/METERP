@@ -75,7 +75,11 @@ public class CustomerService : ICustomerService
                 throw new InvalidOperationException("Customer email must be a valid address.");
         }
         if (!string.IsNullOrWhiteSpace(customer.Phone))
+        {
             customer.Phone = customer.Phone.Trim();
+            if (customer.Phone.Length > 50)
+                throw new InvalidOperationException("Customer phone cannot exceed 50 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(customer.Notes))
         {
             customer.Notes = customer.Notes.Trim();
@@ -117,7 +121,11 @@ public class CustomerService : ICustomerService
                 throw new InvalidOperationException("Customer email must be a valid address.");
         }
         if (!string.IsNullOrWhiteSpace(customer.Phone))
+        {
             customer.Phone = customer.Phone.Trim();
+            if (customer.Phone.Length > 50)
+                throw new InvalidOperationException("Customer phone cannot exceed 50 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(customer.Notes))
         {
             customer.Notes = customer.Notes.Trim();

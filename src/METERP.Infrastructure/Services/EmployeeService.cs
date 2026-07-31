@@ -120,7 +120,11 @@ public class EmployeeService : IEmployeeService
                 throw new InvalidOperationException("Employee email must be a valid address.");
         }
         if (!string.IsNullOrWhiteSpace(emp.Phone))
+        {
             emp.Phone = emp.Phone.Trim();
+            if (emp.Phone.Length > 50)
+                throw new InvalidOperationException("Employee phone cannot exceed 50 characters.");
+        }
 
         if (string.IsNullOrWhiteSpace(emp.EmployeeNumber))
         {
@@ -216,7 +220,11 @@ public class EmployeeService : IEmployeeService
                 throw new InvalidOperationException($"Employee email '{emp.Email}' is already in use.");
         }
         if (!string.IsNullOrWhiteSpace(emp.Phone))
+        {
             emp.Phone = emp.Phone.Trim();
+            if (emp.Phone.Length > 50)
+                throw new InvalidOperationException("Employee phone cannot exceed 50 characters.");
+        }
 
         if (!emp.IsActive && existing.IsActive)
         {

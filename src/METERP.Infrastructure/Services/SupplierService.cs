@@ -76,7 +76,11 @@ public class SupplierService : ISupplierService
                 throw new InvalidOperationException("Supplier email must be a valid address.");
         }
         if (!string.IsNullOrWhiteSpace(supplier.Phone))
+        {
             supplier.Phone = supplier.Phone.Trim();
+            if (supplier.Phone.Length > 50)
+                throw new InvalidOperationException("Supplier phone cannot exceed 50 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(supplier.Notes))
         {
             supplier.Notes = supplier.Notes.Trim();
@@ -118,7 +122,11 @@ public class SupplierService : ISupplierService
                 throw new InvalidOperationException("Supplier email must be a valid address.");
         }
         if (!string.IsNullOrWhiteSpace(supplier.Phone))
+        {
             supplier.Phone = supplier.Phone.Trim();
+            if (supplier.Phone.Length > 50)
+                throw new InvalidOperationException("Supplier phone cannot exceed 50 characters.");
+        }
         if (!string.IsNullOrWhiteSpace(supplier.Notes))
         {
             supplier.Notes = supplier.Notes.Trim();
