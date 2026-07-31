@@ -91,6 +91,34 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenCityTooLong()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Customer { Name = "City Co", City = new string('C', 101) }));
+        Assert.Contains("100 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task AddContactAsync_ThrowsWhenNameTooLong()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+        var id = await service.CreateAsync(new Customer { Name = "Contact Host" });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddContactAsync(new Contact
+            {
+                CustomerId = id,
+                FirstName = new string('F', 101),
+                LastName = "Ok"
+            }));
+        Assert.Contains("100 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenNameTooLong()
     {
         var tenantId = Guid.NewGuid();

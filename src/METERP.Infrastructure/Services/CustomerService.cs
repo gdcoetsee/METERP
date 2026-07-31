@@ -86,6 +86,7 @@ public class CustomerService : ICustomerService
             if (customer.Notes.Length > 2000)
                 throw new InvalidOperationException("Customer notes cannot exceed 2000 characters.");
         }
+        NormalizeCustomerAddress(customer);
 
         var nameTaken = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Name == customer.Name, ct);
@@ -132,6 +133,7 @@ public class CustomerService : ICustomerService
             if (customer.Notes.Length > 2000)
                 throw new InvalidOperationException("Customer notes cannot exceed 2000 characters.");
         }
+        NormalizeCustomerAddress(customer);
 
         var nameTaken = await _dbContext.Set<Customer>()
             .AnyAsync(c => c.Name == customer.Name && c.Id != customer.Id, ct);
@@ -261,14 +263,50 @@ public class CustomerService : ICustomerService
 
         contact.FirstName = (contact.FirstName ?? string.Empty).Trim();
         contact.LastName = (contact.LastName ?? string.Empty).Trim();
+        if (contact.FirstName.Length > 100 || contact.LastName.Length > 100)
+            throw new InvalidOperationException("Contact first and last names cannot exceed 100 characters each.");
         if (!string.IsNullOrWhiteSpace(contact.Email))
         {
             contact.Email = contact.Email.Trim();
             if (!IsPlausibleEmail(contact.Email))
                 throw new InvalidOperationException("Contact email must be a valid address.");
+            if (contact.Email.Length > 200)
+                throw new InvalidOperationException("Contact email cannot exceed 200 characters.");
         }
         if (!string.IsNullOrWhiteSpace(contact.Phone))
+        {
             contact.Phone = contact.Phone.Trim();
+            if (contact.Phone.Length > 50)
+                throw new InvalidOperationException("Contact phone cannot exceed 50 characters.");
+        }
+        if (!string.IsNullOrWhiteSpace(contact.Notes))
+        {
+            contact.Notes = contact.Notes.Trim();
+            if (contact.Notes.Length > 500)
+                throw new InvalidOperationException("Contact notes cannot exceed 500 characters.");
+        }
+    }
+
+    private static void NormalizeCustomerAddress(Customer customer)
+    {
+        customer.AddressLine1 = BoundOptional(customer.AddressLine1, 200, "Address line 1");
+        customer.AddressLine2 = BoundOptional(customer.AddressLine2, 200, "Address line 2");
+        customer.City = BoundOptional(customer.City, 100, "City");
+        customer.Province = BoundOptional(customer.Province, 100, "Province");
+        customer.PostalCode = BoundOptional(customer.PostalCode, 20, "Postal code");
+        customer.Country = BoundOptional(customer.Country, 100, "Country");
+        customer.CompanyRegistrationNumber = BoundOptional(customer.CompanyRegistrationNumber, 50, "Company registration number");
+        customer.VatNumber = BoundOptional(customer.VatNumber, 50, "VAT number");
+    }
+
+    private static string? BoundOptional(string? value, int maxLength, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        value = value.Trim();
+        if (value.Length > maxLength)
+            throw new InvalidOperationException($"{fieldName} cannot exceed {maxLength} characters.");
+        return value;
     }
 
     private static bool IsPlausibleEmail(string email) =>

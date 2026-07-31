@@ -87,6 +87,7 @@ public class SupplierService : ISupplierService
             if (supplier.Notes.Length > 2000)
                 throw new InvalidOperationException("Supplier notes cannot exceed 2000 characters.");
         }
+        NormalizeSupplierAddress(supplier);
 
         var nameTaken = await _dbContext.Set<Supplier>()
             .AnyAsync(s => s.Name == supplier.Name && s.IsActive, ct);
@@ -133,6 +134,7 @@ public class SupplierService : ISupplierService
             if (supplier.Notes.Length > 2000)
                 throw new InvalidOperationException("Supplier notes cannot exceed 2000 characters.");
         }
+        NormalizeSupplierAddress(supplier);
 
         var nameTaken = await _dbContext.Set<Supplier>()
             .AnyAsync(s => s.Name == supplier.Name && s.Id != supplier.Id && s.IsActive, ct);
@@ -176,6 +178,28 @@ public class SupplierService : ISupplierService
     {
         if (_cache != null)
             TenantCacheInvalidation.OnSupplierMasterDataChanged(_cache);
+    }
+
+    private static void NormalizeSupplierAddress(Supplier supplier)
+    {
+        supplier.AddressLine1 = BoundOptional(supplier.AddressLine1, 200, "Address line 1");
+        supplier.AddressLine2 = BoundOptional(supplier.AddressLine2, 200, "Address line 2");
+        supplier.City = BoundOptional(supplier.City, 100, "City");
+        supplier.Province = BoundOptional(supplier.Province, 100, "Province");
+        supplier.PostalCode = BoundOptional(supplier.PostalCode, 20, "Postal code");
+        supplier.Country = BoundOptional(supplier.Country, 100, "Country");
+        supplier.ContactPerson = BoundOptional(supplier.ContactPerson, 200, "Contact person");
+        supplier.TaxNumber = BoundOptional(supplier.TaxNumber, 50, "Tax number");
+    }
+
+    private static string? BoundOptional(string? value, int maxLength, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        value = value.Trim();
+        if (value.Length > maxLength)
+            throw new InvalidOperationException($"{fieldName} cannot exceed {maxLength} characters.");
+        return value;
     }
 
     private static bool IsPlausibleEmail(string email) =>
