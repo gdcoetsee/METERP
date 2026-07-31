@@ -96,6 +96,23 @@ public class EmployeeCertificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_AcceptsFileNameAt255Characters()
+    {
+        var (service, db, _, employee) = Create();
+        await using (db)
+        {
+            var id = await service.CreateAsync(new EmployeeCertification
+            {
+                EmployeeId = employee.Id,
+                CertificationType = "Medical",
+                FileName = new string('F', 255),
+                NoExpiry = true
+            });
+            Assert.NotEqual(Guid.Empty, id);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsTypeTooLong()
     {
         var (service, db, _, employee) = Create();
