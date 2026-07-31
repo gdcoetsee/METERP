@@ -734,10 +734,14 @@ public class JobService : IJobService
         cost.Description = string.IsNullOrWhiteSpace(cost.Description)
             ? "Job cost"
             : cost.Description.Trim();
+        if (cost.Description.Length > 500)
+            throw new InvalidOperationException("Cost description cannot exceed 500 characters.");
         if (string.IsNullOrWhiteSpace(cost.CostType))
             cost.CostType = "Other";
         else
             cost.CostType = cost.CostType.Trim();
+        if (cost.CostType.Length > 50)
+            throw new InvalidOperationException("Cost type cannot exceed 50 characters.");
 
         cost.CostDate = cost.CostDate == default ? DateTime.UtcNow.Date : cost.CostDate.Date;
         if (cost.CostDate > DateTime.UtcNow.Date.AddDays(1))
@@ -781,6 +785,8 @@ public class JobService : IJobService
             throw new InvalidOperationException("Hourly rate cannot be negative.");
         if (labor.HourlyRate > 50_000m)
             throw new InvalidOperationException("Hourly rate cannot exceed 50,000.");
+        if (!string.IsNullOrWhiteSpace(labor.Description) && labor.Description.Trim().Length > 500)
+            throw new InvalidOperationException("Labor description cannot exceed 500 characters.");
 
         labor.WorkDate = labor.WorkDate == default ? DateTime.UtcNow.Date : labor.WorkDate.Date;
         if (labor.WorkDate > DateTime.UtcNow.Date.AddDays(1))

@@ -127,7 +127,14 @@ public sealed class StockRequisitionService : IStockRequisitionService
                     throw new InvalidOperationException(
                         "Non-catalog lines require a description (item not yet in stock master).");
                 line.Description = line.Description.Trim();
+                if (line.Description.Length > 500)
+                    throw new InvalidOperationException("Line description cannot exceed 500 characters.");
             }
+
+            if (line.EstimatedUnitCost < 0)
+                throw new InvalidOperationException("Estimated unit cost cannot be negative.");
+            if (line.EstimatedUnitCost > 10_000_000m)
+                throw new InvalidOperationException("Estimated unit cost cannot exceed 10,000,000.");
         }
 
         requisition.Status = RequisitionStatus.PendingManager;

@@ -553,6 +553,88 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_NonCatalogLine_RejectsDescriptionTooLong()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, _) = await SeedJobAndItemAsync(db, tenantId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = null,
+                        Description = new string('X', 501),
+                        QuantityRequested = 1
+                    }
+                ]
+            }));
+            Assert.Contains("500 characters", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_RejectsNegativeEstimatedUnitCost()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = item.Id,
+                        QuantityRequested = 1,
+                        EstimatedUnitCost = -1m
+                    }
+                ]
+            }));
+            Assert.Contains("negative", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_RejectsEstimatedUnitCostTooHigh()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, _) = await SeedJobAndItemAsync(db, tenantId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines =
+                [
+                    new StockRequisitionLine
+                    {
+                        InventoryItemId = null,
+                        Description = "Special part",
+                        QuantityRequested = 1,
+                        EstimatedUnitCost = 10_000_001m
+                    }
+                ]
+            }));
+            Assert.Contains("10,000,000", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task NonCatalogLine_Approve_Po_Receive_Issue_ToJob()
     {
         var (service, db, tenantId, _) = Create();
