@@ -55,13 +55,16 @@ public class TwoFactorAuthService : ITwoFactorAuthService
 
     public async Task<(bool Succeeded, string[] Errors)> ConfirmSetupAsync(Guid userId, string code, CancellationToken ct = default)
     {
+        if (!IsPlausibleAuthenticatorCode(code))
+            return (false, new[] { "Authenticator code must be 6–8 digits." });
+
         var user = await _userManager.FindByIdAsync(userId.ToString());
         if (user == null) return (false, new[] { "User not found." });
 
         var valid = await _userManager.VerifyTwoFactorTokenAsync(
             user,
             _userManager.Options.Tokens.AuthenticatorTokenProvider,
-            code);
+            code.Trim());
 
         if (!valid) return (false, new[] { "Invalid authenticator code." });
 
@@ -87,13 +90,26 @@ public class TwoFactorAuthService : ITwoFactorAuthService
 
     public async Task<bool> VerifyCodeAsync(Guid userId, string code, CancellationToken ct = default)
     {
+        if (!IsPlausibleAuthenticatorCode(code))
+            return false;
+
         var user = await _userManager.FindByIdAsync(userId.ToString());
         if (user == null) return false;
 
         return await _userManager.VerifyTwoFactorTokenAsync(
             user,
             _userManager.Options.Tokens.AuthenticatorTokenProvider,
-            code);
+            code.Trim());
+    }
+
+    private static bool IsPlausibleAuthenticatorCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return false;
+        code = code.Trim();
+        if (code.Length is < 6 or > 8)
+            return false;
+        return code.All(char.IsDigit);
     }
 
     private string GenerateQrUri(string email, string unformattedKey)

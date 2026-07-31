@@ -181,4 +181,27 @@ public class TwoFactorAuthServiceTests
             It.Is<string>(body => body.Contains("disabled", StringComparison.OrdinalIgnoreCase)),
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task ConfirmSetup_RejectsNonDigitCode()
+    {
+        using var h = new Harness();
+        await h.Service.BeginSetupAsync(h.User.Id);
+
+        var (ok, errors) = await h.Service.ConfirmSetupAsync(h.User.Id, "abcdef");
+        Assert.False(ok);
+        Assert.Contains(errors, e => e.Contains("6–8 digits", StringComparison.OrdinalIgnoreCase)
+            || e.Contains("6-8 digits", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyCode_ReturnsFalse_ForOversizedCode()
+    {
+        using var h = new Harness();
+        await h.Service.BeginSetupAsync(h.User.Id);
+        var rawKey = (await h.UserManager.GetAuthenticatorKeyAsync(h.User))!;
+        await h.Service.ConfirmSetupAsync(h.User.Id, ComputeTotp(rawKey));
+
+        Assert.False(await h.Service.VerifyCodeAsync(h.User.Id, "123456789"));
+    }
 }
