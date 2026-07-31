@@ -168,6 +168,12 @@ public class OpportunityService : IOpportunityService
             if (opportunity.Notes.Length > 2000)
                 throw new InvalidOperationException("Opportunity notes cannot exceed 2000 characters.");
         }
+        if (!string.IsNullOrWhiteSpace(opportunity.CustomerName))
+        {
+            opportunity.CustomerName = opportunity.CustomerName.Trim();
+            if (opportunity.CustomerName.Length > 200)
+                throw new InvalidOperationException("Customer name cannot exceed 200 characters.");
+        }
         if (opportunity.ExpectedClose != default)
         {
             opportunity.ExpectedClose = opportunity.ExpectedClose.Date;
