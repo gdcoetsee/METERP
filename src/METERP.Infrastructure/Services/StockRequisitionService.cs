@@ -235,6 +235,9 @@ public sealed class StockRequisitionService : IStockRequisitionService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Rejection reason is required.", nameof(reason));
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new ArgumentException("Rejection reason must be at least 3 characters.", nameof(reason));
 
         var req = await LoadForUpdateAsync(requisitionId, ct);
         if (req == null || req.Status is RequisitionStatus.Issued or RequisitionStatus.Rejected or RequisitionStatus.Cancelled)
@@ -242,7 +245,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
         await ReleaseReservationsAsync(req, ct);
         req.Status = RequisitionStatus.Rejected;
-        req.RejectionReason = reason.Trim();
+        req.RejectionReason = reason;
         req.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
         await LogAsync("REJECT", req, req.RejectionReason, ct);

@@ -375,6 +375,16 @@ public class JobService : IJobService
         }
 
         job.Title = job.Title.Trim();
+        if (job.ScheduledStart.HasValue)
+        {
+            var date = job.ScheduledStart.Value.Date;
+            if (date > DateTime.UtcNow.Date.AddYears(2))
+                throw new InvalidOperationException("Scheduled start cannot be more than 2 years in the future.");
+            if (date < DateTime.UtcNow.Date.AddYears(-1))
+                throw new InvalidOperationException("Scheduled start cannot be more than 1 year in the past.");
+            job.ScheduledStart = date;
+        }
+
         job.JobNumber = existing.JobNumber;
         job.Status = existing.Status;
         job.ClosedAt = existing.ClosedAt;
@@ -530,6 +540,9 @@ public class JobService : IJobService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Reopen reason is required.", nameof(reason));
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new ArgumentException("Reopen reason must be at least 3 characters.", nameof(reason));
 
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null || !job.IsClosed())
@@ -538,7 +551,7 @@ public class JobService : IJobService
         job.Status = JobStatus.Completed;
         job.LastReopenedAt = DateTime.UtcNow;
         job.LastReopenedByUserId = executiveUserId;
-        job.LastReopenReason = reason.Trim();
+        job.LastReopenReason = reason;
         job.ClosedAt = null;
         job.ClosedByUserId = null;
         job.CloseNotes = null;
@@ -663,6 +676,9 @@ public class JobService : IJobService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Cancellation reason is required.", nameof(reason));
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new ArgumentException("Cancellation reason must be at least 3 characters.", nameof(reason));
 
         var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null)
@@ -677,7 +693,7 @@ public class JobService : IJobService
         job.Status = JobStatus.Cancelled;
         job.CancelledAt = DateTime.UtcNow;
         job.CancelledByUserId = userId;
-        job.CancellationReason = reason.Trim();
+        job.CancellationReason = reason;
         job.CompletedDate ??= DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(ct);

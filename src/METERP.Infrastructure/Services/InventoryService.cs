@@ -111,6 +111,10 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Unit cost cannot be negative.");
         if (item.ReorderLevel < 0)
             throw new InvalidOperationException("Reorder level cannot be negative.");
+        if (!string.IsNullOrWhiteSpace(item.Unit))
+            item.Unit = item.Unit.Trim();
+        if (!string.IsNullOrWhiteSpace(item.Category))
+            item.Category = item.Category.Trim();
 
         // Do not allow direct QuantityOnHand edits via Update — use stock transactions.
         var existing = await _dbContext.Set<InventoryItem>().AsNoTracking()

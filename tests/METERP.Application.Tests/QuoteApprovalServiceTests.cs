@@ -130,6 +130,30 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveRejectAsync_RequiresReason()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-REJ2",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), "  "));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), "ab"));
+        }
+    }
+
+    [Fact]
     public async Task WithdrawFromApprovalAsync_ReturnsToNoneAndAllowsLineEdits()
     {
         var (service, db, tenantId, customer) = Create();

@@ -268,6 +268,12 @@ public class QuoteService : IQuoteService
 
     public async Task ExecutiveRejectAsync(Guid quoteId, Guid approverUserId, string reason, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("Rejection reason is required.");
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new InvalidOperationException("Rejection reason must be at least 3 characters.");
+
         var quote = await _dbContext.Set<Quote>().FirstOrDefaultAsync(q => q.Id == quoteId, ct)
             ?? throw new InvalidOperationException("Quote not found.");
 

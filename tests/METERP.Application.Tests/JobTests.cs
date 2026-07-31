@@ -323,6 +323,29 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_UpdateAsync_ThrowsWhenScheduledStartTooFarFuture()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Sched Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+        var id = await service.CreateAsync(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            Title = "Open job",
+            Status = JobStatus.Scheduled
+        });
+        var job = await service.GetByIdAsync(id);
+        job!.ScheduledStart = DateTime.UtcNow.Date.AddYears(3);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(job));
+        Assert.Contains("2 years", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_ThrowsWhenJobNumberDuplicate()
     {
         var tenantId = Guid.NewGuid();

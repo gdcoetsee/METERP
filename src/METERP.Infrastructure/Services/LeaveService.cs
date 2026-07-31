@@ -183,13 +183,16 @@ public sealed class LeaveService : ILeaveService
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Rejection reason is required.", nameof(reason));
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new ArgumentException("Rejection reason must be at least 3 characters.", nameof(reason));
 
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status is LeaveRequestStatus.Approved or LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
             return false;
 
         request.Status = LeaveRequestStatus.Rejected;
-        request.RejectionReason = reason.Trim();
+        request.RejectionReason = reason;
         request.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
         return true;
