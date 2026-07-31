@@ -73,6 +73,8 @@ public class CustomerService : ICustomerService
             customer.Email = customer.Email.Trim();
             if (!IsPlausibleEmail(customer.Email))
                 throw new InvalidOperationException("Customer email must be a valid address.");
+            if (customer.Email.Length > 200)
+                throw new InvalidOperationException("Customer email cannot exceed 200 characters.");
         }
         if (!string.IsNullOrWhiteSpace(customer.Phone))
         {
@@ -120,6 +122,8 @@ public class CustomerService : ICustomerService
             customer.Email = customer.Email.Trim();
             if (!IsPlausibleEmail(customer.Email))
                 throw new InvalidOperationException("Customer email must be a valid address.");
+            if (customer.Email.Length > 200)
+                throw new InvalidOperationException("Customer email cannot exceed 200 characters.");
         }
         if (!string.IsNullOrWhiteSpace(customer.Phone))
         {

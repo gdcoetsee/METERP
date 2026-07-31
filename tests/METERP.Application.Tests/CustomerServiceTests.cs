@@ -144,6 +144,21 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenEmailTooLong()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new CustomerService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Customer
+            {
+                Name = "Long Email Co",
+                Email = new string('a', 195) + "@x.com"
+            }));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenEmailInvalid()
     {
         var tenantId = Guid.NewGuid();
