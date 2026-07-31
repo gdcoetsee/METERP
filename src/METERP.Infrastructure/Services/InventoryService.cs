@@ -72,6 +72,8 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("Inventory item name is required.");
 
         item.Name = item.Name.Trim();
+        if (item.Name.Length > 200)
+            throw new InvalidOperationException("Inventory item name cannot exceed 200 characters.");
 
         if (string.IsNullOrWhiteSpace(item.Sku))
         {
@@ -109,6 +111,9 @@ public class InventoryService : IInventoryService
     {
         if (string.IsNullOrWhiteSpace(item.Name))
             throw new InvalidOperationException("Inventory item name is required.");
+        item.Name = item.Name.Trim();
+        if (item.Name.Length > 200)
+            throw new InvalidOperationException("Inventory item name cannot exceed 200 characters.");
         if (item.UnitCost < 0)
             throw new InvalidOperationException("Unit cost cannot be negative.");
         if (item.ReorderLevel < 0)

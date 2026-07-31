@@ -99,6 +99,8 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException("Opportunity value cannot exceed 100,000,000.");
 
         opportunity.Title = opportunity.Title.Trim();
+        if (opportunity.Title.Length > 200)
+            throw new InvalidOperationException("Opportunity title cannot exceed 200 characters.");
         if (opportunity.ExpectedClose == default)
             opportunity.ExpectedClose = DateTime.UtcNow.Date.AddDays(30);
         else
@@ -146,6 +148,8 @@ public class OpportunityService : IOpportunityService
             throw new InvalidOperationException("Opportunity value cannot exceed 100,000,000.");
 
         opportunity.Title = opportunity.Title.Trim();
+        if (opportunity.Title.Length > 200)
+            throw new InvalidOperationException("Opportunity title cannot exceed 200 characters.");
         if (opportunity.ExpectedClose != default)
         {
             opportunity.ExpectedClose = opportunity.ExpectedClose.Date;

@@ -189,6 +189,9 @@ public class JobService : IJobService
             throw new InvalidOperationException("Customer is required for a job.");
         if (string.IsNullOrWhiteSpace(job.Title))
             throw new InvalidOperationException("Job title is required.");
+        job.Title = job.Title.Trim();
+        if (job.Title.Length > 200)
+            throw new InvalidOperationException("Job title cannot exceed 200 characters.");
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
         if (job.QuotedTotal > 100_000_000m)
@@ -324,6 +327,9 @@ public class JobService : IJobService
     {
         if (string.IsNullOrWhiteSpace(job.Title))
             throw new InvalidOperationException("Job title is required.");
+        job.Title = job.Title.Trim();
+        if (job.Title.Length > 200)
+            throw new InvalidOperationException("Job title cannot exceed 200 characters.");
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
         if (job.QuotedTotal > 100_000_000m)

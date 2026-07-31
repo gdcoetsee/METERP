@@ -346,6 +346,27 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenTitleTooLong()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "T Co" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = new string('J', 201),
+                QuotedTotal = 100m
+            }));
+        Assert.Contains("200 characters", ex.Message);
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_ThrowsWhenQuotedTotalTooHigh()
     {
         var tenantId = Guid.NewGuid();
