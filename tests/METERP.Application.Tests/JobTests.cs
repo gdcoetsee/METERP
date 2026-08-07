@@ -1280,6 +1280,60 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_SetCrewAssignmentsAsync_ThrowsWhenJobClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        await service.CloseAsync(jobId, Guid.NewGuid(), "Done");
+
+        await Assert.ThrowsAsync<JobClosedException>(() =>
+            service.SetCrewAssignmentsAsync(jobId, new[] { Guid.NewGuid() }));
+    }
+
+    [Fact]
+    public async Task JobService_SetCrewAssignmentsAsync_ThrowsWhenCrewMemberSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var empId = Guid.NewGuid();
+        db.Set<Employee>().Add(new Employee
+        {
+            Id = empId,
+            TenantId = tenantId,
+            EmployeeNumber = "E-CREW-D",
+            FirstName = "Gone",
+            LastName = "Crew",
+            IsActive = true,
+            IsDeleted = true
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SetCrewAssignmentsAsync(jobId, new[] { empId }));
+        Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_UpdateBillingTermsAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateBillingTermsAsync(jobId, 10m, 5m));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Job_GetProgressPercent_UsesMilestoneAverageWhenPresent()
     {
         var job = new Job

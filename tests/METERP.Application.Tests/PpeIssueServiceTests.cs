@@ -534,6 +534,43 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task ReturnFromEmployeeAsync_ThrowsWhenInventoryItemSoftDeleted()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-RET-DEL",
+                FirstName = "Ret",
+                LastName = "Del",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "PPE-RET-DEL",
+                Name = "Boots",
+                QuantityOnHand = 5,
+                UnitCost = 50m,
+                IsActive = true
+            });
+            var issueId = await service.IssueToEmployeeAsync(employee.Id, itemId, 2m, Guid.NewGuid());
+
+            var item = await db.Set<InventoryItem>().FirstAsync(i => i.Id == itemId);
+            item.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ReturnFromEmployeeAsync(issueId, 1m, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ReturnFromEmployeeAsync_RejectsOverReturn()
     {
         var (service, db, tenantId, inventory) = Create();

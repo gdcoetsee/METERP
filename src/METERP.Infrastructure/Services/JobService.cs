@@ -331,8 +331,7 @@ public class JobService : IJobService
         if (retentionPercent is < 0 or > 100)
             throw new InvalidOperationException("Retention % must be between 0 and 100.");
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct)
-            ?? throw new InvalidOperationException("Job not found.");
+        var job = await LoadJobForOperationsAsync(jobId, ct);
 
         if (job.IsClosed() || job.IsCancelled())
             throw new InvalidOperationException("Cannot change billing terms on a closed or cancelled job.");
@@ -442,19 +441,20 @@ public class JobService : IJobService
 
     public async Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)
     {
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct)
-            ?? throw new InvalidOperationException($"Job {jobId} was not found.");
-
-        if (!job.IsOpenForOperations())
-            throw new InvalidOperationException(
-                $"Cannot change crew — job {job.JobNumber} is {job.Status}.");
+        var job = await LoadJobForOperationsAsync(jobId, ct);
+        await EnsureJobOpenAsync(job, ct);
 
         var distinctIds = employeeIds.Where(id => id != Guid.Empty).Distinct().ToList();
         if (distinctIds.Count > 0)
         {
-            var activeCount = await _dbContext.Set<Employee>()
-                .CountAsync(e => distinctIds.Contains(e.Id) && e.IsActive, ct);
-            if (activeCount != distinctIds.Count)
+            var employees = await _dbContext.Set<Employee>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(e => distinctIds.Contains(e.Id))
+                .ToListAsync(ct);
+            if (employees.Count != distinctIds.Count)
+                throw new InvalidOperationException("One or more crew members are missing or inactive.");
+            if (employees.Any(e => e.IsDeleted || !e.IsActive))
                 throw new InvalidOperationException("One or more crew members are missing or inactive.");
         }
 

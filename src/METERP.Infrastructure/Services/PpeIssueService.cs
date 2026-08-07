@@ -167,10 +167,12 @@ public sealed class PpeIssueService : IPpeIssueService
         if (quantity > 1000m)
             throw new InvalidOperationException("PPE return quantity cannot exceed 1000 in a single transaction.");
 
+        // IgnoreQueryFilters: soft-deleted inventory would hide the issue via required Include filters.
         var issue = await _dbContext.Set<EmployeePpeIssue>()
+            .IgnoreQueryFilters()
             .Include(i => i.InventoryItem)
             .Include(i => i.Employee)
-            .FirstOrDefaultAsync(i => i.Id == issueId, ct);
+            .FirstOrDefaultAsync(i => i.Id == issueId && !i.IsDeleted, ct);
         if (issue == null)
             return false;
 
@@ -181,6 +183,14 @@ public sealed class PpeIssueService : IPpeIssueService
         if (quantity > outstanding)
             throw new InvalidOperationException(
                 $"Cannot return {quantity:N2} — only {outstanding:N2} outstanding on this issue.");
+
+        var item = issue.InventoryItem
+            ?? await _dbContext.Set<InventoryItem>()
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(i => i.Id == issue.InventoryItemId, ct);
+        if (item == null || item.IsDeleted)
+            throw new InvalidOperationException(
+                "Cannot return PPE — inventory item is missing or deleted.");
 
         await _inventoryService.RecordStockTransactionAsync(
             issue.InventoryItemId,
