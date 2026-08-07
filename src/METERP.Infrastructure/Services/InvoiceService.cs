@@ -904,6 +904,19 @@ public class InvoiceService : IInvoiceService
             && !invoice.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot send an invoice with no lines.");
 
+        if (newStatus == InvoiceStatus.Sent)
+        {
+            var customer = await _dbContext.Set<Customer>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c =>
+                    c.Id == invoice.CustomerId
+                    && (invoice.TenantId == Guid.Empty || c.TenantId == invoice.TenantId), ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException(
+                    "Cannot send invoice — customer is missing or deleted.");
+        }
+
         if (newStatus == InvoiceStatus.Cancelled && invoice.AmountPaid > 0)
             throw new InvalidOperationException(
                 "Cannot cancel an invoice with payments. Create a credit note instead.");

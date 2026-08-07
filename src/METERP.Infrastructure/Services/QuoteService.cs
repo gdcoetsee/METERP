@@ -169,6 +169,16 @@ public class QuoteService : IQuoteService
                 .AnyAsync(l => l.QuoteId == quote.Id && !l.IsDeleted, ct);
             if (!hasLines)
                 throw new InvalidOperationException("Cannot send a quote with no lines.");
+
+            var customer = await _dbContext.Set<Customer>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c =>
+                    c.Id == existing.CustomerId
+                    && (existing.TenantId == Guid.Empty || c.TenantId == existing.TenantId), ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException(
+                    "Cannot send quote — customer is missing or deleted.");
         }
 
         if (quote.TaxRate < 0 || quote.TaxRate > 1m)

@@ -135,6 +135,36 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_Send_ThrowsWhenCustomerDeleted()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-SEND-DEL",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+                Lines =
+                {
+                    new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 1000m }
+                }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            customer.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            quote.Status = QuoteStatus.Sent;
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(quote));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveRejectAsync_SetsRejectedStatus()
     {
         var (service, db, tenantId, customer) = Create();

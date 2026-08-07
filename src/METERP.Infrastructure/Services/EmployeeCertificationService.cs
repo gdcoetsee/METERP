@@ -123,9 +123,13 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
             && cert.ExpiryDate.Value.Date > DateTime.UtcNow.Date.AddYears(20))
             throw new InvalidOperationException("Certification expiry cannot be more than 20 years in the future.");
 
-        var empExists = await _dbContext.Set<Employee>()
-            .AnyAsync(e => e.Id == cert.EmployeeId && e.IsActive, ct);
-        if (!empExists)
+        var employee = await _dbContext.Set<Employee>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == cert.EmployeeId, ct);
+        if (employee == null || employee.IsDeleted)
+            throw new InvalidOperationException("Employee not found or deleted.");
+        if (!employee.IsActive)
             throw new InvalidOperationException("Employee not found or inactive.");
 
         // One open record per employee + type (avoid duplicate Red Cards / medicals).

@@ -280,6 +280,37 @@ public class EmployeeCertificationServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenEmployeeSoftDeleted()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var emp = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "CERT-DEL",
+                FirstName = "Gone",
+                LastName = "Tech",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(emp);
+            await db.SaveChangesAsync();
+            emp.IsDeleted = true;
+            emp.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new EmployeeCertification
+                {
+                    EmployeeId = emp.Id,
+                    CertificationType = "Medical",
+                    NoExpiry = true
+                }));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task UpdateAsync_NormalizesExpiryDate()
     {
         var (service, db, _, employee) = Create();
