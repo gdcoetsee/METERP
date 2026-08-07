@@ -187,6 +187,45 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task SelectQuoteAsync_ThrowsWhenJobClosed()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+
+            var req = await db.Set<StockRequisition>().FirstAsync(r => r.Id == reqId);
+            var job = await db.Set<Job>().FirstAsync(j => j.Id == req.JobId);
+            job.Status = JobStatus.Closed;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                quotes.SelectQuoteAsync(quoteId, TestUserId));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreatePoFromSelectedQuoteAsync_ThrowsWhenJobClosed()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            Assert.True(await quotes.SelectQuoteAsync(quoteId, TestUserId));
+
+            var req = await db.Set<StockRequisition>().FirstAsync(r => r.Id == reqId);
+            var job = await db.Set<Job>().FirstAsync(j => j.Id == req.JobId);
+            job.Status = JobStatus.Closed;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                quotes.CreatePoFromSelectedQuoteAsync(reqId));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenSupplierInactive()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

@@ -295,6 +295,32 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_ThrowsWhenJobCancelled()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 5m);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+            Assert.True(await service.ApproveManagerAsync(id, Guid.NewGuid()));
+            Assert.True(await service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                service.IssueAsync(id, Guid.NewGuid()));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ApproveManagerAsync_ThrowsWhenJobClosed()
     {
         var (service, db, tenantId, _) = Create();
@@ -339,6 +365,48 @@ public class StockRequisitionServiceTests
 
             var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
                 service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenJobClosed()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            job.Status = JobStatus.Closed;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            }));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenJobCancelled()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() => service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            }));
             Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
