@@ -724,6 +724,32 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_ConvertToJobAsync_ThrowsWhenAlreadyConverted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new QuoteService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            QuoteNumber = "Q-DBL",
+            Status = QuoteStatus.Accepted,
+            Lines = { new QuoteLine { Description = "Work", Quantity = 1, UnitPrice = 1000m } }
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        await service.ConvertToJobAsync(quote.Id);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConvertToJobAsync(quote.Id));
+        Assert.Contains("already been converted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task QuoteService_ConvertToJobAsync_ThrowsWhenCustomerDeleted()
     {
         var tenantId = Guid.NewGuid();

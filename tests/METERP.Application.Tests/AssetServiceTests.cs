@@ -123,6 +123,36 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_Decommission_ThrowsWhenAssignedToOpenJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var id = await service.CreateAsync(new Asset
+        {
+            CustomerId = customerId,
+            Name = "Vehicle",
+            Status = AssetStatus.Operational
+        });
+        db.Set<Job>().Add(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            AssetId = id,
+            JobNumber = "J-ASSET",
+            Title = "Open",
+            Status = JobStatus.InProgress
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateStatusAsync(id, AssetStatus.Decommissioned));
+        Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AddMaintenanceNoteAsync_ThrowsWhenJobSoftDeleted()
     {
         var tenantId = Guid.NewGuid();

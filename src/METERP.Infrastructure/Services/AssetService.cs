@@ -226,6 +226,17 @@ public class AssetService : IAssetService
             throw new InvalidOperationException(
                 "Decommissioned assets cannot be returned to service without an explicit re-create / admin process.");
 
+        if (newStatus == AssetStatus.Decommissioned && asset.Status != AssetStatus.Decommissioned)
+        {
+            var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
+                .AnyAsync(j => j.AssetId == assetId
+                    && j.Status != JobStatus.Cancelled
+                    && j.Status != JobStatus.Closed, ct);
+            if (hasOpenJobs)
+                throw new InvalidOperationException(
+                    "Cannot decommission an asset assigned to open jobs. Unassign or close those jobs first.");
+        }
+
         asset.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
