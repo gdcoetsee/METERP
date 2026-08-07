@@ -322,11 +322,7 @@ public class EmployeeService : IEmployeeService
         var e = await _dbContext.Set<Employee>().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (e == null) return;
 
-        var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
-            .AnyAsync(j => j.AssignedEmployeeId == id
-                && j.Status != JobStatus.Cancelled
-                && j.Status != JobStatus.Closed, ct);
-        if (hasOpenJobs)
+        if (await IsAssignedToOpenJobsAsync(id, ct))
             throw new InvalidOperationException(
                 "Cannot delete an employee assigned to open jobs. Reassign or close those jobs first.");
 
@@ -356,11 +352,7 @@ public class EmployeeService : IEmployeeService
 
         if (!isActive && e.IsActive)
         {
-            var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
-                .AnyAsync(j => j.AssignedEmployeeId == id
-                    && j.Status != JobStatus.Cancelled
-                    && j.Status != JobStatus.Closed, ct);
-            if (hasOpenJobs)
+            if (await IsAssignedToOpenJobsAsync(id, ct))
                 throw new InvalidOperationException(
                     "Cannot deactivate an employee assigned to open jobs. Reassign or close those jobs first.");
         }
@@ -368,6 +360,28 @@ public class EmployeeService : IEmployeeService
         e.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+    }
+
+    /// <summary>
+    /// Lead assignment or active crew membership on a non-closed/cancelled job blocks deactivate/delete.
+    /// </summary>
+    private async Task<bool> IsAssignedToOpenJobsAsync(Guid employeeId, CancellationToken ct)
+    {
+        var asLead = await _dbContext.Set<Job>().AsNoTracking()
+            .AnyAsync(j => j.AssignedEmployeeId == employeeId
+                && j.Status != JobStatus.Cancelled
+                && j.Status != JobStatus.Closed, ct);
+        if (asLead)
+            return true;
+
+        return await (
+            from c in _dbContext.Set<JobCrewAssignment>().AsNoTracking()
+            join j in _dbContext.Set<Job>().AsNoTracking() on c.JobId equals j.Id
+            where c.EmployeeId == employeeId
+                  && !c.IsDeleted
+                  && j.Status != JobStatus.Cancelled
+                  && j.Status != JobStatus.Closed
+            select c.Id).AnyAsync(ct);
     }
 
     private void InvalidateListCaches()

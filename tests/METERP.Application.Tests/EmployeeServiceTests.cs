@@ -617,4 +617,75 @@ public class EmployeeServiceTests
         Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.True((await service.GetByIdAsync(empId))!.IsActive);
     }
+
+    [Fact]
+    public async Task SetActiveAsync_ThrowsWhenDeactivatingCrewMemberOnOpenJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-CREW",
+            FirstName = "Crew",
+            LastName = "Tech"
+        });
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-CREW",
+            Title = "Open",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        db.Set<JobCrewAssignment>().Add(new JobCrewAssignment
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            EmployeeId = empId
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SetActiveAsync(empId, false));
+        Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenEmployeeIsCrewOnOpenJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-CREW-DEL",
+            FirstName = "Crew",
+            LastName = "Del"
+        });
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-CREW-DEL",
+            Title = "Open",
+            Status = JobStatus.Scheduled
+        };
+        db.Set<Job>().Add(job);
+        db.Set<JobCrewAssignment>().Add(new JobCrewAssignment
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            EmployeeId = empId
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(empId));
+        Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
