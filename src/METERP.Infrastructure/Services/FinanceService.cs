@@ -112,6 +112,16 @@ public class FinanceService : IFinanceService
         var account = await _dbContext.Set<Account>().FirstOrDefaultAsync(a => a.Id == accountId, ct)
             ?? throw new InvalidOperationException("Account not found.");
 
+        if (!isActive && account.IsActive)
+        {
+            // Keep chart history intact — accounts with postings stay in the chart (inactive ok only if no lines).
+            var hasPostings = await _dbContext.Set<JournalEntryLine>().AsNoTracking()
+                .AnyAsync(l => l.AccountId == accountId && !l.IsDeleted, ct);
+            if (hasPostings)
+                throw new InvalidOperationException(
+                    "Cannot deactivate an account with journal postings. Keep it active for reporting integrity.");
+        }
+
         account.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
         _cache?.InvalidateCategory(TenantCacheCategories.Finance);

@@ -611,6 +611,42 @@ public class FinanceServiceTests
     }
 
     [Fact]
+    public async Task SetAccountActiveAsync_ThrowsWhenAccountHasJournalPostings()
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = CreateInMemoryContext(tenantId);
+        var service = new FinanceService(db);
+        var arId = await service.CreateAccountAsync(new Account
+        {
+            TenantId = tenantId,
+            AccountCode = "1100-P",
+            Name = "AR",
+            Type = AccountType.Asset
+        });
+        var revId = await service.CreateAccountAsync(new Account
+        {
+            TenantId = tenantId,
+            AccountCode = "4000-P",
+            Name = "Rev",
+            Type = AccountType.Revenue
+        });
+        await service.PostJournalAsync(new JournalEntry
+        {
+            EntryDate = DateTime.UtcNow.Date,
+            Description = "Sale",
+            Lines =
+            {
+                new JournalEntryLine { AccountId = arId, Debit = 100m },
+                new JournalEntryLine { AccountId = revId, Credit = 100m }
+            }
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SetAccountActiveAsync(arId, false));
+        Assert.Contains("journal postings", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SetAccountActiveAsync_DeactivatesAccount()
     {
         var tenantId = Guid.NewGuid();
