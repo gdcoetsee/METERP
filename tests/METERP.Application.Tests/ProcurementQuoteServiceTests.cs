@@ -241,6 +241,42 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task SelectQuoteAsync_ThrowsWhenSupplierDeactivatedMidChain()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            var supplier = await db.Set<Supplier>().FirstAsync(s => s.Id == supplierA);
+            supplier.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.SelectQuoteAsync(quoteId, TestUserId));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreatePoFromSelectedQuoteAsync_ThrowsWhenSupplierDeactivatedMidChain()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            Assert.True(await quotes.SelectQuoteAsync(quoteId, TestUserId));
+
+            var supplier = await db.Set<Supplier>().FirstAsync(s => s.Id == supplierA);
+            supplier.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.CreatePoFromSelectedQuoteAsync(reqId));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AddQuote_ThrowsWhenSupplierAlreadyQuoted()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();

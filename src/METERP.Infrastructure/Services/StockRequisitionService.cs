@@ -91,9 +91,12 @@ public sealed class StockRequisitionService : IStockRequisitionService
         if (requisition.JobId == Guid.Empty)
             throw new InvalidOperationException("Job is required for a stock requisition.");
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == requisition.JobId, ct);
-        if (job == null)
-            throw new InvalidOperationException("Job not found.");
+        // Soft-delete aware so deleted jobs are not reported as a vague "not found".
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == requisition.JobId, ct);
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Job not found or deleted.");
         if (!job.IsOpenForOperations())
             throw JobClosedException.ForJob(job.JobNumber);
 
@@ -218,7 +221,12 @@ public sealed class StockRequisitionService : IStockRequisitionService
                 continue;
             }
 
-            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId!.Value, ct);
+            var item = await _dbContext.Set<InventoryItem>()
+                .FirstOrDefaultAsync(i => i.Id == line.InventoryItemId!.Value, ct);
+            if (item == null || !item.IsActive)
+                throw new InvalidOperationException(
+                    "Cannot approve requisition — a catalog line references a missing or inactive inventory item. Cancel or reject and re-submit.");
+
             var available = StockAvailabilityCalculator.GetAvailableQuantity(item.QuantityOnHand, item.QuantityReserved);
             var reserve = StockAvailabilityCalculator.CalculateReservation(line.QuantityRequested, available);
 
@@ -320,11 +328,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
             or RequisitionStatus.ProcurementOrdered))
             return false;
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
-        if (job == null)
-            throw new InvalidOperationException("Job not found for this requisition.");
-        if (!job.IsOpenForOperations())
-            throw JobClosedException.ForJob(job.JobNumber);
+        // Soft-delete aware open check (same pattern as approvals / field reports).
+        await EnsureJobOpenForRequisitionAsync(req, ct);
 
         var issuedAny = false;
         foreach (var line in req.Lines.Where(l => !l.IsDeleted && l.QuantityReserved > 0))
@@ -409,6 +414,9 @@ public sealed class StockRequisitionService : IStockRequisitionService
         if (req == null || req.Status is not (RequisitionStatus.AwaitingProcurement or RequisitionStatus.ProcurementOrdered))
             return false;
 
+        // Do not reserve stock against a closed/cancelled job — IssueAsync would refuse and leave trapped reservations.
+        await EnsureJobOpenForRequisitionAsync(req, ct);
+
         var anyReserved = false;
         foreach (var line in req.Lines.Where(l => !l.IsDeleted))
         {
@@ -423,7 +431,12 @@ public sealed class StockRequisitionService : IStockRequisitionService
                 continue;
             }
 
-            var item = await _dbContext.Set<InventoryItem>().FirstAsync(i => i.Id == line.InventoryItemId!.Value, ct);
+            var item = await _dbContext.Set<InventoryItem>()
+                .FirstOrDefaultAsync(i => i.Id == line.InventoryItemId!.Value, ct);
+            if (item == null || !item.IsActive)
+                throw new InvalidOperationException(
+                    "Cannot fulfill requisition after GRV — a catalog line references a missing or inactive inventory item.");
+
             var available = StockAvailabilityCalculator.GetAvailableQuantity(item.QuantityOnHand, item.QuantityReserved);
             var reserve = StockAvailabilityCalculator.CalculateReservation(shortfall, available);
 
@@ -474,10 +487,15 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
     private async Task EnsureJobOpenForRequisitionAsync(StockRequisition req, CancellationToken ct)
     {
+        // Ignore soft-delete so deleted jobs surface as an explicit integrity error (not "not found").
         var job = await _dbContext.Set<Job>().AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
-        if (job == null)
-            throw new InvalidOperationException("Job not found for this requisition.");
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j =>
+                j.Id == req.JobId
+                && (req.TenantId == Guid.Empty || j.TenantId == req.TenantId), ct);
+
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Job not found or deleted for this requisition.");
         if (!job.IsOpenForOperations())
             throw JobClosedException.ForJob(job.JobNumber);
     }

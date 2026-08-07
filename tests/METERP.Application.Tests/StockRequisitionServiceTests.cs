@@ -614,6 +614,94 @@ public class StockRequisitionServiceTests
     }
 
     [Fact]
+    public async Task FulfillAfterPoReceiptAsync_ThrowsWhenJobClosed()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 0m);
+            var inventory = new InventoryService(db);
+            var poService = new PurchaseOrderService(db, inventory, service);
+            var supplier = new Supplier { TenantId = tenantId, Name = "Fulfill Co", IsActive = true };
+            db.Set<Supplier>().Add(supplier);
+            await db.SaveChangesAsync();
+
+            var reqId = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+            });
+            await service.ApproveManagerAsync(reqId, Guid.NewGuid());
+            await service.ApproveExecutiveAsync(reqId, Guid.NewGuid());
+            var poId = await poService.CreateFromRequisitionAsync(reqId, supplier.Id);
+            await poService.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            // Simulate GRV stock increase without calling Receive (isolates fulfill guard).
+            item.QuantityOnHand = 5m;
+            job.Status = JobStatus.Closed;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                service.FulfillAfterPoReceiptAsync(poId));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            var req = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == reqId);
+            Assert.Equal(0m, req.Lines.First().QuantityReserved);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveExecutiveAsync_ThrowsWhenInventoryItemDeactivatedMidChain()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 10m);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+            });
+            Assert.True(await service.ApproveManagerAsync(id, Guid.NewGuid()));
+
+            item.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveManagerAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 1 }]
+            });
+
+            job.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveManagerAsync(id, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ApproveExecutiveAsync_PartialReserve_SetsAwaitingProcurement()
     {
         var (service, db, tenantId, _) = Create();

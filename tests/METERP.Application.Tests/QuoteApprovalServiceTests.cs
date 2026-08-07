@@ -334,6 +334,39 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveApproveAsync_ThrowsWhenCustomerDeletedMidChain()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-TEST-DEL-CUST",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                Lines =
+                {
+                    new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 1000m }
+                }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            customer.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ExecutiveApproveAsync(quote.Id, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(QuoteApprovalStatus.PendingExecutive, saved.ApprovalStatus);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveApprove_AllowsSentStatus()
     {
         var (service, db, tenantId, customer) = Create();

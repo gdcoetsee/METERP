@@ -45,8 +45,7 @@ public class SchedulingService : ISchedulingService
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
 
         if (!job.IsOpenForOperations())
-            throw new InvalidOperationException(
-                $"Cannot assign resources — job {job.JobNumber} is {job.Status}.");
+            throw JobClosedException.ForJob(job.JobNumber);
 
         if (assetId is { } aid && aid != Guid.Empty)
         {
@@ -111,8 +110,7 @@ public class SchedulingService : ISchedulingService
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
 
         if (!job.IsOpenForOperations())
-            throw new InvalidOperationException(
-                $"Cannot log crew labor — job {job.JobNumber} is {job.Status}.");
+            throw JobClosedException.ForJob(job.JobNumber);
 
         var crew = job.GetCrewEmployees().ToList();
         if (job.AssignedEmployee != null && crew.All(e => e.Id != job.AssignedEmployeeId))
@@ -131,6 +129,12 @@ public class SchedulingService : ISchedulingService
         var targetList = targets.ToList();
         if (targetList.Count == 0)
             throw new InvalidOperationException("No matching crew members selected.");
+
+        // Pre-validate all targets before posting any labor (avoid partial cost posts).
+        var inactive = targetList.FirstOrDefault(e => !e.IsActive);
+        if (inactive != null)
+            throw new InvalidOperationException(
+                $"Cannot log crew labor — employee {inactive.FirstName} {inactive.LastName} is inactive.");
 
         var workDay = (workDate ?? DateTime.UtcNow).Date;
         if (workDay > DateTime.UtcNow.Date.AddDays(1))
@@ -170,8 +174,7 @@ public class SchedulingService : ISchedulingService
             ?? throw new InvalidOperationException($"Job {jobId} was not found.");
 
         if (!job.IsOpenForOperations())
-            throw new InvalidOperationException(
-                $"Cannot reschedule — job {job.JobNumber} is {job.Status}.");
+            throw JobClosedException.ForJob(job.JobNumber);
 
         if (scheduledStart.HasValue)
         {

@@ -156,6 +156,7 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             throw new InvalidOperationException("Quotes can only be selected while the requisition awaits procurement.");
 
         await EnsureRequisitionJobOpenAsync(req, ct);
+        await EnsureSupplierActiveAsync(quote.SupplierId, ct);
 
         var siblings = await _dbContext.Set<ProcurementSupplierQuote>()
             .Where(q => q.StockRequisitionId == quote.StockRequisitionId)
@@ -205,6 +206,7 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
         var req = await _dbContext.Set<StockRequisition>().FirstOrDefaultAsync(r => r.Id == requisitionId, ct)
             ?? throw new InvalidOperationException("Requisition not found.");
         await EnsureRequisitionJobOpenAsync(req, ct);
+        await EnsureSupplierActiveAsync(selected.SupplierId, ct);
 
         var poId = await _purchaseOrders.CreateFromRequisitionAsync(requisitionId, selected.SupplierId, ct);
 
@@ -255,10 +257,21 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
     private async Task EnsureRequisitionJobOpenAsync(StockRequisition req, CancellationToken ct)
     {
         var job = await _dbContext.Set<Job>().AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
-        if (job == null)
-            throw new InvalidOperationException("Job not found for this requisition.");
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j =>
+                j.Id == req.JobId
+                && (req.TenantId == Guid.Empty || j.TenantId == req.TenantId), ct);
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Job not found or deleted for this requisition.");
         if (!job.IsOpenForOperations())
             throw JobClosedException.ForJob(job.JobNumber);
+    }
+
+    private async Task EnsureSupplierActiveAsync(Guid supplierId, CancellationToken ct)
+    {
+        var supplier = await _dbContext.Set<Supplier>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == supplierId, ct);
+        if (supplier == null || !supplier.IsActive)
+            throw new InvalidOperationException("Supplier not found or inactive.");
     }
 }

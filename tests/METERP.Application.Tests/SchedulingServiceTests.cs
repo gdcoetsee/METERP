@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using METERP.Application.Interfaces;
 using METERP.Application.Options;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
@@ -537,12 +538,63 @@ public class SchedulingServiceTests
             await service.AssignJobResourcesAsync(jobId, null, leadId);
             await jobService.CloseAsync(jobId, Guid.NewGuid(), "Done");
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsAsync<JobClosedException>(() =>
                 service.AssignJobResourcesAsync(jobId, null, leadId));
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsAsync<JobClosedException>(() =>
                 service.AddCrewLaborAsync(jobId, 4m));
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsAsync<JobClosedException>(() =>
                 service.UpdateScheduledStartAsync(jobId, DateTime.UtcNow.Date));
+        }
+    }
+
+    [Fact]
+    public async Task AddCrewLaborAsync_ThrowsWhenCrewMemberInactive_WithoutPartialPosts()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Crew Co" });
+            await db.SaveChangesAsync();
+
+            var activeId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Active",
+                LastName = "Tech",
+                DefaultHourlyRate = 200m,
+                IsActive = true
+            });
+            var inactiveId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Inactive",
+                LastName = "Tech",
+                DefaultHourlyRate = 180m,
+                IsActive = true
+            });
+
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Crew job",
+                QuotedTotal = 3000m,
+                Status = JobStatus.InProgress
+            });
+            await service.AssignJobResourcesAsync(jobId, null, activeId, [inactiveId]);
+
+            var inactive = await db.Set<Employee>().FirstAsync(e => e.Id == inactiveId);
+            inactive.IsActive = false;
+            await db.SaveChangesAsync();
+
+            // Reload job with crew so AddCrewLabor sees the inactive flag on navigations.
+            var job = await jobService.GetByIdAsync(jobId);
+            Assert.NotNull(job);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddCrewLaborAsync(jobId, 4m));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            var labors = await db.Set<JobLabor>().Where(l => l.JobId == jobId).ToListAsync();
+            Assert.Empty(labors);
         }
     }
 }

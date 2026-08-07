@@ -386,8 +386,8 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw JobClosedException.ForJob(job.JobNumber);
 
         var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId, ct);
-        if (supplier == null)
-            throw new InvalidOperationException("Supplier not found.");
+        if (supplier == null || !supplier.IsActive)
+            throw new InvalidOperationException("Supplier not found or inactive.");
 
         var po = new PurchaseOrder
         {

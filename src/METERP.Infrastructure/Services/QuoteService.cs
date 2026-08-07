@@ -261,6 +261,17 @@ public class QuoteService : IQuoteService
         if (quote.ApprovalStatus != QuoteApprovalStatus.PendingExecutive)
             throw new InvalidOperationException("Quote is not pending executive approval.");
 
+        // Customer may have been soft-deleted after submit — fail before marking approved.
+        var customer = await _dbContext.Set<Customer>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c =>
+                c.Id == quote.CustomerId
+                && (quote.TenantId == Guid.Empty || c.TenantId == quote.TenantId), ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException(
+                "Cannot approve quote — customer is missing or deleted.");
+
         quote.ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved;
         quote.ExecutiveApprovedByUserId = approverUserId;
         quote.ExecutiveApprovedAt = DateTime.UtcNow;
