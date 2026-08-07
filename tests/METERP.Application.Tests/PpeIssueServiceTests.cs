@@ -207,6 +207,49 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task IssueToEmployeeAsync_ThrowsWhenJobCancelled()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-CANCEL",
+                FirstName = "Cancel",
+                LastName = "Job",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            var customer = new Customer { TenantId = tenantId, Name = "C" };
+            db.Set<Customer>().Add(customer);
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = "Scrapped",
+                Status = JobStatus.Cancelled,
+                JobNumber = "J-CANCEL"
+            };
+            db.Set<Job>().Add(job);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "PPE-CN",
+                Name = "Helmet",
+                QuantityOnHand = 10,
+                UnitCost = 20m,
+                IsActive = true
+            });
+
+            var ex = await Assert.ThrowsAsync<JobClosedException>(() =>
+                service.IssueToEmployeeAsync(employee.Id, itemId, 1m, Guid.NewGuid(), jobId: job.Id));
+            Assert.Contains("closed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task IssueToEmployeeAsync_InsufficientStock_Throws()
     {
         var (service, db, tenantId, _) = Create();

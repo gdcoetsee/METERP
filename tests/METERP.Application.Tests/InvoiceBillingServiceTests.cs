@@ -585,6 +585,34 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_ThrowsWhenInvoiceCancelled()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Pay Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-CANCEL-PAY",
+                Status = InvoiceStatus.Cancelled,
+                Subtotal = 100m,
+                Tax = 0m,
+                Total = 100m,
+                AmountPaid = 0m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordPaymentAsync(invoice.Id, 10m, DateTime.UtcNow.Date, null, null, null));
+            Assert.Contains("cancelled", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_RejectsOverpaymentAndDraft()
     {
         var (service, db, tenantId) = Create();

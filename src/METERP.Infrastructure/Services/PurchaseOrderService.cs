@@ -379,9 +379,12 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("A purchase order already exists for this requisition.");
 
         var job = await _dbContext.Set<Job>().AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == req.JobId, ct);
-        if (job == null)
-            throw new InvalidOperationException("Job not found for this requisition.");
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j =>
+                j.Id == req.JobId
+                && (req.TenantId == Guid.Empty || j.TenantId == req.TenantId), ct);
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Job not found or deleted for this requisition.");
         if (!job.IsOpenForOperations())
             throw JobClosedException.ForJob(job.JobNumber);
 
