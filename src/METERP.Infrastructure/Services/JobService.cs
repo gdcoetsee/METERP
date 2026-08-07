@@ -946,8 +946,7 @@ public class JobService : IJobService
         if (milestone.Title.Length > 200)
             throw new InvalidOperationException("Milestone title cannot exceed 200 characters.");
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct)
-            ?? throw new InvalidOperationException("Job not found.");
+        var job = await LoadJobForOperationsAsync(milestone.JobId, ct);
         await EnsureJobOpenAsync(job, ct);
 
         _dbContext.Set<JobMilestone>().Add(milestone);
@@ -1003,8 +1002,7 @@ public class JobService : IJobService
         if (snag.Description.Length > 2000)
             throw new InvalidOperationException("Snag description cannot exceed 2000 characters.");
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == snag.JobId, ct)
-            ?? throw new InvalidOperationException("Job not found.");
+        var job = await LoadJobForOperationsAsync(snag.JobId, ct);
         await EnsureJobOpenAsync(job, ct);
 
         _dbContext.Set<JobSnagItem>().Add(snag);
@@ -1043,12 +1041,16 @@ public class JobService : IJobService
         if (incident.Description.Length > 2000)
             throw new InvalidOperationException("Safety incident description cannot exceed 2000 characters.");
 
-        // Safety logs remain allowed on closed jobs for post-incident compliance capture.
+        // Safety logs remain allowed on closed jobs for post-incident compliance capture,
+        // but not on soft-deleted jobs.
         if (incident.JobId != Guid.Empty)
         {
-            var jobExists = await _dbContext.Set<Job>().AnyAsync(j => j.Id == incident.JobId, ct);
-            if (!jobExists)
-                throw new InvalidOperationException("Job not found.");
+            var job = await _dbContext.Set<Job>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == incident.JobId, ct);
+            if (job == null || job.IsDeleted)
+                throw new InvalidOperationException("Job not found or deleted.");
         }
 
         _dbContext.Set<JobSafetyIncident>().Add(incident);

@@ -1453,6 +1453,83 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddMilestoneAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddMilestoneAsync(new JobMilestone
+            {
+                JobId = jobId,
+                Title = "Blocked",
+                SortOrder = 1
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_AddSnagAsync_ThrowsWhenJobClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        await service.CloseAsync(jobId, Guid.NewGuid(), "Done");
+
+        await Assert.ThrowsAsync<JobClosedException>(() =>
+            service.AddSnagAsync(new JobSnagItem
+            {
+                JobId = jobId,
+                Description = "Snag after close"
+            }));
+    }
+
+    [Fact]
+    public async Task JobService_AddSafetyIncidentAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddSafetyIncidentAsync(new JobSafetyIncident
+            {
+                JobId = jobId,
+                Description = "Near miss",
+                Severity = SafetyIncidentSeverity.Low
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_AddSafetyIncidentAsync_AllowsClosedJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        await service.CloseAsync(jobId, Guid.NewGuid(), "Done");
+
+        var id = await service.AddSafetyIncidentAsync(new JobSafetyIncident
+        {
+            JobId = jobId,
+            Description = "Post-close report",
+            Severity = SafetyIncidentSeverity.Low
+        });
+        Assert.NotEqual(Guid.Empty, id);
+    }
+
+    [Fact]
     public async Task JobService_AddMilestoneAsync_RejectsTitleTooLong()
     {
         var tenantId = Guid.NewGuid();

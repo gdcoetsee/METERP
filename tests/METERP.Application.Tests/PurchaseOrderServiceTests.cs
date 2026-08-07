@@ -633,6 +633,33 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_Sent_ThrowsWhenSupplierInactive()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplier = new Supplier { TenantId = tenantId, Name = "Inact Sup", IsActive = true };
+            db.Set<Supplier>().Add(supplier);
+            await db.SaveChangesAsync();
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplier.Id,
+                TaxRate = 0m,
+                Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 10m } }
+            });
+
+            supplier.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ReceiveAsync_WhenPoNotFound_DoesNotThrow()
     {
         var tenantId = Guid.NewGuid();

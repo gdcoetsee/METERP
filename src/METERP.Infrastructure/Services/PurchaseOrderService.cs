@@ -228,6 +228,15 @@ public class PurchaseOrderService : IPurchaseOrderService
             && !po.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot send a purchase order with no lines.");
 
+        if (newStatus == PurchaseOrderStatus.Sent)
+        {
+            var supplier = po.Supplier
+                ?? await _dbContext.Set<Supplier>().AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == po.SupplierId, ct);
+            if (supplier == null || !supplier.IsActive)
+                throw new InvalidOperationException("Cannot send a purchase order — supplier is missing or inactive.");
+        }
+
         // Received/PartiallyReceived should come from GRV ReceiveAsync, not manual flip.
         if (newStatus is PurchaseOrderStatus.Received or PurchaseOrderStatus.PartiallyReceived
             && previous is not (PurchaseOrderStatus.Sent or PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.Received))
