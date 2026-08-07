@@ -193,6 +193,7 @@ public class InvoiceBillingServiceTests
                 TenantId = tenantId,
                 CustomerId = customer.Id,
                 InvoiceNumber = "INV-SRC",
+                Status = InvoiceStatus.Sent,
                 Subtotal = 1000,
                 Tax = 150,
                 Total = 1150
@@ -256,6 +257,7 @@ public class InvoiceBillingServiceTests
                 TenantId = tenantId,
                 CustomerId = customer.Id,
                 InvoiceNumber = "INV-R",
+                Status = InvoiceStatus.Sent,
                 Total = 100
             };
             db.Set<Invoice>().Add(source);
@@ -287,6 +289,7 @@ public class InvoiceBillingServiceTests
                 TenantId = tenantId,
                 CustomerId = customer.Id,
                 InvoiceNumber = "INV-LONG",
+                Status = InvoiceStatus.Sent,
                 Total = 100
             };
             db.Set<Invoice>().Add(source);
@@ -460,6 +463,7 @@ public class InvoiceBillingServiceTests
                 TenantId = tenantId,
                 CustomerId = customer.Id,
                 InvoiceNumber = "INV-SHORT",
+                Status = InvoiceStatus.Sent,
                 Total = 100
             };
             db.Set<Invoice>().Add(source);
@@ -476,6 +480,108 @@ public class InvoiceBillingServiceTests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.CreateCreditNoteAsync(source.Id, "ab"));
             Assert.Contains("3 characters", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateCreditNoteAsync_ThrowsWhenInvoiceDraft()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-DR",
+                Status = InvoiceStatus.Draft,
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateCreditNoteAsync(source.Id, "Draft credit"));
+            Assert.Contains("draft", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateCreditNoteAsync_ThrowsWhenInvoiceCancelled()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-CNL",
+                Status = InvoiceStatus.Cancelled,
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateCreditNoteAsync(source.Id, "Cancel credit"));
+            Assert.Contains("cancelled", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateCreditNoteAsync_ThrowsWhenCustomerDeleted()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+            db.Set<Customer>().Add(customer);
+            var source = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-DEL-C",
+                Status = InvoiceStatus.Sent,
+                Total = 100
+            };
+            db.Set<Invoice>().Add(source);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = source.Id,
+                Description = "X",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            customer.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateCreditNoteAsync(source.Id, "Customer gone"));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -57,9 +57,11 @@ public sealed class FieldReportService : IFieldReportService
 
     public async Task<Guid> SubmitAsync(FieldReport report, CancellationToken ct = default)
     {
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == report.JobId, ct);
-        if (job == null)
-            throw new InvalidOperationException("Job not found.");
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == report.JobId, ct);
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Job not found or deleted.");
 
         if (!job.IsOpenForOperations())
             throw new InvalidOperationException(

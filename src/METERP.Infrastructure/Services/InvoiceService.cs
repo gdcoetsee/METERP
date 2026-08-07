@@ -395,7 +395,17 @@ public class InvoiceService : IInvoiceService
         if (reason.Length > 500)
             throw new InvalidOperationException("Credit note reason cannot exceed 500 characters.");
 
-        var source = await GetByIdAsync(sourceInvoiceId, ct);
+        // IgnoreQueryFilters: soft-deleted customer would otherwise hide the invoice via Include.
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+        var source = await _dbContext.Set<Invoice>()
+            .IgnoreQueryFilters()
+            .Include(i => i.Lines)
+            .Include(i => i.Customer)
+            .FirstOrDefaultAsync(i =>
+                i.Id == sourceInvoiceId
+                && !i.IsDeleted
+                && (tenantId == Guid.Empty || i.TenantId == tenantId), ct);
+
         if (source == null)
             throw new InvalidOperationException("Source invoice not found.");
 
@@ -408,10 +418,19 @@ public class InvoiceService : IInvoiceService
         if (source.Status == InvoiceStatus.Cancelled)
             throw new InvalidOperationException("Cannot credit a cancelled invoice.");
 
+        if (source.Status == InvoiceStatus.Draft)
+            throw new InvalidOperationException("Cannot credit a draft invoice. Send it first or delete it.");
+
         if (!source.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Source invoice has no lines to credit.");
 
-        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? source.TenantId;
+        // Soft-delete aware customer check so credit notes do not orphan accounting.
+        if (source.Customer == null || source.Customer.IsDeleted)
+            throw new InvalidOperationException(
+                "Cannot create a credit note — customer is missing or deleted.");
+
+        if (tenantId == Guid.Empty)
+            tenantId = source.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
 

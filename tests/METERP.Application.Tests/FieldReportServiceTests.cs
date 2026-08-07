@@ -123,6 +123,30 @@ public class FieldReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            var jobId = await jobs.CreateAsync(new Job { CustomerId = customerId, Title = "Install", QuotedTotal = 5000m });
+            var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+            job.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m
+            }));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task SubmitAsync_ThrowsWhenNegativeValues()
     {
         var tenantId = Guid.NewGuid();
