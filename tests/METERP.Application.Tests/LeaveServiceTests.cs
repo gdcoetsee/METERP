@@ -69,6 +69,155 @@ public class LeaveServiceTests
     }
 
     [Fact]
+    public async Task SubmitRequestAsync_RejectsWhenEmployeeInactive()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-SUB-INACT",
+                FirstName = "Inact",
+                LastName = "Submit",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = false
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.SubmitRequestAsync(new LeaveRequest
+                {
+                    TenantId = tenantId,
+                    EmployeeId = employee.Id,
+                    StartDate = DateTime.UtcNow.Date.AddDays(10),
+                    EndDate = DateTime.UtcNow.Date.AddDays(11),
+                    IsPaid = false,
+                    Reason = "Personal"
+                }));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveManagerAsync_ThrowsWhenEmployeeDeletedAfterSubmit()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-MGR-DEL",
+                FirstName = "Gone",
+                LastName = "Mgr",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(10),
+                EndDate = DateTime.UtcNow.Date.AddDays(11),
+                IsPaid = false,
+                Reason = "Personal"
+            });
+
+            employee.IsDeleted = true;
+            employee.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveManagerAsync_ThrowsWhenEmployeeInactiveAfterSubmit()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-MGR-INACT",
+                FirstName = "Inact",
+                LastName = "Mgr",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(10),
+                EndDate = DateTime.UtcNow.Date.AddDays(11),
+                IsPaid = false,
+                Reason = "Personal"
+            });
+
+            employee.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveExecutiveAsync_ThrowsWhenEmployeeInactiveAfterManager()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-EXEC-INACT",
+                FirstName = "Inact",
+                LastName = "Exec",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.Date.AddDays(10),
+                EndDate = DateTime.UtcNow.Date.AddDays(11),
+                IsPaid = false,
+                Reason = "Personal"
+            });
+            Assert.True(await service.ApproveManagerAsync(requestId, Guid.NewGuid()));
+
+            employee.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveExecutiveAsync(requestId, Guid.NewGuid()));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ApproveHrAsync_ThrowsWhenEmployeeDeleted()
     {
         var (service, db, tenantId) = Create();

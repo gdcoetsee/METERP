@@ -140,6 +140,9 @@ public sealed class LeaveService : ILeaveService
         if (request == null || request.Status != LeaveRequestStatus.PendingManager)
             return false;
 
+        // Employee may have been deactivated after submit — stop the chain early.
+        await EnsureEmployeeEligibleForLeaveApprovalAsync(request, ct);
+
         request.Status = LeaveRequestStatus.PendingExecutive;
         request.ManagerApprovedByUserId = approverUserId;
         request.ManagerApprovedAt = DateTime.UtcNow;
@@ -152,6 +155,8 @@ public sealed class LeaveService : ILeaveService
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status != LeaveRequestStatus.PendingExecutive)
             return false;
+
+        await EnsureEmployeeEligibleForLeaveApprovalAsync(request, ct);
 
         request.Status = LeaveRequestStatus.PendingHr;
         request.ExecutiveApprovedByUserId = approverUserId;
@@ -167,17 +172,7 @@ public sealed class LeaveService : ILeaveService
         if (request == null || request.Status != LeaveRequestStatus.PendingHr)
             return false;
 
-        // Re-load employee without soft-delete filter so we can reject deleted staff explicitly.
-        var employee = await _dbContext.Set<Employee>()
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(e =>
-                e.Id == request.EmployeeId
-                && (request.TenantId == Guid.Empty || e.TenantId == request.TenantId), ct);
-
-        if (employee == null || employee.IsDeleted)
-            throw new InvalidOperationException("Cannot approve leave — employee is missing or deleted.");
-        if (!employee.IsActive)
-            throw new InvalidOperationException("Cannot approve leave for an inactive employee.");
+        await EnsureEmployeeEligibleForLeaveApprovalAsync(request, ct);
 
         // Balance can change between submit and final HR approval (other paid leave approved).
         if (request.IsPaid)
@@ -194,6 +189,23 @@ public sealed class LeaveService : ILeaveService
 
         await _dbContext.SaveChangesAsync(ct);
         return true;
+    }
+
+    /// <summary>
+    /// Re-loads employee ignoring soft-delete so deleted/inactive staff cannot advance leave approvals.
+    /// </summary>
+    private async Task EnsureEmployeeEligibleForLeaveApprovalAsync(LeaveRequest request, CancellationToken ct)
+    {
+        var employee = await _dbContext.Set<Employee>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e =>
+                e.Id == request.EmployeeId
+                && (request.TenantId == Guid.Empty || e.TenantId == request.TenantId), ct);
+
+        if (employee == null || employee.IsDeleted)
+            throw new InvalidOperationException("Cannot approve leave — employee is missing or deleted.");
+        if (!employee.IsActive)
+            throw new InvalidOperationException("Cannot approve leave for an inactive employee.");
     }
 
     public async Task<IReadOnlyList<LeaveRequest>> GetPendingApprovalsAsync(CancellationToken ct = default)
