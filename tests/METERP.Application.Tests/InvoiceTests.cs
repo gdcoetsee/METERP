@@ -437,6 +437,39 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateAsync_RejectsSoftDeletedJob()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+
+        var customer = new Customer { TenantId = tenantId, Name = "Del Job Client" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-SOFT-INV",
+            Title = "Gone",
+            Status = JobStatus.InProgress,
+            IsDeleted = true
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, null);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobId = job.Id,
+                InvoiceDate = DateTime.UtcNow.Date,
+                DueDate = DateTime.UtcNow.Date.AddDays(14)
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateAsync_RejectsMissingJob()
     {
         var tenantId = Guid.NewGuid();

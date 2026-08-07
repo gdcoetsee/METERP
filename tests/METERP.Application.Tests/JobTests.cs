@@ -1652,6 +1652,24 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_ResolveSnagAsync_ThrowsWhenJobClosed()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var snagId = await service.AddSnagAsync(new JobSnagItem
+        {
+            JobId = jobId,
+            Description = "Open snag"
+        });
+        await service.CloseAsync(jobId, Guid.NewGuid(), "Done");
+
+        await Assert.ThrowsAsync<JobClosedException>(() =>
+            service.ResolveSnagAsync(snagId, Guid.NewGuid()));
+    }
+
+    [Fact]
     public async Task JobService_AddSafetyIncidentAsync_ThrowsWhenJobSoftDeleted()
     {
         var tenantId = Guid.NewGuid();

@@ -806,9 +806,10 @@ public class InvoiceService : IInvoiceService
             return;
 
         var job = await _dbContext.Set<Job>().AsNoTracking()
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(j => j.Id == jobId.Value, ct);
-        if (job == null)
-            throw new InvalidOperationException("Linked job not found.");
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException("Linked job not found or deleted.");
 
         if (job.CustomerId != customerId)
             throw new InvalidOperationException(

@@ -1027,9 +1027,8 @@ public class JobService : IJobService
         var snag = await _dbContext.Set<JobSnagItem>().FirstOrDefaultAsync(s => s.Id == snagId, ct);
         if (snag == null || snag.IsResolved) return;
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == snag.JobId, ct);
-        if (job != null)
-            await EnsureJobOpenAsync(job, ct);
+        var job = await LoadJobForOperationsAsync(snag.JobId, ct);
+        await EnsureJobOpenAsync(job, ct);
 
         snag.IsResolved = true;
         snag.ResolvedAt = DateTime.UtcNow;
