@@ -518,6 +518,63 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenCustomerSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer
+        {
+            Id = customerId,
+            TenantId = tenantId,
+            Name = "Gone",
+            IsDeleted = true
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "With deleted customer",
+                CustomerId = customerId,
+                Value = 1000m
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MarkConvertedToQuoteAsync_ThrowsWhenQuoteSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+        var quoteId = Guid.NewGuid();
+        db.Set<Quote>().Add(new Quote
+        {
+            Id = quoteId,
+            TenantId = tenantId,
+            CustomerId = customerId,
+            QuoteNumber = "Q-GONE",
+            IsDeleted = true
+        });
+        await db.SaveChangesAsync();
+
+        var oppId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Link me",
+            CustomerId = customerId,
+            Value = 5000m
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MarkConvertedToQuoteAsync(oppId, quoteId));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ClosedWon_RequiresCustomerAndValue()
     {
         var tenantId = Guid.NewGuid();

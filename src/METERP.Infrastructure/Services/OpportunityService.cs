@@ -120,10 +120,11 @@ public class OpportunityService : IOpportunityService
         if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty)
         {
             var customer = await _dbContext.Set<Customer>()
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == opportunity.CustomerId, ct);
-            if (customer == null)
-                throw new InvalidOperationException("Customer not found.");
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException("Customer not found or deleted.");
             opportunity.CustomerName ??= customer.Name;
         }
         if (!string.IsNullOrWhiteSpace(opportunity.CustomerName))
@@ -328,9 +329,12 @@ public class OpportunityService : IOpportunityService
         if (opp.QuoteId == quoteId)
             return;
 
-        var quote = await _dbContext.Set<Quote>().AsNoTracking()
-            .FirstOrDefaultAsync(q => q.Id == quoteId, ct)
-            ?? throw new InvalidOperationException("Quote not found.");
+        var quote = await _dbContext.Set<Quote>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
+        if (quote == null || quote.IsDeleted)
+            throw new InvalidOperationException("Quote not found or deleted.");
 
         if (opp.CustomerId is { } oppCustomerId && oppCustomerId != Guid.Empty
             && quote.CustomerId != oppCustomerId)
