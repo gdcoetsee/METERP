@@ -213,6 +213,19 @@ public class SalesOrderService : ISalesOrderService
             && !so.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot confirm a sales order with no lines.");
 
+        if (newStatus == SalesOrderStatus.Confirmed)
+        {
+            var customer = await _dbContext.Set<Customer>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c =>
+                    c.Id == so.CustomerId
+                    && (so.TenantId == Guid.Empty || c.TenantId == so.TenantId), ct);
+            if (customer == null || customer.IsDeleted)
+                throw new InvalidOperationException(
+                    "Cannot confirm sales order — customer is missing or deleted.");
+        }
+
         if (newStatus == SalesOrderStatus.Cancelled && so.Status == SalesOrderStatus.InProgress)
         {
             var hasJob = await _dbContext.Set<Job>().AsNoTracking()

@@ -215,9 +215,13 @@ public class JobService : IJobService
 
         if (job.AssignedEmployeeId is { } leadId && leadId != Guid.Empty)
         {
-            var leadOk = await _dbContext.Set<Employee>()
-                .AnyAsync(e => e.Id == leadId && e.IsActive, ct);
-            if (!leadOk)
+            var lead = await _dbContext.Set<Employee>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == leadId, ct);
+            if (lead == null || lead.IsDeleted)
+                throw new InvalidOperationException("Assigned lead employee not found or deleted.");
+            if (!lead.IsActive)
                 throw new InvalidOperationException("Assigned lead employee not found or inactive.");
         }
 
@@ -231,10 +235,12 @@ public class JobService : IJobService
 
         if (job.AssetId is { } assetId && assetId != Guid.Empty)
         {
-            var asset = await _dbContext.Set<Asset>().AsNoTracking()
+            var asset = await _dbContext.Set<Asset>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == assetId, ct);
-            if (asset == null)
-                throw new InvalidOperationException("Asset not found.");
+            if (asset == null || asset.IsDeleted)
+                throw new InvalidOperationException("Asset not found or deleted.");
             if (asset.Status == AssetStatus.Decommissioned)
                 throw new InvalidOperationException("Cannot assign a decommissioned asset.");
         }

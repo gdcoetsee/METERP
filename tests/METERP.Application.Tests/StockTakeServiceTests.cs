@@ -294,6 +294,35 @@ public class StockTakeServiceTests
     }
 
     [Fact]
+    public async Task PostSessionAsync_ThrowsWhenCountedItemDeactivatedMidSession()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, inventory) = CreateServices(tenantId);
+        await using (db)
+        {
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "INACT-STK",
+                Name = "Will deactivate",
+                QuantityOnHand = 10,
+                ReorderLevel = 0,
+                UnitCost = 2m,
+                IsActive = true
+            });
+            var sessionId = await service.StartSessionAsync(TestUserId);
+            Assert.True(await service.RecordCountAsync(sessionId, itemId, 8m));
+
+            var item = await db.Set<InventoryItem>().FirstAsync(i => i.Id == itemId);
+            item.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.PostSessionAsync(sessionId, TestUserId));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CancelSessionAsync_CancelsWithoutInventoryChange()
     {
         var tenantId = Guid.NewGuid();

@@ -207,6 +207,34 @@ public class RecurringJobServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenCustomerSoftDeleted()
+    {
+        var (db, service, _, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer
+            {
+                Id = customerId,
+                TenantId = tenantId,
+                Name = "Gone Co",
+                IsDeleted = true
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new RecurringJobSchedule
+                {
+                    TenantId = tenantId,
+                    CustomerId = customerId,
+                    Title = "Deleted customer schedule",
+                    IntervalDays = 30
+                }));
+            Assert.Contains("Customer not found", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task UpdateAsync_PersistsTitleIntervalAndNextRun()
     {
         var (db, service, _, tenantId) = Create();

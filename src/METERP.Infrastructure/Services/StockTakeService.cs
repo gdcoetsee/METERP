@@ -157,6 +157,20 @@ public sealed class StockTakeService : IStockTakeService
             throw new InvalidOperationException(
                 "Record at least one physical count before posting variances.");
 
+        // Pre-validate inventory lines so we do not post partial adjustments then fail mid-loop.
+        foreach (var line in countedLines)
+        {
+            var variance = line.CountedQuantity!.Value - line.SystemQuantity;
+            if (variance == 0) continue;
+
+            var item = await _dbContext.Set<InventoryItem>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == line.InventoryItemId, ct);
+            if (item == null || !item.IsActive)
+                throw new InvalidOperationException(
+                    "Cannot post stock take — a counted line references a missing or inactive inventory item.");
+        }
+
         foreach (var line in countedLines)
         {
             var variance = line.CountedQuantity!.Value - line.SystemQuantity;

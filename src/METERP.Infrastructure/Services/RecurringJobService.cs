@@ -55,18 +55,7 @@ public sealed class RecurringJobService : IRecurringJobService
         if (schedule.DefaultQuotedTotal > 100_000_000m)
             throw new InvalidOperationException("Default quoted total cannot exceed 100,000,000.");
 
-        var customerExists = await _dbContext.Set<Customer>()
-            .AnyAsync(c => c.Id == schedule.CustomerId, ct);
-        if (!customerExists)
-            throw new InvalidOperationException("Customer not found for recurring schedule.");
-
-        if (schedule.DivisionId is { } divisionId && divisionId != Guid.Empty)
-        {
-            var divisionOk = await _dbContext.Set<Division>()
-                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
-            if (!divisionOk)
-                throw new InvalidOperationException("Division not found or inactive.");
-        }
+        await EnsureCustomerAndDivisionForScheduleAsync(schedule, ct);
 
         schedule.Title = schedule.Title.Trim();
         if (schedule.Title.Length > 200)
@@ -112,18 +101,7 @@ public sealed class RecurringJobService : IRecurringJobService
             .FirstOrDefaultAsync(s => s.Id == schedule.Id, ct)
             ?? throw new InvalidOperationException("Recurring schedule not found.");
 
-        var customerExists = await _dbContext.Set<Customer>()
-            .AnyAsync(c => c.Id == schedule.CustomerId, ct);
-        if (!customerExists)
-            throw new InvalidOperationException("Customer not found for recurring schedule.");
-
-        if (schedule.DivisionId is { } divisionId && divisionId != Guid.Empty)
-        {
-            var divisionOk = await _dbContext.Set<Division>()
-                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
-            if (!divisionOk)
-                throw new InvalidOperationException("Division not found or inactive.");
-        }
+        await EnsureCustomerAndDivisionForScheduleAsync(schedule, ct);
 
         existing.Title = schedule.Title.Trim();
         if (existing.Title.Length > 200)
@@ -251,5 +229,23 @@ public sealed class RecurringJobService : IRecurringJobService
         }
 
         return spawned;
+    }
+
+    private async Task EnsureCustomerAndDivisionForScheduleAsync(RecurringJobSchedule schedule, CancellationToken ct)
+    {
+        var customer = await _dbContext.Set<Customer>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == schedule.CustomerId, ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found for recurring schedule.");
+
+        if (schedule.DivisionId is { } divisionId && divisionId != Guid.Empty)
+        {
+            var divisionOk = await _dbContext.Set<Division>()
+                .AnyAsync(d => d.Id == divisionId && d.IsActive, ct);
+            if (!divisionOk)
+                throw new InvalidOperationException("Division not found or inactive.");
+        }
     }
 }

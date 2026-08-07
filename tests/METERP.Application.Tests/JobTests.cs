@@ -916,6 +916,69 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenLeadEmployeeSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var empId = Guid.NewGuid();
+        db.Set<Employee>().Add(new Employee
+        {
+            Id = empId,
+            TenantId = tenantId,
+            EmployeeNumber = "E-DEL",
+            FirstName = "Gone",
+            LastName = "Lead",
+            IsActive = true,
+            IsDeleted = true
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "With deleted lead",
+                QuotedTotal = 1000m,
+                AssignedEmployeeId = empId
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenAssetSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var assetId = Guid.NewGuid();
+        db.Set<Asset>().Add(new Asset
+        {
+            Id = assetId,
+            TenantId = tenantId,
+            CustomerId = customerId,
+            Name = "Gone truck",
+            Status = AssetStatus.Operational,
+            IsDeleted = true
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "With deleted asset",
+                QuotedTotal = 1000m,
+                AssetId = assetId
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task JobService_AddCostAsync_RejectsFutureCostDate()
     {
         var tenantId = Guid.NewGuid();
