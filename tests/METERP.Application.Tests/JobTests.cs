@@ -149,6 +149,52 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddCostAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddCostAsync(new JobCost
+        {
+            JobId = jobId,
+            Description = "Blocked",
+            Amount = 10m,
+            CostType = "Other",
+            CostDate = DateTime.UtcNow
+        }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_AddLaborAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddLaborAsync(new JobLabor
+        {
+            JobId = jobId,
+            Hours = 2m,
+            HourlyRate = 100m,
+            Technician = "Tech",
+            WorkDate = DateTime.UtcNow.Date
+        }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Job_GetProgressPercent_MapsStatus()
     {
         Assert.Equal(50, new Job { Status = JobStatus.InProgress }.GetProgressPercent());

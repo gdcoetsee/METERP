@@ -248,9 +248,13 @@ public class AssetService : IAssetService
         string? jobNumber = null;
         if (jobId is { } linkedJobId && linkedJobId != Guid.Empty)
         {
+            // Soft-delete aware — deleted jobs must not silently vanish as "not found".
             var job = await _dbContext.Set<Job>().AsNoTracking()
-                .FirstOrDefaultAsync(j => j.Id == linkedJobId, ct)
-                ?? throw new InvalidOperationException("Linked job not found.");
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(j => j.Id == linkedJobId, ct);
+            if (job == null || job.IsDeleted)
+                throw new InvalidOperationException("Linked job not found or deleted.");
+            // Maintenance notes may reference closed jobs for compliance history.
             jobNumber = job.JobNumber;
         }
 

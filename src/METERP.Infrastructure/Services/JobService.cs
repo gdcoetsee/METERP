@@ -782,8 +782,7 @@ public class JobService : IJobService
         if (cost.CostDate < DateTime.UtcNow.Date.AddYears(-2))
             throw new InvalidOperationException("Cost date cannot be more than 2 years in the past.");
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == cost.JobId, ct)
-            ?? throw new InvalidOperationException($"Job {cost.JobId} was not found.");
+        var job = await LoadJobForOperationsAsync(cost.JobId, ct);
 
         await EnsureJobOpenAsync(job, ct);
 
@@ -827,8 +826,7 @@ public class JobService : IJobService
         if (labor.WorkDate < DateTime.UtcNow.Date.AddYears(-2))
             throw new InvalidOperationException("Labor work date cannot be more than 2 years in the past.");
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == labor.JobId, ct)
-            ?? throw new InvalidOperationException($"Job {labor.JobId} was not found.");
+        var job = await LoadJobForOperationsAsync(labor.JobId, ct);
 
         await EnsureJobOpenAsync(job, ct);
         await ApplyEmployeeDefaultsAsync(labor, ct);
@@ -875,8 +873,20 @@ public class JobService : IJobService
         await InvalidateListCachesAsync(ct);
     }
 
+    private async Task<Job> LoadJobForOperationsAsync(Guid jobId, CancellationToken ct)
+    {
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || job.IsDeleted)
+            throw new InvalidOperationException($"Job {jobId} was not found or deleted.");
+        return job;
+    }
+
     private Task EnsureJobOpenAsync(Job job, CancellationToken ct)
     {
+        if (job.IsDeleted)
+            throw new InvalidOperationException($"Job {job.JobNumber} is deleted.");
         if (job.IsOpenForOperations())
             return Task.CompletedTask;
 

@@ -73,9 +73,11 @@ public sealed class PpeIssueService : IPpeIssueService
 
         if (jobId is { } jid && jid != Guid.Empty)
         {
-            var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jid, ct);
-            if (job == null)
-                throw new InvalidOperationException("Job not found.");
+            var job = await _dbContext.Set<Job>()
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(j => j.Id == jid, ct);
+            if (job == null || job.IsDeleted)
+                throw new InvalidOperationException("Job not found or deleted.");
             if (!job.IsOpenForOperations())
                 throw JobClosedException.ForJob(job.JobNumber);
         }

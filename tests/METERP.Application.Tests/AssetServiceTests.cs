@@ -123,6 +123,59 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task AddMaintenanceNoteAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            Title = "Maint job",
+            JobNumber = "J-MAINT-DEL",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "Panel" });
+        await db.SaveChangesAsync();
+
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var delEx = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddMaintenanceNoteAsync(id, "Oil sample", job.Id));
+        Assert.Contains("deleted", delEx.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddMaintenanceNoteAsync_AllowsClosedJobForCompliance()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new AssetService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Client" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            Title = "Closed maint",
+            JobNumber = "J-MAINT-CL",
+            Status = JobStatus.Closed
+        };
+        db.Set<Job>().Add(job);
+        var id = await service.CreateAsync(new Asset { CustomerId = customerId, Name = "Transformer" });
+        await db.SaveChangesAsync();
+
+        await service.AddMaintenanceNoteAsync(id, "Post-close inspection", job.Id);
+        var asset = await service.GetByIdAsync(id);
+        Assert.Contains("J-MAINT-CL", asset!.Notes, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AddMaintenanceNoteAsync_AcceptsNoteAt500Characters()
     {
         var tenantId = Guid.NewGuid();

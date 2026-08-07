@@ -207,6 +207,52 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task IssueToEmployeeAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-SOFT",
+                FirstName = "Soft",
+                LastName = "Del",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            var customer = new Customer { TenantId = tenantId, Name = "C" };
+            db.Set<Customer>().Add(customer);
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = "Gone",
+                Status = JobStatus.InProgress,
+                JobNumber = "J-SOFT"
+            };
+            db.Set<Job>().Add(job);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "PPE-SOFT",
+                Name = "Vest",
+                QuantityOnHand = 10,
+                UnitCost = 20m,
+                IsActive = true
+            });
+
+            job.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.IssueToEmployeeAsync(employee.Id, itemId, 1m, Guid.NewGuid(), jobId: job.Id));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task IssueToEmployeeAsync_ThrowsWhenJobCancelled()
     {
         var (service, db, tenantId, inventory) = Create();

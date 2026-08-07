@@ -204,15 +204,28 @@ public class OpportunityService : IOpportunityService
             if (opportunity.Value <= 0)
                 throw new InvalidOperationException(
                     "Opportunity value must be greater than zero to mark Closed Won.");
+
+            // Linked customer must still exist (soft-delete aware).
+            if (opportunity.CustomerId is { } closedWonCustomerId && closedWonCustomerId != Guid.Empty)
+            {
+                var linked = await _dbContext.Set<Customer>()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Id == closedWonCustomerId, ct);
+                if (linked == null || linked.IsDeleted)
+                    throw new InvalidOperationException(
+                        "Cannot mark Closed Won — linked customer is missing or deleted.");
+            }
         }
 
         if (opportunity.CustomerId.HasValue && opportunity.CustomerId != Guid.Empty
             && opportunity.CustomerId != existing.CustomerId)
         {
             var customer = await _dbContext.Set<Customer>()
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == opportunity.CustomerId, ct);
-            if (customer == null)
+            if (customer == null || customer.IsDeleted)
                 throw new InvalidOperationException("Customer not found.");
             opportunity.CustomerName ??= customer.Name;
         }

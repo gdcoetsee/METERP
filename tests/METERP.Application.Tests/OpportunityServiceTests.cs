@@ -546,6 +546,34 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ClosedWon_ThrowsWhenLinkedCustomerDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Gone Co" });
+        await db.SaveChangesAsync();
+
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "With customer",
+            Stage = OpportunityStage.Negotiation,
+            Value = 10000m,
+            CustomerId = customerId
+        });
+
+        var customer = await db.Set<Customer>().FirstAsync(c => c.Id == customerId);
+        customer.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var opp = await service.GetByIdAsync(id);
+        opp!.Stage = OpportunityStage.ClosedWon;
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(opp));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task UpdateAsync_PersistsChanges()
     {
         var tenantId = Guid.NewGuid();

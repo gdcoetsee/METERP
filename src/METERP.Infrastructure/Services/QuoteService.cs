@@ -234,6 +234,8 @@ public class QuoteService : IQuoteService
         if (!quote.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Add at least one line before submitting for approval.");
 
+        await EnsureQuoteCustomerPresentAsync(quote, ct);
+
         quote.ApprovalStatus = QuoteApprovalStatus.PendingExecutive;
         quote.SubmittedForApprovalByUserId = submittedByUserId;
         quote.SubmittedForApprovalAt = DateTime.UtcNow;
@@ -262,15 +264,7 @@ public class QuoteService : IQuoteService
             throw new InvalidOperationException("Quote is not pending executive approval.");
 
         // Customer may have been soft-deleted after submit — fail before marking approved.
-        var customer = await _dbContext.Set<Customer>()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c =>
-                c.Id == quote.CustomerId
-                && (quote.TenantId == Guid.Empty || c.TenantId == quote.TenantId), ct);
-        if (customer == null || customer.IsDeleted)
-            throw new InvalidOperationException(
-                "Cannot approve quote — customer is missing or deleted.");
+        await EnsureQuoteCustomerPresentAsync(quote, ct);
 
         quote.ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved;
         quote.ExecutiveApprovedByUserId = approverUserId;
@@ -634,6 +628,19 @@ public class QuoteService : IQuoteService
         await TryIncrementJobCountAsync(counterTenantId, ct);
 
         return (await GetByIdForJobAsync(job.Id, ct))!;
+    }
+
+    private async Task EnsureQuoteCustomerPresentAsync(Quote quote, CancellationToken ct)
+    {
+        var customer = await _dbContext.Set<Customer>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c =>
+                c.Id == quote.CustomerId
+                && (quote.TenantId == Guid.Empty || c.TenantId == quote.TenantId), ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException(
+                "Cannot process quote — customer is missing or deleted.");
     }
 
     private Task InvalidateListCachesAsync(CancellationToken ct) =>
