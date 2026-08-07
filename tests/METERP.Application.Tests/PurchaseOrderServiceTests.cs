@@ -31,6 +31,34 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsWhenSupplierInactive()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier
+            {
+                Id = supplierId,
+                TenantId = tenantId,
+                Name = "Inact",
+                IsActive = false
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new PurchaseOrder
+                {
+                    SupplierId = supplierId,
+                    TaxRate = 0m,
+                    Lines = { new PurchaseOrderLine { Description = "Part", Quantity = 1, UnitPrice = 10m } }
+                }));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenPoNumberTooLong()
     {
         var tenantId = Guid.NewGuid();

@@ -318,6 +318,49 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task AddContactAsync_ThrowsWhenCustomerSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Gone Client" });
+        var customer = await db.Set<Customer>().FirstAsync(c => c.Id == customerId);
+        customer.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddContactAsync(new Contact
+            {
+                CustomerId = customerId,
+                FirstName = "A",
+                LastName = "B"
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenCustomerHasOpenSalesOrders()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "SO Client" });
+
+        db.Set<SalesOrder>().Add(new SalesOrder
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            SoNumber = "SO-OPEN",
+            Status = SalesOrderStatus.Confirmed
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(customerId));
+        Assert.Contains("sales order", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await service.GetByIdAsync(customerId));
+    }
+
+    [Fact]
     public async Task DeleteAsync_ThrowsWhenCustomerHasOpenJobs()
     {
         var tenantId = Guid.NewGuid();

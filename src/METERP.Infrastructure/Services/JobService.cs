@@ -547,8 +547,10 @@ public class JobService : IJobService
 
     public async Task<bool> CloseAsync(Guid jobId, Guid executiveUserId, string? notes, CancellationToken ct = default)
     {
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job == null || job.IsClosed() || job.IsCancelled())
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || job.IsDeleted || job.IsClosed() || job.IsCancelled())
             return false;
 
         if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > 500)
@@ -587,8 +589,10 @@ public class JobService : IJobService
         if (reason.Length > 500)
             throw new ArgumentException("Reopen reason cannot exceed 500 characters.", nameof(reason));
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job == null || !job.IsClosed())
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || job.IsDeleted || !job.IsClosed())
             return false;
 
         job.Status = JobStatus.Completed;
@@ -725,8 +729,10 @@ public class JobService : IJobService
         if (reason.Length > 500)
             throw new ArgumentException("Cancellation reason cannot exceed 500 characters.", nameof(reason));
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job == null)
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || job.IsDeleted)
             return false;
 
         if (job.IsClosed())

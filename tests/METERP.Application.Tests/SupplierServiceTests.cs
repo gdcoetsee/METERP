@@ -294,4 +294,45 @@ public class SupplierServiceTests
         Assert.Contains("open purchase", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(await service.GetByIdAsync(id));
     }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenSupplierHasOpenRfqQuotes()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new SupplierService(db);
+        var id = await service.CreateAsync(new Supplier { Name = "RFQ Sup" });
+
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-RFQ",
+            Title = "Work",
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        var req = new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequisitionNumber = "REQ-RFQ",
+            Status = RequisitionStatus.AwaitingProcurement
+        };
+        db.Set<StockRequisition>().Add(req);
+        db.Set<ProcurementSupplierQuote>().Add(new ProcurementSupplierQuote
+        {
+            TenantId = tenantId,
+            StockRequisitionId = req.Id,
+            SupplierId = id,
+            QuotedTotal = 500m
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(id));
+        Assert.Contains("RFQ", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await service.GetByIdAsync(id));
+    }
 }

@@ -93,6 +93,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         var supplier = await _dbContext.Set<Supplier>().FindAsync([po.SupplierId], ct);
         if (supplier == null || supplier.IsDeleted)
             throw new InvalidOperationException("Supplier not found.");
+        if (!supplier.IsActive)
+            throw new InvalidOperationException("Supplier is inactive.");
 
         if (po.TaxRate < 0 || po.TaxRate > 1m)
             throw new InvalidOperationException("Tax rate must be between 0 and 1 (e.g. 0.15 for 15%).");

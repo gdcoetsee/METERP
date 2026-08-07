@@ -181,6 +181,14 @@ public class CustomerService : ICustomerService
             throw new InvalidOperationException(
                 "Cannot delete a customer with open quotes. Reject or expire them first.");
 
+        var hasOpenSalesOrders = await _dbContext.Set<SalesOrder>().AsNoTracking()
+            .AnyAsync(s => s.CustomerId == id
+                && s.Status != SalesOrderStatus.Cancelled
+                && s.Status != SalesOrderStatus.Completed, ct);
+        if (hasOpenSalesOrders)
+            throw new InvalidOperationException(
+                "Cannot delete a customer with open sales orders. Complete or cancel them first.");
+
         var hasUnpaidInvoices = await _dbContext.Set<Invoice>().AsNoTracking()
             .AnyAsync(i => i.CustomerId == id
                 && i.Status != InvoiceStatus.Cancelled
@@ -214,10 +222,13 @@ public class CustomerService : ICustomerService
     {
         ValidateContact(contact);
 
-        var customerExists = await _dbContext.Set<Customer>()
-            .AnyAsync(c => c.Id == contact.CustomerId, ct);
-        if (!customerExists)
-            throw new InvalidOperationException("Customer not found.");
+        // Soft-delete aware so deleted customers are not a vague "not found".
+        var customer = await _dbContext.Set<Customer>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == contact.CustomerId, ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found or deleted.");
 
         if (contact.IsPrimary)
         {

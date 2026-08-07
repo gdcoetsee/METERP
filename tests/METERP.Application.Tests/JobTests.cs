@@ -149,6 +149,50 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CloseAsync_ReturnsFalseWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        Assert.False(await service.CloseAsync(jobId, Guid.NewGuid(), "Nope"));
+    }
+
+    [Fact]
+    public async Task JobService_ReopenAsync_ReturnsFalseWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Done"));
+
+        var job = await db.Set<Job>().IgnoreQueryFilters().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        Assert.False(await service.ReopenAsync(jobId, Guid.NewGuid(), "Need more work"));
+    }
+
+    [Fact]
+    public async Task JobService_CancelAsync_ReturnsFalseWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        Assert.False(await service.CancelAsync(jobId, Guid.NewGuid(), "Cannot cancel deleted"));
+    }
+
+    [Fact]
     public async Task JobService_AddCostAsync_ThrowsWhenJobSoftDeleted()
     {
         var tenantId = Guid.NewGuid();

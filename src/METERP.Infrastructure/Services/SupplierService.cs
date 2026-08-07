@@ -171,6 +171,20 @@ public class SupplierService : ISupplierService
             throw new InvalidOperationException(
                 "Cannot delete a supplier with open purchase orders. Cancel or receive them first.");
 
+        // RFQ quotes on open requisitions would leave orphan supplier bids.
+        var hasOpenRfqQuotes = await (
+            from q in _dbContext.Set<ProcurementSupplierQuote>().AsNoTracking()
+            join r in _dbContext.Set<StockRequisition>().AsNoTracking() on q.StockRequisitionId equals r.Id
+            where q.SupplierId == id
+                  && !q.IsDeleted
+                  && r.Status != RequisitionStatus.Issued
+                  && r.Status != RequisitionStatus.Cancelled
+                  && r.Status != RequisitionStatus.Rejected
+            select q.Id).AnyAsync(ct);
+        if (hasOpenRfqQuotes)
+            throw new InvalidOperationException(
+                "Cannot delete a supplier with open RFQ quotes. Cancel the requisition or remove quotes first.");
+
         // Soft-delete and deactivate so pickers hide the supplier.
         supplier.IsActive = false;
         supplier.IsDeleted = true;
