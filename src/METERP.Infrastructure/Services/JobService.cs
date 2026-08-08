@@ -245,6 +245,8 @@ public class JobService : IJobService
                 throw new InvalidOperationException("Cannot assign a decommissioned asset.");
         }
 
+        await EnsureJobDocumentLinksAsync(job.QuoteId, job.SalesOrderId, job.CustomerId, ct);
+
         job.Title = job.Title.Trim();
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? job.TenantId;
@@ -391,9 +393,13 @@ public class JobService : IJobService
         if (job.AssignedEmployeeId is { } leadId && leadId != Guid.Empty
             && job.AssignedEmployeeId != existing.AssignedEmployeeId)
         {
-            var leadOk = await _dbContext.Set<Employee>()
-                .AnyAsync(e => e.Id == leadId && e.IsActive, ct);
-            if (!leadOk)
+            var lead = await _dbContext.Set<Employee>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == leadId, ct);
+            if (lead == null || lead.IsDeleted)
+                throw new InvalidOperationException("Assigned lead employee not found or deleted.");
+            if (!lead.IsActive)
                 throw new InvalidOperationException("Assigned lead employee not found or inactive.");
         }
 
@@ -409,13 +415,18 @@ public class JobService : IJobService
         if (job.AssetId is { } assetId && assetId != Guid.Empty
             && job.AssetId != existing.AssetId)
         {
-            var asset = await _dbContext.Set<Asset>().AsNoTracking()
+            var asset = await _dbContext.Set<Asset>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == assetId, ct);
-            if (asset == null)
-                throw new InvalidOperationException("Asset not found.");
+            if (asset == null || asset.IsDeleted)
+                throw new InvalidOperationException("Asset not found or deleted.");
             if (asset.Status == AssetStatus.Decommissioned)
                 throw new InvalidOperationException("Cannot assign a decommissioned asset.");
         }
+
+        // Re-validate optional document links whenever present so soft-deleted quote/SO cannot be attached.
+        await EnsureJobDocumentLinksAsync(job.QuoteId, job.SalesOrderId, job.CustomerId, ct);
 
         job.Title = job.Title.Trim();
         if (job.ScheduledStart.HasValue)
@@ -969,8 +980,7 @@ public class JobService : IJobService
 
     public async Task UpdateMilestoneAsync(JobMilestone milestone, CancellationToken ct = default)
     {
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct)
-            ?? throw new InvalidOperationException("Job not found.");
+        var job = await LoadJobForOperationsAsync(milestone.JobId, ct);
         await EnsureJobOpenAsync(job, ct);
 
         if (string.IsNullOrWhiteSpace(milestone.Title))
@@ -989,9 +999,8 @@ public class JobService : IJobService
         var milestone = await _dbContext.Set<JobMilestone>().FirstOrDefaultAsync(m => m.Id == milestoneId, ct);
         if (milestone == null) return;
 
-        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == milestone.JobId, ct);
-        if (job != null)
-            await EnsureJobOpenAsync(job, ct);
+        var job = await LoadJobForOperationsAsync(milestone.JobId, ct);
+        await EnsureJobOpenAsync(job, ct);
 
         milestone.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);
@@ -1073,6 +1082,18 @@ public class JobService : IJobService
     {
         var incident = await _dbContext.Set<JobSafetyIncident>().FirstOrDefaultAsync(i => i.Id == incidentId, ct);
         if (incident == null || incident.IsClosed) return;
+
+        // Soft-deleted jobs must not accept further mutations, even for compliance close-out.
+        if (incident.JobId != Guid.Empty)
+        {
+            var job = await _dbContext.Set<Job>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == incident.JobId, ct);
+            if (job == null || job.IsDeleted)
+                throw new InvalidOperationException("Job not found or deleted.");
+        }
+
         if (!string.IsNullOrWhiteSpace(correctiveAction))
         {
             correctiveAction = correctiveAction.Trim();
@@ -1084,5 +1105,39 @@ public class JobService : IJobService
         incident.ClosedAt = DateTime.UtcNow;
         incident.ClosedByUserId = userId;
         await _dbContext.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Optional Quote/SalesOrder links must point at non-deleted documents for the same customer.
+    /// </summary>
+    private async Task EnsureJobDocumentLinksAsync(
+        Guid? quoteId,
+        Guid? salesOrderId,
+        Guid customerId,
+        CancellationToken ct)
+    {
+        if (quoteId is { } qid && qid != Guid.Empty)
+        {
+            var quote = await _dbContext.Set<Quote>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == qid, ct);
+            if (quote == null || quote.IsDeleted)
+                throw new InvalidOperationException("Linked quote not found or deleted.");
+            if (quote.CustomerId != customerId)
+                throw new InvalidOperationException("Linked quote must belong to the same customer as the job.");
+        }
+
+        if (salesOrderId is { } soid && soid != Guid.Empty)
+        {
+            var so = await _dbContext.Set<SalesOrder>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == soid, ct);
+            if (so == null || so.IsDeleted)
+                throw new InvalidOperationException("Linked sales order not found or deleted.");
+            if (so.CustomerId != customerId)
+                throw new InvalidOperationException("Linked sales order must belong to the same customer as the job.");
+        }
     }
 }

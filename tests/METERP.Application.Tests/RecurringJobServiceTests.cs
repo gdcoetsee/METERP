@@ -386,4 +386,38 @@ public class RecurringJobServiceTests
             Assert.Single(active);
         }
     }
+
+    [Fact]
+    public async Task SetActiveAsync_ThrowsWhenCustomerSoftDeletedOnReactivate()
+    {
+        var (db, service, _, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Sched Co" });
+            await db.SaveChangesAsync();
+
+            var id = await service.CreateAsync(new RecurringJobSchedule
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Title = "Monthly PM",
+                IntervalDays = 30,
+                NextRunDate = DateTime.UtcNow.Date.AddDays(7)
+            });
+
+            await service.SetActiveAsync(id, false);
+
+            var customer = await db.Set<Customer>().FirstAsync(c => c.Id == customerId);
+            customer.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.SetActiveAsync(id, true));
+            Assert.Contains("Customer not found", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            var schedule = await db.Set<RecurringJobSchedule>().FirstAsync(s => s.Id == id);
+            Assert.False(schedule.IsActive);
+        }
+    }
 }

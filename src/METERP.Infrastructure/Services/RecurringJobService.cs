@@ -138,6 +138,10 @@ public sealed class RecurringJobService : IRecurringJobService
             .FirstOrDefaultAsync(s => s.Id == id, ct)
             ?? throw new InvalidOperationException("Recurring schedule not found.");
 
+        // Re-validate master data before reactivating so soft-deleted customers cannot be re-enabled.
+        if (isActive)
+            await EnsureCustomerAndDivisionForScheduleAsync(schedule, ct);
+
         schedule.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
 

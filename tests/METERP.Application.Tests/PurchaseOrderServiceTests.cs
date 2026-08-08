@@ -1484,4 +1484,155 @@ public class PurchaseOrderServiceTests
             It.Is<string>(b => b.Contains("Cable 4mm")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task AddLineAsync_ThrowsWhenInventoryItemSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup", IsActive = true });
+            var item = new InventoryItem
+            {
+                TenantId = tenantId,
+                Sku = "DEL-SKU",
+                Name = "Deleted part",
+                QuantityOnHand = 5,
+                UnitCost = 12m,
+                IsActive = true,
+                IsDeleted = true
+            };
+            db.Set<InventoryItem>().Add(item);
+            await db.SaveChangesAsync();
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new PurchaseOrderLine
+                {
+                    PurchaseOrderId = poId,
+                    InventoryItemId = item.Id,
+                    Description = "Deleted part",
+                    Quantity = 1,
+                    UnitPrice = 12m
+                }));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task AddLineAsync_ThrowsWhenInventoryItemInactive()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup", IsActive = true });
+            var item = new InventoryItem
+            {
+                TenantId = tenantId,
+                Sku = "INACT-SKU",
+                Name = "Inactive part",
+                QuantityOnHand = 5,
+                UnitCost = 12m,
+                IsActive = false
+            };
+            db.Set<InventoryItem>().Add(item);
+            await db.SaveChangesAsync();
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new PurchaseOrderLine
+                {
+                    PurchaseOrderId = poId,
+                    InventoryItemId = item.Id,
+                    Description = "Inactive part",
+                    Quantity = 1,
+                    UnitPrice = 12m
+                }));
+            Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_ThrowsWhenLineInventoryItemSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup", IsActive = true });
+            var item = new InventoryItem
+            {
+                TenantId = tenantId,
+                Sku = "DEL-CREATE",
+                Name = "Gone",
+                QuantityOnHand = 1,
+                UnitCost = 5m,
+                IsActive = true,
+                IsDeleted = true
+            };
+            db.Set<InventoryItem>().Add(item);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateAsync(new PurchaseOrder
+                {
+                    SupplierId = supplierId,
+                    TaxRate = 0m,
+                    Lines =
+                    {
+                        new PurchaseOrderLine
+                        {
+                            InventoryItemId = item.Id,
+                            Description = "Gone",
+                            Quantity = 1,
+                            UnitPrice = 5m
+                        }
+                    }
+                }));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task AddLineAsync_AllowsFreeTextLineWithoutInventoryItem()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Sup", IsActive = true });
+            await db.SaveChangesAsync();
+
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m
+            });
+
+            var lineId = await service.AddLineAsync(new PurchaseOrderLine
+            {
+                PurchaseOrderId = poId,
+                Description = "Custom free-text part",
+                Quantity = 2,
+                UnitPrice = 50m
+            });
+            Assert.NotEqual(Guid.Empty, lineId);
+        }
+    }
 }

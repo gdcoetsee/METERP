@@ -129,6 +129,12 @@ public class PurchaseOrderService : IPurchaseOrderService
                     $"Purchase order number '{po.PoNumber}' already exists.");
         }
 
+        foreach (var line in po.Lines.Where(l => !l.IsDeleted))
+        {
+            ValidateLine(line);
+            await EnsureInventoryItemForLineAsync(line, ct);
+        }
+
         RecalculateTotals(po);
 
         _dbContext.Set<PurchaseOrder>().Add(po);
@@ -318,6 +324,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("Lines can only be added to draft purchase orders.");
 
         ValidateLine(line);
+        await EnsureInventoryItemForLineAsync(line, ct);
 
         _dbContext.Set<PurchaseOrderLine>().Add(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -341,6 +348,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException("Lines can only be edited on draft purchase orders.");
 
         ValidateLine(line);
+        await EnsureInventoryItemForLineAsync(line, ct);
 
         _dbContext.Set<PurchaseOrderLine>().Update(line);
         await _dbContext.SaveChangesAsync(ct);
@@ -753,6 +761,27 @@ public class PurchaseOrderService : IPurchaseOrderService
             if (line.Unit.Length > 20)
                 throw new InvalidOperationException("Line unit cannot exceed 20 characters.");
         }
+    }
+
+    /// <summary>
+    /// When InventoryItemId is set, it must reference a live active SKU. Free-text lines omit the FK.
+    /// </summary>
+    private async Task EnsureInventoryItemForLineAsync(PurchaseOrderLine line, CancellationToken ct)
+    {
+        if (line.InventoryItemId is null || line.InventoryItemId == Guid.Empty)
+        {
+            line.InventoryItemId = null;
+            return;
+        }
+
+        var item = await _dbContext.Set<InventoryItem>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == line.InventoryItemId.Value, ct);
+        if (item == null || item.IsDeleted)
+            throw new InvalidOperationException("Inventory item not found or deleted.");
+        if (!item.IsActive)
+            throw new InvalidOperationException("Inventory item is inactive.");
     }
 
     private static void RecalculateTotals(PurchaseOrder po)

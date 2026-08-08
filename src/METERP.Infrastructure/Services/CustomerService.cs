@@ -252,6 +252,14 @@ public class CustomerService : ICustomerService
     {
         ValidateContact(contact);
 
+        // Soft-delete aware so contacts cannot be reassigned to / edited under deleted customers.
+        var customer = await _dbContext.Set<Customer>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == contact.CustomerId, ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Customer not found or deleted.");
+
         if (contact.IsPrimary)
         {
             var existingPrimaries = await _dbContext.Set<Contact>()

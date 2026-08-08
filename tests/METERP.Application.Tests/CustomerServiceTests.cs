@@ -526,4 +526,31 @@ public class CustomerServiceTests
         Assert.Equal(secondaryId, remaining[0].Id);
         Assert.True(remaining[0].IsPrimary);
     }
+
+    [Fact]
+    public async Task UpdateContactAsync_ThrowsWhenCustomerSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        var customerId = await service.CreateAsync(new Customer { Name = "Contact Parent" });
+        var contactId = await service.AddContactAsync(new Contact
+        {
+            CustomerId = customerId,
+            FirstName = "Pat",
+            LastName = "Lee",
+            Email = "pat@example.com"
+        });
+
+        var customer = await db.Set<Customer>().FirstAsync(c => c.Id == customerId);
+        customer.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var contact = await db.Set<Contact>().IgnoreQueryFilters().FirstAsync(c => c.Id == contactId);
+        contact.FirstName = "Updated";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateContactAsync(contact));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

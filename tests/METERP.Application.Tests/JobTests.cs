@@ -1906,4 +1906,145 @@ public class JobTests
         reloaded.Status = JobStatus.Completed;
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(reloaded));
     }
+
+    [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenQuoteSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customer = new Customer { TenantId = tenantId, Name = "Q Co" };
+        db.Set<Customer>().Add(customer);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-DEL",
+            IsDeleted = true
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = "From deleted quote",
+                QuoteId = quote.Id,
+                QuotedTotal = 100m
+            }));
+        Assert.Contains("quote", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenSalesOrderSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customer = new Customer { TenantId = tenantId, Name = "SO Co" };
+        db.Set<Customer>().Add(customer);
+        var so = new SalesOrder
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            SoNumber = "SO-DEL",
+            Status = SalesOrderStatus.Confirmed,
+            IsDeleted = true
+        };
+        db.Set<SalesOrder>().Add(so);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                Title = "From deleted SO",
+                SalesOrderId = so.Id,
+                QuotedTotal = 100m
+            }));
+        Assert.Contains("sales order", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenQuoteCustomerMismatch()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var customerA = new Customer { TenantId = tenantId, Name = "A" };
+        var customerB = new Customer { TenantId = tenantId, Name = "B" };
+        db.Set<Customer>().AddRange(customerA, customerB);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerA.Id,
+            QuoteNumber = "Q-MIS"
+        };
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customerB.Id,
+                Title = "Mismatch",
+                QuoteId = quote.Id,
+                QuotedTotal = 50m
+            }));
+        Assert.Contains("same customer", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_CloseSafetyIncidentAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var incidentId = await service.AddSafetyIncidentAsync(new JobSafetyIncident
+        {
+            JobId = jobId,
+            Description = "Near miss",
+            Severity = SafetyIncidentSeverity.Low
+        });
+
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseSafetyIncidentAsync(incidentId, Guid.NewGuid(), "Fixed"));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobService_UpdateMilestoneAsync_ThrowsWhenJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var milestoneId = await service.AddMilestoneAsync(new JobMilestone
+        {
+            JobId = jobId,
+            Title = "Phase 1"
+        });
+
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var milestone = await db.Set<JobMilestone>().FirstAsync(m => m.Id == milestoneId);
+        milestone.Title = "Phase 1 updated";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateMilestoneAsync(milestone));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
