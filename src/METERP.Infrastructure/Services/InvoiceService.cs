@@ -1046,6 +1046,9 @@ public class InvoiceService : IInvoiceService
             if (customer == null || customer.IsDeleted)
                 throw new InvalidOperationException(
                     "Cannot send invoice — customer is missing or deleted.");
+            if (string.IsNullOrWhiteSpace(customer.Email))
+                throw new InvalidOperationException(
+                    "Cannot send invoice — customer has no email. Add an email so you can chase payment.");
         }
 
         if (newStatus == InvoiceStatus.Cancelled && invoice.AmountPaid > 0)

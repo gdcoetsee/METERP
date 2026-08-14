@@ -25,7 +25,7 @@ public class QuoteApprovalServiceTests
             .Options;
 
         var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
-        var customer = new Customer { TenantId = tenantId, Name = "Test Co" };
+        var customer = new Customer { TenantId = tenantId, Name = "Test Co", Email = "quotes@test.co" };
         db.Set<Customer>().Add(customer);
         db.SaveChanges();
 
@@ -456,6 +456,35 @@ public class QuoteApprovalServiceTests
 
             var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
             Assert.Equal(QuoteStatus.Sent, saved.Status);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Send_ThrowsWhenCustomerHasNoEmail()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Silent Co" };
+            db.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-NOMAIL",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+                Lines =
+                {
+                    new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 1000m }
+                }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            quote.Status = QuoteStatus.Sent;
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(quote));
+            Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

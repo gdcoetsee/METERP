@@ -179,6 +179,9 @@ public class QuoteService : IQuoteService
             if (customer == null || customer.IsDeleted)
                 throw new InvalidOperationException(
                     "Cannot send quote — customer is missing or deleted.");
+            if (string.IsNullOrWhiteSpace(customer.Email))
+                throw new InvalidOperationException(
+                    "Cannot send quote — customer has no email. Add an email so the customer can receive it.");
         }
 
         if (quote.TaxRate < 0 || quote.TaxRate > 1m)

@@ -521,6 +521,39 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_Sent_ThrowsWhenCustomerHasNoEmail()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "No Mail Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-NOMAIL-SEND",
+                Status = InvoiceStatus.Draft,
+                Total = 100
+            };
+            db.Set<Invoice>().Add(invoice);
+            db.Set<InvoiceLine>().Add(new InvoiceLine
+            {
+                TenantId = tenantId,
+                InvoiceId = invoice.Id,
+                Description = "Work",
+                Quantity = 1,
+                UnitPrice = 100
+            });
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(invoice.Id, InvoiceStatus.Sent));
+            Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task CreateCreditNoteAsync_ThrowsWhenInvoiceDraft()
     {
         var (service, db, tenantId) = Create();
@@ -628,7 +661,7 @@ public class InvoiceBillingServiceTests
         var (service, db, tenantId) = Create();
         await using (db)
         {
-            var customer = new Customer { TenantId = tenantId, Name = "Status Co" };
+            var customer = new Customer { TenantId = tenantId, Name = "Status Co", Email = "ap@status.co" };
             db.Set<Customer>().Add(customer);
             var paid = new Invoice
             {
