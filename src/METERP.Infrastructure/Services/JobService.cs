@@ -622,6 +622,18 @@ public class JobService : IJobService
                 $"Job {job.JobNumber} has R {unbilled:N2} unbilled of R {job.QuotedTotal:N2} quoted. Add close notes to acknowledge the leftover.");
         }
 
+        var openReq = await _dbContext.Set<StockRequisition>().AsNoTracking()
+            .AnyAsync(r =>
+                r.JobId == job.Id
+                && r.Status != RequisitionStatus.Issued
+                && r.Status != RequisitionStatus.Rejected
+                && r.Status != RequisitionStatus.Cancelled, ct);
+        if (openReq && string.IsNullOrWhiteSpace(notes))
+        {
+            throw new InvalidOperationException(
+                $"Job {job.JobNumber} still has open stock requisitions. Finish, cancel, or acknowledge them in close notes.");
+        }
+
         job.Status = JobStatus.Closed;
         job.ClosedAt = DateTime.UtcNow;
         job.ClosedByUserId = executiveUserId;

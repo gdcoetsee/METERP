@@ -1659,6 +1659,31 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CloseAsync_ThrowsWhenOpenRequisitionUnacknowledged()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.QuotedTotal = 0m;
+        db.Set<StockRequisition>().Add(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = jobId,
+            RequisitionNumber = "REQ-OPEN",
+            Status = RequisitionStatus.AwaitingProcurement,
+            RequestedByUserId = Guid.NewGuid()
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseAsync(jobId, Guid.NewGuid(), null));
+        Assert.Contains("requisition", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Shortfall will be written off"));
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();

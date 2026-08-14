@@ -467,6 +467,12 @@ else
                 Add notes explaining why this job can close with leftover revenue.
             </div>
         }
+        @if (_summary?.Requisitions.Any(r => r.Status is not (RequisitionStatus.Issued or RequisitionStatus.Rejected or RequisitionStatus.Cancelled)) == true)
+        {
+            <div class="alert alert-warning small" data-testid="job-cc-close-open-req">
+                This job still has open stock requisitions. Finish or cancel them, or acknowledge them in close notes.
+            </div>
+        }
         <div class="mb-3">
             <label class="form-label">
                 Close notes
