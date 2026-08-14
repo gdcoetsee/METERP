@@ -1130,4 +1130,78 @@ public class StockRequisitionServiceTests
             Assert.Equal(RequisitionStatus.PendingManager, pending[0].Status);
         }
     }
+
+    [Fact]
+    public async Task ApproveExecutiveAsync_NotifiesProcurementWhenShort()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"req-notify-short-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var inventory = new InventoryService(db);
+        var service = new StockRequisitionService(db, inventory, notifications: notifications.Object);
+        var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 0m);
+
+        var id = await service.SubmitAsync(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequestedByUserId = Guid.NewGuid(),
+            Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 5 }]
+        });
+        await service.ApproveManagerAsync(id, Guid.NewGuid());
+        Assert.True(await service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "procurement"
+                && t.RelatedEntityId == id
+                && t.Title.Contains("purchase order", StringComparison.OrdinalIgnoreCase)
+                && t.TargetRoles.Contains("Procurement")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApproveExecutiveAsync_NotifiesStoresWhenReserved()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"req-notify-stock-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var inventory = new InventoryService(db);
+        var service = new StockRequisitionService(db, inventory, notifications: notifications.Object);
+        var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 20m);
+
+        var id = await service.SubmitAsync(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequestedByUserId = Guid.NewGuid(),
+            Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 2 }]
+        });
+        await service.ApproveManagerAsync(id, Guid.NewGuid());
+        Assert.True(await service.ApproveExecutiveAsync(id, Guid.NewGuid()));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "procurement"
+                && t.RelatedEntityId == id
+                && t.Title.Contains("issue stock", StringComparison.OrdinalIgnoreCase)
+                && t.TargetRoles.Contains("Stores")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

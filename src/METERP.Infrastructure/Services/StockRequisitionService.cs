@@ -14,6 +14,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
     private readonly IAuditService? _audit;
     private readonly IPpeIssueService? _ppeIssue;
     private readonly IJobService? _jobService;
+    private readonly ITenantNotificationService? _notifications;
 
     public StockRequisitionService(
         AppDbContext dbContext,
@@ -21,7 +22,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
         IDocumentSequenceService? documentSequence = null,
         IAuditService? audit = null,
         IPpeIssueService? ppeIssue = null,
-        IJobService? jobService = null)
+        IJobService? jobService = null,
+        ITenantNotificationService? notifications = null)
     {
         _dbContext = dbContext;
         _inventoryService = inventoryService;
@@ -29,6 +31,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
         _audit = audit;
         _ppeIssue = ppeIssue;
         _jobService = jobService;
+        _notifications = notifications;
     }
 
     public async Task<StockRequisition?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -254,6 +257,36 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
         if (_audit != null)
             await _audit.LogAsync("APPROVE_EXECUTIVE", "StockRequisition", req.RequisitionNumber, detail, ct);
+
+        if (_notifications != null)
+        {
+            if (anyShort)
+            {
+                await _notifications.CreateAsync(new TenantNotification
+                {
+                    TenantId = req.TenantId,
+                    Title = $"{req.RequisitionNumber} needs a purchase order",
+                    Message = $"{req.RequisitionNumber} is approved with a stock shortfall. Raise a PO so the job is not blocked.",
+                    Category = "procurement",
+                    TargetRoles = "Admin,Executive,Procurement",
+                    RelatedEntityId = req.Id,
+                    RelatedEntityType = nameof(StockRequisition)
+                }, ct);
+            }
+            else
+            {
+                await _notifications.CreateAsync(new TenantNotification
+                {
+                    TenantId = req.TenantId,
+                    Title = $"{req.RequisitionNumber} is reserved — issue stock",
+                    Message = $"{req.RequisitionNumber} is fully reserved. Issue it to the job from Approvals or Stores.",
+                    Category = "procurement",
+                    TargetRoles = "Admin,Executive,Stores",
+                    RelatedEntityId = req.Id,
+                    RelatedEntityType = nameof(StockRequisition)
+                }, ct);
+            }
+        }
 
         return true;
     }
