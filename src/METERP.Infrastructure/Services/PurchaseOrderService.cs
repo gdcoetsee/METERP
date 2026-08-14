@@ -248,6 +248,12 @@ public class PurchaseOrderService : IPurchaseOrderService
                 throw new InvalidOperationException("Cannot send a purchase order — supplier is missing or deleted.");
             if (!supplierForSend.IsActive)
                 throw new InvalidOperationException("Cannot send a purchase order — supplier is missing or inactive.");
+
+            if (po.ExpectedDate == null)
+            {
+                var from = po.PoDate == default ? DateTime.UtcNow.Date : po.PoDate.Date;
+                po.ExpectedDate = from.AddDays(7);
+            }
         }
 
         // Received/PartiallyReceived should come from GRV ReceiveAsync, not manual flip.

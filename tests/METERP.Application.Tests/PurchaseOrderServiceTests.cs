@@ -1465,6 +1465,33 @@ public class PurchaseOrderServiceTests
             || captured.Message.Contains("SMTP not configured", StringComparison.OrdinalIgnoreCase),
             captured.Message);
         Assert.Equal("procurement", captured.Category);
+        var sent = await service.GetByIdAsync(poId);
+        Assert.Equal(sent!.PoDate.Date.AddDays(7), sent.ExpectedDate);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Sent_KeepsExplicitExpectedDate()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Cable Co", IsActive = true });
+            var expected = DateTime.UtcNow.Date.AddDays(14);
+            var poId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                ExpectedDate = expected,
+                Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 10m } }
+            });
+
+            await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);
+
+            var sent = await service.GetByIdAsync(poId);
+            Assert.Equal(expected, sent!.ExpectedDate);
+        }
     }
 
     [Fact]
