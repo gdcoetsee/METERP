@@ -63,4 +63,10 @@ public interface IInvoiceService
         CancellationToken ct = default);
 
     Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a payment reminder for an overdue invoice with a remaining balance.
+    /// Emails the customer when SMTP is configured; always audits the chase.
+    /// </summary>
+    Task<InvoiceChaseResult> ChaseOverdueAsync(Guid invoiceId, CancellationToken ct = default);
 }

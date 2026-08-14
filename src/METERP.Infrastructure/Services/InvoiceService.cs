@@ -18,6 +18,8 @@ public class InvoiceService : IInvoiceService
     private readonly IAuditService? _auditService;
     private readonly IDocumentSequenceService? _documentSequence;
     private readonly IDocumentStorageService? _documentStorage;
+    private readonly IEmailSender? _email;
+    private readonly ITenantNotificationService? _notifications;
 
     public InvoiceService(
         AppDbContext dbContext,
@@ -28,7 +30,9 @@ public class InvoiceService : IInvoiceService
         ITenantCacheService? cache = null,
         IAuditService? auditService = null,
         IDocumentSequenceService? documentSequence = null,
-        IDocumentStorageService? documentStorage = null)
+        IDocumentStorageService? documentStorage = null,
+        IEmailSender? email = null,
+        ITenantNotificationService? notifications = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -39,6 +43,8 @@ public class InvoiceService : IInvoiceService
         _auditService = auditService;
         _documentSequence = documentSequence;
         _documentStorage = documentStorage;
+        _email = email;
+        _notifications = notifications;
     }
 
     public async Task<Invoice?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -596,6 +602,103 @@ public class InvoiceService : IInvoiceService
             .Where(r => r.BalanceDue > 0)
             .OrderByDescending(r => r.DaysOverdue)
             .ToList();
+    }
+
+    public async Task<InvoiceChaseResult> ChaseOverdueAsync(Guid invoiceId, CancellationToken ct = default)
+    {
+        var invoice = await _dbContext.Set<Invoice>()
+            .Include(i => i.Customer)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
+            ?? throw new InvalidOperationException("Invoice not found.");
+
+        if (invoice.DocumentType is InvoiceDocumentType.Proforma or InvoiceDocumentType.CreditNote)
+            throw new InvalidOperationException("Cannot chase a proforma or credit note.");
+        if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Cancelled)
+            throw new InvalidOperationException("Cannot chase a draft or cancelled invoice.");
+
+        var balance = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+        if (balance <= 0.01m)
+            throw new InvalidOperationException("Invoice is already fully paid.");
+
+        var days = InvoiceBillingCalculator.GetDaysOverdue(invoice.DueDate, DateTime.UtcNow);
+        if (days <= 0)
+            throw new InvalidOperationException("Invoice is not overdue yet.");
+
+        var customer = invoice.Customer
+            ?? await _dbContext.Set<Customer>()
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(c => c.Id == invoice.CustomerId, ct);
+        if (customer == null || customer.IsDeleted)
+            throw new InvalidOperationException("Cannot chase — customer is missing or deleted.");
+
+        var email = customer.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            throw new InvalidOperationException(
+                "Cannot chase — customer has no email. Add an email on the customer record first.");
+
+        var todayStamp = $"Chased {DateTime.UtcNow:yyyy-MM-dd}";
+        if (!string.IsNullOrWhiteSpace(invoice.Notes)
+            && invoice.Notes.Contains(todayStamp, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Invoice {invoice.InvoiceNumber} was already chased today.");
+        }
+
+        var emailSent = false;
+        if (_email?.IsConfigured == true)
+        {
+            var html = $"""
+                <p>This is a payment reminder from your contractor.</p>
+                <ul>
+                  <li><strong>Invoice:</strong> {invoice.InvoiceNumber}</li>
+                  <li><strong>Due:</strong> {invoice.DueDate:yyyy-MM-dd} ({days} day(s) overdue)</li>
+                  <li><strong>Balance due:</strong> R {balance:N2}</li>
+                </ul>
+                <p>Please arrange payment at your earliest convenience.</p>
+                """;
+            await _email.SendEmailAsync(email, $"Payment reminder — invoice {invoice.InvoiceNumber}", html, ct);
+            emailSent = true;
+        }
+
+        invoice.Notes = string.IsNullOrWhiteSpace(invoice.Notes)
+            ? todayStamp
+            : $"{invoice.Notes.Trim()}\n{todayStamp}";
+        if (invoice.Notes.Length > 2000)
+            invoice.Notes = invoice.Notes[^2000..];
+
+        if (invoice.Status == InvoiceStatus.Sent)
+            invoice.Status = InvoiceStatus.Overdue;
+
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+
+        if (_auditService != null)
+        {
+            var channel = emailSent ? $"emailed {email}" : "logged (SMTP not configured)";
+            await _auditService.LogAsync(
+                "CHASE",
+                "Invoice",
+                invoice.InvoiceNumber,
+                $"Overdue chase — R {balance:N2}, {days} day(s), {channel}",
+                ct);
+        }
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = invoice.TenantId,
+                Title = $"Chased {invoice.InvoiceNumber}",
+                Message = $"{customer.Name}: R {balance:N2} outstanding, {days} day(s) overdue."
+                    + (emailSent ? $" Reminder emailed to {email}." : " SMTP not configured — chase recorded only."),
+                Category = "collections",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
+        }
+
+        return new InvoiceChaseResult(invoice.Id, invoice.InvoiceNumber, emailSent, email, days, balance);
     }
 
     private static (string SequenceType, string Prefix) GetSequenceForDocumentType(InvoiceDocumentType type) => type switch

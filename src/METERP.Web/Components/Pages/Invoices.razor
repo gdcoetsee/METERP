@@ -34,6 +34,44 @@
             <span class="ms-2 text-danger">R @_agedDebtors.Sum(d => d.BalanceDue).ToString("N2") outstanding</span>
             <span class="ms-2 small text-muted">Buckets: @string.Join(", ", _agedDebtors.GroupBy(d => d.AgingBucket).Select(g => $"{g.Key} ({g.Count()})"))</span>
         </div>
+        @if (_agedDebtors.Any(d => d.DaysOverdue > 0))
+        {
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" data-testid="aged-debtors-overdue-table">
+                    <thead>
+                        <tr>
+                            <th>Invoice</th>
+                            <th>Customer</th>
+                            <th>Due</th>
+                            <th class="text-end">Days</th>
+                            <th class="text-end">Balance</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _agedDebtors.Where(d => d.DaysOverdue > 0).Take(8))
+                        {
+                            <tr>
+                                <td>@row.InvoiceNumber</td>
+                                <td>@row.CustomerName</td>
+                                <td>@row.DueDate.ToString("yyyy-MM-dd")</td>
+                                <td class="text-end text-danger">@row.DaysOverdue</td>
+                                <td class="text-end">R @row.BalanceDue.ToString("N2")</td>
+                                <td class="text-end">
+                                    @if (UserCanManage)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                data-testid="invoice-chase"
+                                                disabled="@_chasing"
+                                                @onclick="() => ChaseOverdueAsync(row.InvoiceId)">Chase</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
 }
 
@@ -196,6 +234,16 @@ else
                     <strong>Type:</strong> @((MarkupString)GetDocumentTypeBadge(selectedInvoice.DocumentType))<br />
                     <strong>Status:</strong> @((MarkupString)GetStatusBadge(selectedInvoice.Status))<br />
                     <strong>Due:</strong> @selectedInvoice.DueDate.ToString("yyyy-MM-dd")
+                    @if (UserCanManage && selectedInvoice.BalanceDue > 0
+                         && InvoiceBillingCalculator.GetDaysOverdue(selectedInvoice.DueDate, DateTime.UtcNow) > 0
+                         && selectedInvoice.DocumentType is not (InvoiceDocumentType.Proforma or InvoiceDocumentType.CreditNote)
+                         && selectedInvoice.Status is not (InvoiceStatus.Draft or InvoiceStatus.Cancelled))
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-2"
+                                data-testid="invoice-chase-detail"
+                                disabled="@_chasing"
+                                @onclick="() => ChaseOverdueAsync(selectedInvoice.Id)">Chase payment</button>
+                    }
                     @if (selectedInvoice.RetentionAmount > 0)
                     {
                         <br /><strong>Retention held:</strong> @($"R {selectedInvoice.RetentionAmount:N2} ({selectedInvoice.RetentionPercent:N0}%)")
@@ -399,6 +447,7 @@ else
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
+    private bool _chasing;
     private TenantBranding _branding = TenantBranding.Default;
     private Tenant? _tenant;
     private bool InvoiceQuotaBlocked =>
@@ -653,6 +702,34 @@ else
         if (selectedInvoice?.Id == inv.Id) selectedInvoice = null;
         ToastService.ShowSuccess("Invoice deleted.");
         await LoadInvoices();
+    }
+
+    private async Task ChaseOverdueAsync(Guid invoiceId)
+    {
+        if (_chasing) return;
+        _chasing = true;
+        try
+        {
+            var result = await InvoiceService.ChaseOverdueAsync(invoiceId);
+            ToastService.ShowSuccess(result.EmailSent
+                ? $"Chased {result.InvoiceNumber} — reminder emailed to {result.CustomerEmail}."
+                : $"Chased {result.InvoiceNumber} — recorded (SMTP not configured).");
+            await LoadInvoices();
+            if (selectedInvoice?.Id == invoiceId)
+            {
+                selectedInvoice = await InvoiceService.GetByIdAsync(invoiceId);
+                if (selectedInvoice != null)
+                    _payments = (await InvoiceService.GetPaymentsAsync(invoiceId)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _chasing = false;
+        }
     }
 
     private async Task UpdateStatus(InvoiceStatus status)

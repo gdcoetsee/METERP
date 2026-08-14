@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -791,6 +792,126 @@ public class InvoiceBillingServiceTests
             await service.RecordPaymentAsync(sent.Id, 200m, DateTime.UtcNow, "full", null, null);
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.RecordPaymentAsync(sent.Id, 1m, DateTime.UtcNow, null, null, null));
+        }
+    }
+
+    [Fact]
+    public async Task ChaseOverdueAsync_EmailsCustomerAndMarksOverdue()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"chase-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new InvoiceService(db, auditService: audit.Object, email: email.Object, notifications: notifications.Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Late Co", Email = "ap@late.co" };
+        db.Set<Customer>().Add(customer);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-CHASE",
+            Status = InvoiceStatus.Sent,
+            DueDate = DateTime.UtcNow.Date.AddDays(-12),
+            Total = 1800m,
+            AmountPaid = 300m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var result = await service.ChaseOverdueAsync(invoice.Id);
+
+        Assert.True(result.EmailSent);
+        Assert.Equal("ap@late.co", result.CustomerEmail);
+        Assert.Equal(1500m, result.BalanceDue);
+        Assert.True(result.DaysOverdue >= 12);
+        email.Verify(e => e.SendEmailAsync(
+            "ap@late.co",
+            It.Is<string>(s => s.Contains("INV-CHASE")),
+            It.Is<string>(b => b.Contains("INV-CHASE") && b.Contains("overdue")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(InvoiceStatus.Overdue, (await db.Set<Invoice>().FirstAsync(i => i.Id == invoice.Id)).Status);
+        audit.Verify(a => a.LogAsync("CHASE", "Invoice", "INV-CHASE", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t => t.Category == "collections" && t.RelatedEntityId == invoice.Id),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ChaseOverdueAsync_ThrowsWhenNotOverdueOrNoEmail()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Soon Co" };
+            db.Set<Customer>().Add(customer);
+            var future = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-FUT",
+                Status = InvoiceStatus.Sent,
+                DueDate = DateTime.UtcNow.Date.AddDays(10),
+                Total = 500m
+            };
+            var overdue = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-NOMAIL",
+                Status = InvoiceStatus.Sent,
+                DueDate = DateTime.UtcNow.Date.AddDays(-2),
+                Total = 500m
+            };
+            db.Set<Invoice>().AddRange(future, overdue);
+            await db.SaveChangesAsync();
+
+            var notDue = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ChaseOverdueAsync(future.Id));
+            Assert.Contains("not overdue", notDue.Message, StringComparison.OrdinalIgnoreCase);
+
+            var noEmail = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ChaseOverdueAsync(overdue.Id));
+            Assert.Contains("email", noEmail.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task ChaseOverdueAsync_ThrowsWhenAlreadyChasedToday()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Dup Co", Email = "dup@co.test" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-DUPC",
+                Status = InvoiceStatus.Overdue,
+                DueDate = DateTime.UtcNow.Date.AddDays(-4),
+                Total = 900m,
+                Notes = $"Chased {DateTime.UtcNow:yyyy-MM-dd}"
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ChaseOverdueAsync(invoice.Id));
+            Assert.Contains("already chased", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 }
