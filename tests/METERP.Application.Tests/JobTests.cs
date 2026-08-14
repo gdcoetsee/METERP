@@ -175,6 +175,52 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CancelAsync_NotifiesFinanceToStopChase()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, notifications: notifications.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        Assert.True(await service.CancelAsync(jobId, Guid.NewGuid(), "Client cancelled scope"));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == jobId
+                && t.Title.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("Client cancelled scope")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task JobService_ReopenAsync_NotifiesFinanceThatWorkResumed()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, notifications: notifications.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), "Closed with leftover quote acknowledged"));
+        notifications.Invocations.Clear();
+
+        Assert.True(await service.ReopenAsync(jobId, Guid.NewGuid(), "Snag found on site"));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == jobId
+                && t.Title.Contains("reopened", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("Snag found on site")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_BlocksOperations()
     {
         var tenantId = Guid.NewGuid();

@@ -844,6 +844,20 @@ public class JobService : IJobService
                 ct);
         }
 
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = job.TenantId,
+                Title = $"Job {job.JobNumber} was reopened",
+                Message = $"{job.Title}: {job.LastReopenReason}. Costs and invoices can resume.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = job.Id,
+                RelatedEntityType = nameof(Job)
+            }, ct);
+        }
+
         return true;
     }
 
@@ -1040,6 +1054,20 @@ public class JobService : IJobService
                 job.JobNumber,
                 job.CancellationReason,
                 ct);
+        }
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = job.TenantId,
+                Title = $"Job {job.JobNumber} was cancelled",
+                Message = $"{job.Title}: {job.CancellationReason}. Stop deposit and invoice chase for this job.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = job.Id,
+                RelatedEntityType = nameof(Job)
+            }, ct);
         }
 
         return true;
