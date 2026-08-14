@@ -493,6 +493,20 @@ public class InvoiceService : IInvoiceService
                 ct);
         }
 
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = saved.TenantId,
+                Title = $"Credit note {saved.InvoiceNumber} for {source.InvoiceNumber}",
+                Message = $"{source.InvoiceNumber} credited R {Math.Abs(saved.Total):N0}: {reason}. Collections and job billed-to-date no longer count this invoice.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = saved.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
+        }
+
         return saved;
     }
 

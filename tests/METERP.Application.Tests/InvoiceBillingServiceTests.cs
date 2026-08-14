@@ -282,6 +282,56 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task CreateCreditNoteAsync_NotifiesFinance()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"cn-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var customer = new Customer { TenantId = tenantId, Name = "CN Co" };
+        db.Set<Customer>().Add(customer);
+        var source = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-SRC",
+            Status = InvoiceStatus.Sent,
+            Subtotal = 1000,
+            Tax = 0,
+            Total = 1000
+        };
+        db.Set<Invoice>().Add(source);
+        db.Set<InvoiceLine>().Add(new InvoiceLine
+        {
+            TenantId = tenantId,
+            InvoiceId = source.Id,
+            Description = "Labour",
+            Quantity = 1,
+            UnitPrice = 1000
+        });
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, tenantProvider: tenantProvider.Object, notifications: notifications.Object);
+        var credit = await service.CreateCreditNoteAsync(source.Id, "Rework credit");
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == credit.Id
+                && t.Title.Contains(credit.InvoiceNumber)
+                && t.Message.Contains("INV-SRC")
+                && t.Message.Contains("Rework credit")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateBillingDocumentAsync_DepositUsesJobDepositPercent()
     {
         var (service, db, tenantId) = Create();
