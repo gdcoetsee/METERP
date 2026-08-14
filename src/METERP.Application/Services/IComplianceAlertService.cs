@@ -21,4 +21,9 @@ public interface IComplianceAlertService
     /// Notifies once per sent/accepted quote that expired without conversion to a job.
     /// </summary>
     Task<int> RunExpiredQuoteScanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifies once per sent or partially received PO whose expected date has passed.
+    /// </summary>
+    Task<int> RunOverduePurchaseOrderScanAsync(CancellationToken ct = default);
 }

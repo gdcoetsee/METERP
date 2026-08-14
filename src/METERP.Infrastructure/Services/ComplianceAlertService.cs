@@ -233,6 +233,66 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return created;
     }
 
+    public async Task<int> RunOverduePurchaseOrderScanAsync(CancellationToken ct = default)
+    {
+        var today = DateTime.UtcNow.Date;
+        var orders = await _dbContext.Set<PurchaseOrder>()
+            .AsNoTracking()
+            .Include(p => p.Supplier)
+            .Where(p =>
+                (p.Status == PurchaseOrderStatus.Sent || p.Status == PurchaseOrderStatus.PartiallyReceived)
+                && p.ExpectedDate != null
+                && p.ExpectedDate < today)
+            .ToListAsync(ct);
+
+        if (orders.Count == 0)
+            return 0;
+
+        var ids = orders.Select(p => p.Id).ToList();
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "procurement"
+                && n.RelatedEntityType == nameof(PurchaseOrder)
+                && n.RelatedEntityId != null
+                && ids.Contains(n.RelatedEntityId.Value)
+                && n.Title.Contains("overdue"))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var po in orders)
+        {
+            if (already.Contains(po.Id))
+                continue;
+
+            var days = (today - po.ExpectedDate!.Value.Date).Days;
+            var supplier = po.Supplier?.Name ?? "Supplier";
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = po.TenantId,
+                Title = $"PO {po.PoNumber} is overdue",
+                Message = $"{supplier}: expected {po.ExpectedDate:yyyy-MM-dd} ({days} day(s) late). Chase delivery so the job is not blocked.",
+                Category = "procurement",
+                TargetRoles = "Admin,Executive,Procurement",
+                RelatedEntityId = po.Id,
+                RelatedEntityType = nameof(PurchaseOrder)
+            }, ct);
+            created++;
+        }
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "PO_OVERDUE_SCAN",
+                "PurchaseOrder",
+                "overdue-pos",
+                $"Created {created} overdue purchase order notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
     private async Task<int> NotifySlaItemsAsync(
         IEnumerable<(Guid Id, Guid TenantId, string Title, string Message)> items,
         string entityType,

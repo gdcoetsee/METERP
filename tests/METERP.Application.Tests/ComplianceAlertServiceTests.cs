@@ -381,4 +381,82 @@ public class ComplianceAlertServiceTests
             notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
+
+    [Fact]
+    public async Task RunOverduePurchaseOrderScanAsync_AlertsSentPoPastExpectedDate()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var supplier = new Supplier { TenantId = tenantId, Name = "Late Cable", Email = "late@cable.co" };
+            db.Set<Supplier>().Add(supplier);
+            var po = new PurchaseOrder
+            {
+                TenantId = tenantId,
+                SupplierId = supplier.Id,
+                PoNumber = "PO-LATE",
+                Status = PurchaseOrderStatus.Sent,
+                ExpectedDate = DateTime.UtcNow.Date.AddDays(-3),
+                Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 40m } }
+            };
+            db.Set<PurchaseOrder>().Add(po);
+            await db.SaveChangesAsync();
+
+            var created = await service.RunOverduePurchaseOrderScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "procurement"
+                    && t.RelatedEntityId == po.Id
+                    && t.Title.Contains("PO-LATE")
+                    && t.Message.Contains("Late Cable")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            audit.Verify(a => a.LogAsync("PO_OVERDUE_SCAN", "PurchaseOrder", "overdue-pos", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task RunOverduePurchaseOrderScanAsync_SkipsDraftAndAlreadyAlerted()
+    {
+        var (service, db, tenantId, notifications, _) = Create();
+        await using (db)
+        {
+            var supplier = new Supplier { TenantId = tenantId, Name = "On Time" };
+            db.Set<Supplier>().Add(supplier);
+            var draft = new PurchaseOrder
+            {
+                TenantId = tenantId,
+                SupplierId = supplier.Id,
+                PoNumber = "PO-DRAFT",
+                Status = PurchaseOrderStatus.Draft,
+                ExpectedDate = DateTime.UtcNow.Date.AddDays(-1)
+            };
+            var sent = new PurchaseOrder
+            {
+                TenantId = tenantId,
+                SupplierId = supplier.Id,
+                PoNumber = "PO-ALERTED",
+                Status = PurchaseOrderStatus.Sent,
+                ExpectedDate = DateTime.UtcNow.Date.AddDays(-2)
+            };
+            db.Set<PurchaseOrder>().AddRange(draft, sent);
+            await db.SaveChangesAsync();
+            db.Set<TenantNotification>().Add(new TenantNotification
+            {
+                TenantId = tenantId,
+                Title = "PO PO-ALERTED is overdue",
+                Message = "already",
+                Category = "procurement",
+                RelatedEntityType = nameof(PurchaseOrder),
+                RelatedEntityId = sent.Id
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunOverduePurchaseOrderScanAsync();
+
+            Assert.Equal(0, created);
+            notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
 }
