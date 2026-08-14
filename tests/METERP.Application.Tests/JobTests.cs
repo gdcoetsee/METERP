@@ -1217,6 +1217,48 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_UpdateStatusAsync_NotifiesWhenCompletedAndUnsigned()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, notifications: notifications.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        await service.UpdateStatusAsync(jobId, JobStatus.Completed);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == jobId
+                && t.Title.Contains("complete", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("sign-off", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task JobService_UpdateStatusAsync_DoesNotNotifyWhenAlreadySignedOff()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, notifications: notifications.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        await service.SignOffAsync(jobId, Guid.NewGuid());
+        notifications.Invocations.Clear();
+
+        await service.UpdateStatusAsync(jobId, JobStatus.Completed);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t => t.Title.Contains("complete", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task JobService_UpdateStatusAsync_SetsCompletedDate_WhenCompleted()
     {
         var tenantId = Guid.NewGuid();

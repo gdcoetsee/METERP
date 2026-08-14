@@ -728,6 +728,7 @@ public class JobService : IJobService
         if (newStatus == JobStatus.Cancelled)
             throw new InvalidOperationException("Use CancelAsync with a reason to cancel a job.");
 
+        var previous = job.Status;
         job.Status = newStatus;
 
         if (newStatus == JobStatus.Completed || newStatus == JobStatus.Invoiced)
@@ -737,6 +738,13 @@ public class JobService : IJobService
 
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+
+        if (newStatus == JobStatus.Completed
+            && previous != JobStatus.Completed
+            && job.SignOffStatus != JobSignOffStatus.SignedOff)
+        {
+            await NotifyWorkCompleteAsync(job, ct);
+        }
     }
 
     public async Task<bool> CloseAsync(Guid jobId, Guid executiveUserId, string? notes, CancellationToken ct = default)
@@ -952,6 +960,23 @@ public class JobService : IJobService
             TenantId = job.TenantId,
             Title = $"Raise deposit for {job.JobNumber}",
             Message = $"{job.Title}: {job.DepositPercent:N0}% deposit (R {amount:N0}) is outstanding. Raise it from Home or the job Command Center.",
+            Category = "collections",
+            TargetRoles = "Admin,Executive,Finance",
+            RelatedEntityId = job.Id,
+            RelatedEntityType = nameof(Job)
+        }, ct);
+    }
+
+    private async Task NotifyWorkCompleteAsync(Job job, CancellationToken ct)
+    {
+        if (_notifications == null)
+            return;
+
+        await _notifications.CreateAsync(new TenantNotification
+        {
+            TenantId = job.TenantId,
+            Title = $"Job {job.JobNumber} is complete — start sign-off",
+            Message = $"{job.Title} is marked complete. Manager then executive sign-off unlocks the invoice.",
             Category = "collections",
             TargetRoles = "Admin,Executive,Finance",
             RelatedEntityId = job.Id,
