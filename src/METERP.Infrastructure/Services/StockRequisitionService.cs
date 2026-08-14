@@ -185,6 +185,20 @@ public sealed class StockRequisitionService : IStockRequisitionService
                 ct);
         }
 
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = requisition.TenantId,
+                Title = $"{requisition.RequisitionNumber} needs manager approval",
+                Message = $"{job.JobNumber}: {lines.Count} line(s) waiting. Approve so stores can reserve or procurement can raise a PO.",
+                Category = "procurement",
+                TargetRoles = "Admin,Executive,Division Manager",
+                RelatedEntityId = requisition.Id,
+                RelatedEntityType = nameof(StockRequisition)
+            }, ct);
+        }
+
         return requisition.Id;
     }
 

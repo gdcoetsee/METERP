@@ -41,4 +41,9 @@ public interface IComplianceAlertService
     /// Notifies once per sent quote that expires within three days and is not yet a job.
     /// </summary>
     Task<int> RunQuoteFollowUpScanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifies once per field report waiting more than two days for approval.
+    /// </summary>
+    Task<int> RunStuckFieldReportScanAsync(CancellationToken ct = default);
 }

@@ -521,6 +521,65 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return created;
     }
 
+    public async Task<int> RunStuckFieldReportScanAsync(CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-2);
+        var reports = await _dbContext.Set<FieldReport>()
+            .AsNoTracking()
+            .Include(r => r.Job)
+            .Where(r =>
+                r.Status == FieldReportStatus.PendingApproval
+                && r.SubmittedAt != default
+                && r.SubmittedAt <= cutoff)
+            .ToListAsync(ct);
+
+        if (reports.Count == 0)
+            return 0;
+
+        var ids = reports.Select(r => r.Id).ToList();
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "field"
+                && n.RelatedEntityType == nameof(FieldReport)
+                && n.RelatedEntityId != null
+                && ids.Contains(n.RelatedEntityId.Value)
+                && n.Title.Contains("still awaiting approval"))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var report in reports)
+        {
+            if (already.Contains(report.Id))
+                continue;
+
+            var jobNumber = report.Job?.JobNumber ?? "job";
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = report.TenantId,
+                Title = $"Field report still awaiting approval on {jobNumber}",
+                Message = $"{jobNumber}: {report.HoursWorked:N1}h submitted {report.SubmittedAt:yyyy-MM-dd}. Approve so labor and travel can be invoiced.",
+                Category = "field",
+                TargetRoles = "Admin,Executive,Division Manager",
+                RelatedEntityId = report.Id,
+                RelatedEntityType = nameof(FieldReport)
+            }, ct);
+            created++;
+        }
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "FIELD_SLA_SCAN",
+                "FieldReport",
+                "stuck-field-reports",
+                $"Created {created} overdue field-report notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
     private async Task<int> NotifySlaItemsAsync(
         IEnumerable<(Guid Id, Guid TenantId, string Title, string Message)> items,
         string entityType,

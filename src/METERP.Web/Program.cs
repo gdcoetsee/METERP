@@ -964,6 +964,7 @@ public class DatabaseSeeder : IHostedService
             await complianceAlertService.RunStuckReadyToInvoiceScanAsync(cancellationToken);
             await complianceAlertService.RunStuckDepositScanAsync(cancellationToken);
             await complianceAlertService.RunQuoteFollowUpScanAsync(cancellationToken);
+            await complianceAlertService.RunStuckFieldReportScanAsync(cancellationToken);
         }
         catch (Exception ex)
         {

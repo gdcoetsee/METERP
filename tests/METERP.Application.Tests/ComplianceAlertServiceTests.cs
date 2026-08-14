@@ -671,4 +671,62 @@ public class ComplianceAlertServiceTests
             audit.Verify(a => a.LogAsync("QUOTE_FOLLOWUP_SCAN", "Quote", "expiring-quotes", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
+
+    [Fact]
+    public async Task RunStuckFieldReportScanAsync_AlertsOldPendingReports()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Field Co" };
+            db.Set<Customer>().Add(customer);
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-FIELD",
+                Title = "Site work",
+                QuotedTotal = 2000m
+            };
+            db.Set<Job>().Add(job);
+            await db.SaveChangesAsync();
+
+            var stuck = new FieldReport
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                SubmittedByUserId = Guid.NewGuid(),
+                HoursWorked = 6m,
+                TravelCost = 200m,
+                Status = FieldReportStatus.PendingApproval,
+                SubmittedAt = DateTime.UtcNow.AddDays(-3)
+            };
+            var fresh = new FieldReport
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                SubmittedByUserId = Guid.NewGuid(),
+                HoursWorked = 2m,
+                Status = FieldReportStatus.PendingApproval,
+                SubmittedAt = DateTime.UtcNow
+            };
+            db.Set<FieldReport>().AddRange(stuck, fresh);
+            await db.SaveChangesAsync();
+
+            var created = await service.RunStuckFieldReportScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "field"
+                    && t.RelatedEntityId == stuck.Id
+                    && t.Title.Contains("still awaiting approval")
+                    && t.Message.Contains("J-FIELD")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t => t.RelatedEntityId == fresh.Id),
+                It.IsAny<CancellationToken>()), Times.Never);
+            audit.Verify(a => a.LogAsync("FIELD_SLA_SCAN", "FieldReport", "stuck-field-reports", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
 }
