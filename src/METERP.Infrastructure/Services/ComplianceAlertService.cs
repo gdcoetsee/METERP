@@ -378,6 +378,149 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return created;
     }
 
+    public async Task<int> RunStuckDepositScanAsync(CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-2);
+        var jobs = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Where(j =>
+                j.Status != JobStatus.Closed
+                && j.Status != JobStatus.Cancelled
+                && j.DepositPercent > 0
+                && !j.DepositReceived
+                && j.CreatedDate <= cutoff)
+            .ToListAsync(ct);
+
+        if (jobs.Count == 0)
+            return 0;
+
+        var jobIds = jobs.Select(j => j.Id).ToList();
+        var raised = (await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i =>
+                i.JobId != null
+                && jobIds.Contains(i.JobId.Value)
+                && i.DocumentType == InvoiceDocumentType.Deposit)
+            .Select(i => new { i.JobId, i.DocumentType, i.Status })
+            .ToListAsync(ct))
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .Select(i => i.JobId!.Value)
+            .ToHashSet();
+
+        var stuck = jobs.Where(j => !raised.Contains(j.Id)).ToList();
+        if (stuck.Count == 0)
+            return 0;
+
+        var stuckIds = stuck.Select(j => j.Id).ToList();
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "collections"
+                && n.RelatedEntityType == nameof(Job)
+                && n.RelatedEntityId != null
+                && stuckIds.Contains(n.RelatedEntityId.Value)
+                && n.Title.Contains("still outstanding"))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var job in stuck)
+        {
+            if (already.Contains(job.Id))
+                continue;
+
+            var amount = Math.Round(job.QuotedTotal * job.DepositPercent / 100m, 2);
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = job.TenantId,
+                Title = $"Deposit still outstanding on {job.JobNumber}",
+                Message = $"{job.Customer?.Name ?? "Customer"} — {job.DepositPercent:N0}% deposit (R {amount:N0}) has not been raised. Raise it from Home so the crew can mobilise.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = job.Id,
+                RelatedEntityType = nameof(Job)
+            }, ct);
+            created++;
+        }
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "DEPOSIT_SCAN",
+                "Job",
+                "stuck-deposits",
+                $"Created {created} outstanding-deposit notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
+    public async Task<int> RunQuoteFollowUpScanAsync(CancellationToken ct = default)
+    {
+        var today = DateTime.UtcNow.Date;
+        var horizon = today.AddDays(3);
+        var quotes = await _dbContext.Set<Quote>()
+            .AsNoTracking()
+            .Include(q => q.Customer)
+            .Where(q =>
+                q.Status == QuoteStatus.Sent
+                && q.ValidUntil >= today
+                && q.ValidUntil <= horizon)
+            .ToListAsync(ct);
+
+        if (quotes.Count == 0)
+            return 0;
+
+        var ids = quotes.Select(q => q.Id).ToList();
+        var converted = (await _dbContext.Set<Job>().AsNoTracking()
+            .Where(j => j.QuoteId != null && ids.Contains(j.QuoteId.Value))
+            .Select(j => j.QuoteId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "sales"
+                && n.RelatedEntityType == nameof(Quote)
+                && n.RelatedEntityId != null
+                && ids.Contains(n.RelatedEntityId.Value)
+                && n.Title.Contains("expires soon"))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var quote in quotes)
+        {
+            if (converted.Contains(quote.Id) || already.Contains(quote.Id))
+                continue;
+
+            var days = (quote.ValidUntil.Date - today).Days;
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = quote.TenantId,
+                Title = $"Quote {quote.QuoteNumber} expires soon",
+                Message = $"{quote.Customer?.Name ?? "Customer"} — valid until {quote.ValidUntil:yyyy-MM-dd} ({days} day(s)). Follow up before it drops off the convert queue.",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = quote.Id,
+                RelatedEntityType = nameof(Quote)
+            }, ct);
+            created++;
+        }
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "QUOTE_FOLLOWUP_SCAN",
+                "Quote",
+                "expiring-quotes",
+                $"Created {created} quote follow-up notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
     private async Task<int> NotifySlaItemsAsync(
         IEnumerable<(Guid Id, Guid TenantId, string Title, string Message)> items,
         string entityType,

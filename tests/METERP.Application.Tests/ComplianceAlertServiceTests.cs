@@ -531,4 +531,144 @@ public class ComplianceAlertServiceTests
             audit.Verify(a => a.LogAsync("UNBILLED_SCAN", "Job", "stuck-ready-to-invoice", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
+
+    [Fact]
+    public async Task RunStuckDepositScanAsync_AlertsOldJobsWithoutDepositInvoice()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Mob Co" };
+            db.Set<Customer>().Add(customer);
+            var stuck = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-DEP-STUCK",
+                Title = "Waiting deposit",
+                QuotedTotal = 10000m,
+                DepositPercent = 30m,
+                DepositReceived = false,
+                Status = JobStatus.Scheduled,
+                CreatedDate = DateTime.UtcNow.AddDays(-3)
+            };
+            var fresh = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-DEP-NEW",
+                Title = "Just created",
+                QuotedTotal = 8000m,
+                DepositPercent = 30m,
+                DepositReceived = false,
+                Status = JobStatus.Scheduled,
+                CreatedDate = DateTime.UtcNow
+            };
+            var raised = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-DEP-INV",
+                Title = "Invoice exists",
+                QuotedTotal = 6000m,
+                DepositPercent = 30m,
+                DepositReceived = false,
+                Status = JobStatus.Scheduled,
+                CreatedDate = DateTime.UtcNow.AddDays(-4)
+            };
+            db.Set<Job>().AddRange(stuck, fresh, raised);
+            await db.SaveChangesAsync();
+            stuck.CreatedDate = DateTime.UtcNow.AddDays(-3);
+            raised.CreatedDate = DateTime.UtcNow.AddDays(-4);
+            await db.SaveChangesAsync();
+            db.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobId = raised.Id,
+                InvoiceNumber = "DEP-1",
+                DocumentType = InvoiceDocumentType.Deposit,
+                Status = InvoiceStatus.Sent,
+                Total = 1800m
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunStuckDepositScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "collections"
+                    && t.RelatedEntityId == stuck.Id
+                    && t.Title.Contains("still outstanding", StringComparison.OrdinalIgnoreCase)
+                    && t.Message.Contains("Mob Co")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t => t.RelatedEntityId == fresh.Id || t.RelatedEntityId == raised.Id),
+                It.IsAny<CancellationToken>()), Times.Never);
+            audit.Verify(a => a.LogAsync("DEPOSIT_SCAN", "Job", "stuck-deposits", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task RunQuoteFollowUpScanAsync_AlertsSentQuotesExpiringSoon()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Follow Co" };
+            db.Set<Customer>().Add(customer);
+            var soon = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-SOON",
+                Status = QuoteStatus.Sent,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(2),
+                Total = 4500m
+            };
+            var later = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-LATER",
+                Status = QuoteStatus.Sent,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(14)
+            };
+            var converted = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-JOB",
+                Status = QuoteStatus.Sent,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(1)
+            };
+            db.Set<Quote>().AddRange(soon, later, converted);
+            await db.SaveChangesAsync();
+            db.Set<Job>().Add(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteId = converted.Id,
+                JobNumber = "J-FROM-Q",
+                Title = "From quote"
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunQuoteFollowUpScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "sales"
+                    && t.RelatedEntityId == soon.Id
+                    && t.Title.Contains("Q-SOON")
+                    && t.Title.Contains("expires soon")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t => t.RelatedEntityId == later.Id || t.RelatedEntityId == converted.Id),
+                It.IsAny<CancellationToken>()), Times.Never);
+            audit.Verify(a => a.LogAsync("QUOTE_FOLLOWUP_SCAN", "Quote", "expiring-quotes", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
 }

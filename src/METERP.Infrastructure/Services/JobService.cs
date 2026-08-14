@@ -217,12 +217,26 @@ public class JobService : IJobService
                 && j.Status != JobStatus.Cancelled
                 && j.DepositPercent > 0
                 && !j.DepositReceived)
-            .OrderByDescending(j => j.QuotedTotal * j.DepositPercent)
-            .ThenBy(j => j.JobNumber)
-            .Take(take)
             .ToListAsync(ct);
 
+        if (jobs.Count == 0)
+            return Array.Empty<ReadyToInvoiceJobRow>();
+
+        var jobIds = jobs.Select(j => j.Id).ToList();
+        var depositInvoiceJobIds = (await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i =>
+                i.JobId != null
+                && jobIds.Contains(i.JobId.Value)
+                && i.DocumentType == InvoiceDocumentType.Deposit)
+            .Select(i => new { i.JobId, i.DocumentType, i.Status })
+            .ToListAsync(ct))
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .Select(i => i.JobId!.Value)
+            .ToHashSet();
+
         return jobs
+            .Where(j => !depositInvoiceJobIds.Contains(j.Id))
             .Select(j =>
             {
                 var deposit = Math.Round(j.QuotedTotal * j.DepositPercent / 100m, 2);
@@ -236,6 +250,9 @@ public class JobService : IJobService
                     deposit,
                     "Deposit");
             })
+            .OrderByDescending(r => r.UnbilledResidual)
+            .ThenBy(r => r.JobNumber)
+            .Take(take)
             .ToList();
     }
 

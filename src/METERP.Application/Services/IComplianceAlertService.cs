@@ -31,4 +31,14 @@ public interface IComplianceAlertService
     /// Notifies once per signed-off job that has been unbilled for at least two days.
     /// </summary>
     Task<int> RunStuckReadyToInvoiceScanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifies once per open job whose deposit invoice has not been raised after two days.
+    /// </summary>
+    Task<int> RunStuckDepositScanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifies once per sent quote that expires within three days and is not yet a job.
+    /// </summary>
+    Task<int> RunQuoteFollowUpScanAsync(CancellationToken ct = default);
 }

@@ -1877,6 +1877,43 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_GetDepositDueQueueAsync_ExcludesJobsWithRaisedDepositInvoice()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var dueId = await SeedJobAsync(db, service, tenantId);
+        var raisedId = await SeedJobAsync(db, service, tenantId);
+        var raised = await db.Set<Job>().FirstAsync(j => j.Id == raisedId);
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = raised.CustomerId,
+            JobId = raisedId,
+            InvoiceNumber = "DEP-RAISED",
+            DocumentType = InvoiceDocumentType.Deposit,
+            Status = InvoiceStatus.Sent,
+            Total = 1500m
+        });
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = raised.CustomerId,
+            JobId = dueId,
+            InvoiceNumber = "DEP-DRAFT",
+            DocumentType = InvoiceDocumentType.Deposit,
+            Status = InvoiceStatus.Draft,
+            Total = 1500m
+        });
+        await db.SaveChangesAsync();
+
+        var queue = await service.GetDepositDueQueueAsync();
+
+        Assert.Contains(queue, r => r.JobId == dueId);
+        Assert.DoesNotContain(queue, r => r.JobId == raisedId);
+    }
+
+    [Fact]
     public async Task JobService_GetAwaitingSignOffQueueAsync_IncludesUnbilledActuals_ExcludesSignedOffAndFullyBilled()
     {
         var tenantId = Guid.NewGuid();
