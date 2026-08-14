@@ -898,13 +898,18 @@ public class InvoiceService : IInvoiceService
             DateTime.UtcNow);
 
         // Deposit invoices: mark job deposit received once fully paid.
+        var depositJustReceived = false;
+        Job? depositJob = null;
         if (invoice.DocumentType == InvoiceDocumentType.Deposit
             && invoice.JobId.HasValue
             && invoice.AmountPaid >= invoice.Total)
         {
-            var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == invoice.JobId.Value, ct);
-            if (job != null && !job.DepositReceived)
-                job.DepositReceived = true;
+            depositJob = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == invoice.JobId.Value, ct);
+            if (depositJob != null && !depositJob.DepositReceived)
+            {
+                depositJob.DepositReceived = true;
+                depositJustReceived = true;
+            }
         }
 
         await _dbContext.SaveChangesAsync(ct);
@@ -919,6 +924,25 @@ public class InvoiceService : IInvoiceService
                 $"Recorded payment R {amount:N2}" + (reference != null ? $" ref {reference}" : "")
                 + (popFileName != null ? $" POP {popFileName}" : ""),
                 ct);
+        }
+
+        if (_notifications != null)
+        {
+            var remaining = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = invoice.TenantId,
+                Title = depositJustReceived
+                    ? $"Deposit received on {invoice.InvoiceNumber}"
+                    : $"Payment received on {invoice.InvoiceNumber}",
+                Message = depositJustReceived
+                    ? $"R {amount:N2} cleared the deposit on {depositJob?.JobNumber ?? "the job"}. Mobilisation can proceed."
+                    : $"R {amount:N2} recorded. Balance due R {remaining:N2}.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
         }
 
         return payment.Id;

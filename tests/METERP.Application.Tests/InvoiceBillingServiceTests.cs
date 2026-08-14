@@ -150,6 +150,69 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_NotifiesFinance_AndFlagsDepositClear()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"pay-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Notify Pay" };
+        db.Set<Customer>().Add(customer);
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobNumber = "J-DEP-1",
+            Title = "Site work",
+            QuotedTotal = 10000m,
+            DepositPercent = 30m,
+            DepositReceived = false,
+            Status = JobStatus.InProgress
+        };
+        db.Set<Job>().Add(job);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            JobId = job.Id,
+            InvoiceNumber = "DEP-NOTIFY",
+            DocumentType = InvoiceDocumentType.Deposit,
+            Status = InvoiceStatus.Sent,
+            Subtotal = 3000,
+            Tax = 0,
+            Total = 3000
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, notifications: notifications.Object);
+        await service.RecordPaymentAsync(invoice.Id, 1200m, DateTime.UtcNow, "part", Guid.NewGuid(), null);
+        await service.RecordPaymentAsync(invoice.Id, 1800m, DateTime.UtcNow, "clear", Guid.NewGuid(), null);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == invoice.Id
+                && t.Title.Contains("Payment received", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("Balance due")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == invoice.Id
+                && t.Title.Contains("Deposit received", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("J-DEP-1")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task OpenPaymentPopAsync_ReturnsNull_WhenNoPop()
     {
         var (service, db, tenantId) = Create();
