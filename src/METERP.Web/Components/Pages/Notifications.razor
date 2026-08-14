@@ -5,6 +5,7 @@
 @attribute [Authorize]
 @inject ToastService ToastService
 @inject ITenantNotificationService NotificationService
+@inject NavigationManager Nav
 
 <PageTitle>Notifications</PageTitle>
 
@@ -25,7 +26,7 @@
     {
         <div class="list-group-item d-flex justify-content-between align-items-start @(n.IsRead ? "text-muted" : "")"
              data-testid="notification-item">
-            <div style="cursor:pointer;" class="flex-grow-1" @onclick="() => MarkRead(n)">
+            <div style="cursor:pointer;" class="flex-grow-1" @onclick="() => OpenAsync(n)">
                 <strong>@n.Title</strong>
                 @if (!string.IsNullOrEmpty(n.Category))
                 {
@@ -65,10 +66,13 @@
         notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
     }
 
-    private async Task MarkRead(TenantNotification n)
+    private async Task OpenAsync(TenantNotification n)
     {
         await NotificationService.MarkReadAsync(n.Id);
         notifications = (await NotificationService.GetForCurrentUserAsync()).ToList();
+        var url = NotificationLinks.ForEntity(n.RelatedEntityType, n.RelatedEntityId);
+        if (!string.IsNullOrWhiteSpace(url))
+            Nav.NavigateTo(url);
     }
 
     private async Task MarkAllRead()
