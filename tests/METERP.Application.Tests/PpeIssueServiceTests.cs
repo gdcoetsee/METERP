@@ -253,6 +253,74 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task IssueToEmployeeAsync_ThrowsWhenEmployeeSoftDeleted()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-GONE",
+                FirstName = "Gone",
+                LastName = "Hand",
+                IsActive = true,
+                IsDeleted = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "PPE-GONE",
+                Name = "Vest",
+                QuantityOnHand = 10,
+                UnitCost = 20m,
+                IsActive = true
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.IssueToEmployeeAsync(employee.Id, itemId, 1m, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task IssueToEmployeeAsync_ThrowsWhenInventoryItemSoftDeleted()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-ITEM",
+                FirstName = "Live",
+                LastName = "Hand",
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "PPE-DEL-SKU",
+                Name = "Hard hat",
+                QuantityOnHand = 10,
+                UnitCost = 20m,
+                IsActive = true
+            });
+            var item = await db.Set<InventoryItem>().FirstAsync(i => i.Id == itemId);
+            item.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.IssueToEmployeeAsync(employee.Id, itemId, 1m, Guid.NewGuid()));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task IssueToEmployeeAsync_ThrowsWhenJobCancelled()
     {
         var (service, db, tenantId, inventory) = Create();

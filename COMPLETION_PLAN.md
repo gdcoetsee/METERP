@@ -9,7 +9,9 @@
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
-**2026-08-14:** Soft-delete integrity stream closed on the commercial spine. Supporting-module increment: **same-day exclusive booking** for assets and crew, plus **approved-leave vs scheduled-job** clash (assign/reschedule and HR leave approve). Application.Tests **1259** green. R6 (health, rate limits, headers, secrets validator, optional OTLP/Seq) remains a strong partial; observability depth is already wired. AI still frozen.
+**2026-08-14:** Integrity stream is **done enough**. Soft-delete on the spine, scheduling double-book/leave clash, and outstanding-PPE deactivate/delete are in. Application.Tests **1264** green.
+
+**Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, field-to-invoice completeness. AI stays frozen. E2E remains a release checkpoint, not a development gate.
 
 | Phase | Status |
 |-------|--------|
@@ -44,9 +46,10 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 
 ### Next priorities
 
-1. **R6** Production hardening remainder (secrets audit, observability depth)  
-2. Supporting-module sellable depth (scheduling/notifications polish)  
-3. E2E against docker when validating release (not a development blocker)
+1. **Speed-to-cash** — executives must see and acknowledge leftover quote on close; overdue invoices must surface; do not count proforma/draft as billed.  
+2. **Operator-error loops** — PPE register, scheduling conflicts, leave vs crew (in progress / done incrementally).  
+3. E2E against docker when validating release (not a development blocker).  
+4. R6 remainder only if a pilot is blocked (observability already optional).
 
 **R6 quota UX + field report guards (2026-07-24):** Quotes/Jobs/Invoices disable create actions when monthly quota is exceeded and show page banners. Field reports reject submit/approve on closed jobs and empty content.
 

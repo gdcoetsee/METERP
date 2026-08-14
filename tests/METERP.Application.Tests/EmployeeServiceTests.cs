@@ -688,4 +688,121 @@ public class EmployeeServiceTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(empId));
         Assert.Contains("open jobs", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task SetActiveAsync_ThrowsWhenDeactivatingEmployeeWithOutstandingPpe()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-PPE",
+            FirstName = "Holder",
+            LastName = "Kit"
+        });
+        var itemId = Guid.NewGuid();
+        db.Set<InventoryItem>().Add(new InventoryItem
+        {
+            Id = itemId,
+            TenantId = tenantId,
+            Sku = "PPE-HELM",
+            Name = "Helmet",
+            QuantityOnHand = 5,
+            UnitCost = 80m,
+            IsActive = true
+        });
+        db.Set<EmployeePpeIssue>().Add(new EmployeePpeIssue
+        {
+            TenantId = tenantId,
+            EmployeeId = empId,
+            InventoryItemId = itemId,
+            Quantity = 1,
+            QuantityReturned = 0,
+            IssuedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SetActiveAsync(empId, false));
+        Assert.Contains("outstanding PPE", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True((await service.GetByIdAsync(empId))!.IsActive);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenEmployeeHasOutstandingPpe()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-PPE-DEL",
+            FirstName = "Holder",
+            LastName = "Del"
+        });
+        var itemId = Guid.NewGuid();
+        db.Set<InventoryItem>().Add(new InventoryItem
+        {
+            Id = itemId,
+            TenantId = tenantId,
+            Sku = "PPE-BOOT",
+            Name = "Boots",
+            QuantityOnHand = 5,
+            UnitCost = 40m,
+            IsActive = true
+        });
+        db.Set<EmployeePpeIssue>().Add(new EmployeePpeIssue
+        {
+            TenantId = tenantId,
+            EmployeeId = empId,
+            InventoryItemId = itemId,
+            Quantity = 2,
+            QuantityReturned = 1,
+            IssuedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(empId));
+        Assert.Contains("outstanding PPE", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False((await service.GetByIdAsync(empId))!.IsDeleted);
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_AllowsDeactivateWhenPpeFullyReturned()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new EmployeeService(db);
+        var empId = await service.CreateAsync(new Employee
+        {
+            EmployeeNumber = "E-PPE-OK",
+            FirstName = "Clear",
+            LastName = "Kit"
+        });
+        var itemId = Guid.NewGuid();
+        db.Set<InventoryItem>().Add(new InventoryItem
+        {
+            Id = itemId,
+            TenantId = tenantId,
+            Sku = "PPE-GLV",
+            Name = "Gloves",
+            QuantityOnHand = 5,
+            UnitCost = 10m,
+            IsActive = true
+        });
+        db.Set<EmployeePpeIssue>().Add(new EmployeePpeIssue
+        {
+            TenantId = tenantId,
+            EmployeeId = empId,
+            InventoryItemId = itemId,
+            Quantity = 1,
+            QuantityReturned = 1,
+            IssuedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        await service.SetActiveAsync(empId, false);
+        Assert.False((await service.GetByIdAsync(empId))!.IsActive);
+    }
 }

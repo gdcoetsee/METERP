@@ -59,12 +59,20 @@ public sealed class PpeIssueService : IPpeIssueService
         if (quantity > 1000m)
             throw new InvalidOperationException("PPE issue quantity cannot exceed 1000 in a single transaction.");
 
-        var employee = await _dbContext.Set<Employee>().FirstOrDefaultAsync(e => e.Id == employeeId && e.IsActive, ct);
-        if (employee == null)
+        var employee = await _dbContext.Set<Employee>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee == null || employee.IsDeleted)
+            throw new InvalidOperationException("Employee not found or deleted.");
+        if (!employee.IsActive)
             throw new InvalidOperationException("Employee not found or inactive.");
 
-        var item = await _dbContext.Set<InventoryItem>().FirstOrDefaultAsync(i => i.Id == inventoryItemId && i.IsActive, ct);
-        if (item == null)
+        var item = await _dbContext.Set<InventoryItem>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == inventoryItemId, ct);
+        if (item == null || item.IsDeleted)
+            throw new InvalidOperationException("Inventory item not found or deleted.");
+        if (!item.IsActive)
             throw new InvalidOperationException("Inventory item not found or inactive.");
 
         if (item.QuantityOnHand < quantity)

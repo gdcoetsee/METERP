@@ -235,15 +235,7 @@ public class EmployeeService : IEmployeeService
         }
 
         if (!emp.IsActive && existing.IsActive)
-        {
-            var hasOpenJobs = await _dbContext.Set<Job>().AsNoTracking()
-                .AnyAsync(j => j.AssignedEmployeeId == emp.Id
-                    && j.Status != JobStatus.Cancelled
-                    && j.Status != JobStatus.Closed, ct);
-            if (hasOpenJobs)
-                throw new InvalidOperationException(
-                    "Cannot deactivate an employee assigned to open jobs. Reassign or close those jobs first.");
-        }
+            await EnsureCanDeactivateAsync(emp.Id, "deactivate", ct);
 
         if (emp.ManagerEmployeeId is { } managerId && managerId != Guid.Empty)
         {
@@ -322,9 +314,7 @@ public class EmployeeService : IEmployeeService
         var e = await _dbContext.Set<Employee>().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (e == null) return;
 
-        if (await IsAssignedToOpenJobsAsync(id, ct))
-            throw new InvalidOperationException(
-                "Cannot delete an employee assigned to open jobs. Reassign or close those jobs first.");
+        await EnsureCanDeactivateAsync(id, "delete", ct);
 
         var hasPendingLeave = await _dbContext.Set<LeaveRequest>().AsNoTracking()
             .AnyAsync(r => r.EmployeeId == id
@@ -351,15 +341,30 @@ public class EmployeeService : IEmployeeService
             throw new InvalidOperationException("Cannot reactivate a deleted employee. Restore first.");
 
         if (!isActive && e.IsActive)
-        {
-            if (await IsAssignedToOpenJobsAsync(id, ct))
-                throw new InvalidOperationException(
-                    "Cannot deactivate an employee assigned to open jobs. Reassign or close those jobs first.");
-        }
+            await EnsureCanDeactivateAsync(id, "deactivate", ct);
 
         e.IsActive = isActive;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+    }
+
+    private async Task EnsureCanDeactivateAsync(Guid employeeId, string action, CancellationToken ct)
+    {
+        if (await IsAssignedToOpenJobsAsync(employeeId, ct))
+            throw new InvalidOperationException(
+                $"Cannot {action} an employee assigned to open jobs. Reassign or close those jobs first.");
+
+        if (await HasOutstandingPpeAsync(employeeId, ct))
+            throw new InvalidOperationException(
+                $"Cannot {action} an employee with outstanding PPE. Return issued PPE first.");
+    }
+
+    private async Task<bool> HasOutstandingPpeAsync(Guid employeeId, CancellationToken ct)
+    {
+        return await _dbContext.Set<EmployeePpeIssue>().AsNoTracking()
+            .AnyAsync(p =>
+                p.EmployeeId == employeeId
+                && p.Quantity > p.QuantityReturned, ct);
     }
 
     /// <summary>
