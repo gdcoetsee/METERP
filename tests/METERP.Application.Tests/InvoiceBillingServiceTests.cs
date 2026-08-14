@@ -554,6 +554,60 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_Sent_EmailsCustomerWhenSmtpConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"inv-send-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new InvoiceService(db, auditService: audit.Object, email: email.Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Bill Co", Email = "ap@bill.co" };
+        db.Set<Customer>().Add(customer);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-MAIL",
+            Status = InvoiceStatus.Draft,
+            Total = 750m
+        };
+        db.Set<Invoice>().Add(invoice);
+        db.Set<InvoiceLine>().Add(new InvoiceLine
+        {
+            TenantId = tenantId,
+            InvoiceId = invoice.Id,
+            Description = "Work",
+            Quantity = 1,
+            UnitPrice = 750m
+        });
+        await db.SaveChangesAsync();
+
+        await service.UpdateStatusAsync(invoice.Id, InvoiceStatus.Sent);
+
+        email.Verify(e => e.SendEmailAsync(
+            "ap@bill.co",
+            It.Is<string>(s => s.Contains("INV-MAIL")),
+            It.Is<string>(b => b.Contains("INV-MAIL")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        audit.Verify(a => a.LogAsync(
+            "STATUS",
+            "Invoice",
+            "INV-MAIL",
+            It.Is<string>(m => m.Contains("emailed")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateCreditNoteAsync_ThrowsWhenInvoiceDraft()
     {
         var (service, db, tenantId) = Create();

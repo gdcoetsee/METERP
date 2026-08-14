@@ -1035,18 +1035,19 @@ public class InvoiceService : IInvoiceService
             && !invoice.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot send an invoice with no lines.");
 
+        Customer? sentTo = null;
         if (newStatus == InvoiceStatus.Sent)
         {
-            var customer = await _dbContext.Set<Customer>()
+            sentTo = await _dbContext.Set<Customer>()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c =>
                     c.Id == invoice.CustomerId
                     && (invoice.TenantId == Guid.Empty || c.TenantId == invoice.TenantId), ct);
-            if (customer == null || customer.IsDeleted)
+            if (sentTo == null || sentTo.IsDeleted)
                 throw new InvalidOperationException(
                     "Cannot send invoice — customer is missing or deleted.");
-            if (string.IsNullOrWhiteSpace(customer.Email))
+            if (string.IsNullOrWhiteSpace(sentTo.Email))
                 throw new InvalidOperationException(
                     "Cannot send invoice — customer has no email. Add an email so you can chase payment.");
         }
@@ -1059,14 +1060,36 @@ public class InvoiceService : IInvoiceService
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
 
+        var emailNote = "";
+        if (newStatus == InvoiceStatus.Sent && sentTo != null)
+            emailNote = await TryEmailInvoiceSentAsync(invoice, sentTo, ct);
+
         if (_auditService != null)
         {
             await _auditService.LogAsync(
                 "STATUS",
                 "Invoice",
                 invoice.InvoiceNumber,
-                $"Status → {newStatus}",
+                $"Status → {newStatus}{emailNote}",
                 ct);
         }
+    }
+
+    private async Task<string> TryEmailInvoiceSentAsync(Invoice invoice, Customer customer, CancellationToken ct)
+    {
+        var email = customer.Email!.Trim();
+        if (_email?.IsConfigured != true)
+            return " (SMTP not configured — recorded sent in-system only)";
+
+        var html = $"""
+            <p>Please find invoice <strong>{invoice.InvoiceNumber}</strong>.</p>
+            <ul>
+              <li><strong>Total:</strong> R {invoice.Total:N2}</li>
+              <li><strong>Due:</strong> {invoice.DueDate:yyyy-MM-dd}</li>
+            </ul>
+            <p>Contact us if you have any questions.</p>
+            """;
+        await _email.SendEmailAsync(email, $"Invoice {invoice.InvoiceNumber}", html, ct);
+        return $" (emailed {email})";
     }
 }
