@@ -597,4 +597,275 @@ public class SchedulingServiceTests
             Assert.Empty(labors);
         }
     }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_ThrowsWhenAssetAlreadyBookedSameDay()
+    {
+        var (db, service, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Book Co" });
+            await db.SaveChangesAsync();
+            var day = DateTime.UtcNow.Date.AddDays(3);
+            var assetId = await assetService.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Boom Lift",
+                AssetType = "Equipment"
+            });
+            var jobA = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Site A",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+            var jobB = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Site B",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+
+            await service.AssignJobResourcesAsync(jobA, assetId, null);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobB, assetId, null));
+            Assert.Contains("already scheduled", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Boom Lift", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_AllowsSameAssetOnDifferentDays()
+    {
+        var (db, service, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Book Co" });
+            await db.SaveChangesAsync();
+            var assetId = await assetService.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Van",
+                AssetType = "Vehicle"
+            });
+            var jobA = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Monday",
+                ScheduledStart = DateTime.UtcNow.Date.AddDays(3),
+                Status = JobStatus.Scheduled
+            });
+            var jobB = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Tuesday",
+                ScheduledStart = DateTime.UtcNow.Date.AddDays(4),
+                Status = JobStatus.Scheduled
+            });
+
+            await service.AssignJobResourcesAsync(jobA, assetId, null);
+            await service.AssignJobResourcesAsync(jobB, assetId, null);
+
+            var loaded = await jobService.GetByIdAsync(jobB);
+            Assert.Equal(assetId, loaded!.AssetId);
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_ThrowsWhenEmployeeAlreadyBookedSameDay()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Crew Co" });
+            await db.SaveChangesAsync();
+            var day = DateTime.UtcNow.Date.AddDays(5);
+            var empId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Thabo",
+                LastName = "Lead",
+                IsActive = true
+            });
+            var jobA = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "East site",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+            var jobB = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "West site",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+
+            await service.AssignJobResourcesAsync(jobA, null, empId);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobB, null, empId));
+            Assert.Contains("already scheduled", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Thabo", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateScheduledStartAsync_ThrowsWhenMovingIntoAssetConflict()
+    {
+        var (db, service, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Move Co" });
+            await db.SaveChangesAsync();
+            var day = DateTime.UtcNow.Date.AddDays(6);
+            var assetId = await assetService.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Generator",
+                AssetType = "Equipment"
+            });
+            var jobA = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Booked",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+            var jobB = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Mover",
+                ScheduledStart = day.AddDays(1),
+                Status = JobStatus.Scheduled
+            });
+
+            await service.AssignJobResourcesAsync(jobA, assetId, null);
+            await service.AssignJobResourcesAsync(jobB, assetId, null);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateScheduledStartAsync(jobB, day));
+            Assert.Contains("already scheduled", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_AllowsSameAssetAfterOtherJobClosed()
+    {
+        var (db, service, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Close Co" });
+            await db.SaveChangesAsync();
+            var day = DateTime.UtcNow.Date.AddDays(2);
+            var assetId = await assetService.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Truck",
+                AssetType = "Vehicle"
+            });
+            var jobA = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Done",
+                ScheduledStart = day,
+                Status = JobStatus.InProgress
+            });
+            var jobB = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Next",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+
+            await service.AssignJobResourcesAsync(jobA, assetId, null);
+            await jobService.CloseAsync(jobA, Guid.NewGuid(), "Complete");
+
+            await service.AssignJobResourcesAsync(jobB, assetId, null);
+            var loaded = await jobService.GetByIdAsync(jobB);
+            Assert.Equal(assetId, loaded!.AssetId);
+        }
+    }
+
+    [Fact]
+    public async Task AssignJobResourcesAsync_AllowsUnscheduledJobsToShareAsset()
+    {
+        var (db, service, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Tbd Co" });
+            await db.SaveChangesAsync();
+            var assetId = await assetService.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Spare van",
+                AssetType = "Vehicle"
+            });
+            var jobA = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "TBD A",
+                Status = JobStatus.Scheduled
+            });
+            var jobB = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "TBD B",
+                Status = JobStatus.Scheduled
+            });
+
+            await service.AssignJobResourcesAsync(jobA, assetId, null);
+            await service.AssignJobResourcesAsync(jobB, assetId, null);
+
+            Assert.Equal(assetId, (await jobService.GetByIdAsync(jobB))!.AssetId);
+        }
+    }
+
+    [Fact]
+    public async Task JobService_CreateAsync_ThrowsWhenAssetAlreadyBookedSameDay()
+    {
+        var (db, _, jobService, assetService, _, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Create Co" });
+            await db.SaveChangesAsync();
+            var day = DateTime.UtcNow.Date.AddDays(8);
+            var assetId = await assetService.CreateAsync(new Asset
+            {
+                CustomerId = customerId,
+                Name = "Compressor",
+                AssetType = "Equipment"
+            });
+            await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Existing",
+                AssetId = assetId,
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                jobService.CreateAsync(new Job
+                {
+                    CustomerId = customerId,
+                    Title = "Clash",
+                    AssetId = assetId,
+                    ScheduledStart = day,
+                    Status = JobStatus.Scheduled
+                }));
+            Assert.Contains("already scheduled", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

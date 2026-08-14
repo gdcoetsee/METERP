@@ -496,20 +496,27 @@ else
         if (selectedJob == null) return;
 
         var jobId = selectedJob.Id;
-        await SchedulingService.AssignJobResourcesAsync(
-            selectedJob.Id,
-            assignAssetId,
-            assignEmployeeId,
-            assignCrewEmployeeIds.ToList());
-        await SchedulingService.UpdateScheduledStartAsync(selectedJob.Id, assignScheduledDate);
-        ToastService.ShowSuccess("Assignment saved for job.");
-        await LoadBoardAsync();
-        // Keep panel open with refreshed job so quick-labor is immediately available.
-        var refreshed = jobs.FirstOrDefault(j => j.Id == jobId);
-        if (refreshed != null)
-            ViewJob(refreshed);
-        else
-            selectedJob = null;
+        try
+        {
+            await SchedulingService.AssignJobResourcesAsync(
+                selectedJob.Id,
+                assignAssetId,
+                assignEmployeeId,
+                assignCrewEmployeeIds.ToList());
+            await SchedulingService.UpdateScheduledStartAsync(selectedJob.Id, assignScheduledDate);
+            ToastService.ShowSuccess("Assignment saved for job.");
+            await LoadBoardAsync();
+            // Keep panel open with refreshed job so quick-labor is immediately available.
+            var refreshed = jobs.FirstOrDefault(j => j.Id == jobId);
+            if (refreshed != null)
+                ViewJob(refreshed);
+            else
+                selectedJob = null;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private void CloseAssign()

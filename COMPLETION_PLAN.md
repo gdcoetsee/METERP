@@ -4,10 +4,12 @@
 
 ---
 
-## Handoff (current — 2026-07-24, Grok)
+## Handoff (current — 2026-08-14, Grok)
 
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
+
+**2026-08-14:** Soft-delete integrity stream closed on the commercial spine. Supporting-module increment: **same-day exclusive booking** for assets and crew (create/update/assign/reschedule). Application.Tests **1257** green. R6 (health, rate limits, headers, secrets validator, optional OTLP/Seq) remains a strong partial; observability depth is already wired. AI still frozen.
 
 | Phase | Status |
 |-------|--------|

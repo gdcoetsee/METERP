@@ -247,6 +247,14 @@ public class JobService : IJobService
 
         await EnsureJobDocumentLinksAsync(job.QuoteId, job.SalesOrderId, job.CustomerId, ct);
 
+        if (job.ScheduledStart.HasValue)
+            job.ScheduledStart = job.ScheduledStart.Value.Date;
+
+        await SchedulingConflictGuard.EnsureAssetAvailableAsync(
+            _dbContext, job.Id, job.AssetId, job.ScheduledStart, ct);
+        await SchedulingConflictGuard.EnsureEmployeesAvailableAsync(
+            _dbContext, job.Id, EmployeeIdsForConflict(job.AssignedEmployeeId, Array.Empty<Guid>()), job.ScheduledStart, ct);
+
         job.Title = job.Title.Trim();
 
         var tenantId = _tenantProvider?.GetCurrentTenantId() ?? job.TenantId;
@@ -439,6 +447,20 @@ public class JobService : IJobService
             job.ScheduledStart = date;
         }
 
+        var existingCrewIds = await _dbContext.Set<JobCrewAssignment>()
+            .AsNoTracking()
+            .Where(a => a.JobId == existing.Id)
+            .Select(a => a.EmployeeId)
+            .ToListAsync(ct);
+        await SchedulingConflictGuard.EnsureAssetAvailableAsync(
+            _dbContext, existing.Id, job.AssetId, job.ScheduledStart, ct);
+        await SchedulingConflictGuard.EnsureEmployeesAvailableAsync(
+            _dbContext,
+            existing.Id,
+            EmployeeIdsForConflict(job.AssignedEmployeeId, existingCrewIds),
+            job.ScheduledStart,
+            ct);
+
         job.JobNumber = existing.JobNumber;
         job.Status = existing.Status;
         job.ClosedAt = existing.ClosedAt;
@@ -468,6 +490,9 @@ public class JobService : IJobService
             if (employees.Any(e => e.IsDeleted || !e.IsActive))
                 throw new InvalidOperationException("One or more crew members are missing or inactive.");
         }
+
+        await SchedulingConflictGuard.EnsureEmployeesAvailableAsync(
+            _dbContext, jobId, distinctIds, job.ScheduledStart, ct);
 
         var existing = await _dbContext.Set<JobCrewAssignment>()
             .IgnoreQueryFilters()
@@ -918,6 +943,17 @@ public class JobService : IJobService
             return Task.CompletedTask;
 
         throw JobClosedException.ForJob(job.JobNumber);
+    }
+
+    private static IEnumerable<Guid> EmployeeIdsForConflict(Guid? assignedEmployeeId, IEnumerable<Guid> crewIds)
+    {
+        if (assignedEmployeeId is { } lead && lead != Guid.Empty)
+            yield return lead;
+        foreach (var id in crewIds)
+        {
+            if (id != Guid.Empty)
+                yield return id;
+        }
     }
 
     private Task InvalidateListCachesAsync(CancellationToken ct) =>
