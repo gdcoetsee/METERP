@@ -236,6 +236,21 @@ public class QuoteService : IQuoteService
         if (becomingSent && sendTo != null)
             emailNote = await TryEmailQuoteSentAsync(quote, sendTo, ct);
 
+        var becomingAccepted = quote.Status == QuoteStatus.Accepted && existing.Status != QuoteStatus.Accepted;
+        if (becomingAccepted && _notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = quote.TenantId != Guid.Empty ? quote.TenantId : existing.TenantId,
+                Title = $"Quote {quote.QuoteNumber} accepted — convert to job",
+                Message = $"{quote.QuoteNumber} (R {quote.Total:N0}) is accepted. Convert it from Home so deposit and work can start.",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = quote.Id,
+                RelatedEntityType = nameof(Quote)
+            }, ct);
+        }
+
         if (_auditService != null)
         {
             await _auditService.LogAsync(

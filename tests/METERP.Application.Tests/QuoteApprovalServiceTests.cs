@@ -640,6 +640,38 @@ public class QuoteApprovalServiceTests
         }
     }
 
+    [Fact]
+    public async Task UpdateAsync_Accepted_NotifiesToConvertToJob()
+    {
+        var (service, db, tenantId, customer, notifications) = CreateWithNotifications();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-WIN",
+                Status = QuoteStatus.Sent,
+                TaxRate = 0m,
+                Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 8800m } }
+            };
+            quote.RecalculateTotals();
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            quote.Status = QuoteStatus.Accepted;
+            await service.UpdateAsync(quote);
+
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "sales"
+                    && t.RelatedEntityId == quote.Id
+                    && t.Title.Contains("accepted", StringComparison.OrdinalIgnoreCase)
+                    && t.Message.Contains("Convert", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
     private static (QuoteService Service, AppDbContext Db, Guid TenantId, Customer Customer, Mock<ITenantNotificationService> Notifications)
         CreateWithNotifications()
     {
