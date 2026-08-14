@@ -98,10 +98,10 @@ else
                 — manager then executive before final/partial invoices.
             </div>
         }
-        else if (_summary.UnbilledResidual > 0 && _summary.BilledToDate > 0)
+        else if (_summary.UnbilledResidual > 0)
         {
             <div class="alert alert-info small" data-testid="job-cc-unbilled-banner">
-                R @_summary.UnbilledResidual.ToString("N2") of quoted work remains unbilled — costs can still be captured until executive close.
+                R @_summary.UnbilledResidual.ToString("N2") of quoted work remains unbilled — invoice it or acknowledge the leftover on executive close.
             </div>
         }
 
@@ -460,8 +460,25 @@ else
 {
     <FormModal IsOpen="true" Title="Executive close — P&amp;L review" TestId="job-cc-close-modal" OnClose="CloseCloseModal">
         <p class="small text-muted">Hard-locks costs, requisitions, and new invoices. Reopen requires an executive reason.</p>
+        @if (_summary != null && InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(_summary.QuotedTotal, _summary.BilledToDate))
+        {
+            <div class="alert alert-warning small" data-testid="job-cc-close-unbilled-ack">
+                R @_summary.UnbilledResidual.ToString("N2") of R @_summary.QuotedTotal.ToString("N2") quoted is unbilled.
+                Add notes explaining why this job can close with leftover revenue.
+            </div>
+        }
         <div class="mb-3">
-            <label class="form-label">Close notes (optional)</label>
+            <label class="form-label">
+                Close notes
+                @if (_summary != null && InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(_summary.QuotedTotal, _summary.BilledToDate))
+                {
+                    <span> *</span>
+                }
+                else
+                {
+                    <span class="text-muted">(optional)</span>
+                }
+            </label>
             <textarea class="form-control" rows="3" @bind="_closeNotes" data-testid="job-cc-close-notes"></textarea>
         </div>
         <div class="d-flex gap-2 justify-content-end">

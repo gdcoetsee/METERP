@@ -1592,6 +1592,73 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CloseAsync_ThrowsWhenUnbilledResidualUnacknowledged()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseAsync(jobId, Guid.NewGuid(), "   "));
+        Assert.Contains("unbilled", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(JobStatus.Scheduled, (await service.GetByIdAsync(jobId))!.Status);
+    }
+
+    [Fact]
+    public async Task JobService_CloseAsync_AllowsEmptyNotesWhenFullyBilled()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = job.CustomerId,
+            JobId = jobId,
+            InvoiceNumber = "INV-FULL",
+            DocumentType = InvoiceDocumentType.Final,
+            Status = InvoiceStatus.Sent,
+            Subtotal = 5000m,
+            Tax = 0m,
+            Total = 5000m
+        });
+        await db.SaveChangesAsync();
+
+        Assert.True(await service.CloseAsync(jobId, Guid.NewGuid(), null));
+        Assert.Equal(JobStatus.Closed, (await service.GetByIdAsync(jobId))!.Status);
+    }
+
+    [Fact]
+    public async Task JobService_CloseAsync_IgnoresProformaWhenMeasuringUnbilled()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = job.CustomerId,
+            JobId = jobId,
+            InvoiceNumber = "PRO-1",
+            DocumentType = InvoiceDocumentType.Proforma,
+            Status = InvoiceStatus.Sent,
+            Subtotal = 5000m,
+            Tax = 0m,
+            Total = 5000m
+        });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseAsync(jobId, Guid.NewGuid(), null));
+        Assert.Contains("unbilled", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();

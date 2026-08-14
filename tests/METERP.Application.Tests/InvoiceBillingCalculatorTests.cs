@@ -55,4 +55,28 @@ public class InvoiceBillingCalculatorTests
     {
         Assert.Equal(bucket, InvoiceBillingCalculator.GetAgingBucket(days));
     }
+
+    [Theory]
+    [InlineData(InvoiceDocumentType.Standard, InvoiceStatus.Sent, true)]
+    [InlineData(InvoiceDocumentType.Deposit, InvoiceStatus.Paid, true)]
+    [InlineData(InvoiceDocumentType.Partial, InvoiceStatus.PartiallyPaid, true)]
+    [InlineData(InvoiceDocumentType.Final, InvoiceStatus.Overdue, true)]
+    [InlineData(InvoiceDocumentType.Proforma, InvoiceStatus.Sent, false)]
+    [InlineData(InvoiceDocumentType.CreditNote, InvoiceStatus.Sent, false)]
+    [InlineData(InvoiceDocumentType.Standard, InvoiceStatus.Draft, false)]
+    [InlineData(InvoiceDocumentType.Standard, InvoiceStatus.Cancelled, false)]
+    public void CountsTowardJobBilled_ExcludesNonRevenueDocs(InvoiceDocumentType type, InvoiceStatus status, bool expected)
+    {
+        Assert.Equal(expected, InvoiceBillingCalculator.CountsTowardJobBilled(type, status));
+    }
+
+    [Fact]
+    public void RequiresUnbilledCloseAcknowledgement_WhenMoreThanTenPercentAndAtLeast100()
+    {
+        Assert.True(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(5000m, 0m));
+        Assert.True(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(5000m, 4000m)); // 1000 leftover
+        Assert.False(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(5000m, 4600m)); // 8% leftover
+        Assert.False(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(5000m, 5000m));
+        Assert.False(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(80m, 0m)); // under R100
+    }
 }

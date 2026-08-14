@@ -61,4 +61,28 @@ public static class InvoiceBillingCalculator
         <= 90 => "61-90",
         _ => "90+"
     };
+
+    /// <summary>
+    /// Proforma, draft, cancelled, and credit notes do not count as money billed against a job.
+    /// </summary>
+    public static bool CountsTowardJobBilled(InvoiceDocumentType type, InvoiceStatus status) =>
+        type is not (InvoiceDocumentType.Proforma or InvoiceDocumentType.CreditNote)
+        && status is not (InvoiceStatus.Draft or InvoiceStatus.Cancelled);
+
+    public static decimal CalculateUnbilledResidual(decimal quotedTotal, decimal billedToDate) =>
+        Math.Max(0m, Math.Round(quotedTotal - billedToDate, 2));
+
+    /// <summary>
+    /// Leftover quote is material when it is more than 10% of quoted and at least 100.
+    /// Close may proceed, but the executive must write notes acknowledging it.
+    /// </summary>
+    public static bool RequiresUnbilledCloseAcknowledgement(decimal quotedTotal, decimal billedToDate)
+    {
+        var residual = CalculateUnbilledResidual(quotedTotal, billedToDate);
+        if (residual < 100m)
+            return false;
+        if (quotedTotal <= 0)
+            return true;
+        return residual > quotedTotal * 0.10m;
+    }
 }

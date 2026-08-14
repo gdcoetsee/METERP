@@ -74,7 +74,9 @@ public class JobService : IJobService
             .OrderByDescending(i => i.InvoiceDate)
             .ToListAsync(ct);
 
-        var billedToDate = invoices.Sum(i => i.Total);
+        var billedToDate = invoices
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .Sum(i => i.Total);
         var actualTotal = job.GetActualTotal();
 
         return new JobCommandCenterSummary
@@ -606,6 +608,20 @@ public class JobService : IJobService
         if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > 500)
             throw new ArgumentException("Close notes cannot exceed 500 characters.", nameof(notes));
 
+        var billedToDate = await _dbContext.Set<Invoice>().AsNoTracking()
+            .Where(i => i.JobId == job.Id && !i.IsDeleted)
+            .ToListAsync(ct);
+        var billed = billedToDate
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .Sum(i => i.Total);
+        var unbilled = InvoiceBillingCalculator.CalculateUnbilledResidual(job.QuotedTotal, billed);
+        if (InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(job.QuotedTotal, billed)
+            && string.IsNullOrWhiteSpace(notes))
+        {
+            throw new InvalidOperationException(
+                $"Job {job.JobNumber} has R {unbilled:N2} unbilled of R {job.QuotedTotal:N2} quoted. Add close notes to acknowledge the leftover.");
+        }
+
         job.Status = JobStatus.Closed;
         job.ClosedAt = DateTime.UtcNow;
         job.ClosedByUserId = executiveUserId;
@@ -621,7 +637,7 @@ public class JobService : IJobService
                 "CLOSE",
                 "Job",
                 job.JobNumber,
-                $"Executive close — actual R {job.GetActualTotal():N0}, quoted R {job.QuotedTotal:N0}" +
+                $"Executive close — actual R {job.GetActualTotal():N0}, quoted R {job.QuotedTotal:N0}, billed R {billed:N0}, unbilled R {unbilled:N0}" +
                 (job.CloseNotes != null ? $" — {job.CloseNotes}" : ""),
                 ct);
         }

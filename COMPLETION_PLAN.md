@@ -9,7 +9,7 @@
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
-**2026-08-14:** Integrity stream is **done enough**. Soft-delete on the spine, scheduling double-book/leave clash, and outstanding-PPE deactivate/delete are in. Application.Tests **1264** green.
+**2026-08-14:** Integrity stream is **done enough**. Soft-delete on the spine, scheduling double-book/leave clash, outstanding-PPE deactivate/delete, and **unbilled close acknowledgement** (proforma/draft/cancelled do not count as billed) are in. Application.Tests **1276** green.
 
 **Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, field-to-invoice completeness. AI stays frozen. E2E remains a release checkpoint, not a development gate.
 
