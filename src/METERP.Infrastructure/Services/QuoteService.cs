@@ -16,6 +16,7 @@ public class QuoteService : IQuoteService
     private readonly ITenantCacheService? _cache;
     private readonly IAuditService? _auditService;
     private readonly IDocumentSequenceService? _documentSequence;
+    private readonly ITenantNotificationService? _notifications;
 
     public QuoteService(
         AppDbContext dbContext,
@@ -24,7 +25,8 @@ public class QuoteService : IQuoteService
         IQuotaService? quotaService = null,
         ITenantCacheService? cache = null,
         IAuditService? auditService = null,
-        IDocumentSequenceService? documentSequence = null)
+        IDocumentSequenceService? documentSequence = null,
+        ITenantNotificationService? notifications = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -33,6 +35,7 @@ public class QuoteService : IQuoteService
         _cache = cache;
         _auditService = auditService;
         _documentSequence = documentSequence;
+        _notifications = notifications;
     }
 
     public async Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -639,6 +642,21 @@ public class QuoteService : IQuoteService
 
         var counterTenantId = tenantId != Guid.Empty ? tenantId : quote.TenantId;
         await TryIncrementJobCountAsync(counterTenantId, ct);
+
+        if (_notifications != null && job.NeedsDepositInvoice())
+        {
+            var amount = Math.Round(job.QuotedTotal * job.DepositPercent / 100m, 2);
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = job.TenantId != Guid.Empty ? job.TenantId : quote.TenantId,
+                Title = $"Raise deposit for {job.JobNumber}",
+                Message = $"{job.Title}: {job.DepositPercent:N0}% deposit (R {amount:N0}) is outstanding after converting {quote.QuoteNumber}.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = job.Id,
+                RelatedEntityType = nameof(Job)
+            }, ct);
+        }
 
         return (await GetByIdForJobAsync(job.Id, ct))!;
     }

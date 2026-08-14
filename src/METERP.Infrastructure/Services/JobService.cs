@@ -377,6 +377,7 @@ public class JobService : IJobService
 
         await TryIncrementJobCountAsync(job.TenantId, ct);
         await InvalidateListCachesAsync(ct);
+        await NotifyDepositDueAsync(job, ct);
 
         return job.Id;
     }
@@ -885,6 +886,24 @@ public class JobService : IJobService
         }
 
         return true;
+    }
+
+    private async Task NotifyDepositDueAsync(Job job, CancellationToken ct)
+    {
+        if (_notifications == null || !job.NeedsDepositInvoice())
+            return;
+
+        var amount = Math.Round(job.QuotedTotal * job.DepositPercent / 100m, 2);
+        await _notifications.CreateAsync(new TenantNotification
+        {
+            TenantId = job.TenantId,
+            Title = $"Raise deposit for {job.JobNumber}",
+            Message = $"{job.Title}: {job.DepositPercent:N0}% deposit (R {amount:N0}) is outstanding. Raise it from Home or the job Command Center.",
+            Category = "collections",
+            TargetRoles = "Admin,Executive,Finance",
+            RelatedEntityId = job.Id,
+            RelatedEntityType = nameof(Job)
+        }, ct);
     }
 
     private async Task NotifyReadyToInvoiceAsync(Job job, CancellationToken ct)

@@ -134,6 +134,25 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_CreateAsync_NotifiesWhenDepositDue()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, notifications: notifications.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == jobId
+                && t.Title.Contains("deposit", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task JobService_SignOffAsync_NotifiesFinanceWhenReadyToInvoice()
     {
         var tenantId = Guid.NewGuid();
@@ -151,7 +170,7 @@ public class JobTests
                 t.Category == "collections"
                 && t.RelatedEntityType == nameof(Job)
                 && t.RelatedEntityId == jobId
-                && t.TargetRoles.Contains("Finance")),
+                && t.Title.Contains("ready to invoice", StringComparison.OrdinalIgnoreCase)),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
