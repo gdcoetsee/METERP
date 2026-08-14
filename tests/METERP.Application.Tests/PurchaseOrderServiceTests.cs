@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -1491,6 +1492,54 @@ public class PurchaseOrderServiceTests
 
             var sent = await service.GetByIdAsync(poId);
             Assert.Equal(expected, sent!.ExpectedDate);
+        }
+    }
+
+    [Fact]
+    public async Task GetOverdueQueueAsync_IncludesSentPastExpected_ExcludesDraftAndOnTime()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Late Co", IsActive = true });
+            await db.SaveChangesAsync();
+
+            var lateId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                ExpectedDate = DateTime.UtcNow.Date.AddDays(3),
+                Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 1, UnitPrice = 40m } }
+            });
+            var onTimeId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                ExpectedDate = DateTime.UtcNow.Date.AddDays(14),
+                Lines = { new PurchaseOrderLine { Description = "Fuse", Quantity = 1, UnitPrice = 10m } }
+            });
+            var draftId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                ExpectedDate = DateTime.UtcNow.Date.AddDays(3),
+                Lines = { new PurchaseOrderLine { Description = "Tape", Quantity = 1, UnitPrice = 5m } }
+            });
+
+            await service.UpdateStatusAsync(lateId, PurchaseOrderStatus.Sent);
+            await service.UpdateStatusAsync(onTimeId, PurchaseOrderStatus.Sent);
+
+            var late = await db.Set<PurchaseOrder>().FirstAsync(p => p.Id == lateId);
+            late.ExpectedDate = DateTime.UtcNow.Date.AddDays(-2);
+            await db.SaveChangesAsync();
+
+            var queue = await service.GetOverdueQueueAsync();
+
+            Assert.Contains(queue, r => r.Id == lateId && r.Kind == "PO" && r.CustomerName == "Late Co");
+            Assert.DoesNotContain(queue, r => r.Id == onTimeId);
+            Assert.DoesNotContain(queue, r => r.Id == draftId);
         }
     }
 

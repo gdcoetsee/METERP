@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Common;
 using METERP.Domain;
@@ -761,6 +762,35 @@ public class PurchaseOrderService : IPurchaseOrderService
             .Where(g => g.PurchaseOrderId == poId)
             .OrderByDescending(g => g.ReceivedAt)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetOverdueQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var today = DateTime.UtcNow.Date;
+        var orders = await _dbContext.Set<PurchaseOrder>()
+            .AsNoTracking()
+            .Include(p => p.Supplier)
+            .Where(p =>
+                (p.Status == PurchaseOrderStatus.Sent || p.Status == PurchaseOrderStatus.PartiallyReceived)
+                && p.ExpectedDate != null
+                && p.ExpectedDate < today)
+            .OrderBy(p => p.ExpectedDate)
+            .ThenBy(p => p.PoNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return orders
+            .Select(p => new ConvertibleDocumentRow(
+                p.Id,
+                "PO",
+                p.PoNumber,
+                p.Supplier?.Name ?? "—",
+                p.Total,
+                $"/purchase-orders?open={p.Id:D}"))
+            .ToList();
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.PurchaseOrders);

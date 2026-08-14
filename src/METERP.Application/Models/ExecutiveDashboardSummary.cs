@@ -37,4 +37,10 @@ public sealed class ExecutiveDashboardSummary
     public decimal AwaitingSignOffValue { get; init; }
 
     public IReadOnlyList<ReadyToInvoiceJobRow> AwaitingSignOffQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
+
+    public int OverduePurchaseOrders { get; init; }
+
+    public decimal OverduePurchaseOrderValue { get; init; }
+
+    public IReadOnlyList<ConvertibleDocumentRow> OverduePurchaseOrderQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
 }

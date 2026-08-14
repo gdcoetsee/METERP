@@ -16,6 +16,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
     private readonly IInventoryService _inventory;
     private readonly ISalesOrderService _salesOrders;
     private readonly IOpportunityService _opportunities;
+    private readonly IPurchaseOrderService _purchaseOrders;
 
     public ExecutiveDashboardService(
         IQuoteService quotes,
@@ -27,7 +28,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         IInvoiceService invoices,
         IInventoryService inventory,
         ISalesOrderService salesOrders,
-        IOpportunityService opportunities)
+        IOpportunityService opportunities,
+        IPurchaseOrderService purchaseOrders)
     {
         _quotes = quotes;
         _requisitions = requisitions;
@@ -39,6 +41,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         _inventory = inventory;
         _salesOrders = salesOrders;
         _opportunities = opportunities;
+        _purchaseOrders = purchaseOrders;
     }
 
     public async Task<ExecutiveDashboardSummary> GetSummaryAsync(CancellationToken ct = default)
@@ -54,6 +57,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var convertQuotes = await _quotes.GetUnconvertedWonQuotesAsync(10, ct);
         var convertOrders = await _salesOrders.GetUnconvertedConfirmedAsync(10, ct);
         var convertOpps = await _opportunities.GetUnquotedWonAsync(10, ct);
+        var overduePos = await _purchaseOrders.GetOverdueQueueAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
@@ -80,7 +84,10 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
                 .ToList(),
             AwaitingSignOffJobs = awaitingSignOff.Count,
             AwaitingSignOffValue = awaitingSignOff.Sum(j => j.UnbilledResidual),
-            AwaitingSignOffQueue = awaitingSignOff
+            AwaitingSignOffQueue = awaitingSignOff,
+            OverduePurchaseOrders = overduePos.Count,
+            OverduePurchaseOrderValue = overduePos.Sum(p => p.Total),
+            OverduePurchaseOrderQueue = overduePos
         };
     }
 }

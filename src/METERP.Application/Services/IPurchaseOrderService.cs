@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using METERP.Domain;
 
 namespace METERP.Application.Services;
@@ -55,4 +56,7 @@ public interface IPurchaseOrderService
     Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default);
 
     Task<IReadOnlyList<GoodsReceiptVoucher>> GetGrvsForPurchaseOrderAsync(Guid poId, CancellationToken ct = default);
+
+    /// <summary>Sent or partially received POs whose expected date has passed.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetOverdueQueueAsync(int take = 20, CancellationToken ct = default);
 }

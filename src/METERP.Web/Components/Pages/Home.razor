@@ -347,6 +347,35 @@
                     </table>
                 </div>
             }
+            @if (_executive.OverduePurchaseOrderQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-overdue-pos">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Late PO</th>
+                                <th>Supplier</th>
+                                <th class="text-end">Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.OverduePurchaseOrderQueue)
+                            {
+                                <tr>
+                                    <td>@row.Number</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">R @row.Total.ToString("N0")</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-warning" href="@row.Href"
+                                           data-testid="home-overdue-po">Receive</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (cashQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-ready-to-invoice">

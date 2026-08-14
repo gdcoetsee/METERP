@@ -82,6 +82,13 @@ public class ExecutiveDashboardServiceTests
         opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
+        var purchaseOrders = new Mock<IPurchaseOrderService>();
+        purchaseOrders.Setup(s => s.GetOverdueQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConvertibleDocumentRow>
+            {
+                new(Guid.NewGuid(), "PO", "PO-LATE", "Cable Co", 800m, "/purchase-orders?open=1")
+            });
+
         var service = new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -92,7 +99,8 @@ public class ExecutiveDashboardServiceTests
             invoices.Object,
             inventory.Object,
             salesOrders.Object,
-            opportunities.Object);
+            opportunities.Object,
+            purchaseOrders.Object);
 
         var summary = await service.GetSummaryAsync();
 
@@ -106,6 +114,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(3000m, summary.DepositDueValue);
         Assert.Equal(1, summary.AwaitingSignOffJobs);
         Assert.Equal(1650m, summary.AwaitingSignOffValue);
+        Assert.Equal(1, summary.OverduePurchaseOrders);
+        Assert.Equal(800m, summary.OverduePurchaseOrderValue);
         Assert.Equal(5000m, summary.AgedDebtorsTotal);
         Assert.Equal(1, summary.LowStockItems);
     }
@@ -204,6 +214,10 @@ public class ExecutiveDashboardServiceTests
         opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
+        var purchaseOrders = new Mock<IPurchaseOrderService>();
+        purchaseOrders.Setup(s => s.GetOverdueQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+
         return new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -214,6 +228,7 @@ public class ExecutiveDashboardServiceTests
             invoices.Object,
             inventory.Object,
             salesOrders.Object,
-            opportunities.Object);
+            opportunities.Object,
+            purchaseOrders.Object);
     }
 }
