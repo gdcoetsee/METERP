@@ -77,6 +77,9 @@ public class Job : BaseEntity
 
     public bool DepositReceived { get; set; }
 
+    public bool NeedsDepositInvoice() =>
+        IsOpenForOperations() && DepositPercent > 0 && !DepositReceived;
+
     /// <summary>
     /// Emergency / callout job created without a quote (job-first billing path).
     /// </summary>

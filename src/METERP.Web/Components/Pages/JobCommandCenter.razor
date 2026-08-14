@@ -91,7 +91,14 @@ else
                 }
             </div>
         }
-        else if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
+        @if (_job.NeedsDepositInvoice())
+        {
+            <div class="alert alert-warning small" data-testid="job-cc-deposit-banner">
+                Deposit @_job.DepositPercent.ToString("N0")% is not received.
+                Raise a deposit invoice to start cash collection.
+            </div>
+        }
+        @if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
         {
             <div class="alert alert-warning small py-2" data-testid="job-cc-signoff-banner">
                 Work sign-off: <strong>@SignOffStatusLabel</strong>

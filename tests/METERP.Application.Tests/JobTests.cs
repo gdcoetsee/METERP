@@ -96,6 +96,15 @@ public class JobTests
     }
 
     [Fact]
+    public void Job_NeedsDepositInvoice_WhenOpenWithUnpaidDeposit()
+    {
+        Assert.True(new Job { Status = JobStatus.InProgress, DepositPercent = 30m, DepositReceived = false }.NeedsDepositInvoice());
+        Assert.False(new Job { Status = JobStatus.InProgress, DepositPercent = 30m, DepositReceived = true }.NeedsDepositInvoice());
+        Assert.False(new Job { Status = JobStatus.InProgress, DepositPercent = 0m, DepositReceived = false }.NeedsDepositInvoice());
+        Assert.False(new Job { Status = JobStatus.Closed, DepositPercent = 30m, DepositReceived = false }.NeedsDepositInvoice());
+    }
+
+    [Fact]
     public async Task JobService_AdvanceWorkSignOff_DualChain()
     {
         var tenantId = Guid.NewGuid();
