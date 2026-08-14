@@ -537,4 +537,129 @@ public class QuoteApprovalServiceTests
             Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    [Fact]
+    public async Task SubmitForExecutiveApproval_NotifiesExecutives()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"quote-submit-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Notify Co", Email = "ap@notify.co" };
+        db.Set<Customer>().Add(customer);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-NOTIFY",
+            Status = QuoteStatus.Draft,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 4400m } }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, tenantProvider: tenantProvider.Object, notifications: notifications.Object);
+        await service.SubmitForExecutiveApprovalAsync(quote.Id, Guid.NewGuid());
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "sales"
+                && t.RelatedEntityType == nameof(Quote)
+                && t.RelatedEntityId == quote.Id
+                && t.Title.Contains("needs executive approval", StringComparison.OrdinalIgnoreCase)
+                && t.TargetRoles.Contains("Executive")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecutiveApprove_NotifiesToSendQuote()
+    {
+        var (service, db, tenantId, customer, notifications) = CreateWithNotifications();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-OK",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 100 } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.ExecutiveApproveAsync(quote.Id, Guid.NewGuid());
+
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "sales"
+                    && t.RelatedEntityId == quote.Id
+                    && t.Title.Contains("approved", StringComparison.OrdinalIgnoreCase)
+                    && t.Message.Contains("Send", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task ExecutiveReject_NotifiesWithReason()
+    {
+        var (service, db, tenantId, customer, notifications) = CreateWithNotifications();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-NO",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 100 } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.ExecutiveRejectAsync(quote.Id, Guid.NewGuid(), "Margin too thin");
+
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "sales"
+                    && t.RelatedEntityId == quote.Id
+                    && t.Title.Contains("rejected", StringComparison.OrdinalIgnoreCase)
+                    && t.Message.Contains("Margin too thin")),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    private static (QuoteService Service, AppDbContext Db, Guid TenantId, Customer Customer, Mock<ITenantNotificationService> Notifications)
+        CreateWithNotifications()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"quote-approval-notify-{Guid.NewGuid():N}")
+            .Options;
+
+        var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Test Co", Email = "quotes@test.co" };
+        db.Set<Customer>().Add(customer);
+        db.SaveChanges();
+
+        var service = new QuoteService(db, tenantProvider: tenantProvider.Object, notifications: notifications.Object);
+        return (service, db, tenantId, customer, notifications);
+    }
 }

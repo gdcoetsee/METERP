@@ -297,6 +297,20 @@ public class QuoteService : IQuoteService
                 "Submitted for executive approval before client send",
                 ct);
         }
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = quote.TenantId,
+                Title = $"Quote {quote.QuoteNumber} needs executive approval",
+                Message = $"{quote.QuoteNumber} (R {quote.Total:N0}) is waiting for executive approval before it can be sent to the customer.",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = quote.Id,
+                RelatedEntityType = nameof(Quote)
+            }, ct);
+        }
     }
 
     public async Task ExecutiveApproveAsync(Guid quoteId, Guid approverUserId, CancellationToken ct = default)
@@ -326,6 +340,20 @@ public class QuoteService : IQuoteService
                 quote.QuoteNumber,
                 "Executive approved for client send",
                 ct);
+        }
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = quote.TenantId,
+                Title = $"Quote {quote.QuoteNumber} approved — send to customer",
+                Message = $"{quote.QuoteNumber} is approved. Send it to the customer to start the cash cycle.",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = quote.Id,
+                RelatedEntityType = nameof(Quote)
+            }, ct);
         }
     }
 
@@ -361,6 +389,20 @@ public class QuoteService : IQuoteService
                 quote.QuoteNumber,
                 $"Executive rejected: {reason}",
                 ct);
+        }
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = quote.TenantId,
+                Title = $"Quote {quote.QuoteNumber} rejected",
+                Message = $"{quote.QuoteNumber} was rejected: {reason}",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = quote.Id,
+                RelatedEntityType = nameof(Quote)
+            }, ct);
         }
     }
 
