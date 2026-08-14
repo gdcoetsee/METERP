@@ -17,6 +17,7 @@ public class JobService : IJobService
     private readonly ITenantCacheService? _cache;
     private readonly IDocumentSequenceService? _documentSequence;
     private readonly IAuditService? _audit;
+    private readonly ITenantNotificationService? _notifications;
 
     public JobService(
         AppDbContext dbContext,
@@ -25,7 +26,8 @@ public class JobService : IJobService
         IQuotaService? quotaService = null,
         ITenantCacheService? cache = null,
         IDocumentSequenceService? documentSequence = null,
-        IAuditService? audit = null)
+        IAuditService? audit = null,
+        ITenantNotificationService? notifications = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -34,6 +36,7 @@ public class JobService : IJobService
         _cache = cache;
         _documentSequence = documentSequence;
         _audit = audit;
+        _notifications = notifications;
     }
 
     public async Task<JobCommandCenterSummary?> GetCommandCenterSummaryAsync(Guid jobId, CancellationToken ct = default)
@@ -802,6 +805,7 @@ public class JobService : IJobService
                 await InvalidateListCachesAsync(ct);
                 if (_audit != null)
                     await _audit.LogAsync("SIGNOFF_EXECUTIVE", "Job", job.JobNumber, "Executive work sign-off complete", ct);
+                await NotifyReadyToInvoiceAsync(job, ct);
                 return true;
 
             case JobSignOffStatus.SignedOff:
@@ -842,9 +846,27 @@ public class JobService : IJobService
 
             if (_audit != null)
                 await _audit.LogAsync("SIGNOFF_COMPLETE", "Job", job.JobNumber, "Full work sign-off (manager+executive)", ct);
+            await NotifyReadyToInvoiceAsync(job, ct);
         }
 
         return true;
+    }
+
+    private async Task NotifyReadyToInvoiceAsync(Job job, CancellationToken ct)
+    {
+        if (_notifications == null)
+            return;
+
+        await _notifications.CreateAsync(new TenantNotification
+        {
+            TenantId = job.TenantId,
+            Title = $"Job {job.JobNumber} is ready to invoice",
+            Message = $"{job.Title} is signed off (quoted R {job.QuotedTotal:N0}). Raise the invoice from Home or the job Command Center.",
+            Category = "collections",
+            TargetRoles = "Admin,Executive,Finance",
+            RelatedEntityId = job.Id,
+            RelatedEntityType = nameof(Job)
+        }, ct);
     }
 
     public async Task<bool> CancelAsync(Guid jobId, Guid userId, string reason, CancellationToken ct = default)

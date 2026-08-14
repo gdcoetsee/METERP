@@ -125,6 +125,28 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_SignOffAsync_NotifiesFinanceWhenReadyToInvoice()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new JobService(db, notifications: notifications.Object);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+
+        Assert.True(await service.SignOffAsync(jobId, Guid.NewGuid()));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityType == nameof(Job)
+                && t.RelatedEntityId == jobId
+                && t.TargetRoles.Contains("Finance")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_BlocksOperations()
     {
         var tenantId = Guid.NewGuid();
