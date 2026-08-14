@@ -113,4 +113,92 @@ internal static class SchedulingConflictGuard
         throw new InvalidOperationException(
             $"{empLabel} is already scheduled on job {conflictingJobNumber} on {date:yyyy-MM-dd}.");
     }
+
+    public static async Task EnsureEmployeesNotOnApprovedLeaveAsync(
+        AppDbContext db,
+        IEnumerable<Guid> employeeIds,
+        DateTime? scheduledStart,
+        CancellationToken ct)
+    {
+        var ids = employeeIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        if (ids.Count == 0 || scheduledStart is null)
+            return;
+
+        var date = scheduledStart.Value.Date;
+        var leaves = await db.Set<LeaveRequest>()
+            .AsNoTracking()
+            .Where(r =>
+                ids.Contains(r.EmployeeId)
+                && r.Status == LeaveRequestStatus.Approved)
+            .Select(r => new { r.EmployeeId, r.StartDate, r.EndDate })
+            .ToListAsync(ct);
+
+        var hit = leaves.FirstOrDefault(r => r.StartDate.Date <= date && date <= r.EndDate.Date);
+        if (hit == null)
+            return;
+
+        var emp = await db.Set<Employee>().AsNoTracking()
+            .Where(e => e.Id == hit.EmployeeId)
+            .Select(e => new { e.FirstName, e.LastName })
+            .FirstOrDefaultAsync(ct);
+        var empLabel = emp == null
+            ? "Employee"
+            : $"Employee '{emp.FirstName} {emp.LastName}'".Trim();
+        throw new InvalidOperationException(
+            $"{empLabel} is on approved leave on {date:yyyy-MM-dd}.");
+    }
+
+    public static async Task EnsureLeaveDoesNotClashWithScheduledJobsAsync(
+        AppDbContext db,
+        Guid employeeId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken ct)
+    {
+        if (employeeId == Guid.Empty)
+            return;
+
+        var start = startDate.Date;
+        var end = endDate.Date;
+        var jobs = await db.Set<Job>()
+            .AsNoTracking()
+            .Where(j =>
+                j.ScheduledStart.HasValue
+                && j.Status != JobStatus.Closed
+                && j.Status != JobStatus.Cancelled
+                && j.AssignedEmployeeId == employeeId)
+            .Select(j => new { j.Id, j.JobNumber, j.ScheduledStart })
+            .ToListAsync(ct);
+
+        var crewJobIds = await db.Set<JobCrewAssignment>()
+            .AsNoTracking()
+            .Where(a => a.EmployeeId == employeeId)
+            .Select(a => a.JobId)
+            .ToListAsync(ct);
+
+        if (crewJobIds.Count > 0)
+        {
+            var crewJobs = await db.Set<Job>()
+                .AsNoTracking()
+                .Where(j =>
+                    crewJobIds.Contains(j.Id)
+                    && j.ScheduledStart.HasValue
+                    && j.Status != JobStatus.Closed
+                    && j.Status != JobStatus.Cancelled)
+                .Select(j => new { j.Id, j.JobNumber, j.ScheduledStart })
+                .ToListAsync(ct);
+            jobs = jobs.Concat(crewJobs).GroupBy(j => j.Id).Select(g => g.First()).ToList();
+        }
+
+        var clash = jobs.FirstOrDefault(j =>
+        {
+            var day = j.ScheduledStart!.Value.Date;
+            return day >= start && day <= end;
+        });
+        if (clash == null)
+            return;
+
+        throw new InvalidOperationException(
+            $"Cannot approve leave — employee is scheduled on job {clash.JobNumber} on {clash.ScheduledStart!.Value:yyyy-MM-dd}.");
+    }
 }

@@ -757,6 +757,48 @@ public class SchedulingServiceTests
     }
 
     [Fact]
+    public async Task AssignJobResourcesAsync_ThrowsWhenEmployeeOnApprovedLeave()
+    {
+        var (db, service, jobService, _, employeeService, tenantId) = CreateHarness();
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Leave Co" });
+            await db.SaveChangesAsync();
+            var day = DateTime.UtcNow.Date.AddDays(10);
+            var empId = await employeeService.CreateAsync(new Employee
+            {
+                FirstName = "Sipho",
+                LastName = "Off",
+                IsActive = true
+            });
+            db.Set<LeaveRequest>().Add(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = empId,
+                StartDate = day.AddDays(-1),
+                EndDate = day.AddDays(1),
+                DaysRequested = 3,
+                Status = LeaveRequestStatus.Approved,
+                IsPaid = true
+            });
+            await db.SaveChangesAsync();
+
+            var jobId = await jobService.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "While off",
+                ScheduledStart = day,
+                Status = JobStatus.Scheduled
+            });
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AssignJobResourcesAsync(jobId, null, empId));
+            Assert.Contains("approved leave", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task AssignJobResourcesAsync_AllowsSameAssetAfterOtherJobClosed()
     {
         var (db, service, jobService, assetService, _, tenantId) = CreateHarness();

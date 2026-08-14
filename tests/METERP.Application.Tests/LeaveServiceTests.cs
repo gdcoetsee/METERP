@@ -1287,6 +1287,61 @@ public class LeaveServiceTests
         }
     }
 
+    [Fact]
+    public async Task ApproveHrAsync_ThrowsWhenEmployeeScheduledOnLeaveDates()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-SCHED-LV",
+                FirstName = "Booked",
+                LastName = "Tech",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                LeaveBalanceDays = 10,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var start = DateTime.UtcNow.Date.AddDays(14);
+            var job = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = Guid.NewGuid(),
+                Title = "Site visit",
+                JobNumber = "J-LEAVE-CLASH",
+                AssignedEmployeeId = employee.Id,
+                ScheduledStart = start.AddDays(1),
+                Status = JobStatus.Scheduled
+            };
+            db.Set<Job>().Add(job);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = start,
+                EndDate = start.AddDays(2),
+                IsPaid = false,
+                Reason = "Holiday"
+            });
+            var userId = Guid.NewGuid();
+            Assert.True(await service.ApproveManagerAsync(requestId, userId));
+            Assert.True(await service.ApproveExecutiveAsync(requestId, userId));
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveHrAsync(requestId, userId));
+            Assert.Contains("scheduled on job", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(LeaveRequestStatus.PendingHr,
+                (await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId)).Status);
+        }
+    }
+
     private sealed class TestCurrentUser : ICurrentUserService
     {
         public Guid? UserId => Guid.NewGuid();

@@ -173,6 +173,8 @@ public sealed class LeaveService : ILeaveService
             return false;
 
         await EnsureEmployeeEligibleForLeaveApprovalAsync(request, ct);
+        await SchedulingConflictGuard.EnsureLeaveDoesNotClashWithScheduledJobsAsync(
+            _dbContext, request.EmployeeId, request.StartDate, request.EndDate, ct);
 
         // Balance can change between submit and final HR approval (other paid leave approved).
         if (request.IsPaid)

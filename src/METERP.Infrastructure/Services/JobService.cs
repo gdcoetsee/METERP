@@ -252,8 +252,11 @@ public class JobService : IJobService
 
         await SchedulingConflictGuard.EnsureAssetAvailableAsync(
             _dbContext, job.Id, job.AssetId, job.ScheduledStart, ct);
+        var createEmployeeIds = EmployeeIdsForConflict(job.AssignedEmployeeId, Array.Empty<Guid>()).ToList();
         await SchedulingConflictGuard.EnsureEmployeesAvailableAsync(
-            _dbContext, job.Id, EmployeeIdsForConflict(job.AssignedEmployeeId, Array.Empty<Guid>()), job.ScheduledStart, ct);
+            _dbContext, job.Id, createEmployeeIds, job.ScheduledStart, ct);
+        await SchedulingConflictGuard.EnsureEmployeesNotOnApprovedLeaveAsync(
+            _dbContext, createEmployeeIds, job.ScheduledStart, ct);
 
         job.Title = job.Title.Trim();
 
@@ -454,12 +457,15 @@ public class JobService : IJobService
             .ToListAsync(ct);
         await SchedulingConflictGuard.EnsureAssetAvailableAsync(
             _dbContext, existing.Id, job.AssetId, job.ScheduledStart, ct);
+        var updateEmployeeIds = EmployeeIdsForConflict(job.AssignedEmployeeId, existingCrewIds).ToList();
         await SchedulingConflictGuard.EnsureEmployeesAvailableAsync(
             _dbContext,
             existing.Id,
-            EmployeeIdsForConflict(job.AssignedEmployeeId, existingCrewIds),
+            updateEmployeeIds,
             job.ScheduledStart,
             ct);
+        await SchedulingConflictGuard.EnsureEmployeesNotOnApprovedLeaveAsync(
+            _dbContext, updateEmployeeIds, job.ScheduledStart, ct);
 
         job.JobNumber = existing.JobNumber;
         job.Status = existing.Status;
@@ -493,6 +499,8 @@ public class JobService : IJobService
 
         await SchedulingConflictGuard.EnsureEmployeesAvailableAsync(
             _dbContext, jobId, distinctIds, job.ScheduledStart, ct);
+        await SchedulingConflictGuard.EnsureEmployeesNotOnApprovedLeaveAsync(
+            _dbContext, distinctIds, job.ScheduledStart, ct);
 
         var existing = await _dbContext.Set<JobCrewAssignment>()
             .IgnoreQueryFilters()
