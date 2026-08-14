@@ -239,6 +239,59 @@ public class JobService : IJobService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetAwaitingSignOffQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var jobs = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Include(j => j.ActualCosts)
+            .Include(j => j.Labors)
+            .Where(j =>
+                j.SignOffStatus != JobSignOffStatus.SignedOff
+                && j.Status != JobStatus.Closed
+                && j.Status != JobStatus.Cancelled)
+            .ToListAsync(ct);
+
+        if (jobs.Count == 0)
+            return Array.Empty<ReadyToInvoiceJobRow>();
+
+        var jobIds = jobs.Select(j => j.Id).ToList();
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId != null && jobIds.Contains(i.JobId.Value))
+            .Select(i => new { i.JobId, i.DocumentType, i.Status, i.Total })
+            .ToListAsync(ct);
+
+        var billedByJob = invoices
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .GroupBy(i => i.JobId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+        return jobs
+            .Select(j =>
+            {
+                var billed = billedByJob.GetValueOrDefault(j.Id);
+                var unbilledWork = Math.Max(0m, Math.Round(j.GetActualTotal() - billed, 2));
+                return new ReadyToInvoiceJobRow(
+                    j.Id,
+                    j.JobNumber,
+                    j.Title,
+                    j.Customer?.Name ?? "—",
+                    j.QuotedTotal,
+                    billed,
+                    unbilledWork,
+                    "Sign-off");
+            })
+            .Where(r => r.UnbilledResidual > 0)
+            .OrderByDescending(r => r.UnbilledResidual)
+            .ThenBy(r => r.JobNumber)
+            .Take(take)
+            .ToList();
+    }
+
     private async Task<IReadOnlyList<Job>> LoadJobsAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<Job>()

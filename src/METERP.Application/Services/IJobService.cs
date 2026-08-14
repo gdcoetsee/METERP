@@ -23,6 +23,12 @@ public interface IJobService
     /// </summary>
     Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetDepositDueQueueAsync(int take = 20, CancellationToken ct = default);
 
+    /// <summary>
+    /// Open jobs that still need work sign-off before a partial/final invoice,
+    /// and already have posted actuals that exceed billed-to-date.
+    /// </summary>
+    Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetAwaitingSignOffQueueAsync(int take = 20, CancellationToken ct = default);
+
     Task<Guid> CreateAsync(Job job, CancellationToken ct = default);
 
     /// <summary>

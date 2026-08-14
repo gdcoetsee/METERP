@@ -103,6 +103,12 @@ else
             <div class="alert alert-warning small py-2" data-testid="job-cc-signoff-banner">
                 Work sign-off: <strong>@SignOffStatusLabel</strong>
                 — manager then executive before final/partial invoices.
+                @if (_summary.ActualTotal > 0)
+                {
+                    <span data-testid="job-cc-posted-cost-signoff">
+                        R @_summary.ActualTotal.ToString("N2") of cost is posted and waiting on sign-off.
+                    </span>
+                }
             </div>
         }
         else if (_summary.UnbilledResidual > 0)

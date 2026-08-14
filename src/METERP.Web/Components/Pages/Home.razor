@@ -312,6 +312,9 @@
                 var cashQueue = _executive.DepositDueQueue
                     .Concat(_executive.ReadyToInvoiceQueue
                         .Where(r => _executive.DepositDueQueue.All(d => d.JobId != r.JobId)))
+                    .Concat(_executive.AwaitingSignOffQueue
+                        .Where(r => _executive.DepositDueQueue.All(d => d.JobId != r.JobId)
+                            && _executive.ReadyToInvoiceQueue.All(x => x.JobId != r.JobId)))
                     .Take(8)
                     .ToList();
             }
@@ -361,16 +364,22 @@
                             @foreach (var row in cashQueue)
                             {
                                 var isDeposit = string.Equals(row.Reason, "Deposit", StringComparison.OrdinalIgnoreCase);
+                                var isSignOff = string.Equals(row.Reason, "Sign-off", StringComparison.OrdinalIgnoreCase);
+                                var href = isSignOff
+                                    ? $"/jobs/{row.JobId:D}"
+                                    : $"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}";
+                                var label = isDeposit ? "Deposit" : isSignOff ? "Sign off" : "Invoice";
+                                var testId = isDeposit ? "home-deposit-invoice" : isSignOff ? "home-signoff-invoice" : "home-ready-invoice";
                                 <tr>
                                     <td>@row.JobNumber — @row.Title</td>
                                     <td>@row.CustomerName</td>
                                     <td>@row.Reason</td>
                                     <td class="text-end">R @row.UnbilledResidual.ToString("N0")</td>
                                     <td class="text-end">
-                                        <a class="btn btn-sm btn-success"
-                                           href="@($"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}")"
-                                           data-testid="@(isDeposit ? "home-deposit-invoice" : "home-ready-invoice")">
-                                            @(isDeposit ? "Deposit" : "Invoice")
+                                        <a class="btn btn-sm @(isSignOff ? "btn-outline-warning" : "btn-success")"
+                                           href="@href"
+                                           data-testid="@testId">
+                                            @label
                                         </a>
                                     </td>
                                 </tr>

@@ -9,9 +9,9 @@
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
-**2026-08-14:** Integrity stream is **done enough**. Speed-to-cash loop now includes chase, Home cash queues, customer emails on send, SLA alerts, and **expired unconverted quotes are marked Expired and notified**. Application.Tests **1305** green.
+**2026-08-14:** Integrity stream is **done enough**. Speed-to-cash now includes chase, Home cash queues, customer emails, SLA/expiry scans, and **field-to-invoice**: approved field reports notify finance, unsigned jobs with posted actuals sit on Home as Sign-off. Application.Tests **1308** green.
 
-**Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, field-to-invoice completeness. AI stays frozen. E2E remains a release checkpoint, not a development gate.
+**Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, and remaining commercial transitions (PO send, payment received, quote approval). AI stays frozen. E2E remains a release checkpoint, not a development gate.
 
 | Phase | Status |
 |-------|--------|

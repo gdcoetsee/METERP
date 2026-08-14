@@ -1789,6 +1789,73 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_GetAwaitingSignOffQueueAsync_IncludesUnbilledActuals_ExcludesSignedOffAndFullyBilled()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var waitingId = await SeedJobAsync(db, service, tenantId);
+        var noCostId = await SeedJobAsync(db, service, tenantId);
+        var signedId = await SeedJobAsync(db, service, tenantId);
+        var billedId = await SeedJobAsync(db, service, tenantId);
+        var closedId = await SeedJobAsync(db, service, tenantId);
+
+        await service.AddCostAsync(new JobCost
+        {
+            JobId = waitingId,
+            Amount = 1650m,
+            CostType = "Travel",
+            Description = "Field travel"
+        });
+        await service.AddCostAsync(new JobCost
+        {
+            JobId = signedId,
+            Amount = 800m,
+            CostType = "Travel",
+            Description = "Signed travel"
+        });
+        await service.AddCostAsync(new JobCost
+        {
+            JobId = billedId,
+            Amount = 400m,
+            CostType = "Travel",
+            Description = "Already billed"
+        });
+        await service.AddCostAsync(new JobCost
+        {
+            JobId = closedId,
+            Amount = 900m,
+            CostType = "Travel",
+            Description = "Closed travel"
+        });
+
+        await service.SignOffAsync(signedId, Guid.NewGuid());
+
+        var billedJob = await db.Set<Job>().FirstAsync(j => j.Id == billedId);
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = billedJob.CustomerId,
+            JobId = billedId,
+            InvoiceNumber = "INV-ACTUALS",
+            DocumentType = InvoiceDocumentType.Deposit,
+            Status = InvoiceStatus.Sent,
+            Total = 400m
+        });
+        await db.SaveChangesAsync();
+
+        await service.CloseAsync(closedId, Guid.NewGuid(), "Closed with notes for leftover quote");
+
+        var queue = await service.GetAwaitingSignOffQueueAsync();
+
+        Assert.Contains(queue, r => r.JobId == waitingId && r.Reason == "Sign-off" && r.UnbilledResidual == 1650m);
+        Assert.DoesNotContain(queue, r => r.JobId == noCostId);
+        Assert.DoesNotContain(queue, r => r.JobId == signedId);
+        Assert.DoesNotContain(queue, r => r.JobId == billedId);
+        Assert.DoesNotContain(queue, r => r.JobId == closedId);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();

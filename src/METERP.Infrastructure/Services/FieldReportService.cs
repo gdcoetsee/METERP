@@ -196,6 +196,20 @@ public sealed class FieldReportService : IFieldReportService
             await _audit.LogAsync("APPROVE", "FieldReport", report.Job?.JobNumber ?? report.Id.ToString(),
                 $"Posted {report.HoursWorked:N1}h + travel R{report.TravelCost:N2}", ct);
 
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = job.TenantId,
+                Title = $"Field work posted on {job.JobNumber}",
+                Message = $"{job.Title}: {report.HoursWorked:N1}h + travel R{report.TravelCost:N2} is on the job. Complete work sign-off to invoice it.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = job.Id,
+                RelatedEntityType = nameof(Job)
+            }, ct);
+        }
+
         return true;
     }
 
@@ -213,6 +227,10 @@ public sealed class FieldReportService : IFieldReportService
         if (report == null || report.Status != FieldReportStatus.PendingApproval)
             return false;
 
+        var job = await _dbContext.Set<Job>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == report.JobId, ct);
+
         report.Status = FieldReportStatus.Rejected;
         report.ApprovedByUserId = approverUserId;
         report.ApprovedAt = DateTime.UtcNow;
@@ -220,7 +238,22 @@ public sealed class FieldReportService : IFieldReportService
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)
-            await _audit.LogAsync("REJECT", "FieldReport", report.Id.ToString(), report.RejectionReason, ct);
+            await _audit.LogAsync("REJECT", "FieldReport", job?.JobNumber ?? report.Id.ToString(), report.RejectionReason, ct);
+
+        if (_notifications != null)
+        {
+            var jobLabel = job?.JobNumber ?? "job";
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = report.TenantId != Guid.Empty ? report.TenantId : job?.TenantId ?? Guid.Empty,
+                Title = $"Field report rejected on {jobLabel}",
+                Message = $"{jobLabel}: {reason}",
+                Category = "field",
+                TargetRoles = "Technician,Admin,Executive",
+                RelatedEntityId = report.Id,
+                RelatedEntityType = nameof(FieldReport)
+            }, ct);
+        }
 
         return true;
     }

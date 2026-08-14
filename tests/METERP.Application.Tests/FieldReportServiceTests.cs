@@ -14,6 +14,11 @@ public class FieldReportServiceTests
     private static readonly Guid TestUserId = Guid.NewGuid();
 
     private (AppDbContext Db, FieldReportService Service, JobService Jobs) CreateServices(Guid tenantId)
+        => CreateServices(tenantId, out _);
+
+    private (AppDbContext Db, FieldReportService Service, JobService Jobs) CreateServices(
+        Guid tenantId,
+        out Mock<ITenantNotificationService> notifications)
     {
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
@@ -25,8 +30,11 @@ public class FieldReportServiceTests
             .Options;
 
         var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var jobs = new JobService(db);
-        var service = new FieldReportService(db, jobs);
+        var service = new FieldReportService(db, jobs, notifications: notifications.Object);
         return (db, service, jobs);
     }
 
@@ -748,6 +756,81 @@ public class FieldReportServiceTests
             });
 
             Assert.True(await service.RejectAsync(reportId, TestUserId, new string('R', 500)));
+        }
+    }
+
+    [Fact]
+    public async Task ApproveAsync_NotifiesFinanceToSignOffAndInvoice()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId, out var notifications);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Install",
+                QuotedTotal = 5000m
+            });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 6m,
+                TravelCost = 450m
+            });
+
+            Assert.True(await service.ApproveAsync(reportId, TestUserId));
+
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "collections"
+                    && t.RelatedEntityType == nameof(Job)
+                    && t.RelatedEntityId == jobId
+                    && t.Title.Contains("Field work posted", StringComparison.OrdinalIgnoreCase)
+                    && t.TargetRoles.Contains("Finance")),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task RejectAsync_NotifiesFieldRoles()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId, out var notifications);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Install",
+                QuotedTotal = 5000m
+            });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 3m
+            });
+
+            Assert.True(await service.RejectAsync(reportId, TestUserId, "Hours look inflated"));
+
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "field"
+                    && t.RelatedEntityType == nameof(FieldReport)
+                    && t.RelatedEntityId == reportId
+                    && t.Title.Contains("rejected", StringComparison.OrdinalIgnoreCase)
+                    && t.Message.Contains("Hours look inflated")),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 }

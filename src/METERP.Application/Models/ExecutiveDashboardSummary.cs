@@ -31,4 +31,10 @@ public sealed class ExecutiveDashboardSummary
     public IReadOnlyList<ReadyToInvoiceJobRow> DepositDueQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
 
     public IReadOnlyList<ConvertibleDocumentRow> ConvertToJobQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
+
+    public int AwaitingSignOffJobs { get; init; }
+
+    public decimal AwaitingSignOffValue { get; init; }
+
+    public IReadOnlyList<ReadyToInvoiceJobRow> AwaitingSignOffQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
 }

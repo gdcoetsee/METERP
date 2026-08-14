@@ -47,6 +47,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
 
         var ready = await _jobs.GetReadyToInvoiceQueueAsync(20, ct);
         var deposits = await _jobs.GetDepositDueQueueAsync(20, ct);
+        var awaitingSignOff = await _jobs.GetAwaitingSignOffQueueAsync(20, ct);
         var convertQuotes = await _quotes.GetUnconvertedWonQuotesAsync(10, ct);
         var convertOrders = await _salesOrders.GetUnconvertedConfirmedAsync(10, ct);
 
@@ -72,7 +73,10 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             ConvertToJobQueue = convertQuotes.Concat(convertOrders)
                 .OrderByDescending(r => r.Total)
                 .Take(12)
-                .ToList()
+                .ToList(),
+            AwaitingSignOffJobs = awaitingSignOff.Count,
+            AwaitingSignOffValue = awaitingSignOff.Sum(j => j.UnbilledResidual),
+            AwaitingSignOffQueue = awaitingSignOff
         };
     }
 }

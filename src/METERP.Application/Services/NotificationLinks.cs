@@ -18,6 +18,7 @@ public static class NotificationLinks
             nameof(Domain.Job) => $"/jobs/{id:D}",
             nameof(Domain.Quote) => $"/quotes?open={id:D}",
             nameof(Domain.StockRequisition) => $"/approvals",
+            nameof(Domain.FieldReport) => $"/approvals",
             nameof(Domain.LeaveRequest) => $"/leave-admin",
             _ => null
         };
