@@ -215,6 +215,21 @@ public sealed class StockRequisitionService : IStockRequisitionService
         req.ManagerApprovedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
         await LogAsync("APPROVE_MANAGER", req, ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = req.TenantId,
+                Title = $"{req.RequisitionNumber} needs executive approval",
+                Message = $"{req.RequisitionNumber} passed manager review. Executive approve so stock can be reserved or a PO raised.",
+                Category = "procurement",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = req.Id,
+                RelatedEntityType = nameof(StockRequisition)
+            }, ct);
+        }
+
         return true;
     }
 
@@ -325,6 +340,21 @@ public sealed class StockRequisitionService : IStockRequisitionService
         req.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
         await LogAsync("REJECT", req, req.RejectionReason, ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = req.TenantId,
+                Title = $"{req.RequisitionNumber} was rejected",
+                Message = $"{req.RequisitionNumber}: {reason}",
+                Category = "procurement",
+                TargetRoles = "Technician,Admin,Executive",
+                RelatedEntityId = req.Id,
+                RelatedEntityType = nameof(StockRequisition)
+            }, ct);
+        }
+
         return true;
     }
 
