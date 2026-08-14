@@ -3,6 +3,7 @@
 @using METERP.Domain
 @using METERP.Common
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
 @using METERP.Application.Interfaces
 @inject IOpportunityService OpportunityService
 @inject ICustomerService CustomerService
@@ -169,6 +170,9 @@ else
     private readonly ComponentAsyncGate _dataGate = new();
     private bool CanManage => CurrentUserService.Permissions.Contains(Permissions.OpportunitiesManage);
 
+    [SupplyParameterFromQuery(Name = "open")]
+    public Guid? OpenOpportunityId { get; set; }
+
     private static readonly OpportunityStage[] stages =
     {
         OpportunityStage.Lead,
@@ -187,6 +191,9 @@ else
             opportunities = (await OpportunityService.GetAllAsync()).ToList();
             customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
             filtered = opportunities;
+            if (OpenOpportunityId is { } openId && openId != Guid.Empty)
+                selectedOpp = opportunities.FirstOrDefault(o => o.Id == openId)
+                    ?? await OpportunityService.GetByIdAsync(openId);
             _ready = true;
         }
         finally

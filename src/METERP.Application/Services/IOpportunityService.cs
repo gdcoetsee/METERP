@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using METERP.Domain;
 
 namespace METERP.Application.Services;
@@ -25,4 +26,7 @@ public interface IOpportunityService
     string BuildAiScopeText(Opportunity opportunity);
 
     Task MarkConvertedToQuoteAsync(Guid opportunityId, Guid quoteId, CancellationToken ct = default);
+
+    /// <summary>Closed-won opportunities that do not yet have a quote.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnquotedWonAsync(int take = 20, CancellationToken ct = default);
 }

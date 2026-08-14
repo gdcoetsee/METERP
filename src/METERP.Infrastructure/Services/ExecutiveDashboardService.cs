@@ -15,6 +15,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
     private readonly IInvoiceService _invoices;
     private readonly IInventoryService _inventory;
     private readonly ISalesOrderService _salesOrders;
+    private readonly IOpportunityService _opportunities;
 
     public ExecutiveDashboardService(
         IQuoteService quotes,
@@ -25,7 +26,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         IJobService jobs,
         IInvoiceService invoices,
         IInventoryService inventory,
-        ISalesOrderService salesOrders)
+        ISalesOrderService salesOrders,
+        IOpportunityService opportunities)
     {
         _quotes = quotes;
         _requisitions = requisitions;
@@ -36,6 +38,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         _invoices = invoices;
         _inventory = inventory;
         _salesOrders = salesOrders;
+        _opportunities = opportunities;
     }
 
     public async Task<ExecutiveDashboardSummary> GetSummaryAsync(CancellationToken ct = default)
@@ -50,6 +53,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var awaitingSignOff = await _jobs.GetAwaitingSignOffQueueAsync(20, ct);
         var convertQuotes = await _quotes.GetUnconvertedWonQuotesAsync(10, ct);
         var convertOrders = await _salesOrders.GetUnconvertedConfirmedAsync(10, ct);
+        var convertOpps = await _opportunities.GetUnquotedWonAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
@@ -70,7 +74,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             DepositDueJobs = deposits.Count,
             DepositDueValue = deposits.Sum(j => j.UnbilledResidual),
             DepositDueQueue = deposits,
-            ConvertToJobQueue = convertQuotes.Concat(convertOrders)
+            ConvertToJobQueue = convertQuotes.Concat(convertOrders).Concat(convertOpps)
                 .OrderByDescending(r => r.Total)
                 .Take(12)
                 .ToList(),

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
@@ -22,12 +23,18 @@ public class OpportunityService : IOpportunityService
     private readonly AppDbContext _dbContext;
     private readonly IAuditService? _auditService;
     private readonly ITenantCacheService? _cache;
+    private readonly ITenantNotificationService? _notifications;
 
-    public OpportunityService(AppDbContext dbContext, IAuditService? auditService = null, ITenantCacheService? cache = null)
+    public OpportunityService(
+        AppDbContext dbContext,
+        IAuditService? auditService = null,
+        ITenantCacheService? cache = null,
+        ITenantNotificationService? notifications = null)
     {
         _dbContext = dbContext;
         _auditService = auditService;
         _cache = cache;
+        _notifications = notifications;
     }
 
     public async Task<Opportunity?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -231,9 +238,26 @@ public class OpportunityService : IOpportunityService
             opportunity.CustomerName ??= customer.Name;
         }
 
+        var becomingWon = opportunity.Stage == OpportunityStage.ClosedWon
+            && existing.Stage != OpportunityStage.ClosedWon;
+
         _dbContext.Set<Opportunity>().Update(opportunity);
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+
+        if (becomingWon && opportunity.QuoteId == null && _notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = opportunity.TenantId,
+                Title = $"Won opportunity needs a quote: {opportunity.Title}",
+                Message = $"{opportunity.CustomerName ?? opportunity.Customer?.Name ?? "Customer"} — R {opportunity.Value:N0}. Convert it to a quote from Home so work can start.",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = opportunity.Id,
+                RelatedEntityType = nameof(Opportunity)
+            }, ct);
+        }
 
         if (_auditService != null)
         {
@@ -357,6 +381,32 @@ public class OpportunityService : IOpportunityService
                 $"Linked to quote {quoteId}",
                 ct);
         }
+    }
+
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnquotedWonAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var rows = await _dbContext.Set<Opportunity>()
+            .AsNoTracking()
+            .Include(o => o.Customer)
+            .Where(o => o.Stage == OpportunityStage.ClosedWon && o.QuoteId == null)
+            .OrderByDescending(o => o.Value)
+            .ThenBy(o => o.Title)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return rows
+            .Select(o =>
+            {
+                var customer = o.Customer?.Name ?? o.CustomerName ?? "—";
+                var href = o.CustomerId is { } cid && cid != Guid.Empty
+                    ? $"/quotes?create=1&customerId={cid:D}"
+                    : $"/opportunities?open={o.Id:D}";
+                return new ConvertibleDocumentRow(o.Id, "Opportunity", o.Title, customer, o.Value, href);
+            })
+            .ToList();
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Opportunities);

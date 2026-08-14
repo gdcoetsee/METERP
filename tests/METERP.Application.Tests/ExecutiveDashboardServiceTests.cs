@@ -78,6 +78,10 @@ public class ExecutiveDashboardServiceTests
         salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
+        var opportunities = new Mock<IOpportunityService>();
+        opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+
         var service = new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -87,7 +91,8 @@ public class ExecutiveDashboardServiceTests
             jobs.Object,
             invoices.Object,
             inventory.Object,
-            salesOrders.Object);
+            salesOrders.Object,
+            opportunities.Object);
 
         var summary = await service.GetSummaryAsync();
 
@@ -195,6 +200,10 @@ public class ExecutiveDashboardServiceTests
         salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
+        var opportunities = new Mock<IOpportunityService>();
+        opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+
         return new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -204,6 +213,7 @@ public class ExecutiveDashboardServiceTests
             jobService,
             invoices.Object,
             inventory.Object,
-            salesOrders.Object);
+            salesOrders.Object,
+            opportunities.Object);
     }
 }

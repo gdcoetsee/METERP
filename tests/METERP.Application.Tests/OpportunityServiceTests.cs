@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -600,6 +601,80 @@ public class OpportunityServiceTests
         opp.Value = 5000m;
         await service.UpdateAsync(opp);
         Assert.Equal(OpportunityStage.ClosedWon, (await service.GetByIdAsync(id))!.Stage);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ClosedWon_NotifiesWhenUnquoted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new OpportunityService(db, notifications: notifications.Object);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Plant upgrade",
+            Stage = OpportunityStage.Negotiation,
+            Value = 25000m,
+            CustomerName = "Acme"
+        });
+
+        var opp = await service.GetByIdAsync(id);
+        opp!.Stage = OpportunityStage.ClosedWon;
+        await service.UpdateAsync(opp);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "sales"
+                && t.RelatedEntityId == id
+                && t.Title.Contains("Plant upgrade")
+                && t.Message.Contains("quote", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetUnquotedWonAsync_ExcludesQuotedAndOpenOpportunities()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Won Co" });
+        await db.SaveChangesAsync();
+
+        var wonId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Won unquoted",
+            Stage = OpportunityStage.ClosedWon,
+            Value = 12000m,
+            CustomerId = customerId,
+            CustomerName = "Won Co"
+        });
+        await service.CreateAsync(new Opportunity
+        {
+            Title = "Still open",
+            Stage = OpportunityStage.Negotiation,
+            Value = 9000m,
+            CustomerName = "Open Co"
+        });
+        var quotedId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Already quoted",
+            Stage = OpportunityStage.ClosedWon,
+            Value = 8000m,
+            CustomerName = "Quoted Co"
+        });
+        var quoteId = await SeedQuoteAsync(db, tenantId, customerId);
+        var quoted = await service.GetByIdAsync(quotedId);
+        quoted!.QuoteId = quoteId;
+        await db.SaveChangesAsync();
+
+        var queue = await service.GetUnquotedWonAsync();
+
+        Assert.Contains(queue, r => r.Id == wonId && r.Kind == "Opportunity" && r.Href.Contains("quotes?create=1"));
+        Assert.DoesNotContain(queue, r => r.Id == quotedId);
+        Assert.DoesNotContain(queue, r => r.Number == "Still open");
     }
 
     [Fact]
