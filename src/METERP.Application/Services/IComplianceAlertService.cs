@@ -26,4 +26,9 @@ public interface IComplianceAlertService
     /// Notifies once per sent or partially received PO whose expected date has passed.
     /// </summary>
     Task<int> RunOverduePurchaseOrderScanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifies once per signed-off job that has been unbilled for at least two days.
+    /// </summary>
+    Task<int> RunStuckReadyToInvoiceScanAsync(CancellationToken ct = default);
 }

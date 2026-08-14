@@ -459,4 +459,76 @@ public class ComplianceAlertServiceTests
             notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
+
+    [Fact]
+    public async Task RunStuckReadyToInvoiceScanAsync_AlertsOldSignedOffUnbilledJobs()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Slow Pay" };
+            db.Set<Customer>().Add(customer);
+            var stuck = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-STUCK",
+                Title = "Done work",
+                QuotedTotal = 8000m,
+                Status = JobStatus.Completed,
+                SignOffStatus = JobSignOffStatus.SignedOff,
+                SignedOffAt = DateTime.UtcNow.AddDays(-3)
+            };
+            var recent = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-FRESH",
+                Title = "Just signed",
+                QuotedTotal = 4000m,
+                Status = JobStatus.Completed,
+                SignOffStatus = JobSignOffStatus.SignedOff,
+                SignedOffAt = DateTime.UtcNow.AddHours(-2)
+            };
+            var billed = new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobNumber = "J-BILLED",
+                Title = "Invoiced",
+                QuotedTotal = 2000m,
+                Status = JobStatus.Completed,
+                SignOffStatus = JobSignOffStatus.SignedOff,
+                SignedOffAt = DateTime.UtcNow.AddDays(-5)
+            };
+            db.Set<Job>().AddRange(stuck, recent, billed);
+            await db.SaveChangesAsync();
+            db.Set<Invoice>().Add(new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                JobId = billed.Id,
+                InvoiceNumber = "INV-FULL",
+                DocumentType = InvoiceDocumentType.Final,
+                Status = InvoiceStatus.Sent,
+                Total = 2000m
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunStuckReadyToInvoiceScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "collections"
+                    && t.RelatedEntityId == stuck.Id
+                    && t.Title.Contains("still unbilled")
+                    && t.Message.Contains("Slow Pay")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t => t.RelatedEntityId == recent.Id || t.RelatedEntityId == billed.Id),
+                It.IsAny<CancellationToken>()), Times.Never);
+            audit.Verify(a => a.LogAsync("UNBILLED_SCAN", "Job", "stuck-ready-to-invoice", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
 }

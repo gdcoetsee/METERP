@@ -293,6 +293,91 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return created;
     }
 
+    public async Task<int> RunStuckReadyToInvoiceScanAsync(CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-2);
+        var jobs = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Where(j =>
+                j.SignOffStatus == JobSignOffStatus.SignedOff
+                && j.Status != JobStatus.Closed
+                && j.Status != JobStatus.Cancelled
+                && (j.SignedOffAt == null || j.SignedOffAt <= cutoff))
+            .ToListAsync(ct);
+
+        if (jobs.Count == 0)
+            return 0;
+
+        var jobIds = jobs.Select(j => j.Id).ToList();
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId != null && jobIds.Contains(i.JobId.Value))
+            .Select(i => new { i.JobId, i.DocumentType, i.Status, i.Total })
+            .ToListAsync(ct);
+
+        var billedByJob = invoices
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .GroupBy(i => i.JobId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+        var stuck = jobs
+            .Select(j =>
+            {
+                var billed = billedByJob.GetValueOrDefault(j.Id);
+                var unbilled = InvoiceBillingCalculator.CalculateUnbilledResidual(j.QuotedTotal, billed);
+                return (Job: j, Billed: billed, Unbilled: unbilled);
+            })
+            .Where(x => x.Billed <= 0 || x.Unbilled > 0)
+            .ToList();
+
+        if (stuck.Count == 0)
+            return 0;
+
+        var stuckIds = stuck.Select(x => x.Job.Id).ToList();
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "collections"
+                && n.RelatedEntityType == nameof(Job)
+                && n.RelatedEntityId != null
+                && stuckIds.Contains(n.RelatedEntityId.Value)
+                && n.Title.Contains("still unbilled"))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var row in stuck)
+        {
+            if (already.Contains(row.Job.Id))
+                continue;
+
+            var amount = row.Unbilled > 0 ? row.Unbilled : row.Job.QuotedTotal;
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = row.Job.TenantId,
+                Title = $"Job {row.Job.JobNumber} is still unbilled",
+                Message = $"{row.Job.Customer?.Name ?? "Customer"} — signed off, R {amount:N0} still to invoice. Raise it from Home or the job Command Center.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = row.Job.Id,
+                RelatedEntityType = nameof(Job)
+            }, ct);
+            created++;
+        }
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "UNBILLED_SCAN",
+                "Job",
+                "stuck-ready-to-invoice",
+                $"Created {created} still-unbilled job notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
     private async Task<int> NotifySlaItemsAsync(
         IEnumerable<(Guid Id, Guid TenantId, string Title, string Message)> items,
         string entityType,
