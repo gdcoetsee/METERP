@@ -315,6 +315,35 @@
                     .Take(8)
                     .ToList();
             }
+            @if (_executive.ConvertToJobQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-convert-to-job">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Won work</th>
+                                <th>Customer</th>
+                                <th class="text-end">Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.ConvertToJobQueue)
+                            {
+                                <tr>
+                                    <td>@row.Kind @row.Number</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">R @row.Total.ToString("N0")</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-success" href="@row.Href"
+                                           data-testid="home-convert-job">Convert</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (cashQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-ready-to-invoice">

@@ -14,6 +14,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
     private readonly IJobService _jobs;
     private readonly IInvoiceService _invoices;
     private readonly IInventoryService _inventory;
+    private readonly ISalesOrderService _salesOrders;
 
     public ExecutiveDashboardService(
         IQuoteService quotes,
@@ -23,7 +24,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         ITenantNotificationService notifications,
         IJobService jobs,
         IInvoiceService invoices,
-        IInventoryService inventory)
+        IInventoryService inventory,
+        ISalesOrderService salesOrders)
     {
         _quotes = quotes;
         _requisitions = requisitions;
@@ -33,6 +35,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         _jobs = jobs;
         _invoices = invoices;
         _inventory = inventory;
+        _salesOrders = salesOrders;
     }
 
     public async Task<ExecutiveDashboardSummary> GetSummaryAsync(CancellationToken ct = default)
@@ -44,6 +47,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
 
         var ready = await _jobs.GetReadyToInvoiceQueueAsync(20, ct);
         var deposits = await _jobs.GetDepositDueQueueAsync(20, ct);
+        var convertQuotes = await _quotes.GetUnconvertedWonQuotesAsync(10, ct);
+        var convertOrders = await _salesOrders.GetUnconvertedConfirmedAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
@@ -63,7 +68,11 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             ReadyToInvoiceQueue = ready,
             DepositDueJobs = deposits.Count,
             DepositDueValue = deposits.Sum(j => j.UnbilledResidual),
-            DepositDueQueue = deposits
+            DepositDueQueue = deposits,
+            ConvertToJobQueue = convertQuotes.Concat(convertOrders)
+                .OrderByDescending(r => r.Total)
+                .Take(12)
+                .ToList()
         };
     }
 }

@@ -74,7 +74,8 @@ public class SupportingModuleTenantIsolationTests
             notifications.Object,
             jobService,
             new InvoiceService(db),
-            inventoryService);
+            inventoryService,
+            new SalesOrderService(db, jobService));
     }
 
     [Fact]

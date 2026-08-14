@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using METERP.Domain;
 
 namespace METERP.Application.Services;
@@ -15,6 +16,9 @@ public interface ISalesOrderService
     Task DeleteAsync(Guid id, CancellationToken ct = default);
 
     Task UpdateStatusAsync(Guid soId, SalesOrderStatus newStatus, CancellationToken ct = default);
+
+    /// <summary>Confirmed sales orders that have not been converted to a job.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconvertedConfirmedAsync(int take = 20, CancellationToken ct = default);
 
     // Line management
     Task<Guid> AddLineAsync(SalesOrderLine line, CancellationToken ct = default);

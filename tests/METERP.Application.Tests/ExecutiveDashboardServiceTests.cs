@@ -23,6 +23,8 @@ public class ExecutiveDashboardServiceTests
         var quotes = new Mock<IQuoteService>();
         quotes.Setup(s => s.GetPendingExecutiveApprovalAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Quote> { new() { QuoteNumber = "Q-1" } });
+        quotes.Setup(s => s.GetUnconvertedWonQuotesAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
         var requisitions = new Mock<IStockRequisitionService>();
         requisitions.Setup(s => s.GetPendingApprovalsAsync(It.IsAny<CancellationToken>()))
@@ -67,6 +69,10 @@ public class ExecutiveDashboardServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<InventoryItem> { new() { Sku = "LOW-1", Name = "Cable" } });
 
+        var salesOrders = new Mock<ISalesOrderService>();
+        salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+
         var service = new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -75,7 +81,8 @@ public class ExecutiveDashboardServiceTests
             notifications.Object,
             jobs.Object,
             invoices.Object,
-            inventory.Object);
+            inventory.Object,
+            salesOrders.Object);
 
         var summary = await service.GetSummaryAsync();
 
@@ -146,6 +153,8 @@ public class ExecutiveDashboardServiceTests
         var quotes = new Mock<IQuoteService>();
         quotes.Setup(s => s.GetPendingExecutiveApprovalAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Quote>());
+        quotes.Setup(s => s.GetUnconvertedWonQuotesAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
         var requisitions = new Mock<IStockRequisitionService>();
         requisitions.Setup(s => s.GetPendingApprovalsAsync(It.IsAny<CancellationToken>()))
@@ -175,6 +184,10 @@ public class ExecutiveDashboardServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<InventoryItem>());
 
+        var salesOrders = new Mock<ISalesOrderService>();
+        salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+
         return new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -183,6 +196,7 @@ public class ExecutiveDashboardServiceTests
             notifications.Object,
             jobService,
             invoices.Object,
-            inventory.Object);
+            inventory.Object,
+            salesOrders.Object);
     }
 }

@@ -184,6 +184,39 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task GetUnconvertedConfirmedAsync_ExcludesConvertedOrders()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var openId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0m,
+                Lines = { new SalesOrderLine { Description = "Wait", Quantity = 1, UnitPrice = 2500m } }
+            });
+            var doneId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0m,
+                Lines = { new SalesOrderLine { Description = "Done", Quantity = 1, UnitPrice = 800m } }
+            });
+            await service.ConvertToJobAsync(doneId);
+
+            var queue = await service.GetUnconvertedConfirmedAsync();
+
+            Assert.Contains(queue, r => r.Id == openId && r.Href.Contains(openId.ToString("D")));
+            Assert.DoesNotContain(queue, r => r.Id == doneId);
+        }
+    }
+
+    [Fact]
     public async Task ConvertToJobAsync_ThrowsWhenSalesOrderNotFound()
     {
         var tenantId = Guid.NewGuid();

@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using METERP.Domain;
 
 namespace METERP.Application.Services;
@@ -24,6 +25,9 @@ public interface IQuoteService
     Task WithdrawFromApprovalAsync(Guid quoteId, Guid userId, string? reason = null, CancellationToken ct = default);
 
     Task<IReadOnlyList<Quote>> GetPendingExecutiveApprovalAsync(CancellationToken ct = default);
+
+    /// <summary>Sent or accepted quotes that have not been converted to a job.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconvertedWonQuotesAsync(int take = 20, CancellationToken ct = default);
 
     // Line item management (inline like Contacts on Customer)
     Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default);

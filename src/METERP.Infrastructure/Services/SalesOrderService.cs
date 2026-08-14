@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
@@ -47,6 +48,42 @@ public class SalesOrderService : ISalesOrderService
         }
 
         return await LoadSalesOrdersAsync(search, page, pageSize, ct);
+    }
+
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconvertedConfirmedAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var orders = await _dbContext.Set<SalesOrder>()
+            .AsNoTracking()
+            .Include(s => s.Customer)
+            .Include(s => s.Lines)
+            .Where(s => s.Status == SalesOrderStatus.Confirmed)
+            .OrderByDescending(s => s.Total)
+            .Take(take * 3)
+            .ToListAsync(ct);
+
+        if (orders.Count == 0)
+            return Array.Empty<ConvertibleDocumentRow>();
+
+        var soIds = orders.Select(s => s.Id).ToList();
+        var converted = (await _dbContext.Set<Job>().AsNoTracking()
+            .Where(j => j.SalesOrderId != null && soIds.Contains(j.SalesOrderId.Value))
+            .Select(j => j.SalesOrderId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        return orders
+            .Where(s => !converted.Contains(s.Id) && s.Lines.Any(l => !l.IsDeleted))
+            .Select(s => new ConvertibleDocumentRow(
+                s.Id,
+                "Sales order",
+                s.SoNumber,
+                s.Customer?.Name ?? "—",
+                s.Total,
+                $"/sales-orders?panel={s.Id:D}"))
+            .Take(take)
+            .ToList();
     }
 
     private async Task<IReadOnlyList<SalesOrder>> LoadSalesOrdersAsync(string? search, int page, int pageSize, CancellationToken ct)

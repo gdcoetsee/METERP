@@ -29,4 +29,6 @@ public sealed class ExecutiveDashboardSummary
     public decimal DepositDueValue { get; init; }
 
     public IReadOnlyList<ReadyToInvoiceJobRow> DepositDueQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
+
+    public IReadOnlyList<ConvertibleDocumentRow> ConvertToJobQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
 }

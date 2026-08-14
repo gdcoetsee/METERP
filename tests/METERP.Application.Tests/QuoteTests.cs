@@ -147,6 +147,51 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_GetUnconvertedWonQuotesAsync_ExcludesConverted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Won Co", Email = "won@co.test" };
+        db.Set<Customer>().Add(customer);
+        var open = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-WON",
+            Status = QuoteStatus.Sent,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 4000m } }
+        };
+        open.RecalculateTotals();
+        var converted = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-DONE",
+            Status = QuoteStatus.Accepted,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Done", Quantity = 1, UnitPrice = 1000m } }
+        };
+        converted.RecalculateTotals();
+        db.Set<Quote>().AddRange(open, converted);
+        await db.SaveChangesAsync();
+        db.Set<Job>().Add(new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteId = converted.Id,
+            Title = "Already a job",
+            JobNumber = "J-DONE"
+        });
+        await db.SaveChangesAsync();
+
+        var queue = await new QuoteService(db).GetUnconvertedWonQuotesAsync();
+
+        Assert.Contains(queue, r => r.Number == "Q-WON" && r.Href.Contains(open.Id.ToString("D")));
+        Assert.DoesNotContain(queue, r => r.Number == "Q-DONE");
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_ThrowsWhenLineTypeTooLong()
     {
         var tenantId = Guid.NewGuid();

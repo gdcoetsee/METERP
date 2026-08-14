@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
@@ -379,6 +380,42 @@ public class QuoteService : IQuoteService
             .Where(q => q.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
             .OrderByDescending(q => q.SubmittedForApprovalAt)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconvertedWonQuotesAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var quotes = await _dbContext.Set<Quote>()
+            .AsNoTracking()
+            .Include(q => q.Customer)
+            .Include(q => q.Lines)
+            .Where(q => q.Status == QuoteStatus.Sent || q.Status == QuoteStatus.Accepted)
+            .OrderByDescending(q => q.Total)
+            .Take(take * 3)
+            .ToListAsync(ct);
+
+        if (quotes.Count == 0)
+            return Array.Empty<ConvertibleDocumentRow>();
+
+        var quoteIds = quotes.Select(q => q.Id).ToList();
+        var converted = (await _dbContext.Set<Job>().AsNoTracking()
+            .Where(j => j.QuoteId != null && quoteIds.Contains(j.QuoteId.Value))
+            .Select(j => j.QuoteId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        return quotes
+            .Where(q => !converted.Contains(q.Id) && q.Lines.Any(l => !l.IsDeleted))
+            .Select(q => new ConvertibleDocumentRow(
+                q.Id,
+                "Quote",
+                q.QuoteNumber,
+                q.Customer?.Name ?? "—",
+                q.Total,
+                $"/quotes?open={q.Id:D}"))
+            .Take(take)
+            .ToList();
     }
 
     private static void EnforceSendGate(Quote existing, Quote updated)
