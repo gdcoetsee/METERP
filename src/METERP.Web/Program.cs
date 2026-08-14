@@ -957,10 +957,11 @@ public class DatabaseSeeder : IHostedService
         try
         {
             await complianceAlertService.RunExpiryScanAsync(cancellationToken);
+            await complianceAlertService.RunOverdueInvoiceScanAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Compliance expiry scan skipped during seeding.");
+            _logger.LogWarning(ex, "Compliance or collections scan skipped during seeding.");
         }
 
         tenantProvider.SetTenantId(defaultTenantId);

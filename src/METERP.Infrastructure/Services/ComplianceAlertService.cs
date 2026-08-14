@@ -44,6 +44,74 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return alertsCreated;
     }
 
+    public async Task<int> RunOverdueInvoiceScanAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow.Date;
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Include(i => i.Customer)
+            .Where(i =>
+                i.DueDate < now
+                && i.DocumentType != InvoiceDocumentType.Proforma
+                && i.DocumentType != InvoiceDocumentType.CreditNote
+                && i.Status != InvoiceStatus.Draft
+                && i.Status != InvoiceStatus.Cancelled
+                && i.Status != InvoiceStatus.Paid)
+            .ToListAsync(ct);
+
+        var overdue = invoices
+            .Where(i => InvoiceBillingCalculator.CalculateBalanceDue(i.Total, i.AmountPaid) > 0)
+            .ToList();
+        if (overdue.Count == 0)
+            return 0;
+
+        var ids = overdue.Select(i => i.Id).ToList();
+        var alreadyAlerted = await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "collections"
+                && n.RelatedEntityType == nameof(Invoice)
+                && n.RelatedEntityId != null
+                && ids.Contains(n.RelatedEntityId.Value))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct);
+        var alerted = alreadyAlerted.ToHashSet();
+
+        var created = 0;
+        foreach (var invoice in overdue)
+        {
+            if (alerted.Contains(invoice.Id))
+                continue;
+
+            var days = InvoiceBillingCalculator.GetDaysOverdue(invoice.DueDate, now);
+            var balance = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+            var customer = invoice.Customer?.Name ?? "Customer";
+
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = invoice.TenantId,
+                Title = $"Invoice {invoice.InvoiceNumber} is {days} day(s) overdue",
+                Message = $"{customer}: R {balance:N2} outstanding, due {invoice.DueDate:yyyy-MM-dd}. Chase payment to keep cash moving.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
+            created++;
+        }
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "COLLECTIONS_SCAN",
+                "Invoice",
+                "overdue-alerts",
+                $"Created {created} overdue invoice notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
     private async Task<int> ScanCompanyDocumentsAsync(DateTime now, CancellationToken ct)
     {
         var docs = await _dbContext.Set<CompanyDocument>()

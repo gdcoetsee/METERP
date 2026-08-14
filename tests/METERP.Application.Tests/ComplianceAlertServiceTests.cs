@@ -129,4 +129,114 @@ public class ComplianceAlertServiceTests
                 It.IsAny<CancellationToken>()), Times.Once);
         }
     }
+
+    [Fact]
+    public async Task RunOverdueInvoiceScanAsync_CreatesAlertForUnpaidPastDueInvoice()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Slow Pay Ltd" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-OVER",
+                DocumentType = InvoiceDocumentType.Standard,
+                Status = InvoiceStatus.Sent,
+                DueDate = DateTime.UtcNow.Date.AddDays(-5),
+                Total = 2500m,
+                AmountPaid = 0m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var created = await service.RunOverdueInvoiceScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "collections"
+                    && t.TargetRoles.Contains("Executive")
+                    && t.RelatedEntityId == invoice.Id
+                    && t.Message.Contains("Slow Pay")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            audit.Verify(a => a.LogAsync("COLLECTIONS_SCAN", "Invoice", "overdue-alerts", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task RunOverdueInvoiceScanAsync_SkipsWhenNotificationAlreadyExists()
+    {
+        var (service, db, tenantId, notifications, _) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Known" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-DUP",
+                Status = InvoiceStatus.Overdue,
+                DueDate = DateTime.UtcNow.Date.AddDays(-3),
+                Total = 800m
+            };
+            db.Set<Invoice>().Add(invoice);
+            db.Set<TenantNotification>().Add(new TenantNotification
+            {
+                TenantId = tenantId,
+                Title = "Invoice INV-DUP is 3 day(s) overdue",
+                Message = "Already sent",
+                Category = "collections",
+                RelatedEntityId = invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunOverdueInvoiceScanAsync();
+
+            Assert.Equal(0, created);
+            notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Fact]
+    public async Task RunOverdueInvoiceScanAsync_SkipsProformaAndPaid()
+    {
+        var (service, db, tenantId, notifications, _) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Skip Co" };
+            db.Set<Customer>().Add(customer);
+            db.Set<Invoice>().AddRange(
+                new Invoice
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    InvoiceNumber = "PRO-OLD",
+                    DocumentType = InvoiceDocumentType.Proforma,
+                    Status = InvoiceStatus.Sent,
+                    DueDate = DateTime.UtcNow.Date.AddDays(-10),
+                    Total = 1000m
+                },
+                new Invoice
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    InvoiceNumber = "INV-PAID",
+                    Status = InvoiceStatus.Paid,
+                    DueDate = DateTime.UtcNow.Date.AddDays(-10),
+                    Total = 1000m,
+                    AmountPaid = 1000m
+                });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunOverdueInvoiceScanAsync();
+
+            Assert.Equal(0, created);
+            notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
 }
