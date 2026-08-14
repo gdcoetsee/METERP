@@ -8,10 +8,12 @@ namespace METERP.Infrastructure.Services;
 public sealed class LeaveService : ILeaveService
 {
     private readonly AppDbContext _dbContext;
+    private readonly ITenantNotificationService? _notifications;
 
-    public LeaveService(AppDbContext dbContext)
+    public LeaveService(AppDbContext dbContext, ITenantNotificationService? notifications = null)
     {
         _dbContext = dbContext;
+        _notifications = notifications;
     }
 
     public async Task<decimal> GetAccruedLeaveDaysAsync(Guid employeeId, CancellationToken ct = default)
@@ -131,6 +133,22 @@ public sealed class LeaveService : ILeaveService
 
         _dbContext.Set<LeaveRequest>().Add(request);
         await _dbContext.SaveChangesAsync(ct);
+
+        if (_notifications != null)
+        {
+            var name = $"{emp.FirstName} {emp.LastName}".Trim();
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = request.TenantId,
+                Title = $"Leave request from {name} needs approval",
+                Message = $"{name}: {request.StartDate:yyyy-MM-dd} to {request.EndDate:yyyy-MM-dd} ({request.DaysRequested:N0} day(s)). Approve so scheduling can block the dates.",
+                Category = "hr",
+                TargetRoles = "Admin,Executive,HrManager",
+                RelatedEntityId = request.Id,
+                RelatedEntityType = nameof(LeaveRequest)
+            }, ct);
+        }
+
         return request.Id;
     }
 
@@ -147,6 +165,21 @@ public sealed class LeaveService : ILeaveService
         request.ManagerApprovedByUserId = approverUserId;
         request.ManagerApprovedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = request.TenantId,
+                Title = "Leave request needs executive approval",
+                Message = $"Leave {request.StartDate:yyyy-MM-dd} to {request.EndDate:yyyy-MM-dd} passed manager review.",
+                Category = "hr",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = request.Id,
+                RelatedEntityType = nameof(LeaveRequest)
+            }, ct);
+        }
+
         return true;
     }
 
@@ -162,6 +195,21 @@ public sealed class LeaveService : ILeaveService
         request.ExecutiveApprovedByUserId = approverUserId;
         request.ExecutiveApprovedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = request.TenantId,
+                Title = "Leave request needs HR approval",
+                Message = $"Leave {request.StartDate:yyyy-MM-dd} to {request.EndDate:yyyy-MM-dd} passed executive review.",
+                Category = "hr",
+                TargetRoles = "Admin,HrManager",
+                RelatedEntityId = request.Id,
+                RelatedEntityType = nameof(LeaveRequest)
+            }, ct);
+        }
+
         return true;
     }
 
@@ -190,6 +238,21 @@ public sealed class LeaveService : ILeaveService
         request.HrApprovedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = request.TenantId,
+                Title = "Leave request approved",
+                Message = $"Leave {request.StartDate:yyyy-MM-dd} to {request.EndDate:yyyy-MM-dd} is approved. Crew cannot be scheduled on those dates.",
+                Category = "hr",
+                TargetRoles = "Admin,Executive,HrManager",
+                RelatedEntityId = request.Id,
+                RelatedEntityType = nameof(LeaveRequest)
+            }, ct);
+        }
+
         return true;
     }
 
@@ -240,6 +303,21 @@ public sealed class LeaveService : ILeaveService
         request.RejectionReason = reason;
         request.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = request.TenantId,
+                Title = "Leave request rejected",
+                Message = $"Leave {request.StartDate:yyyy-MM-dd} to {request.EndDate:yyyy-MM-dd} was rejected: {reason}",
+                Category = "hr",
+                TargetRoles = "Technician,Admin,HrManager",
+                RelatedEntityId = request.Id,
+                RelatedEntityType = nameof(LeaveRequest)
+            }, ct);
+        }
+
         return true;
     }
 

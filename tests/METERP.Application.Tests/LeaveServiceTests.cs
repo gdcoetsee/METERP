@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -1340,6 +1341,103 @@ public class LeaveServiceTests
             Assert.Equal(LeaveRequestStatus.PendingHr,
                 (await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId)).Status);
         }
+    }
+
+    [Fact]
+    public async Task SubmitRequestAsync_NotifiesHr()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"leave-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new TestCurrentUser());
+        var service = new LeaveService(db, notifications.Object);
+        db.Set<Employee>().Add(new Employee
+        {
+            TenantId = tenantId,
+            EmployeeNumber = "E-N1",
+            FirstName = "Pat",
+            LastName = "Lee",
+            HireDate = DateTime.UtcNow.AddYears(-1),
+            AnnualLeaveEntitlementDays = 20,
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+        var emp = await db.Set<Employee>().FirstAsync();
+
+        var id = await service.SubmitRequestAsync(new LeaveRequest
+        {
+            TenantId = tenantId,
+            EmployeeId = emp.Id,
+            StartDate = DateTime.UtcNow.AddDays(14),
+            EndDate = DateTime.UtcNow.AddDays(16),
+            IsPaid = false,
+            Reason = "Family"
+        });
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "hr"
+                && t.RelatedEntityId == id
+                && t.Title.Contains("Pat Lee")
+                && t.TargetRoles.Contains("HrManager")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RejectAsync_NotifiesLeaveWasRejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"leave-reject-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new TestCurrentUser());
+        var service = new LeaveService(db, notifications.Object);
+        db.Set<Employee>().Add(new Employee
+        {
+            TenantId = tenantId,
+            EmployeeNumber = "E-N2",
+            FirstName = "Sam",
+            LastName = "Ng",
+            HireDate = DateTime.UtcNow.AddYears(-1),
+            AnnualLeaveEntitlementDays = 20,
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+        var emp = await db.Set<Employee>().FirstAsync();
+
+        var id = await service.SubmitRequestAsync(new LeaveRequest
+        {
+            TenantId = tenantId,
+            EmployeeId = emp.Id,
+            StartDate = DateTime.UtcNow.AddDays(20),
+            EndDate = DateTime.UtcNow.AddDays(21),
+            IsPaid = false,
+            Reason = "Holiday"
+        });
+        notifications.Invocations.Clear();
+
+        Assert.True(await service.RejectAsync(id, Guid.NewGuid(), "Crew already short"));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "hr"
+                && t.RelatedEntityId == id
+                && t.Title.Contains("rejected", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("Crew already short")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private sealed class TestCurrentUser : ICurrentUserService
