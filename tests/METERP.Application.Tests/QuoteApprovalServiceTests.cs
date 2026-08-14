@@ -460,6 +460,56 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_Send_EmailsCustomerWhenSmtpConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"quote-send-mail-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Mail Co", Email = "ap@mail.co" };
+        db.Set<Customer>().Add(customer);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-MAIL",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+            TaxRate = 0m,
+            ValidUntil = DateTime.UtcNow.Date.AddDays(14),
+            Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 2200m } }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, auditService: audit.Object, tenantProvider: tenantProvider.Object, email: email.Object);
+        quote.Status = QuoteStatus.Sent;
+        await service.UpdateAsync(quote);
+
+        email.Verify(e => e.SendEmailAsync(
+            "ap@mail.co",
+            It.Is<string>(s => s.Contains("Q-MAIL")),
+            It.Is<string>(b => b.Contains("Q-MAIL")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        audit.Verify(a => a.LogAsync(
+            "UPDATE",
+            "Quote",
+            "Q-MAIL",
+            It.Is<string>(m => m.Contains("emailed")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task UpdateAsync_Send_ThrowsWhenCustomerHasNoEmail()
     {
         var (service, db, tenantId, _) = Create();

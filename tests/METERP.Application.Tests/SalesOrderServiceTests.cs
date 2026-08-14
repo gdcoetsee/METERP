@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -351,6 +352,39 @@ public class SalesOrderServiceTests
                 service.UpdateStatusAsync(soId, SalesOrderStatus.Confirmed));
             Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Confirm_EmailsCustomerWhenSmtpConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        var service = new SalesOrderService(db, new JobService(db), email: email.Object);
+
+        var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+        var soId = await service.CreateAsync(new SalesOrder
+        {
+            QuoteId = quoteId,
+            CustomerId = customerId,
+            TaxRate = 0m,
+            Lines = { new SalesOrderLine { Description = "Work", Quantity = 1, UnitPrice = 900m } }
+        });
+
+        await service.UpdateStatusAsync(soId, SalesOrderStatus.Confirmed);
+
+        var so = await db.Set<SalesOrder>().FirstAsync(s => s.Id == soId);
+        email.Verify(e => e.SendEmailAsync(
+            "ap@acme.test",
+            It.Is<string>(s => s.Contains(so.SoNumber)),
+            It.Is<string>(b => b.Contains(so.SoNumber)),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

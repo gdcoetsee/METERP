@@ -18,6 +18,7 @@ public class QuoteService : IQuoteService
     private readonly IAuditService? _auditService;
     private readonly IDocumentSequenceService? _documentSequence;
     private readonly ITenantNotificationService? _notifications;
+    private readonly IEmailSender? _email;
 
     public QuoteService(
         AppDbContext dbContext,
@@ -27,7 +28,8 @@ public class QuoteService : IQuoteService
         ITenantCacheService? cache = null,
         IAuditService? auditService = null,
         IDocumentSequenceService? documentSequence = null,
-        ITenantNotificationService? notifications = null)
+        ITenantNotificationService? notifications = null,
+        IEmailSender? email = null)
     {
         _dbContext = dbContext;
         _tenantService = tenantService;
@@ -37,6 +39,7 @@ public class QuoteService : IQuoteService
         _auditService = auditService;
         _documentSequence = documentSequence;
         _notifications = notifications;
+        _email = email;
     }
 
     public async Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -167,23 +170,25 @@ public class QuoteService : IQuoteService
 
         EnforceSendGate(existing, quote);
 
-        if (quote.Status == QuoteStatus.Sent && existing.Status != QuoteStatus.Sent)
+        Customer? sendTo = null;
+        var becomingSent = quote.Status == QuoteStatus.Sent && existing.Status != QuoteStatus.Sent;
+        if (becomingSent)
         {
             var hasLines = await _dbContext.Set<QuoteLine>()
                 .AnyAsync(l => l.QuoteId == quote.Id && !l.IsDeleted, ct);
             if (!hasLines)
                 throw new InvalidOperationException("Cannot send a quote with no lines.");
 
-            var customer = await _dbContext.Set<Customer>()
+            sendTo = await _dbContext.Set<Customer>()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c =>
                     c.Id == existing.CustomerId
                     && (existing.TenantId == Guid.Empty || c.TenantId == existing.TenantId), ct);
-            if (customer == null || customer.IsDeleted)
+            if (sendTo == null || sendTo.IsDeleted)
                 throw new InvalidOperationException(
                     "Cannot send quote — customer is missing or deleted.");
-            if (string.IsNullOrWhiteSpace(customer.Email))
+            if (string.IsNullOrWhiteSpace(sendTo.Email))
                 throw new InvalidOperationException(
                     "Cannot send quote — customer has no email. Add an email so the customer can receive it.");
         }
@@ -227,15 +232,37 @@ public class QuoteService : IQuoteService
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
 
+        var emailNote = "";
+        if (becomingSent && sendTo != null)
+            emailNote = await TryEmailQuoteSentAsync(quote, sendTo, ct);
+
         if (_auditService != null)
         {
             await _auditService.LogAsync(
                 "UPDATE",
                 "Quote",
                 quote.QuoteNumber,
-                $"Status {quote.Status}, approval {quote.ApprovalStatus}, total R {quote.Total:N2}",
+                $"Status {quote.Status}, approval {quote.ApprovalStatus}, total R {quote.Total:N2}{emailNote}",
                 ct);
         }
+    }
+
+    private async Task<string> TryEmailQuoteSentAsync(Quote quote, Customer customer, CancellationToken ct)
+    {
+        var email = customer.Email!.Trim();
+        if (_email?.IsConfigured != true)
+            return " (SMTP not configured — recorded sent in-system only)";
+
+        var html = $"""
+            <p>Please find quote <strong>{quote.QuoteNumber}</strong>.</p>
+            <ul>
+              <li><strong>Total:</strong> R {quote.Total:N2}</li>
+              <li><strong>Valid until:</strong> {quote.ValidUntil:yyyy-MM-dd}</li>
+            </ul>
+            <p>Reply if you would like to proceed.</p>
+            """;
+        await _email.SendEmailAsync(email, $"Quote {quote.QuoteNumber}", html, ct);
+        return $" (emailed {email})";
     }
 
     public async Task SubmitForExecutiveApprovalAsync(Guid quoteId, Guid submittedByUserId, CancellationToken ct = default)

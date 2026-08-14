@@ -14,17 +14,23 @@ public class SalesOrderService : ISalesOrderService
     private readonly IJobService _jobService;
     private readonly ITenantService? _tenantService;
     private readonly ITenantCacheService? _cache;
+    private readonly IEmailSender? _email;
+    private readonly IAuditService? _audit;
 
     public SalesOrderService(
         AppDbContext dbContext,
         IJobService jobService,
         ITenantService? tenantService = null,
-        ITenantCacheService? cache = null)
+        ITenantCacheService? cache = null,
+        IEmailSender? email = null,
+        IAuditService? audit = null)
     {
         _dbContext = dbContext;
         _jobService = jobService;
         _tenantService = tenantService;
         _cache = cache;
+        _email = email;
+        _audit = audit;
     }
 
     public async Task<SalesOrder?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -250,18 +256,19 @@ public class SalesOrderService : ISalesOrderService
             && !so.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot confirm a sales order with no lines.");
 
+        Customer? confirmTo = null;
         if (newStatus == SalesOrderStatus.Confirmed)
         {
-            var customer = await _dbContext.Set<Customer>()
+            confirmTo = await _dbContext.Set<Customer>()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c =>
                     c.Id == so.CustomerId
                     && (so.TenantId == Guid.Empty || c.TenantId == so.TenantId), ct);
-            if (customer == null || customer.IsDeleted)
+            if (confirmTo == null || confirmTo.IsDeleted)
                 throw new InvalidOperationException(
                     "Cannot confirm sales order — customer is missing or deleted.");
-            if (string.IsNullOrWhiteSpace(customer.Email))
+            if (string.IsNullOrWhiteSpace(confirmTo.Email))
                 throw new InvalidOperationException(
                     "Cannot confirm sales order — customer has no email. Add an email so the order can be sent.");
         }
@@ -278,6 +285,37 @@ public class SalesOrderService : ISalesOrderService
         so.Status = newStatus;
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
+
+        if (newStatus == SalesOrderStatus.Confirmed && confirmTo != null)
+        {
+            var emailNote = await TryEmailSalesOrderConfirmedAsync(so, confirmTo, ct);
+            if (_audit != null)
+            {
+                await _audit.LogAsync(
+                    "STATUS",
+                    "SalesOrder",
+                    so.SoNumber,
+                    $"Status → Confirmed{emailNote}",
+                    ct);
+            }
+        }
+    }
+
+    private async Task<string> TryEmailSalesOrderConfirmedAsync(SalesOrder so, Customer customer, CancellationToken ct)
+    {
+        var email = customer.Email!.Trim();
+        if (_email?.IsConfigured != true)
+            return " (SMTP not configured — recorded confirmed in-system only)";
+
+        var html = $"""
+            <p>Sales order <strong>{so.SoNumber}</strong> has been confirmed.</p>
+            <ul>
+              <li><strong>Total:</strong> R {so.Total:N2}</li>
+            </ul>
+            <p>We will schedule the work shortly.</p>
+            """;
+        await _email.SendEmailAsync(email, $"Sales order {so.SoNumber} confirmed", html, ct);
+        return $" (emailed {email})";
     }
 
     public async Task<Guid> AddLineAsync(SalesOrderLine line, CancellationToken ct = default)
