@@ -369,6 +369,9 @@ else
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
 
+    [SupplyParameterFromQuery(Name = "open")]
+    public Guid? OpenPurchaseOrderId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
@@ -379,6 +382,13 @@ else
                 await LoadSuppliersForPickerCore();
                 await LoadPOsCore();
             });
+
+            if (OpenPurchaseOrderId is { } openId && openId != Guid.Empty)
+            {
+                var opened = await PurchaseOrderService.GetByIdAsync(openId);
+                if (opened != null)
+                    selectedPO = opened;
+            }
         }
         finally
         {

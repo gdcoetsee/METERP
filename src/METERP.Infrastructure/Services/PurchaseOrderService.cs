@@ -609,6 +609,21 @@ public class PurchaseOrderService : IPurchaseOrderService
             await _audit.LogAsync("RECEIVE", "GRV", grv.GrvNumber, note, ct);
         }
 
+        if (_notifications != null)
+        {
+            var statusWord = allReceived ? "fully received" : "partially received";
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = po.TenantId,
+                Title = $"GRV {grv.GrvNumber} against {po.PoNumber}",
+                Message = $"{po.PoNumber} is {statusWord}. Stock is on hand — issue to jobs or reserve for requisitions.",
+                Category = "procurement",
+                TargetRoles = "Admin,Executive,Procurement,Stores",
+                RelatedEntityId = po.Id,
+                RelatedEntityType = nameof(PurchaseOrder)
+            }, ct);
+        }
+
         if (_requisitionService != null)
             await _requisitionService.FulfillAfterPoReceiptAsync(po.Id, ct);
 

@@ -1513,6 +1513,50 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task ReceiveAsync_NotifiesStoresWhenGoodsLand()
+    {
+        var tenantId = Guid.NewGuid();
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns(TestUserId);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new AppDbContext(options, tenantProvider.Object, currentUser.Object);
+        var inventory = new InventoryService(db);
+        var service = new PurchaseOrderService(db, inventory, notifications: notifications.Object);
+
+        var supplierId = Guid.NewGuid();
+        db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Cable Co" });
+        var poId = await service.CreateAsync(new PurchaseOrder
+        {
+            SupplierId = supplierId,
+            TaxRate = 0m,
+            Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 4, UnitPrice = 10m } }
+        });
+
+        var grv = await ReceiveSentPoAsync(service, poId);
+        Assert.NotNull(grv);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "procurement"
+                && t.RelatedEntityType == nameof(PurchaseOrder)
+                && t.RelatedEntityId == poId
+                && t.Title.Contains(grv!.GrvNumber)
+                && t.Message.Contains("fully received", StringComparison.OrdinalIgnoreCase)
+                && t.TargetRoles.Contains("Stores")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task AddLineAsync_ThrowsWhenInventoryItemSoftDeleted()
     {
         var tenantId = Guid.NewGuid();
