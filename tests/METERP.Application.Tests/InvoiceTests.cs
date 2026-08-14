@@ -125,6 +125,60 @@ public class InvoiceTests
     }
 
     [Fact]
+    public async Task InvoiceService_CreateFromJobAsync_AddsAdditionalTravelAboveQuote()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        db.Set<Tenant>().Add(new Tenant { Id = tenantId, Name = "Test Tenant", Subdomain = "test" });
+        var customer = new Customer { TenantId = tenantId, Name = "Travel Co" };
+        db.Set<Customer>().Add(customer);
+
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-TRV",
+            TaxRate = 0.15m,
+            Lines = new List<QuoteLine>
+            {
+                new QuoteLine { Description = "Install", Quantity = 1, UnitPrice = 2000, LineType = "Labour" },
+                new QuoteLine { Description = "Travel", Quantity = 1, UnitPrice = 800, LineType = "Travel" }
+            }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteId = quote.Id,
+            JobNumber = "J-TRV-1",
+            QuotedTotal = quote.Total,
+            Title = "Site travel job",
+            SignOffStatus = JobSignOffStatus.SignedOff
+        };
+        db.Set<Job>().Add(job);
+        db.Set<JobCost>().Add(new JobCost
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            Description = "Extra km + night out",
+            Amount = 1200m,
+            CostType = "Travel",
+            CostDate = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var invoice = await new InvoiceService(db, null).CreateFromJobAsync(job.Id);
+
+        var extra = invoice.Lines.Single(l => l.Description.Contains("Additional travel"));
+        Assert.Equal("Travel", extra.LineType);
+        Assert.Equal(400m, extra.UnitPrice);
+        Assert.Equal(3, invoice.Lines.Count(l => !l.IsDeleted));
+    }
+
+    [Fact]
     public async Task InvoiceService_CreateFromJobAsync_ThrowsWhenJobNotFound()
     {
         var tenantId = Guid.NewGuid();

@@ -306,6 +306,7 @@ public class InvoiceService : IInvoiceService
             .Include(j => j.Customer)
             .Include(j => j.Quote)
                 .ThenInclude(q => q != null ? q.Lines : null)
+            .Include(j => j.ActualCosts)
             .FirstOrDefaultAsync(j =>
                 j.Id == jobId
                 && !j.IsDeleted
@@ -675,6 +676,7 @@ public class InvoiceService : IInvoiceService
             }
 
             linesAdded = true;
+            AddAdditionalTravelLine(invoice, job);
         }
 
         if (!linesAdded)
@@ -688,6 +690,31 @@ public class InvoiceService : IInvoiceService
                 LineType = "Other"
             });
         }
+    }
+
+    /// <summary>
+    /// Bill actual job travel that exceeds quoted travel so extra site travel is not left uninvoiced.
+    /// </summary>
+    private void AddAdditionalTravelLine(Invoice invoice, Job job)
+    {
+        var quotedTravel = job.Quote?.Lines?
+            .Where(l => !l.IsDeleted && l.LineType.Equals("Travel", StringComparison.OrdinalIgnoreCase))
+            .Sum(l => l.LineTotal) ?? 0m;
+        var actualTravel = (job.ActualCosts ?? Array.Empty<JobCost>())
+            .Where(c => !c.IsDeleted && c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase))
+            .Sum(c => c.Amount);
+        var extra = Math.Round(actualTravel - quotedTravel, 2);
+        if (extra <= 0.01m)
+            return;
+
+        _dbContext.Set<InvoiceLine>().Add(new InvoiceLine
+        {
+            InvoiceId = invoice.Id,
+            Description = $"Additional travel vs quote — Job {job.JobNumber}",
+            Quantity = 1,
+            UnitPrice = extra,
+            LineType = "Travel"
+        });
     }
 
     private async Task<Guid> RecordPaymentInternalAsync(
