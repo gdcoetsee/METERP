@@ -958,6 +958,7 @@ public class DatabaseSeeder : IHostedService
         {
             await complianceAlertService.RunExpiryScanAsync(cancellationToken);
             await complianceAlertService.RunOverdueInvoiceScanAsync(cancellationToken);
+            await complianceAlertService.RunApprovalSlaScanAsync(cancellationToken);
         }
         catch (Exception ex)
         {

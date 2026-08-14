@@ -16,8 +16,8 @@ public static class NotificationLinks
         {
             nameof(Domain.Invoice) => $"/invoices?open={id:D}",
             nameof(Domain.Job) => $"/jobs/{id:D}",
-            nameof(Domain.Quote) => $"/quotes",
-            nameof(Domain.StockRequisition) => $"/requisitions",
+            nameof(Domain.Quote) => $"/approvals",
+            nameof(Domain.StockRequisition) => $"/approvals",
             nameof(Domain.LeaveRequest) => $"/leave-admin",
             _ => null
         };

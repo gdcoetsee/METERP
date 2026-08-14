@@ -112,6 +112,114 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return created;
     }
 
+    public async Task<int> RunApprovalSlaScanAsync(CancellationToken ct = default)
+    {
+        var slaHours = await GetSlaHoursAsync(ct);
+        var cutoff = DateTime.UtcNow.AddHours(-slaHours);
+        var created = 0;
+
+        var quotes = await _dbContext.Set<Quote>()
+            .AsNoTracking()
+            .Include(q => q.Customer)
+            .Where(q =>
+                q.ApprovalStatus == QuoteApprovalStatus.PendingExecutive
+                && q.SubmittedForApprovalAt != null
+                && q.SubmittedForApprovalAt <= cutoff)
+            .ToListAsync(ct);
+
+        created += await NotifySlaItemsAsync(
+            quotes.Select(q => (q.Id, q.TenantId, Title: $"Quote {q.QuoteNumber} is past approval SLA",
+                Message: $"{q.Customer?.Name ?? "Customer"} — submitted {q.SubmittedForApprovalAt:yyyy-MM-dd HH:mm} UTC, SLA {slaHours}h.")),
+            nameof(Quote),
+            ct);
+
+        var requisitions = await _dbContext.Set<StockRequisition>()
+            .AsNoTracking()
+            .Include(r => r.Job)
+            .Where(r =>
+                r.Status == RequisitionStatus.PendingManager
+                || r.Status == RequisitionStatus.PendingExecutive)
+            .ToListAsync(ct);
+
+        var overdueReqs = requisitions.Where(r =>
+        {
+            var submitted = r.ManagerApprovedAt ?? r.CreatedDate;
+            return submitted <= cutoff;
+        }).ToList();
+
+        created += await NotifySlaItemsAsync(
+            overdueReqs.Select(r => (r.Id, r.TenantId, Title: $"Requisition {r.RequisitionNumber} is past approval SLA",
+                Message: $"{r.Job?.JobNumber ?? "Job"} — waiting {r.Status}, SLA {slaHours}h.")),
+            nameof(StockRequisition),
+            ct);
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "SLA_SCAN",
+                "Approval",
+                "sla-alerts",
+                $"Created {created} approval SLA notification(s)",
+                ct);
+        }
+
+        return created;
+    }
+
+    private async Task<int> NotifySlaItemsAsync(
+        IEnumerable<(Guid Id, Guid TenantId, string Title, string Message)> items,
+        string entityType,
+        CancellationToken ct)
+    {
+        var list = items.ToList();
+        if (list.Count == 0)
+            return 0;
+
+        var ids = list.Select(i => i.Id).ToList();
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "approvals"
+                && n.RelatedEntityType == entityType
+                && n.RelatedEntityId != null
+                && ids.Contains(n.RelatedEntityId.Value))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var item in list)
+        {
+            if (already.Contains(item.Id))
+                continue;
+
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = item.TenantId,
+                Title = item.Title,
+                Message = item.Message,
+                Category = "approvals",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = item.Id,
+                RelatedEntityType = entityType
+            }, ct);
+            created++;
+        }
+
+        return created;
+    }
+
+    private async Task<int> GetSlaHoursAsync(CancellationToken ct)
+    {
+        var tenantId = _dbContext.CurrentTenantId;
+        if (tenantId == Guid.Empty)
+            return 48;
+
+        var tenant = await _dbContext.Set<Tenant>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+        return tenant is { DefaultApprovalSlaHours: > 0 } ? tenant.DefaultApprovalSlaHours : 48;
+    }
+
     private async Task<int> ScanCompanyDocumentsAsync(DateTime now, CancellationToken ct)
     {
         var docs = await _dbContext.Set<CompanyDocument>()

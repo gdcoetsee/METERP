@@ -11,4 +11,9 @@ public interface IComplianceAlertService
     /// Notifies Admin/Executive once per overdue invoice with an outstanding balance.
     /// </summary>
     Task<int> RunOverdueInvoiceScanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifies executives once per quote/requisition that has breached the tenant approval SLA.
+    /// </summary>
+    Task<int> RunApprovalSlaScanAsync(CancellationToken ct = default);
 }

@@ -224,6 +224,9 @@ public class SalesOrderService : ISalesOrderService
             if (customer == null || customer.IsDeleted)
                 throw new InvalidOperationException(
                     "Cannot confirm sales order — customer is missing or deleted.");
+            if (string.IsNullOrWhiteSpace(customer.Email))
+                throw new InvalidOperationException(
+                    "Cannot confirm sales order — customer has no email. Add an email so the order can be sent.");
         }
 
         if (newStatus == SalesOrderStatus.Cancelled && so.Status == SalesOrderStatus.InProgress)

@@ -31,7 +31,7 @@ public class SalesOrderServiceTests
     {
         var customerId = Guid.NewGuid();
         var quoteId = Guid.NewGuid();
-        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme", Email = "ap@acme.test" });
         db.Set<Quote>().Add(new Quote { Id = quoteId, TenantId = tenantId, CustomerId = customerId, QuoteNumber = "Q-TEST" });
         await db.SaveChangesAsync();
         return (customerId, quoteId);
@@ -291,6 +291,32 @@ public class SalesOrderServiceTests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.UpdateStatusAsync(soId, SalesOrderStatus.Confirmed));
             Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Confirm_ThrowsWhenCustomerHasNoEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                TaxRate = 0.15m,
+                Lines = { new SalesOrderLine { Description = "Work", Quantity = 1, UnitPrice = 100m } }
+            });
+
+            var customer = await db.Set<Customer>().FirstAsync(c => c.Id == customerId);
+            customer.Email = null;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UpdateStatusAsync(soId, SalesOrderStatus.Confirmed));
+            Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 

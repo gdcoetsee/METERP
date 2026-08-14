@@ -239,4 +239,76 @@ public class ComplianceAlertServiceTests
             notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
+
+    [Fact]
+    public async Task RunApprovalSlaScanAsync_CreatesAlertForStalePendingQuote()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            db.Set<Tenant>().Add(new Tenant
+            {
+                Id = tenantId,
+                Name = "SLA Co",
+                Subdomain = "sla",
+                DefaultApprovalSlaHours = 48
+            });
+            var customer = new Customer { TenantId = tenantId, Name = "Wait Co" };
+            db.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-SLA",
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = DateTime.UtcNow.AddHours(-60)
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            var created = await service.RunApprovalSlaScanAsync();
+
+            Assert.Equal(1, created);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "approvals"
+                    && t.RelatedEntityType == nameof(Quote)
+                    && t.RelatedEntityId == quote.Id
+                    && t.Title.Contains("Q-SLA")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            audit.Verify(a => a.LogAsync("SLA_SCAN", "Approval", "sla-alerts", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task RunApprovalSlaScanAsync_SkipsFreshPendingQuote()
+    {
+        var (service, db, tenantId, notifications, _) = Create();
+        await using (db)
+        {
+            db.Set<Tenant>().Add(new Tenant
+            {
+                Id = tenantId,
+                Name = "SLA Co",
+                Subdomain = "sla-fresh",
+                DefaultApprovalSlaHours = 48
+            });
+            var customer = new Customer { TenantId = tenantId, Name = "Fast Co" };
+            db.Set<Customer>().Add(customer);
+            db.Set<Quote>().Add(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-FRESH",
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                SubmittedForApprovalAt = DateTime.UtcNow.AddHours(-2)
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunApprovalSlaScanAsync();
+
+            Assert.Equal(0, created);
+            notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
 }

@@ -21,6 +21,13 @@ public class NotificationLinksTests
     }
 
     [Fact]
+    public void ForEntity_OpensApprovalsForQuoteAndRequisition()
+    {
+        Assert.Equal("/approvals", NotificationLinks.ForEntity(nameof(Quote), Guid.NewGuid()));
+        Assert.Equal("/approvals", NotificationLinks.ForEntity(nameof(StockRequisition), Guid.NewGuid()));
+    }
+
+    [Fact]
     public void ForEntity_ReturnsNullWhenMissing()
     {
         Assert.Null(NotificationLinks.ForEntity(null, Guid.NewGuid()));
