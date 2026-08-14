@@ -671,6 +671,45 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_Cancelled_NotifiesFinance()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"inv-cancel-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Void Co", Email = "ap@void.co" };
+        db.Set<Customer>().Add(customer);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-VOID",
+            Status = InvoiceStatus.Sent,
+            Total = 4400m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var service = new InvoiceService(db, notifications: notifications.Object);
+        await service.UpdateStatusAsync(invoice.Id, InvoiceStatus.Cancelled);
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == invoice.Id
+                && t.Title.Contains("INV-VOID")
+                && t.Title.Contains("cancelled", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CreateCreditNoteAsync_ThrowsWhenInvoiceDraft()
     {
         var (service, db, tenantId) = Create();

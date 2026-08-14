@@ -1097,6 +1097,20 @@ public class InvoiceService : IInvoiceService
                 $"Status → {newStatus}{emailNote}",
                 ct);
         }
+
+        if (newStatus == InvoiceStatus.Cancelled && _notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = invoice.TenantId,
+                Title = $"Invoice {invoice.InvoiceNumber} was cancelled",
+                Message = $"{invoice.InvoiceNumber} (R {invoice.Total:N0}) is no longer collectable. Raise a replacement if the work is still billable.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
+        }
     }
 
     private async Task<string> TryEmailInvoiceSentAsync(Invoice invoice, Customer customer, CancellationToken ct)
