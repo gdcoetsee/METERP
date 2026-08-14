@@ -166,6 +166,73 @@ public sealed class ComplianceAlertService : IComplianceAlertService
         return created;
     }
 
+    public async Task<int> RunExpiredQuoteScanAsync(CancellationToken ct = default)
+    {
+        var today = DateTime.UtcNow.Date;
+        var quotes = await _dbContext.Set<Quote>()
+            .Include(q => q.Customer)
+            .Where(q =>
+                (q.Status == QuoteStatus.Sent || q.Status == QuoteStatus.Accepted)
+                && q.ValidUntil < today)
+            .ToListAsync(ct);
+
+        if (quotes.Count == 0)
+            return 0;
+
+        var ids = quotes.Select(q => q.Id).ToList();
+        var converted = (await _dbContext.Set<Job>().AsNoTracking()
+            .Where(j => j.QuoteId != null && ids.Contains(j.QuoteId.Value))
+            .Select(j => j.QuoteId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var already = (await _dbContext.Set<TenantNotification>().AsNoTracking()
+            .Where(n =>
+                n.Category == "sales"
+                && n.RelatedEntityType == nameof(Quote)
+                && n.RelatedEntityId != null
+                && ids.Contains(n.RelatedEntityId.Value))
+            .Select(n => n.RelatedEntityId!.Value)
+            .ToListAsync(ct)).ToHashSet();
+
+        var created = 0;
+        foreach (var quote in quotes)
+        {
+            if (converted.Contains(quote.Id))
+                continue;
+
+            quote.Status = QuoteStatus.Expired;
+
+            if (!already.Contains(quote.Id))
+            {
+                await _notifications.CreateAsync(new TenantNotification
+                {
+                    TenantId = quote.TenantId,
+                    Title = $"Quote {quote.QuoteNumber} expired without a job",
+                    Message = $"{quote.Customer?.Name ?? "Customer"} — valid until {quote.ValidUntil:yyyy-MM-dd}. Follow up or write it off.",
+                    Category = "sales",
+                    TargetRoles = "Admin,Executive",
+                    RelatedEntityId = quote.Id,
+                    RelatedEntityType = nameof(Quote)
+                }, ct);
+                created++;
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        if (created > 0 && _audit != null)
+        {
+            await _audit.LogAsync(
+                "QUOTE_EXPIRY_SCAN",
+                "Quote",
+                "expired-quotes",
+                $"Expired {created} unconverted quote(s)",
+                ct);
+        }
+
+        return created;
+    }
+
     private async Task<int> NotifySlaItemsAsync(
         IEnumerable<(Guid Id, Guid TenantId, string Title, string Message)> items,
         string entityType,

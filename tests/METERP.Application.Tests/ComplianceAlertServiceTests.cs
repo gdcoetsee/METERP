@@ -311,4 +311,74 @@ public class ComplianceAlertServiceTests
             notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
+
+    [Fact]
+    public async Task RunExpiredQuoteScanAsync_ExpiresUnconvertedSentQuote()
+    {
+        var (service, db, tenantId, notifications, audit) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Stale Co" };
+            db.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-OLD",
+                Status = QuoteStatus.Sent,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(-1),
+                Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 500m } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            var created = await service.RunExpiredQuoteScanAsync();
+
+            Assert.Equal(1, created);
+            Assert.Equal(QuoteStatus.Expired, (await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id)).Status);
+            notifications.Verify(n => n.CreateAsync(
+                It.Is<TenantNotification>(t =>
+                    t.Category == "sales"
+                    && t.RelatedEntityId == quote.Id
+                    && t.Title.Contains("Q-OLD")),
+                It.IsAny<CancellationToken>()), Times.Once);
+            audit.Verify(a => a.LogAsync("QUOTE_EXPIRY_SCAN", "Quote", "expired-quotes", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task RunExpiredQuoteScanAsync_SkipsConvertedQuotes()
+    {
+        var (service, db, tenantId, notifications, _) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Jobbed Co" };
+            db.Set<Customer>().Add(customer);
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-JOBBED",
+                Status = QuoteStatus.Accepted,
+                ValidUntil = DateTime.UtcNow.Date.AddDays(-2)
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+            db.Set<Job>().Add(new Job
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteId = quote.Id,
+                Title = "From quote",
+                JobNumber = "J-FROM-Q"
+            });
+            await db.SaveChangesAsync();
+
+            var created = await service.RunExpiredQuoteScanAsync();
+
+            Assert.Equal(0, created);
+            Assert.Equal(QuoteStatus.Accepted, (await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id)).Status);
+            notifications.Verify(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
 }

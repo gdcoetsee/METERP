@@ -21,9 +21,10 @@ public class NotificationLinksTests
     }
 
     [Fact]
-    public void ForEntity_OpensApprovalsForQuoteAndRequisition()
+    public void ForEntity_OpensQuoteEditorAndApprovalsForRequisition()
     {
-        Assert.Equal("/approvals", NotificationLinks.ForEntity(nameof(Quote), Guid.NewGuid()));
+        var id = Guid.NewGuid();
+        Assert.Equal($"/quotes?open={id:D}", NotificationLinks.ForEntity(nameof(Quote), id));
         Assert.Equal("/approvals", NotificationLinks.ForEntity(nameof(StockRequisition), Guid.NewGuid()));
     }
 
