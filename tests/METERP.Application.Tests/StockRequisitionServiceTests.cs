@@ -1204,4 +1204,46 @@ public class StockRequisitionServiceTests
                 && t.TargetRoles.Contains("Stores")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task IssueAsync_NotifiesFinanceOfPostedMaterials()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"req-issue-notify-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+        var inventory = new InventoryService(db);
+        var jobs = new JobService(db);
+        var service = new StockRequisitionService(db, inventory, jobService: jobs, notifications: notifications.Object);
+        var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 10m);
+
+        var id = await service.SubmitAsync(new StockRequisition
+        {
+            TenantId = tenantId,
+            JobId = job.Id,
+            RequestedByUserId = Guid.NewGuid(),
+            Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 3 }]
+        });
+        await service.ApproveManagerAsync(id, Guid.NewGuid());
+        await service.ApproveExecutiveAsync(id, Guid.NewGuid());
+        notifications.Invocations.Clear();
+
+        Assert.True(await service.IssueAsync(id, Guid.NewGuid()));
+
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityType == nameof(Job)
+                && t.RelatedEntityId == job.Id
+                && t.Title.Contains("Stock issued", StringComparison.OrdinalIgnoreCase)
+                && t.Message.Contains("300")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

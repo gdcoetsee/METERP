@@ -365,6 +365,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
         await EnsureJobOpenForRequisitionAsync(req, ct);
 
         var issuedAny = false;
+        var postedAmount = 0m;
         foreach (var line in req.Lines.Where(l => !l.IsDeleted && l.QuantityReserved > 0))
         {
             var toIssue = line.QuantityReserved - line.QuantityIssued;
@@ -376,11 +377,13 @@ public sealed class StockRequisitionService : IStockRequisitionService
                 line.QuantityIssued += toIssue;
                 issuedAny = true;
                 var unitCost = line.EstimatedUnitCost;
+                var amount = toIssue * unitCost;
+                postedAmount += amount;
                 _dbContext.Set<JobCost>().Add(new JobCost
                 {
                     JobId = req.JobId,
                     Description = $"{line.DisplayDescription} (req {req.RequisitionNumber}, non-catalog)",
-                    Amount = toIssue * unitCost,
+                    Amount = amount,
                     CostType = "Material",
                     CostDate = DateTime.UtcNow
                 });
@@ -401,12 +404,14 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
             line.QuantityIssued += toIssue;
             issuedAny = true;
+            var catalogAmount = toIssue * item.UnitCost;
+            postedAmount += catalogAmount;
 
             _dbContext.Set<JobCost>().Add(new JobCost
             {
                 JobId = req.JobId,
                 Description = $"{item.Name} (req {req.RequisitionNumber})",
-                Amount = toIssue * item.UnitCost,
+                Amount = catalogAmount,
                 CostType = "Material",
                 CostDate = DateTime.UtcNow
             });
@@ -435,6 +440,26 @@ public sealed class StockRequisitionService : IStockRequisitionService
             await _ppeIssue.RecordFromRequisitionIssueAsync(req, ct);
 
         await LogAsync("ISSUE", req, "Stock issued to job", ct);
+
+        if (_notifications != null)
+        {
+            var jobNumber = await _dbContext.Set<Job>().AsNoTracking()
+                .Where(j => j.Id == req.JobId)
+                .Select(j => j.JobNumber)
+                .FirstOrDefaultAsync(ct) ?? "job";
+
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = req.TenantId,
+                Title = $"Stock issued to {jobNumber}",
+                Message = $"{req.RequisitionNumber} posted R {postedAmount:N0} of materials. Complete sign-off to invoice the job.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = req.JobId,
+                RelatedEntityType = nameof(Job)
+            }, ct);
+        }
+
         return true;
     }
 
