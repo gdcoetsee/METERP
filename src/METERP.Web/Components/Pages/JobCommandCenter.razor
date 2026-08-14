@@ -93,9 +93,16 @@ else
         }
         @if (_job.NeedsDepositInvoice())
         {
-            <div class="alert alert-warning small" data-testid="job-cc-deposit-banner">
-                Deposit @_job.DepositPercent.ToString("N0")% is not received.
-                Raise a deposit invoice to start cash collection.
+            <div class="alert alert-warning small d-flex flex-wrap justify-content-between align-items-center gap-2" data-testid="job-cc-deposit-banner">
+                <span>
+                    Deposit @_job.DepositPercent.ToString("N0")% is not received.
+                    Raise a deposit invoice to start cash collection.
+                </span>
+                @if (CanInvoice && _job.IsOpenForOperations())
+                {
+                    <button type="button" class="btn btn-sm btn-warning" data-testid="job-cc-deposit-banner-raise"
+                            @onclick="OpenDepositInvoice">Raise deposit</button>
+                }
             </div>
         }
         @if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
@@ -113,8 +120,15 @@ else
         }
         else if (_summary.UnbilledResidual > 0)
         {
-            <div class="alert alert-info small" data-testid="job-cc-unbilled-banner">
-                R @_summary.UnbilledResidual.ToString("N2") of quoted work remains unbilled — invoice it or acknowledge the leftover on executive close.
+            <div class="alert alert-info small d-flex flex-wrap justify-content-between align-items-center gap-2" data-testid="job-cc-unbilled-banner">
+                <span>
+                    R @_summary.UnbilledResidual.ToString("N2") of quoted work remains unbilled — invoice it or acknowledge the leftover on executive close.
+                </span>
+                @if (CanInvoice && _job.IsOpenForOperations())
+                {
+                    <button type="button" class="btn btn-sm btn-success" data-testid="job-cc-unbilled-banner-invoice"
+                            @onclick="OpenFinalInvoice">Invoice now</button>
+                }
             </div>
         }
 
@@ -642,6 +656,20 @@ else
         {
             _loading = false;
         }
+    }
+
+    private void OpenDepositInvoice()
+    {
+        if (_job == null) return;
+        _invoiceDocType = InvoiceDocumentType.Deposit;
+        _invoicePercent = _job.DepositPercent > 0 ? _job.DepositPercent : 30m;
+        _showInvoiceModal = true;
+    }
+
+    private void OpenFinalInvoice()
+    {
+        _invoiceDocType = InvoiceDocumentType.Final;
+        _showInvoiceModal = true;
     }
 
     private async Task AdvanceSignOffAsync()

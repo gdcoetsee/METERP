@@ -22,7 +22,7 @@ public class ExecutiveDashboardServiceTests
     {
         var quotes = new Mock<IQuoteService>();
         quotes.Setup(s => s.GetPendingExecutiveApprovalAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Quote> { new() { QuoteNumber = "Q-1" } });
+            .ReturnsAsync(new List<Quote> { new() { QuoteNumber = "Q-1", Customer = new Customer { Name = "Acme" } } });
         quotes.Setup(s => s.GetUnconvertedWonQuotesAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
@@ -116,6 +116,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(1650m, summary.AwaitingSignOffValue);
         Assert.Equal(1, summary.OverduePurchaseOrders);
         Assert.Equal(800m, summary.OverduePurchaseOrderValue);
+        Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Quote" && r.Number == "Q-1");
+        Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Leave");
         Assert.Equal(5000m, summary.AgedDebtorsTotal);
         Assert.Equal(1, summary.LowStockItems);
     }

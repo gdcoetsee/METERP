@@ -318,6 +318,35 @@
                     .Take(8)
                     .ToList();
             }
+            @if (_executive.ApprovalQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-approvals-queue">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Waiting</th>
+                                <th>On</th>
+                                <th>Detail</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.ApprovalQueue)
+                            {
+                                <tr>
+                                    <td>@row.Kind</td>
+                                    <td>@row.Number</td>
+                                    <td>@row.Subject</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-warning" href="@row.Href"
+                                           data-testid="home-approve-item">Approve</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (_executive.ConvertToJobQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-convert-to-job">

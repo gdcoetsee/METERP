@@ -27,8 +27,9 @@ public class NotificationLinksTests
         Assert.Equal($"/quotes?open={id:D}", NotificationLinks.ForEntity(nameof(Quote), id));
         Assert.Equal($"/opportunities?open={id:D}", NotificationLinks.ForEntity(nameof(Opportunity), id));
         Assert.Equal($"/purchase-orders?open={id:D}", NotificationLinks.ForEntity(nameof(PurchaseOrder), id));
-        Assert.Equal("/approvals", NotificationLinks.ForEntity(nameof(StockRequisition), Guid.NewGuid()));
-        Assert.Equal("/approvals", NotificationLinks.ForEntity(nameof(FieldReport), Guid.NewGuid()));
+        Assert.Equal("/approvals?tab=requisitions", NotificationLinks.ForEntity(nameof(StockRequisition), Guid.NewGuid()));
+        Assert.Equal("/approvals?tab=field", NotificationLinks.ForEntity(nameof(FieldReport), Guid.NewGuid()));
+        Assert.Equal("/approvals?tab=leave", NotificationLinks.ForEntity(nameof(LeaveRequest), Guid.NewGuid()));
     }
 
     [Fact]

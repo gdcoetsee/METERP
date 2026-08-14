@@ -4,6 +4,7 @@
 @using METERP.Application.Services
 @using METERP.Common
 @using METERP.Domain
+@using Microsoft.AspNetCore.Components
 @attribute [Authorize(Policy = "Approvals.View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IQuoteService QuoteService
@@ -193,6 +194,9 @@
 @* ConfirmDialogHost lives in MainLayout — do not mount a second host (double backdrop blocks E2E clicks). *@
 
 @code {
+    [SupplyParameterFromQuery(Name = "tab")]
+    public string? Tab { get; set; }
+
     private string _activeTab = "all";
     private bool _loading = true;
     private List<Quote> _pendingQuotes = new();
@@ -235,7 +239,16 @@
 
     private int TotalPending => _tabs.Sum(t => t.Count);
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Tab)
+            && _tabs.Any(t => string.Equals(t.Key, Tab, StringComparison.OrdinalIgnoreCase)))
+        {
+            _activeTab = Tab.Trim().ToLowerInvariant();
+        }
+
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {

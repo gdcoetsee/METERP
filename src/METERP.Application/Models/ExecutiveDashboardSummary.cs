@@ -43,4 +43,6 @@ public sealed class ExecutiveDashboardSummary
     public decimal OverduePurchaseOrderValue { get; init; }
 
     public IReadOnlyList<ConvertibleDocumentRow> OverduePurchaseOrderQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
+
+    public IReadOnlyList<ApprovalQueueRow> ApprovalQueue { get; init; } = Array.Empty<ApprovalQueueRow>();
 }

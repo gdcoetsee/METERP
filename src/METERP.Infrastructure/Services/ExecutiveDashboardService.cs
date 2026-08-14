@@ -46,10 +46,14 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
 
     public async Task<ExecutiveDashboardSummary> GetSummaryAsync(CancellationToken ct = default)
     {
-        var pendingQuotes = (await _quotes.GetPendingExecutiveApprovalAsync(ct)).Count;
-        var pendingReqs = (await _requisitions.GetPendingApprovalsAsync(ct)).Count;
-        var pendingLeave = (await _leave.GetPendingApprovalsAsync(ct)).Count;
-        var pendingField = (await _fieldReports.GetPendingAsync(ct)).Count;
+        var pendingQuoteList = await _quotes.GetPendingExecutiveApprovalAsync(ct);
+        var pendingReqList = await _requisitions.GetPendingApprovalsAsync(ct);
+        var pendingLeaveList = await _leave.GetPendingApprovalsAsync(ct);
+        var pendingFieldList = await _fieldReports.GetPendingAsync(ct);
+        var pendingQuotes = pendingQuoteList.Count;
+        var pendingReqs = pendingReqList.Count;
+        var pendingLeave = pendingLeaveList.Count;
+        var pendingField = pendingFieldList.Count;
 
         var ready = await _jobs.GetReadyToInvoiceQueueAsync(20, ct);
         var deposits = await _jobs.GetDepositDueQueueAsync(20, ct);
@@ -87,7 +91,65 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             AwaitingSignOffQueue = awaitingSignOff,
             OverduePurchaseOrders = overduePos.Count,
             OverduePurchaseOrderValue = overduePos.Sum(p => p.Total),
-            OverduePurchaseOrderQueue = overduePos
+            OverduePurchaseOrderQueue = overduePos,
+            ApprovalQueue = BuildApprovalQueue(pendingQuoteList, pendingReqList, pendingLeaveList, pendingFieldList)
         };
+    }
+
+    private static IReadOnlyList<ApprovalQueueRow> BuildApprovalQueue(
+        IReadOnlyList<Quote> quotes,
+        IReadOnlyList<StockRequisition> requisitions,
+        IReadOnlyList<LeaveRequest> leave,
+        IReadOnlyList<FieldReport> fieldReports)
+    {
+        var rows = new List<ApprovalQueueRow>(quotes.Count + requisitions.Count + leave.Count + fieldReports.Count);
+
+        foreach (var q in quotes)
+        {
+            rows.Add(new ApprovalQueueRow(
+                "Quote",
+                q.QuoteNumber,
+                q.Customer?.Name ?? "Customer",
+                $"/approvals?tab=quotes",
+                q.SubmittedForApprovalAt));
+        }
+
+        foreach (var r in requisitions)
+        {
+            rows.Add(new ApprovalQueueRow(
+                "REQ",
+                r.RequisitionNumber,
+                r.Job?.JobNumber ?? "Job",
+                "/approvals?tab=requisitions",
+                r.CreatedDate));
+        }
+
+        foreach (var l in leave)
+        {
+            var name = l.Employee != null
+                ? $"{l.Employee.FirstName} {l.Employee.LastName}".Trim()
+                : "Employee";
+            rows.Add(new ApprovalQueueRow(
+                "Leave",
+                name,
+                $"{l.StartDate:yyyy-MM-dd}–{l.EndDate:yyyy-MM-dd}",
+                "/approvals?tab=leave",
+                l.CreatedDate));
+        }
+
+        foreach (var f in fieldReports)
+        {
+            rows.Add(new ApprovalQueueRow(
+                "Field",
+                f.Job?.JobNumber ?? "Job",
+                $"{f.HoursWorked:N1}h",
+                "/approvals?tab=field",
+                f.SubmittedAt == default ? null : f.SubmittedAt));
+        }
+
+        return rows
+            .OrderBy(r => r.WaitingSince ?? DateTime.MaxValue)
+            .Take(10)
+            .ToList();
     }
 }
