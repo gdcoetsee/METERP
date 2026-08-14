@@ -13,6 +13,11 @@ public interface IJobService
     Task<JobCommandCenterSummary?> GetCommandCenterSummaryAsync(Guid jobId, CancellationToken ct = default);
     Task<IReadOnlyList<Job>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
 
+    /// <summary>
+    /// Signed-off open jobs that still need a bill (no counting invoice, or leftover quote).
+    /// </summary>
+    Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetReadyToInvoiceQueueAsync(int take = 20, CancellationToken ct = default);
+
     Task<Guid> CreateAsync(Job job, CancellationToken ct = default);
 
     /// <summary>

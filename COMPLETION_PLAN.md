@@ -9,7 +9,7 @@
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
-**2026-08-14:** Integrity stream is **done enough**. Soft-delete on the spine, scheduling double-book/leave clash, outstanding-PPE deactivate/delete, unbilled/open-REQ close acknowledgement, overdue collections alerts, extra actual travel on invoices, one-click overdue chase, and **notification click-through** to invoices/jobs are in. Application.Tests **1287** green.
+**2026-08-14:** Integrity stream is **done enough**. Speed-to-cash loop now includes chase, notification click-through, and a **ready-to-invoice queue** on Home (signed-off jobs with leftover bill, one click into Command Center invoice modal). Application.Tests **1288** green.
 
 **Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, field-to-invoice completeness. AI stays frozen. E2E remains a release checkpoint, not a development gate.
 

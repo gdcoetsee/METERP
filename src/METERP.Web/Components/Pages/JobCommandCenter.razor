@@ -537,6 +537,11 @@ else
 
     [Parameter] public Guid JobId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "invoice")]
+    public bool OpenInvoice { get; set; }
+
+    private bool _openedInvoiceFromQuery;
+
     private Job? _job;
     private JobCommandCenterSummary? _summary;
     private bool _loading = true;
@@ -608,6 +613,12 @@ else
         {
             _job = await JobService.GetByIdAsync(JobId);
             _summary = _job != null ? await JobService.GetCommandCenterSummaryAsync(JobId) : null;
+            if (OpenInvoice && !_openedInvoiceFromQuery && _job != null
+                && _job.IsOpenForOperations() && CanInvoice)
+            {
+                _showInvoiceModal = true;
+                _openedInvoiceFromQuery = true;
+            }
         }
         finally
         {

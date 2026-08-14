@@ -1684,6 +1684,39 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_GetReadyToInvoiceQueueAsync_IncludesSignedOffUnbilled_ExcludesFullyBilled()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var unsignedId = await SeedJobAsync(db, service, tenantId);
+        var readyId = await SeedJobAsync(db, service, tenantId);
+        var billedId = await SeedJobAsync(db, service, tenantId);
+
+        await service.SignOffAsync(readyId, Guid.NewGuid());
+        await service.SignOffAsync(billedId, Guid.NewGuid());
+
+        var billed = await db.Set<Job>().FirstAsync(j => j.Id == billedId);
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = billed.CustomerId,
+            JobId = billedId,
+            InvoiceNumber = "INV-FULL-Q",
+            DocumentType = InvoiceDocumentType.Final,
+            Status = InvoiceStatus.Sent,
+            Total = billed.QuotedTotal
+        });
+        await db.SaveChangesAsync();
+
+        var queue = await service.GetReadyToInvoiceQueueAsync();
+
+        Assert.Contains(queue, r => r.JobId == readyId && r.UnbilledResidual == 5000m);
+        Assert.DoesNotContain(queue, r => r.JobId == billedId);
+        Assert.DoesNotContain(queue, r => r.JobId == unsignedId);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();

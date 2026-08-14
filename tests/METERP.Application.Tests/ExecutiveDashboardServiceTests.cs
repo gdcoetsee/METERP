@@ -40,16 +40,10 @@ public class ExecutiveDashboardServiceTests
         notifications.Setup(s => s.GetUnreadCountAsync(It.IsAny<CancellationToken>())).ReturnsAsync(3);
 
         var jobs = new Mock<IJobService>();
-        jobs.Setup(s => s.GetAllAsync(null, 1, 200, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Job>
+        jobs.Setup(s => s.GetReadyToInvoiceQueueAsync(20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ReadyToInvoiceJobRow>
             {
-                new()
-                {
-                    JobNumber = "J-1",
-                    QuotedTotal = 10000m,
-                    SignOffStatus = JobSignOffStatus.SignedOff,
-                    Status = JobStatus.Completed
-                }
+                new(Guid.NewGuid(), "J-1", "Ready job", "Acme", 10000m, 0m, 10000m)
             });
 
         var invoices = new Mock<IInvoiceService>();

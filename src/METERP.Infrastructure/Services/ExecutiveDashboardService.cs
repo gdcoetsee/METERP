@@ -42,8 +42,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var pendingLeave = (await _leave.GetPendingApprovalsAsync(ct)).Count;
         var pendingField = (await _fieldReports.GetPendingAsync(ct)).Count;
 
-        var jobs = await _jobs.GetAllAsync(pageSize: 200, ct: ct);
-        var ready = jobs.Where(j => j.IsReadyToInvoice()).ToList();
+        var ready = await _jobs.GetReadyToInvoiceQueueAsync(20, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
@@ -57,9 +56,10 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             PendingApprovals = pendingQuotes + pendingReqs + pendingLeave + pendingField,
             UnreadNotifications = await _notifications.GetUnreadCountAsync(ct),
             ReadyToInvoiceJobs = ready.Count,
-            ReadyToInvoiceValue = ready.Sum(j => j.QuotedTotal),
+            ReadyToInvoiceValue = ready.Sum(j => j.UnbilledResidual > 0 ? j.UnbilledResidual : j.QuotedTotal),
             AgedDebtorsTotal = aged.Sum(a => a.BalanceDue),
-            LowStockItems = lowStock
+            LowStockItems = lowStock,
+            ReadyToInvoiceQueue = ready
         };
     }
 }

@@ -21,4 +21,6 @@ public sealed class ExecutiveDashboardSummary
     public decimal AgedDebtorsTotal { get; init; }
 
     public int LowStockItems { get; init; }
+
+    public IReadOnlyList<ReadyToInvoiceJobRow> ReadyToInvoiceQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
 }
