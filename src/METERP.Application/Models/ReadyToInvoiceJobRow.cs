@@ -7,4 +7,5 @@ public sealed record ReadyToInvoiceJobRow(
     string CustomerName,
     decimal QuotedTotal,
     decimal BilledToDate,
-    decimal UnbilledResidual);
+    decimal UnbilledResidual,
+    string Reason = "Unbilled");

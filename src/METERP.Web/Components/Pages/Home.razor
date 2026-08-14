@@ -308,7 +308,14 @@
                     <span> · <strong>@_executive.LowStockItems</strong> low-stock SKUs</span>
                 }
             </p>
-            @if (_executive.ReadyToInvoiceQueue.Count > 0)
+            @{
+                var cashQueue = _executive.DepositDueQueue
+                    .Concat(_executive.ReadyToInvoiceQueue
+                        .Where(r => _executive.DepositDueQueue.All(d => d.JobId != r.JobId)))
+                    .Take(8)
+                    .ToList();
+            }
+            @if (cashQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-ready-to-invoice">
                     <table class="table table-sm mb-0">
@@ -316,20 +323,26 @@
                             <tr>
                                 <th>Job</th>
                                 <th>Customer</th>
-                                <th class="text-end">Unbilled</th>
+                                <th>Why</th>
+                                <th class="text-end">Amount</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in _executive.ReadyToInvoiceQueue.Take(8))
+                            @foreach (var row in cashQueue)
                             {
+                                var isDeposit = string.Equals(row.Reason, "Deposit", StringComparison.OrdinalIgnoreCase);
                                 <tr>
                                     <td>@row.JobNumber — @row.Title</td>
                                     <td>@row.CustomerName</td>
+                                    <td>@row.Reason</td>
                                     <td class="text-end">R @row.UnbilledResidual.ToString("N0")</td>
                                     <td class="text-end">
-                                        <a class="btn btn-sm btn-success" href="@($"/jobs/{row.JobId:D}?invoice=1")"
-                                           data-testid="home-ready-invoice">Invoice</a>
+                                        <a class="btn btn-sm btn-success"
+                                           href="@($"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}")"
+                                           data-testid="@(isDeposit ? "home-deposit-invoice" : "home-ready-invoice")">
+                                            @(isDeposit ? "Deposit" : "Invoice")
+                                        </a>
                                     </td>
                                 </tr>
                             }

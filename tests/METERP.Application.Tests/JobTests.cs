@@ -1748,6 +1748,28 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_GetDepositDueQueueAsync_IncludesOpenUnpaidDeposit_ExcludesReceived()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var dueId = await SeedJobAsync(db, service, tenantId);
+        var paidId = await SeedJobAsync(db, service, tenantId);
+        var closedId = await SeedJobAsync(db, service, tenantId);
+
+        var paid = await db.Set<Job>().FirstAsync(j => j.Id == paidId);
+        paid.DepositReceived = true;
+        await service.CloseAsync(closedId, Guid.NewGuid(), "Closed with notes for leftover quote");
+        await db.SaveChangesAsync();
+
+        var queue = await service.GetDepositDueQueueAsync();
+
+        Assert.Contains(queue, r => r.JobId == dueId && r.Reason == "Deposit" && r.UnbilledResidual == 1500m);
+        Assert.DoesNotContain(queue, r => r.JobId == paidId);
+        Assert.DoesNotContain(queue, r => r.JobId == closedId);
+    }
+
+    [Fact]
     public async Task JobService_CancelAsync_RejectsReasonTooLong()
     {
         var tenantId = Guid.NewGuid();

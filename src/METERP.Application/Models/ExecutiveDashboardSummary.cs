@@ -23,4 +23,10 @@ public sealed class ExecutiveDashboardSummary
     public int LowStockItems { get; init; }
 
     public IReadOnlyList<ReadyToInvoiceJobRow> ReadyToInvoiceQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
+
+    public int DepositDueJobs { get; init; }
+
+    public decimal DepositDueValue { get; init; }
+
+    public IReadOnlyList<ReadyToInvoiceJobRow> DepositDueQueue { get; init; } = Array.Empty<ReadyToInvoiceJobRow>();
 }

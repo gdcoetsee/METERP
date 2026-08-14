@@ -204,6 +204,41 @@ public class JobService : IJobService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetDepositDueQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var jobs = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Where(j =>
+                j.Status != JobStatus.Closed
+                && j.Status != JobStatus.Cancelled
+                && j.DepositPercent > 0
+                && !j.DepositReceived)
+            .OrderByDescending(j => j.QuotedTotal * j.DepositPercent)
+            .ThenBy(j => j.JobNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return jobs
+            .Select(j =>
+            {
+                var deposit = Math.Round(j.QuotedTotal * j.DepositPercent / 100m, 2);
+                return new ReadyToInvoiceJobRow(
+                    j.Id,
+                    j.JobNumber,
+                    j.Title,
+                    j.Customer?.Name ?? "—",
+                    j.QuotedTotal,
+                    0m,
+                    deposit,
+                    "Deposit");
+            })
+            .ToList();
+    }
+
     private async Task<IReadOnlyList<Job>> LoadJobsAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<Job>()

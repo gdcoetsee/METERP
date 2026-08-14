@@ -43,6 +43,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var pendingField = (await _fieldReports.GetPendingAsync(ct)).Count;
 
         var ready = await _jobs.GetReadyToInvoiceQueueAsync(20, ct);
+        var deposits = await _jobs.GetDepositDueQueueAsync(20, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
@@ -59,7 +60,10 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             ReadyToInvoiceValue = ready.Sum(j => j.UnbilledResidual > 0 ? j.UnbilledResidual : j.QuotedTotal),
             AgedDebtorsTotal = aged.Sum(a => a.BalanceDue),
             LowStockItems = lowStock,
-            ReadyToInvoiceQueue = ready
+            ReadyToInvoiceQueue = ready,
+            DepositDueJobs = deposits.Count,
+            DepositDueValue = deposits.Sum(j => j.UnbilledResidual),
+            DepositDueQueue = deposits
         };
     }
 }

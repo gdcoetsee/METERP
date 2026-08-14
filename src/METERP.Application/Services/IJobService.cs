@@ -18,6 +18,11 @@ public interface IJobService
     /// </summary>
     Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetReadyToInvoiceQueueAsync(int take = 20, CancellationToken ct = default);
 
+    /// <summary>
+    /// Open jobs with a deposit percent that has not been received yet.
+    /// </summary>
+    Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetDepositDueQueueAsync(int take = 20, CancellationToken ct = default);
+
     Task<Guid> CreateAsync(Job job, CancellationToken ct = default);
 
     /// <summary>

@@ -45,6 +45,11 @@ public class ExecutiveDashboardServiceTests
             {
                 new(Guid.NewGuid(), "J-1", "Ready job", "Acme", 10000m, 0m, 10000m)
             });
+        jobs.Setup(s => s.GetDepositDueQueueAsync(20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ReadyToInvoiceJobRow>
+            {
+                new(Guid.NewGuid(), "J-DEP", "Mobilise", "Acme", 10000m, 0m, 3000m, "Deposit")
+            });
 
         var invoices = new Mock<IInvoiceService>();
         invoices.Setup(s => s.GetAgedDebtorsAsync(It.IsAny<CancellationToken>()))
@@ -80,6 +85,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(3, summary.UnreadNotifications);
         Assert.Equal(1, summary.ReadyToInvoiceJobs);
         Assert.Equal(10000m, summary.ReadyToInvoiceValue);
+        Assert.Equal(1, summary.DepositDueJobs);
+        Assert.Equal(3000m, summary.DepositDueValue);
         Assert.Equal(5000m, summary.AgedDebtorsTotal);
         Assert.Equal(1, summary.LowStockItems);
     }
