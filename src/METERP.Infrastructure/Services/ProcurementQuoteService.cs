@@ -58,8 +58,7 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
 
         await EnsureRequisitionJobOpenAsync(req, ct);
 
-        var supplier = await _dbContext.Set<Supplier>().FirstOrDefaultAsync(s => s.Id == supplierId && s.IsActive, ct)
-            ?? throw new InvalidOperationException("Supplier not found or inactive.");
+        var supplier = await EnsureSupplierActiveAsync(supplierId, ct);
 
         var alreadyQuoted = await _dbContext.Set<ProcurementSupplierQuote>()
             .AnyAsync(q => q.StockRequisitionId == requisitionId && q.SupplierId == supplierId, ct);
@@ -267,11 +266,15 @@ public sealed class ProcurementQuoteService : IProcurementQuoteService
             throw JobClosedException.ForJob(job.JobNumber);
     }
 
-    private async Task EnsureSupplierActiveAsync(Guid supplierId, CancellationToken ct)
+    private async Task<Supplier> EnsureSupplierActiveAsync(Guid supplierId, CancellationToken ct)
     {
         var supplier = await _dbContext.Set<Supplier>().AsNoTracking()
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.Id == supplierId, ct);
-        if (supplier == null || !supplier.IsActive)
+        if (supplier == null || supplier.IsDeleted)
+            throw new InvalidOperationException("Supplier not found or deleted.");
+        if (!supplier.IsActive)
             throw new InvalidOperationException("Supplier not found or inactive.");
+        return supplier;
     }
 }

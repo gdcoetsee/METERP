@@ -210,8 +210,9 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task UpdateStatusAsync(Guid poId, PurchaseOrderStatus newStatus, CancellationToken ct = default)
     {
+        // Do not Include Supplier here: a required + filtered navigation hides the PO
+        // when the supplier is soft-deleted (same pattern as invoice credit notes).
         var po = await _dbContext.Set<PurchaseOrder>()
-            .Include(p => p.Supplier)
             .Include(p => p.Lines)
             .FirstOrDefaultAsync(p => p.Id == poId, ct);
         if (po == null) return;
@@ -236,12 +237,16 @@ public class PurchaseOrderService : IPurchaseOrderService
             && !po.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot send a purchase order with no lines.");
 
+        Supplier? supplierForSend = null;
         if (newStatus == PurchaseOrderStatus.Sent)
         {
-            var supplier = po.Supplier
-                ?? await _dbContext.Set<Supplier>().AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.Id == po.SupplierId, ct);
-            if (supplier == null || !supplier.IsActive)
+            supplierForSend = await _dbContext.Set<Supplier>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == po.SupplierId, ct);
+            if (supplierForSend == null || supplierForSend.IsDeleted)
+                throw new InvalidOperationException("Cannot send a purchase order — supplier is missing or deleted.");
+            if (!supplierForSend.IsActive)
                 throw new InvalidOperationException("Cannot send a purchase order — supplier is missing or inactive.");
         }
 
@@ -274,8 +279,8 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         if (newStatus == PurchaseOrderStatus.Sent && previous != PurchaseOrderStatus.Sent)
         {
-            var supplierName = po.Supplier?.Name ?? "supplier";
-            var supplierEmail = po.Supplier?.Email?.Trim();
+            var supplierName = supplierForSend?.Name ?? "supplier";
+            var supplierEmail = supplierForSend?.Email?.Trim();
             var emailSent = false;
 
             if (_email?.IsConfigured == true && !string.IsNullOrWhiteSpace(supplierEmail))

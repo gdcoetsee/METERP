@@ -241,6 +241,22 @@ public class ProcurementQuoteServiceTests
     }
 
     [Fact]
+    public async Task AddQuote_ThrowsWhenSupplierSoftDeleted()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var supplier = await db.Set<Supplier>().FirstAsync(s => s.Id == supplierA);
+            supplier.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.AddQuoteAsync(reqId, supplierA, 50m));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task SelectQuoteAsync_ThrowsWhenSupplierDeactivatedMidChain()
     {
         var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
@@ -273,6 +289,42 @@ public class ProcurementQuoteServiceTests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 quotes.CreatePoFromSelectedQuoteAsync(reqId));
             Assert.Contains("inactive", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task SelectQuoteAsync_ThrowsWhenSupplierSoftDeletedMidChain()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            var supplier = await db.Set<Supplier>().FirstAsync(s => s.Id == supplierA);
+            supplier.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.SelectQuoteAsync(quoteId, TestUserId));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreatePoFromSelectedQuoteAsync_ThrowsWhenSupplierSoftDeletedMidChain()
+    {
+        var (db, quotes, _, _, reqId, supplierA, _) = await SeedAwaitingProcurementAsync();
+        await using (db)
+        {
+            var quoteId = await quotes.AddQuoteAsync(reqId, supplierA, 100m);
+            Assert.True(await quotes.SelectQuoteAsync(quoteId, TestUserId));
+
+            var supplier = await db.Set<Supplier>().FirstAsync(s => s.Id == supplierA);
+            supplier.IsDeleted = true;
+            await db.SaveChangesAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                quotes.CreatePoFromSelectedQuoteAsync(reqId));
+            Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 

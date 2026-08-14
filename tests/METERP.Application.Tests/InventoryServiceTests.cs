@@ -601,6 +601,40 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task RecordStockTransactionAsync_ThrowsWhenLinkedJobSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new InventoryService(db);
+        var id = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "JOB-DEL",
+            Name = "Cable",
+            QuantityOnHand = 20,
+            ReorderLevel = 2,
+            UnitCost = 10m
+        });
+
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Site" });
+        var job = new Job
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            JobNumber = "J-DEL-STK",
+            Title = "Gone",
+            Status = JobStatus.InProgress,
+            IsDeleted = true
+        };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordStockTransactionAsync(id, -1, StockTransactionType.Issue, jobId: job.Id));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RecordStockTransactionAsync_ThrowsWhenIssuingToClosedJob()
     {
         var tenantId = Guid.NewGuid();

@@ -859,9 +859,13 @@ public class JobService : IJobService
 
         if (labor.EmployeeId is { } empId && empId != Guid.Empty)
         {
-            var empOk = await _dbContext.Set<Employee>()
-                .AnyAsync(e => e.Id == empId && e.IsActive, ct);
-            if (!empOk)
+            var emp = await _dbContext.Set<Employee>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == empId, ct);
+            if (emp == null || emp.IsDeleted)
+                throw new InvalidOperationException("Labor employee not found or deleted.");
+            if (!emp.IsActive)
                 throw new InvalidOperationException("Labor employee not found or inactive.");
         }
 

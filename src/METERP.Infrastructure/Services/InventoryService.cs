@@ -211,9 +211,12 @@ public class InventoryService : IInventoryService
 
         if (jobId is { } linkedJobId && linkedJobId != Guid.Empty)
         {
+            // Soft-delete aware — deleted jobs must not silently vanish as "not found".
             var job = await _dbContext.Set<Job>().AsNoTracking()
-                .FirstOrDefaultAsync(j => j.Id == linkedJobId, ct)
-                ?? throw new InvalidOperationException("Linked job not found.");
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(j => j.Id == linkedJobId, ct);
+            if (job == null || job.IsDeleted)
+                throw new InvalidOperationException("Linked job not found or deleted.");
 
             // Issues against a job require the job still open for field ops.
             if (type == StockTransactionType.Issue && !job.IsOpenForOperations())

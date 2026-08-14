@@ -916,6 +916,38 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddLaborAsync_ThrowsWhenEmployeeSoftDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var empId = Guid.NewGuid();
+        db.Set<Employee>().Add(new Employee
+        {
+            Id = empId,
+            TenantId = tenantId,
+            EmployeeNumber = "E-LAB-D",
+            FirstName = "Gone",
+            LastName = "Hand",
+            IsActive = true,
+            IsDeleted = true
+        });
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddLaborAsync(new JobLabor
+            {
+                JobId = job.Id,
+                EmployeeId = empId,
+                Hours = 4,
+                HourlyRate = 100m
+            }));
+        Assert.Contains("deleted", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task JobService_CreateAsync_ThrowsWhenLeadEmployeeSoftDeleted()
     {
         var tenantId = Guid.NewGuid();
