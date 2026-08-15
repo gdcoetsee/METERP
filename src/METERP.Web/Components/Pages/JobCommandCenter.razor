@@ -50,7 +50,7 @@ else
                             @onclick="() => _showLaborModal = true">Add labor</button>
                     @if (_job.SignOffStatus != JobSignOffStatus.SignedOff)
                     {
-                        <button type="button" class="btn btn-sm btn-warning" data-testid="job-sign-off-button"
+                        <button type="button" class="btn btn-sm btn-warning @(HighlightSignOff ? "btn-lg" : "")" data-testid="job-sign-off-button"
                                 @onclick="AdvanceSignOffAsync">@SignOffButtonLabel</button>
                     }
                     @if (CanInvoice)
@@ -567,6 +567,9 @@ else
     [SupplyParameterFromQuery(Name = "invoice")]
     public string? InvoiceMode { get; set; }
 
+    [SupplyParameterFromQuery(Name = "signoff")]
+    public string? SignOffMode { get; set; }
+
     private bool _openedInvoiceFromQuery;
 
     private Job? _job;
@@ -609,6 +612,9 @@ else
 
     private bool CanManage => CurrentUser.Permissions.Contains(Permissions.JobsManage);
     private bool CanInvoice => CurrentUser.Permissions.Contains(Permissions.InvoicesManage);
+    private bool HighlightSignOff =>
+        string.Equals(SignOffMode, "1", StringComparison.OrdinalIgnoreCase)
+        && _job?.SignOffStatus != JobSignOffStatus.SignedOff;
 
     private bool InvoiceConfirmDisabled =>
         _invoiceDocType is InvoiceDocumentType.Final or InvoiceDocumentType.Partial

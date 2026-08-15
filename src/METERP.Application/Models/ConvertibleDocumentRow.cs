@@ -6,4 +6,9 @@ public sealed record ConvertibleDocumentRow(
     string Number,
     string CustomerName,
     decimal Total,
-    string Href);
+    string Href)
+{
+    public bool CanConvertDirectly =>
+        string.Equals(Kind, "Quote", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Kind, "Sales order", StringComparison.OrdinalIgnoreCase);
+}

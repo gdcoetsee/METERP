@@ -7,6 +7,7 @@
 @using METERP.Common
 @inject ICustomerService CustomerService
 @inject IQuoteService QuoteService
+@inject ISalesOrderService SalesOrderService
 @inject IJobService JobService
 @inject IInvoiceService InvoiceService
 @inject IUserService UserService
@@ -367,8 +368,20 @@
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
                                     <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-success" href="@row.Href"
-                                           data-testid="home-convert-job">Convert</a>
+                                        @if (row.CanConvertDirectly)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-success"
+                                                    data-testid="home-convert-job"
+                                                    disabled="@(_convertingId == row.Id)"
+                                                    @onclick="() => ConvertWonWorkAsync(row)">
+                                                Convert
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-success" href="@row.Href"
+                                               data-testid="home-convert-job">Quote</a>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -424,7 +437,7 @@
                                 var isDeposit = string.Equals(row.Reason, "Deposit", StringComparison.OrdinalIgnoreCase);
                                 var isSignOff = string.Equals(row.Reason, "Sign-off", StringComparison.OrdinalIgnoreCase);
                                 var href = isSignOff
-                                    ? $"/jobs/{row.JobId:D}"
+                                    ? $"/jobs/{row.JobId:D}?signoff=1"
                                     : $"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}";
                                 var label = isDeposit ? "Deposit" : isSignOff ? "Sign off" : "Invoice";
                                 var testId = isDeposit ? "home-deposit-invoice" : isSignOff ? "home-signoff-invoice" : "home-ready-invoice";
@@ -622,6 +635,7 @@
     private Tenant? currentTenant;
     private string? billingPortalUrl;
     private bool _initialized;
+    private Guid? _convertingId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -678,6 +692,41 @@
         finally
         {
             _initialized = true;
+        }
+    }
+
+    private async Task ConvertWonWorkAsync(ConvertibleDocumentRow row)
+    {
+        if (_convertingId is not null)
+            return;
+
+        _convertingId = row.Id;
+        try
+        {
+            Job job;
+            if (string.Equals(row.Kind, "Quote", StringComparison.OrdinalIgnoreCase))
+                job = await QuoteService.ConvertToJobAsync(row.Id);
+            else if (string.Equals(row.Kind, "Sales order", StringComparison.OrdinalIgnoreCase))
+                job = await SalesOrderService.ConvertToJobAsync(row.Id);
+            else
+            {
+                Nav.NavigateTo(row.Href);
+                return;
+            }
+
+            Toast.ShowSuccess($"{row.Kind} {row.Number} is now job {job.JobNumber}.");
+            var href = job.NeedsDepositInvoice()
+                ? $"/jobs/{job.Id:D}?invoice=deposit"
+                : $"/jobs/{job.Id:D}";
+            Nav.NavigateTo(href);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _convertingId = null;
         }
     }
 
