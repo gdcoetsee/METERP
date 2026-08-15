@@ -64,6 +64,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var overduePos = await _purchaseOrders.GetOverdueQueueAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
+        var overdueInvoices = aged.Where(a => a.DaysOverdue > 0).Take(8).ToList();
         var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
 
         return new ExecutiveDashboardSummary
@@ -92,7 +93,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             OverduePurchaseOrders = overduePos.Count,
             OverduePurchaseOrderValue = overduePos.Sum(p => p.Total),
             OverduePurchaseOrderQueue = overduePos,
-            ApprovalQueue = BuildApprovalQueue(pendingQuoteList, pendingReqList, pendingLeaveList, pendingFieldList)
+            ApprovalQueue = BuildApprovalQueue(pendingQuoteList, pendingReqList, pendingLeaveList, pendingFieldList),
+            OverdueInvoiceQueue = overdueInvoices
         };
     }
 

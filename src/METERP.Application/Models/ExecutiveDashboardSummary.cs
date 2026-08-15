@@ -1,3 +1,5 @@
+using METERP.Application.Services;
+
 namespace METERP.Application.Models;
 
 public sealed class ExecutiveDashboardSummary
@@ -45,4 +47,6 @@ public sealed class ExecutiveDashboardSummary
     public IReadOnlyList<ConvertibleDocumentRow> OverduePurchaseOrderQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
 
     public IReadOnlyList<ApprovalQueueRow> ApprovalQueue { get; init; } = Array.Empty<ApprovalQueueRow>();
+
+    public IReadOnlyList<AgedDebtorRow> OverdueInvoiceQueue { get; init; } = Array.Empty<AgedDebtorRow>();
 }

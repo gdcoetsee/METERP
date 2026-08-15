@@ -62,7 +62,8 @@ public class ExecutiveDashboardServiceTests
         invoices.Setup(s => s.GetAgedDebtorsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<AgedDebtorRow>
             {
-                new(Guid.NewGuid(), "INV-1", "Acme", DateTime.UtcNow.AddDays(-10), 5000m, 0m, 5000m, 10, "1-30")
+                new(Guid.NewGuid(), "INV-1", "Acme", DateTime.UtcNow.AddDays(-10), 5000m, 0m, 5000m, 10, "1-30"),
+                new(Guid.NewGuid(), "INV-CUR", "Acme", DateTime.UtcNow.AddDays(7), 2000m, 0m, 2000m, 0, "Current")
             });
 
         var inventory = new Mock<IInventoryService>();
@@ -118,7 +119,9 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(800m, summary.OverduePurchaseOrderValue);
         Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Quote" && r.Number == "Q-1");
         Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Leave");
-        Assert.Equal(5000m, summary.AgedDebtorsTotal);
+        Assert.Equal(7000m, summary.AgedDebtorsTotal);
+        Assert.Single(summary.OverdueInvoiceQueue);
+        Assert.Equal("INV-1", summary.OverdueInvoiceQueue[0].InvoiceNumber);
         Assert.Equal(1, summary.LowStockItems);
     }
 

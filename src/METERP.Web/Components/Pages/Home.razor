@@ -299,7 +299,7 @@
                 </div>
                 <div class="col-md-3">
                     <div class="fs-5 fw-bold text-danger">R @_executive.AgedDebtorsTotal.ToString("N0")</div>
-                    <div class="small text-muted"><a href="/invoices">Outstanding receivables — chase on Invoices</a></div>
+                    <div class="small text-muted">Outstanding receivables — chase below</div>
                 </div>
             </div>
             <p class="small text-muted mb-0 mt-2">
@@ -381,6 +381,49 @@
                                         {
                                             <a class="btn btn-sm btn-outline-success" href="@row.Href"
                                                data-testid="home-convert-job">Quote</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            @if (_executive.OverdueInvoiceQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-overdue-invoices">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Overdue invoice</th>
+                                <th>Customer</th>
+                                <th class="text-end">Days</th>
+                                <th class="text-end">Balance</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.OverdueInvoiceQueue)
+                            {
+                                <tr>
+                                    <td>@row.InvoiceNumber</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">@row.DaysOverdue</td>
+                                    <td class="text-end">R @row.BalanceDue.ToString("N0")</td>
+                                    <td class="text-end">
+                                        @if (CanChaseInvoices)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    data-testid="home-chase-invoice"
+                                                    disabled="@(_chasingInvoiceId == row.InvoiceId)"
+                                                    @onclick="() => ChaseOverdueInvoiceAsync(row.InvoiceId)">
+                                                Chase
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-danger" href="@($"/invoices?open={row.InvoiceId:D}")"
+                                               data-testid="home-chase-invoice">Open</a>
                                         }
                                     </td>
                                 </tr>
@@ -636,6 +679,8 @@
     private string? billingPortalUrl;
     private bool _initialized;
     private Guid? _convertingId;
+    private Guid? _chasingInvoiceId;
+    private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
 
     protected override async Task OnInitializedAsync()
     {
@@ -727,6 +772,30 @@
         finally
         {
             _convertingId = null;
+        }
+    }
+
+    private async Task ChaseOverdueInvoiceAsync(Guid invoiceId)
+    {
+        if (_chasingInvoiceId is not null)
+            return;
+
+        _chasingInvoiceId = invoiceId;
+        try
+        {
+            var result = await InvoiceService.ChaseOverdueAsync(invoiceId);
+            Toast.ShowSuccess(result.EmailSent
+                ? $"Chased {result.InvoiceNumber} — emailed {result.CustomerEmail}."
+                : $"Chased {result.InvoiceNumber} — recorded in-system (SMTP not configured).");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _chasingInvoiceId = null;
         }
     }
 
