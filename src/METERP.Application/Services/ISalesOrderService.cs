@@ -20,6 +20,9 @@ public interface ISalesOrderService
     /// <summary>Confirmed sales orders that have not been converted to a job.</summary>
     Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconvertedConfirmedAsync(int take = 20, CancellationToken ct = default);
 
+    /// <summary>Draft sales orders that have lines and can be confirmed.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconfirmedQueueAsync(int take = 20, CancellationToken ct = default);
+
     // Line management
     Task<Guid> AddLineAsync(SalesOrderLine line, CancellationToken ct = default);
     Task UpdateLineAsync(SalesOrderLine line, CancellationToken ct = default);

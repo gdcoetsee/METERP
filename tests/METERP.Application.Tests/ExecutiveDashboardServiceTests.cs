@@ -98,6 +98,11 @@ public class ExecutiveDashboardServiceTests
         var salesOrders = new Mock<ISalesOrderService>();
         salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        salesOrders.Setup(s => s.GetUnconfirmedQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConvertibleDocumentRow>
+            {
+                new(Guid.NewGuid(), "Sales order", "SO-DRAFT", "Acme", 3200m, "/sales-orders?panel=1")
+            });
 
         var opportunities = new Mock<IOpportunityService>();
         opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
@@ -148,6 +153,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal("Q-SEND", summary.UnsentQuoteQueue[0].Number);
         Assert.Single(summary.UnsentInvoiceQueue);
         Assert.Equal("INV-DRAFT", summary.UnsentInvoiceQueue[0].Number);
+        Assert.Single(summary.UnconfirmedSalesOrderQueue);
+        Assert.Equal("SO-DRAFT", summary.UnconfirmedSalesOrderQueue[0].Number);
         Assert.Contains(summary.ApprovalQueue, r =>
             r.Kind == "Quote"
             && r.Number == "Q-1"
@@ -252,6 +259,8 @@ public class ExecutiveDashboardServiceTests
 
         var salesOrders = new Mock<ISalesOrderService>();
         salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        salesOrders.Setup(s => s.GetUnconfirmedQueueAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
         var opportunities = new Mock<IOpportunityService>();

@@ -218,6 +218,44 @@ public class SalesOrderServiceTests
     }
 
     [Fact]
+    public async Task GetUnconfirmedQueueAsync_IncludesDraftsWithLines_ExcludesConfirmedAndEmpty()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var draftId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                TaxRate = 0m,
+                Lines = { new SalesOrderLine { Description = "Ready", Quantity = 1, UnitPrice = 1500m } }
+            });
+            var emptyId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                TaxRate = 0m
+            });
+            var confirmedId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0m,
+                Lines = { new SalesOrderLine { Description = "Done", Quantity = 1, UnitPrice = 800m } }
+            });
+
+            var queue = await service.GetUnconfirmedQueueAsync();
+
+            Assert.Contains(queue, r => r.Id == draftId && r.Kind == "Sales order" && r.Total == 1500m);
+            Assert.DoesNotContain(queue, r => r.Id == emptyId);
+            Assert.DoesNotContain(queue, r => r.Id == confirmedId);
+        }
+    }
+
+    [Fact]
     public async Task ConvertToJobAsync_ThrowsWhenSalesOrderNotFound()
     {
         var tenantId = Guid.NewGuid();

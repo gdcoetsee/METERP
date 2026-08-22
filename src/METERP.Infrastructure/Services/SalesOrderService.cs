@@ -92,6 +92,31 @@ public class SalesOrderService : ISalesOrderService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconfirmedQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var orders = await _dbContext.Set<SalesOrder>()
+            .AsNoTracking()
+            .Include(s => s.Customer)
+            .Where(s => s.Status == SalesOrderStatus.Draft && s.Lines.Any())
+            .OrderByDescending(s => s.Total)
+            .ThenBy(s => s.SoNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return orders
+            .Select(s => new ConvertibleDocumentRow(
+                s.Id,
+                "Sales order",
+                s.SoNumber,
+                s.Customer?.Name ?? "—",
+                s.Total,
+                $"/sales-orders?panel={s.Id:D}"))
+            .ToList();
+    }
+
     private async Task<IReadOnlyList<SalesOrder>> LoadSalesOrdersAsync(string? search, int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.Set<SalesOrder>()

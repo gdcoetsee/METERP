@@ -405,6 +405,47 @@
                     </table>
                 </div>
             }
+            @if (_executive.UnconfirmedSalesOrderQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-unconfirmed-orders">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Draft sales order</th>
+                                <th>Customer</th>
+                                <th class="text-end">Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.UnconfirmedSalesOrderQueue)
+                            {
+                                <tr>
+                                    <td>@row.Number</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">R @row.Total.ToString("N0")</td>
+                                    <td class="text-end">
+                                        @if (CanConfirmSalesOrders)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-info"
+                                                    data-testid="home-confirm-so"
+                                                    disabled="@(_confirmingSoId == row.Id)"
+                                                    @onclick="() => ConfirmSalesOrderAsync(row)">
+                                                Confirm
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
+                                               data-testid="home-confirm-so">Open</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (_executive.ConvertToJobQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-convert-to-job">
@@ -828,10 +869,12 @@
     private Guid? _sendingInvoiceId;
     private Guid? _sendingPoId;
     private Guid? _sendingQuoteId;
+    private Guid? _confirmingSoId;
     private string? _approvingKey;
     private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
     private bool CanSendPurchaseOrders => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
     private bool CanSendQuotes => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
+    private bool CanConfirmSalesOrders => CurrentUserService.Permissions.Contains(Permissions.SalesOrdersManage);
 
     private static string ApprovalKey(ApprovalQueueRow row) => $"{row.Kind}:{row.Id:D}";
 
@@ -1056,6 +1099,28 @@
         }
 
         throw new InvalidOperationException($"Cannot approve {row.Kind} from Home.");
+    }
+
+    private async Task ConfirmSalesOrderAsync(ConvertibleDocumentRow row)
+    {
+        if (_confirmingSoId is not null)
+            return;
+
+        _confirmingSoId = row.Id;
+        try
+        {
+            await SalesOrderService.UpdateStatusAsync(row.Id, SalesOrderStatus.Confirmed);
+            Toast.ShowSuccess($"Confirmed {row.Number} for {row.CustomerName}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _confirmingSoId = null;
+        }
     }
 
     private async Task SendQuoteAsync(ConvertibleDocumentRow row)
