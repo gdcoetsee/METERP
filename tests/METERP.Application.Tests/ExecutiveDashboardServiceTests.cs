@@ -93,7 +93,10 @@ public class ExecutiveDashboardServiceTests
                 It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<InventoryItem> { new() { Sku = "LOW-1", Name = "Cable" } });
+            .ReturnsAsync(new List<InventoryItem>
+            {
+                new() { Id = Guid.NewGuid(), Sku = "LOW-1", Name = "Cable", QuantityOnHand = 2, ReorderLevel = 10 }
+            });
 
         var salesOrders = new Mock<ISalesOrderService>();
         salesOrders.Setup(s => s.GetUnconvertedConfirmedAsync(10, It.IsAny<CancellationToken>()))
@@ -134,6 +137,13 @@ public class ExecutiveDashboardServiceTests
                 new(Guid.NewGuid(), "Sipho Off", "First Aid", DateTime.UtcNow.Date.AddDays(8), 8, "/certifications")
             });
 
+        var docs = new Mock<ICompanyDocumentService>();
+        docs.Setup(s => s.GetExpiringQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CompanyDocumentExpiryRow>
+            {
+                new(Guid.NewGuid(), "COID Certificate", "COID", DateTime.UtcNow.Date.AddDays(12), 12, "/company-documents")
+            });
+
         var service = new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -147,7 +157,8 @@ public class ExecutiveDashboardServiceTests
             opportunities.Object,
             purchaseOrders.Object,
             ppe.Object,
-            certs.Object);
+            certs.Object,
+            docs.Object);
 
         var summary = await service.GetSummaryAsync();
 
@@ -175,6 +186,10 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal("HARDHAT Hard hat", summary.OutstandingPpeQueue[0].ItemName);
         Assert.Single(summary.ExpiringCertificationQueue);
         Assert.Equal("First Aid", summary.ExpiringCertificationQueue[0].CertificationType);
+        Assert.Single(summary.ExpiringCompanyDocumentQueue);
+        Assert.Equal("COID", summary.ExpiringCompanyDocumentQueue[0].DocumentType);
+        Assert.Single(summary.LowStockQueue);
+        Assert.Equal("LOW-1", summary.LowStockQueue[0].Sku);
         Assert.Contains(summary.ApprovalQueue, r =>
             r.Kind == "Quote"
             && r.Number == "Q-1"
@@ -301,6 +316,10 @@ public class ExecutiveDashboardServiceTests
         certs.Setup(s => s.GetExpiringQueueAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<CertificationExpiryRow>());
 
+        var docs = new Mock<ICompanyDocumentService>();
+        docs.Setup(s => s.GetExpiringQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<CompanyDocumentExpiryRow>());
+
         return new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -314,6 +333,7 @@ public class ExecutiveDashboardServiceTests
             opportunities.Object,
             purchaseOrders.Object,
             ppe.Object,
-            certs.Object);
+            certs.Object,
+            docs.Object);
     }
 }

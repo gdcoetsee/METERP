@@ -19,6 +19,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
     private readonly IPurchaseOrderService _purchaseOrders;
     private readonly IPpeIssueService _ppe;
     private readonly IEmployeeCertificationService _certs;
+    private readonly ICompanyDocumentService _companyDocuments;
 
     public ExecutiveDashboardService(
         IQuoteService quotes,
@@ -33,7 +34,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         IOpportunityService opportunities,
         IPurchaseOrderService purchaseOrders,
         IPpeIssueService ppe,
-        IEmployeeCertificationService certs)
+        IEmployeeCertificationService certs,
+        ICompanyDocumentService companyDocuments)
     {
         _quotes = quotes;
         _requisitions = requisitions;
@@ -48,6 +50,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         _purchaseOrders = purchaseOrders;
         _ppe = ppe;
         _certs = certs;
+        _companyDocuments = companyDocuments;
     }
 
     public async Task<ExecutiveDashboardSummary> GetSummaryAsync(CancellationToken ct = default)
@@ -74,10 +77,11 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var unconfirmedOrders = await _salesOrders.GetUnconfirmedQueueAsync(10, ct);
         var outstandingPpe = await _ppe.GetOutstandingQueueAsync(10, ct);
         var expiringCerts = await _certs.GetExpiringQueueAsync(10, ct);
+        var expiringDocs = await _companyDocuments.GetExpiringQueueAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var overdueInvoices = aged.Where(a => a.DaysOverdue > 0).Take(8).ToList();
-        var lowStock = (await _inventory.GetAllItemsAsync(lowStockOnly: true, ct: ct)).Count;
+        var lowStockItems = await _inventory.GetAllItemsAsync(lowStockOnly: true, pageSize: 10, ct: ct);
 
         return new ExecutiveDashboardSummary
         {
@@ -90,7 +94,16 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             ReadyToInvoiceJobs = ready.Count,
             ReadyToInvoiceValue = ready.Sum(j => j.UnbilledResidual > 0 ? j.UnbilledResidual : j.QuotedTotal),
             AgedDebtorsTotal = aged.Sum(a => a.BalanceDue),
-            LowStockItems = lowStock,
+            LowStockItems = lowStockItems.Count,
+            LowStockQueue = lowStockItems
+                .Select(i => new LowStockRow(
+                    i.Id,
+                    i.Sku,
+                    i.Name,
+                    i.QuantityOnHand,
+                    i.ReorderLevel,
+                    "/inventory"))
+                .ToList(),
             ReadyToInvoiceQueue = ready,
             DepositDueJobs = deposits.Count,
             DepositDueValue = deposits.Sum(j => j.UnbilledResidual),
@@ -111,6 +124,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             UnconfirmedSalesOrderQueue = unconfirmedOrders,
             OutstandingPpeQueue = outstandingPpe,
             ExpiringCertificationQueue = expiringCerts,
+            ExpiringCompanyDocumentQueue = expiringDocs,
             ApprovalQueue = BuildApprovalQueue(pendingQuoteList, pendingReqList, pendingLeaveList, pendingFieldList),
             OverdueInvoiceQueue = overdueInvoices
         };

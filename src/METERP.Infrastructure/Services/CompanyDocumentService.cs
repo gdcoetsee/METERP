@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -186,5 +187,28 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
             .Where(d => !d.NoExpiry && d.ExpiryDate != null && d.ExpiryDate <= cutoff)
             .OrderBy(d => d.ExpiryDate)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<CompanyDocumentExpiryRow>> GetExpiringQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var today = DateTime.UtcNow.Date;
+        var docs = await GetExpiringAsync(30, ct);
+        return docs
+            .Take(take)
+            .Select(d =>
+            {
+                var expiry = d.ExpiryDate ?? today;
+                return new CompanyDocumentExpiryRow(
+                    d.Id,
+                    d.Title,
+                    d.DocumentType,
+                    expiry,
+                    (expiry.Date - today).Days,
+                    "/company-documents");
+            })
+            .ToList();
     }
 }

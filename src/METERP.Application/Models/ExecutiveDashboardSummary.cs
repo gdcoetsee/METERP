@@ -58,6 +58,10 @@ public sealed class ExecutiveDashboardSummary
 
     public IReadOnlyList<CertificationExpiryRow> ExpiringCertificationQueue { get; init; } = Array.Empty<CertificationExpiryRow>();
 
+    public IReadOnlyList<CompanyDocumentExpiryRow> ExpiringCompanyDocumentQueue { get; init; } = Array.Empty<CompanyDocumentExpiryRow>();
+
+    public IReadOnlyList<LowStockRow> LowStockQueue { get; init; } = Array.Empty<LowStockRow>();
+
     public IReadOnlyList<ApprovalQueueRow> ApprovalQueue { get; init; } = Array.Empty<ApprovalQueueRow>();
 
     public IReadOnlyList<AgedDebtorRow> OverdueInvoiceQueue { get; init; } = Array.Empty<AgedDebtorRow>();

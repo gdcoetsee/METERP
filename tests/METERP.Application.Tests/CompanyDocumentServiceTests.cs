@@ -271,6 +271,12 @@ public class CompanyDocumentServiceTests
 
             Assert.Single(expiring);
             Assert.Equal("Soon", expiring[0].Title);
+
+            var queue = await service.GetExpiringQueueAsync();
+            Assert.Single(queue);
+            Assert.Equal("Soon", queue[0].Title);
+            Assert.Equal("COID", queue[0].DocumentType);
+            Assert.True(queue[0].DaysRemaining <= 10);
         }
     }
 

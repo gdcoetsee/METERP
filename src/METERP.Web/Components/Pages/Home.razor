@@ -701,6 +701,64 @@
                     </table>
                 </div>
             }
+            @if (_executive.LowStockQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-low-stock">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Low stock</th>
+                                <th class="text-end">On hand</th>
+                                <th class="text-end">Reorder</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.LowStockQueue)
+                            {
+                                <tr>
+                                    <td>@row.Sku @row.Name</td>
+                                    <td class="text-end">@row.OnHand.ToString("N2")</td>
+                                    <td class="text-end">@row.ReorderLevel.ToString("N2")</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-warning" href="@row.Href"
+                                           data-testid="home-low-stock-item">Reorder</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            @if (_executive.ExpiringCompanyDocumentQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-expiring-docs">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Company document</th>
+                                <th>Type</th>
+                                <th class="text-end">Days</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.ExpiringCompanyDocumentQueue)
+                            {
+                                <tr>
+                                    <td>@row.Title</td>
+                                    <td>@row.DocumentType</td>
+                                    <td class="text-end">@row.DaysRemaining</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-danger" href="@row.Href"
+                                           data-testid="home-expiring-doc">Renew</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (_executive.ExpiringCertificationQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-expiring-certs">

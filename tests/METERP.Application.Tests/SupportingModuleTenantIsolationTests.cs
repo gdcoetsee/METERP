@@ -79,7 +79,8 @@ public class SupportingModuleTenantIsolationTests
             new OpportunityService(db),
             new PurchaseOrderService(db, inventoryService),
             new PpeIssueService(db, inventoryService),
-            new EmployeeCertificationService(db));
+            new EmployeeCertificationService(db),
+            new CompanyDocumentService(db, Mock.Of<IDocumentStorageService>(), new Mock<ITenantProvider>().Object));
     }
 
     [Fact]
