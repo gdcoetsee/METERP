@@ -9,7 +9,7 @@
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
-**2026-08-15:** Integrity stream is **done enough**. Home now converts won work, queues approvals/POs/cash, and **chases overdue invoices in one click**. Application.Tests **1340** green.
+**2026-08-22:** Integrity stream is **done enough**. Home now converts won work, queues approvals/POs/cash, **chases overdue invoices**, and **records remaining payment in one click**. Payment recording emails the customer a receipt when SMTP is set. Application.Tests **1343** green.
 
 **Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, and remaining commercial transitions (PO send, payment received, quote approval). AI stays frozen. E2E remains a release checkpoint, not a development gate.
 

@@ -1153,4 +1153,124 @@ public class InvoiceBillingServiceTests
             Assert.Contains("already chased", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    [Fact]
+    public async Task RecordPaymentAsync_EmailsCustomerReceipt_WhenSmtpConfigured()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"pay-receipt-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        var notifications = new Mock<ITenantNotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<TenantNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var audit = new Mock<IAuditService>();
+        audit.Setup(a => a.LogAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new InvoiceService(db, auditService: audit.Object, email: email.Object, notifications: notifications.Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Pay Co", Email = "ap@pay.co" };
+        db.Set<Customer>().Add(customer);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-RCPT",
+            Status = InvoiceStatus.Sent,
+            Total = 2000m,
+            AmountPaid = 500m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        await service.RecordPaymentAsync(invoice.Id, 1500m, DateTime.UtcNow.Date, "EFT", Guid.NewGuid(), null);
+
+        email.Verify(e => e.SendEmailAsync(
+            "ap@pay.co",
+            It.Is<string>(s => s.Contains("INV-RCPT") && s.Contains("Payment received")),
+            It.Is<string>(b => b.Contains("INV-RCPT") && b.Contains("Amount received") && b.Contains("Balance due")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(n => n.CreateAsync(
+            It.Is<TenantNotification>(t =>
+                t.Category == "collections"
+                && t.RelatedEntityId == invoice.Id
+                && t.Message.Contains("Receipt emailed to ap@pay.co")),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var saved = await db.Set<Invoice>().FirstAsync(i => i.Id == invoice.Id);
+        Assert.Equal(2000m, saved.AmountPaid);
+        Assert.Equal(InvoiceStatus.Paid, saved.Status);
+    }
+
+    [Fact]
+    public async Task RecordPaymentAsync_SucceedsWithoutReceipt_WhenNoSmtpOrEmail()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Silent Co" };
+            db.Set<Customer>().Add(customer);
+            var invoice = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-SILENT",
+                Status = InvoiceStatus.Sent,
+                Total = 400m
+            };
+            db.Set<Invoice>().Add(invoice);
+            await db.SaveChangesAsync();
+
+            var paymentId = await service.RecordPaymentAsync(
+                invoice.Id, 400m, DateTime.UtcNow.Date, "cash", null, null);
+
+            Assert.NotEqual(Guid.Empty, paymentId);
+            var saved = await db.Set<Invoice>().FirstAsync(i => i.Id == invoice.Id);
+            Assert.Equal(400m, saved.AmountPaid);
+            Assert.Equal(InvoiceStatus.Paid, saved.Status);
+        }
+    }
+
+    [Fact]
+    public async Task RecordPaymentAsync_DoesNotFail_WhenReceiptEmailThrows()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"pay-receipt-fail-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        email.Setup(e => e.SendEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("SMTP down"));
+
+        var service = new InvoiceService(db, email: email.Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Fail Mail", Email = "ap@fail.co" };
+        db.Set<Customer>().Add(customer);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-FAILMAIL",
+            Status = InvoiceStatus.Sent,
+            Total = 250m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var paymentId = await service.RecordPaymentAsync(
+            invoice.Id, 250m, DateTime.UtcNow.Date, "EFT", null, null);
+
+        Assert.NotEqual(Guid.Empty, paymentId);
+        Assert.Equal(250m, (await db.Set<Invoice>().FirstAsync(i => i.Id == invoice.Id)).AmountPaid);
+    }
 }

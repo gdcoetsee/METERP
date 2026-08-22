@@ -28,6 +28,10 @@ public interface IInvoiceService
 
     Task<IReadOnlyList<InvoicePayment>> GetPaymentsAsync(Guid invoiceId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Records a payment. Emails the customer a receipt when SMTP and a customer email are set;
+    /// the payment still succeeds if email cannot be sent.
+    /// </summary>
     Task<Guid> RecordPaymentAsync(
         Guid invoiceId,
         decimal amount,

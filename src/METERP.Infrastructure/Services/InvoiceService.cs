@@ -929,6 +929,9 @@ public class InvoiceService : IInvoiceService
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
 
+        var remaining = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+        var receiptNote = await TryEmailPaymentReceiptAsync(invoice, amount, remaining, ct);
+
         if (_auditService != null)
         {
             await _auditService.LogAsync(
@@ -936,13 +939,13 @@ public class InvoiceService : IInvoiceService
                 "Invoice",
                 invoice.InvoiceNumber,
                 $"Recorded payment R {amount:N2}" + (reference != null ? $" ref {reference}" : "")
-                + (popFileName != null ? $" POP {popFileName}" : ""),
+                + (popFileName != null ? $" POP {popFileName}" : "")
+                + receiptNote,
                 ct);
         }
 
         if (_notifications != null)
         {
-            var remaining = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
             await _notifications.CreateAsync(new TenantNotification
             {
                 TenantId = invoice.TenantId,
@@ -950,8 +953,8 @@ public class InvoiceService : IInvoiceService
                     ? $"Deposit received on {invoice.InvoiceNumber}"
                     : $"Payment received on {invoice.InvoiceNumber}",
                 Message = depositJustReceived
-                    ? $"R {amount:N2} cleared the deposit on {depositJob?.JobNumber ?? "the job"}. Mobilisation can proceed."
-                    : $"R {amount:N2} recorded. Balance due R {remaining:N2}.",
+                    ? $"R {amount:N2} cleared the deposit on {depositJob?.JobNumber ?? "the job"}. Mobilisation can proceed.{receiptNote}"
+                    : $"R {amount:N2} recorded. Balance due R {remaining:N2}.{receiptNote}",
                 Category = "collections",
                 TargetRoles = "Admin,Executive,Finance",
                 RelatedEntityId = invoice.Id,
@@ -960,6 +963,48 @@ public class InvoiceService : IInvoiceService
         }
 
         return payment.Id;
+    }
+
+    /// <summary>
+    /// Best-effort receipt. Payment is already committed — never throw from here.
+    /// </summary>
+    private async Task<string> TryEmailPaymentReceiptAsync(
+        Invoice invoice,
+        decimal amount,
+        decimal remaining,
+        CancellationToken ct)
+    {
+        try
+        {
+            var customer = invoice.Customer
+                ?? await _dbContext.Set<Customer>()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c =>
+                        c.Id == invoice.CustomerId
+                        && (invoice.TenantId == Guid.Empty || c.TenantId == invoice.TenantId), ct);
+            var email = customer?.Email?.Trim();
+            if (customer == null || customer.IsDeleted || string.IsNullOrWhiteSpace(email))
+                return " Customer has no email — receipt not sent.";
+            if (_email?.IsConfigured != true)
+                return " SMTP not configured — receipt recorded in-system only.";
+
+            var html = $"""
+                <p>We have received your payment.</p>
+                <ul>
+                  <li><strong>Invoice:</strong> {invoice.InvoiceNumber}</li>
+                  <li><strong>Amount received:</strong> R {amount:N2}</li>
+                  <li><strong>Balance due:</strong> R {remaining:N2}</li>
+                </ul>
+                <p>Thank you.</p>
+                """;
+            await _email.SendEmailAsync(email, $"Payment received — invoice {invoice.InvoiceNumber}", html, ct);
+            return $" Receipt emailed to {email}.";
+        }
+        catch
+        {
+            return " Receipt email failed.";
+        }
     }
 
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Invoices);

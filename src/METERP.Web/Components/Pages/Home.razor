@@ -413,11 +413,17 @@
                                     <td class="text-end">
                                         @if (CanChaseInvoices)
                                         {
-                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                            <button type="button" class="btn btn-sm btn-outline-danger me-1"
                                                     data-testid="home-chase-invoice"
-                                                    disabled="@(_chasingInvoiceId == row.InvoiceId)"
+                                                    disabled="@(_actingInvoiceId == row.InvoiceId)"
                                                     @onclick="() => ChaseOverdueInvoiceAsync(row.InvoiceId)">
                                                 Chase
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-success"
+                                                    data-testid="home-record-payment"
+                                                    disabled="@(_actingInvoiceId == row.InvoiceId)"
+                                                    @onclick="() => RecordOverduePaymentAsync(row)">
+                                                Received
                                             </button>
                                         }
                                         else
@@ -679,7 +685,7 @@
     private string? billingPortalUrl;
     private bool _initialized;
     private Guid? _convertingId;
-    private Guid? _chasingInvoiceId;
+    private Guid? _actingInvoiceId;
     private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
 
     protected override async Task OnInitializedAsync()
@@ -777,10 +783,10 @@
 
     private async Task ChaseOverdueInvoiceAsync(Guid invoiceId)
     {
-        if (_chasingInvoiceId is not null)
+        if (_actingInvoiceId is not null)
             return;
 
-        _chasingInvoiceId = invoiceId;
+        _actingInvoiceId = invoiceId;
         try
         {
             var result = await InvoiceService.ChaseOverdueAsync(invoiceId);
@@ -795,7 +801,35 @@
         }
         finally
         {
-            _chasingInvoiceId = null;
+            _actingInvoiceId = null;
+        }
+    }
+
+    private async Task RecordOverduePaymentAsync(AgedDebtorRow row)
+    {
+        if (_actingInvoiceId is not null)
+            return;
+
+        _actingInvoiceId = row.InvoiceId;
+        try
+        {
+            await InvoiceService.RecordPaymentAsync(
+                row.InvoiceId,
+                row.BalanceDue,
+                DateTime.UtcNow.Date,
+                "Home cash queue",
+                CurrentUserService.UserId,
+                "Recorded remaining balance from Home.");
+            Toast.ShowSuccess($"Received R {row.BalanceDue:N0} on {row.InvoiceNumber}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _actingInvoiceId = null;
         }
     }
 
