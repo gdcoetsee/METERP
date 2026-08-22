@@ -15,6 +15,9 @@
 @inject IAssetService AssetService
 @inject ISupplierService SupplierService
 @inject IPurchaseOrderService PurchaseOrderService
+@inject IStockRequisitionService RequisitionService
+@inject ILeaveService LeaveService
+@inject IFieldReportService FieldReportService
 @inject ICurrentUserService CurrentUserService
 @inject ITenantService TenantService
 @inject IBillingPortalService BillingPortalService
@@ -340,8 +343,20 @@
                                     <td>@row.Number</td>
                                     <td>@row.Subject</td>
                                     <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-warning" href="@row.Href"
-                                           data-testid="home-approve-item">Approve</a>
+                                        @if (CanApprove(row))
+                                        {
+                                            <button type="button" class="btn btn-sm btn-warning"
+                                                    data-testid="home-approve-item"
+                                                    disabled="@(_approvingKey == ApprovalKey(row))"
+                                                    @onclick="() => ApproveFromHomeAsync(row)">
+                                                Approve
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-warning" href="@row.Href"
+                                               data-testid="home-approve-item">Review</a>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -729,8 +744,20 @@
     private Guid? _convertingId;
     private Guid? _actingInvoiceId;
     private Guid? _sendingPoId;
+    private string? _approvingKey;
     private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
     private bool CanSendPurchaseOrders => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
+
+    private static string ApprovalKey(ApprovalQueueRow row) => $"{row.Kind}:{row.Id:D}";
+
+    private bool CanApprove(ApprovalQueueRow row) => row.Kind switch
+    {
+        "Quote" => CurrentUserService.Permissions.Contains(Permissions.QuotesApprove),
+        "REQ" => CurrentUserService.Permissions.Contains(Permissions.RequisitionsApprove),
+        "Leave" => CurrentUserService.Permissions.Contains(Permissions.LeaveApprove),
+        "Field" => CurrentUserService.Permissions.Contains(Permissions.JobsManage),
+        _ => false
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -847,6 +874,81 @@
         {
             _actingInvoiceId = null;
         }
+    }
+
+    private async Task ApproveFromHomeAsync(ApprovalQueueRow row)
+    {
+        if (_approvingKey is not null)
+            return;
+        if (CurrentUserService.UserId is not { } userId)
+        {
+            Toast.ShowError("Sign in again to approve.");
+            return;
+        }
+
+        _approvingKey = ApprovalKey(row);
+        try
+        {
+            var message = await AdvanceApprovalAsync(row, userId);
+            Toast.ShowSuccess(message);
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _approvingKey = null;
+        }
+    }
+
+    private async Task<string> AdvanceApprovalAsync(ApprovalQueueRow row, Guid userId)
+    {
+        if (string.Equals(row.Kind, "Quote", StringComparison.OrdinalIgnoreCase))
+        {
+            await QuoteService.ExecutiveApproveAsync(row.Id, userId);
+            return $"{row.Number} approved — can now be marked Sent.";
+        }
+
+        if (string.Equals(row.Kind, "REQ", StringComparison.OrdinalIgnoreCase))
+        {
+            var wasManager = string.Equals(row.Stage, nameof(RequisitionStatus.PendingManager), StringComparison.Ordinal);
+            var approved = row.Stage switch
+            {
+                nameof(RequisitionStatus.PendingManager) => await RequisitionService.ApproveManagerAsync(row.Id, userId),
+                nameof(RequisitionStatus.PendingExecutive) => await RequisitionService.ApproveExecutiveAsync(row.Id, userId),
+                _ => false
+            };
+            if (!approved)
+                throw new InvalidOperationException("Requisition is no longer pending at this approval stage.");
+            return wasManager
+                ? $"{row.Number} advanced to executive approval."
+                : $"{row.Number} approved — stock reserved for issue.";
+        }
+
+        if (string.Equals(row.Kind, "Leave", StringComparison.OrdinalIgnoreCase))
+        {
+            var approved = row.Stage switch
+            {
+                nameof(LeaveRequestStatus.PendingManager) => await LeaveService.ApproveManagerAsync(row.Id, userId),
+                nameof(LeaveRequestStatus.PendingExecutive) => await LeaveService.ApproveExecutiveAsync(row.Id, userId),
+                nameof(LeaveRequestStatus.PendingHr) => await LeaveService.ApproveHrAsync(row.Id, userId),
+                _ => false
+            };
+            if (!approved)
+                throw new InvalidOperationException("Leave request is no longer pending at this approval stage.");
+            return "Leave request advanced in the approval chain.";
+        }
+
+        if (string.Equals(row.Kind, "Field", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!await FieldReportService.ApproveAsync(row.Id, userId))
+                throw new InvalidOperationException("Field report is no longer pending approval.");
+            return $"Field report for {row.Number} approved — hours posted to the job.";
+        }
+
+        throw new InvalidOperationException($"Cannot approve {row.Kind} from Home.");
     }
 
     private async Task SendPurchaseOrderAsync(ConvertibleDocumentRow row)

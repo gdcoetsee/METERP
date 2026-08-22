@@ -111,21 +111,25 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         foreach (var q in quotes)
         {
             rows.Add(new ApprovalQueueRow(
+                q.Id,
                 "Quote",
                 q.QuoteNumber,
                 q.Customer?.Name ?? "Customer",
                 $"/approvals?tab=quotes",
-                q.SubmittedForApprovalAt));
+                q.SubmittedForApprovalAt,
+                q.ApprovalStatus.ToString()));
         }
 
         foreach (var r in requisitions)
         {
             rows.Add(new ApprovalQueueRow(
+                r.Id,
                 "REQ",
                 r.RequisitionNumber,
                 r.Job?.JobNumber ?? "Job",
                 "/approvals?tab=requisitions",
-                r.CreatedDate));
+                r.CreatedDate,
+                r.Status.ToString()));
         }
 
         foreach (var l in leave)
@@ -134,21 +138,25 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
                 ? $"{l.Employee.FirstName} {l.Employee.LastName}".Trim()
                 : "Employee";
             rows.Add(new ApprovalQueueRow(
+                l.Id,
                 "Leave",
                 name,
                 $"{l.StartDate:yyyy-MM-dd}–{l.EndDate:yyyy-MM-dd}",
                 "/approvals?tab=leave",
-                l.CreatedDate));
+                l.CreatedDate,
+                l.Status.ToString()));
         }
 
         foreach (var f in fieldReports)
         {
             rows.Add(new ApprovalQueueRow(
+                f.Id,
                 "Field",
                 f.Job?.JobNumber ?? "Job",
                 $"{f.HoursWorked:N1}h",
                 "/approvals?tab=field",
-                f.SubmittedAt == default ? null : f.SubmittedAt));
+                f.SubmittedAt == default ? null : f.SubmittedAt,
+                f.Status.ToString()));
         }
 
         return rows

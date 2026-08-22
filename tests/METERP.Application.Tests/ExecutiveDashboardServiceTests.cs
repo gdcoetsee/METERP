@@ -21,8 +21,18 @@ public class ExecutiveDashboardServiceTests
     public async Task GetSummaryAsync_AggregatesPendingQueuesAndReadyToInvoice()
     {
         var quotes = new Mock<IQuoteService>();
+        var pendingQuoteId = Guid.NewGuid();
         quotes.Setup(s => s.GetPendingExecutiveApprovalAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Quote> { new() { QuoteNumber = "Q-1", Customer = new Customer { Name = "Acme" } } });
+            .ReturnsAsync(new List<Quote>
+            {
+                new()
+                {
+                    Id = pendingQuoteId,
+                    QuoteNumber = "Q-1",
+                    Customer = new Customer { Name = "Acme" },
+                    ApprovalStatus = QuoteApprovalStatus.PendingExecutive
+                }
+            });
         quotes.Setup(s => s.GetUnconvertedWonQuotesAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
@@ -124,7 +134,11 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(800m, summary.OverduePurchaseOrderValue);
         Assert.Single(summary.UnsentPurchaseOrderQueue);
         Assert.Equal("PO-DRAFT", summary.UnsentPurchaseOrderQueue[0].Number);
-        Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Quote" && r.Number == "Q-1");
+        Assert.Contains(summary.ApprovalQueue, r =>
+            r.Kind == "Quote"
+            && r.Number == "Q-1"
+            && r.Id == pendingQuoteId
+            && r.Stage == nameof(QuoteApprovalStatus.PendingExecutive));
         Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Leave");
         Assert.Equal(7000m, summary.AgedDebtorsTotal);
         Assert.Single(summary.OverdueInvoiceQueue);
