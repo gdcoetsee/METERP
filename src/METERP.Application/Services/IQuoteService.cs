@@ -29,6 +29,12 @@ public interface IQuoteService
     /// <summary>Sent or accepted quotes that have not been converted to a job.</summary>
     Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnconvertedWonQuotesAsync(int take = 20, CancellationToken ct = default);
 
+    /// <summary>Executive-approved draft quotes that still need to be sent to the customer.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetApprovedUnsentQueueAsync(int take = 20, CancellationToken ct = default);
+
+    /// <summary>Marks the quote Sent and emails the customer when SMTP is configured.</summary>
+    Task SendAsync(Guid quoteId, CancellationToken ct = default);
+
     // Line item management (inline like Contacts on Customer)
     Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default);
     Task UpdateLineAsync(QuoteLine line, CancellationToken ct = default);

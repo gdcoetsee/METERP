@@ -502,6 +502,50 @@ public class QuoteService : IQuoteService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetApprovedUnsentQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var quotes = await _dbContext.Set<Quote>()
+            .AsNoTracking()
+            .Include(q => q.Customer)
+            .Where(q =>
+                q.Status == QuoteStatus.Draft
+                && q.ApprovalStatus == QuoteApprovalStatus.ExecutiveApproved
+                && q.Lines.Any())
+            .OrderByDescending(q => q.Total)
+            .ThenBy(q => q.QuoteNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return quotes
+            .Select(q => new ConvertibleDocumentRow(
+                q.Id,
+                "Quote",
+                q.QuoteNumber,
+                q.Customer?.Name ?? "—",
+                q.Total,
+                $"/quotes?open={q.Id:D}"))
+            .ToList();
+    }
+
+    public async Task SendAsync(Guid quoteId, CancellationToken ct = default)
+    {
+        var quote = await _dbContext.Set<Quote>()
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == quoteId, ct)
+            ?? throw new InvalidOperationException("Quote not found.");
+
+        if (quote.Status == QuoteStatus.Sent)
+            return;
+        if (quote.Status != QuoteStatus.Draft)
+            throw new InvalidOperationException($"Cannot send quote in status {quote.Status}.");
+
+        quote.Status = QuoteStatus.Sent;
+        await UpdateAsync(quote, ct);
+    }
+
     private static void EnforceSendGate(Quote existing, Quote updated)
     {
         if (updated.Status == QuoteStatus.Sent && existing.Status != QuoteStatus.Sent

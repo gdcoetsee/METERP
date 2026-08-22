@@ -35,6 +35,11 @@ public class ExecutiveDashboardServiceTests
             });
         quotes.Setup(s => s.GetUnconvertedWonQuotesAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        quotes.Setup(s => s.GetApprovedUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConvertibleDocumentRow>
+            {
+                new(Guid.NewGuid(), "Quote", "Q-SEND", "Acme", 12000m, "/quotes?open=1")
+            });
 
         var requisitions = new Mock<IStockRequisitionService>();
         requisitions.Setup(s => s.GetPendingApprovalsAsync(It.IsAny<CancellationToken>()))
@@ -134,6 +139,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(800m, summary.OverduePurchaseOrderValue);
         Assert.Single(summary.UnsentPurchaseOrderQueue);
         Assert.Equal("PO-DRAFT", summary.UnsentPurchaseOrderQueue[0].Number);
+        Assert.Single(summary.UnsentQuoteQueue);
+        Assert.Equal("Q-SEND", summary.UnsentQuoteQueue[0].Number);
         Assert.Contains(summary.ApprovalQueue, r =>
             r.Kind == "Quote"
             && r.Number == "Q-1"
@@ -202,6 +209,8 @@ public class ExecutiveDashboardServiceTests
         quotes.Setup(s => s.GetPendingExecutiveApprovalAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Quote>());
         quotes.Setup(s => s.GetUnconvertedWonQuotesAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        quotes.Setup(s => s.GetApprovedUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
         var requisitions = new Mock<IStockRequisitionService>();

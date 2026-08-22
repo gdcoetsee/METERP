@@ -48,6 +48,8 @@ public sealed class ExecutiveDashboardSummary
 
     public IReadOnlyList<ConvertibleDocumentRow> UnsentPurchaseOrderQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
 
+    public IReadOnlyList<ConvertibleDocumentRow> UnsentQuoteQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
+
     public IReadOnlyList<ApprovalQueueRow> ApprovalQueue { get; init; } = Array.Empty<ApprovalQueueRow>();
 
     public IReadOnlyList<AgedDebtorRow> OverdueInvoiceQueue { get; init; } = Array.Empty<AgedDebtorRow>();

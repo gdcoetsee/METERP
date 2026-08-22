@@ -364,6 +364,47 @@
                     </table>
                 </div>
             }
+            @if (_executive.UnsentQuoteQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-unsent-quotes">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Approved quote</th>
+                                <th>Customer</th>
+                                <th class="text-end">Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.UnsentQuoteQueue)
+                            {
+                                <tr>
+                                    <td>@row.Number</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">R @row.Total.ToString("N0")</td>
+                                    <td class="text-end">
+                                        @if (CanSendQuotes)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-info"
+                                                    data-testid="home-send-quote"
+                                                    disabled="@(_sendingQuoteId == row.Id)"
+                                                    @onclick="() => SendQuoteAsync(row)">
+                                                Send
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
+                                               data-testid="home-send-quote">Open</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (_executive.ConvertToJobQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-convert-to-job">
@@ -744,9 +785,11 @@
     private Guid? _convertingId;
     private Guid? _actingInvoiceId;
     private Guid? _sendingPoId;
+    private Guid? _sendingQuoteId;
     private string? _approvingKey;
     private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
     private bool CanSendPurchaseOrders => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
+    private bool CanSendQuotes => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
 
     private static string ApprovalKey(ApprovalQueueRow row) => $"{row.Kind}:{row.Id:D}";
 
@@ -949,6 +992,28 @@
         }
 
         throw new InvalidOperationException($"Cannot approve {row.Kind} from Home.");
+    }
+
+    private async Task SendQuoteAsync(ConvertibleDocumentRow row)
+    {
+        if (_sendingQuoteId is not null)
+            return;
+
+        _sendingQuoteId = row.Id;
+        try
+        {
+            await QuoteService.SendAsync(row.Id);
+            Toast.ShowSuccess($"Sent {row.Number} to {row.CustomerName}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _sendingQuoteId = null;
+        }
     }
 
     private async Task SendPurchaseOrderAsync(ConvertibleDocumentRow row)

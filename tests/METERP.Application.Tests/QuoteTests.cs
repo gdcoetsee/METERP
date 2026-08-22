@@ -192,6 +192,128 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_GetApprovedUnsentQueueAsync_IncludesApprovedDrafts_ExcludesSentAndUnapproved()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Send Co", Email = "send@co.test" };
+        db.Set<Customer>().Add(customer);
+        var ready = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-READY",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 2500m } }
+        };
+        ready.RecalculateTotals();
+        var unapproved = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-DRAFT",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.None,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Draft", Quantity = 1, UnitPrice = 100m } }
+        };
+        unapproved.RecalculateTotals();
+        var alreadySent = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-SENT",
+            Status = QuoteStatus.Sent,
+            ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Sent", Quantity = 1, UnitPrice = 300m } }
+        };
+        alreadySent.RecalculateTotals();
+        var empty = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-EMPTY",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+            TaxRate = 0m
+        };
+        db.Set<Quote>().AddRange(ready, unapproved, alreadySent, empty);
+        await db.SaveChangesAsync();
+
+        var queue = await new QuoteService(db).GetApprovedUnsentQueueAsync();
+
+        Assert.Contains(queue, r => r.Number == "Q-READY" && r.CustomerName == "Send Co" && r.Total == 2500m);
+        Assert.DoesNotContain(queue, r => r.Number == "Q-DRAFT");
+        Assert.DoesNotContain(queue, r => r.Number == "Q-SENT");
+        Assert.DoesNotContain(queue, r => r.Number == "Q-EMPTY");
+    }
+
+    [Fact]
+    public async Task QuoteService_SendAsync_MarksSent_WhenExecutiveApproved()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Mail Co", Email = "ap@mail.co" };
+        db.Set<Customer>().Add(customer);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-MAIL",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Install", Quantity = 1, UnitPrice = 800m } }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        var service = new QuoteService(db, email: email.Object);
+        await service.SendAsync(quote.Id);
+
+        var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+        Assert.Equal(QuoteStatus.Sent, saved.Status);
+        Assert.Equal(800m, saved.Total);
+        email.Verify(e => e.SendEmailAsync(
+            "ap@mail.co",
+            It.Is<string>(s => s.Contains("Q-MAIL")),
+            It.Is<string>(b => b.Contains("Q-MAIL")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task QuoteService_SendAsync_ThrowsWhenNotExecutiveApproved()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { TenantId = tenantId, Name = "Gate Co", Email = "ap@gate.co" };
+        db.Set<Customer>().Add(customer);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-GATE",
+            Status = QuoteStatus.Draft,
+            ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+            TaxRate = 0m,
+            Lines = { new QuoteLine { Description = "Work", Quantity = 1, UnitPrice = 50m } }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new QuoteService(db).SendAsync(quote.Id));
+        Assert.Contains("Executive approval", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task QuoteService_AddLineAsync_ThrowsWhenLineTypeTooLong()
     {
         var tenantId = Guid.NewGuid();
