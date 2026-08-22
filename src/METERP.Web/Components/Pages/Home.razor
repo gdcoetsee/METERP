@@ -639,8 +639,20 @@
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
                                     <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-warning" href="@row.Href"
-                                           data-testid="home-overdue-po">Receive</a>
+                                        @if (CanSendPurchaseOrders)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-warning"
+                                                    data-testid="home-overdue-po"
+                                                    disabled="@(_receivingPoId == row.Id)"
+                                                    @onclick="() => ReceiveOverduePurchaseOrderAsync(row)">
+                                                Receive
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-warning" href="@row.Href"
+                                               data-testid="home-overdue-po">Open</a>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -910,6 +922,7 @@
     private Guid? _actingInvoiceId;
     private Guid? _sendingInvoiceId;
     private Guid? _sendingPoId;
+    private Guid? _receivingPoId;
     private Guid? _sendingQuoteId;
     private Guid? _confirmingSoId;
     private Guid? _returningPpeId;
@@ -1221,6 +1234,35 @@
         finally
         {
             _sendingQuoteId = null;
+        }
+    }
+
+    private async Task ReceiveOverduePurchaseOrderAsync(ConvertibleDocumentRow row)
+    {
+        if (_receivingPoId is not null)
+            return;
+        if (CurrentUserService.UserId is not { } userId)
+        {
+            Toast.ShowError("Sign in again to receive a purchase order.");
+            return;
+        }
+
+        _receivingPoId = row.Id;
+        try
+        {
+            var grv = await PurchaseOrderService.ReceiveAsync(row.Id, userId);
+            if (grv == null)
+                throw new InvalidOperationException($"{row.Number} is not open for receive.");
+            Toast.ShowSuccess($"Received {row.Number} as {grv.GrvNumber}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _receivingPoId = null;
         }
     }
 
