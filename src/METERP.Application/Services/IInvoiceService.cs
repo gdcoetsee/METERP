@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using METERP.Domain;
 
 namespace METERP.Application.Services;
@@ -67,6 +68,9 @@ public interface IInvoiceService
         CancellationToken ct = default);
 
     Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default);
+
+    /// <summary>Draft invoices that have lines and can be marked Sent.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(int take = 20, CancellationToken ct = default);
 
     /// <summary>
     /// Sends a payment reminder for an overdue invoice with a remaining balance.

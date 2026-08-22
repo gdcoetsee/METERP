@@ -446,6 +446,47 @@
                     </table>
                 </div>
             }
+            @if (_executive.UnsentInvoiceQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-unsent-invoices">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Draft invoice</th>
+                                <th>Customer</th>
+                                <th class="text-end">Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.UnsentInvoiceQueue)
+                            {
+                                <tr>
+                                    <td>@row.Number</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">R @row.Total.ToString("N0")</td>
+                                    <td class="text-end">
+                                        @if (CanChaseInvoices)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-info"
+                                                    data-testid="home-send-invoice"
+                                                    disabled="@(_sendingInvoiceId == row.Id)"
+                                                    @onclick="() => SendInvoiceAsync(row)">
+                                                Send
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
+                                               data-testid="home-send-invoice">Open</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (_executive.OverdueInvoiceQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-overdue-invoices">
@@ -784,6 +825,7 @@
     private bool _initialized;
     private Guid? _convertingId;
     private Guid? _actingInvoiceId;
+    private Guid? _sendingInvoiceId;
     private Guid? _sendingPoId;
     private Guid? _sendingQuoteId;
     private string? _approvingKey;
@@ -892,6 +934,28 @@
         finally
         {
             _convertingId = null;
+        }
+    }
+
+    private async Task SendInvoiceAsync(ConvertibleDocumentRow row)
+    {
+        if (_sendingInvoiceId is not null)
+            return;
+
+        _sendingInvoiceId = row.Id;
+        try
+        {
+            await InvoiceService.UpdateStatusAsync(row.Id, InvoiceStatus.Sent);
+            Toast.ShowSuccess($"Sent {row.Number} to {row.CustomerName}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _sendingInvoiceId = null;
         }
     }
 

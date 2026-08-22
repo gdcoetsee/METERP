@@ -1273,4 +1273,49 @@ public class InvoiceBillingServiceTests
         Assert.NotEqual(Guid.Empty, paymentId);
         Assert.Equal(250m, (await db.Set<Invoice>().FirstAsync(i => i.Id == invoice.Id)).AmountPaid);
     }
+
+    [Fact]
+    public async Task GetUnsentQueueAsync_IncludesDraftsWithLines_ExcludesSentAndEmpty()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Draft Co", Email = "ap@draft.co" };
+            db.Set<Customer>().Add(customer);
+            var ready = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-READY",
+                Status = InvoiceStatus.Draft,
+                Total = 900m,
+                Lines = { new InvoiceLine { Description = "Work", Quantity = 1, UnitPrice = 900m } }
+            };
+            var empty = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-EMPTY",
+                Status = InvoiceStatus.Draft,
+                Total = 0m
+            };
+            var sent = new Invoice
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                InvoiceNumber = "INV-SENT",
+                Status = InvoiceStatus.Sent,
+                Total = 400m,
+                Lines = { new InvoiceLine { Description = "Sent", Quantity = 1, UnitPrice = 400m } }
+            };
+            db.Set<Invoice>().AddRange(ready, empty, sent);
+            await db.SaveChangesAsync();
+
+            var queue = await service.GetUnsentQueueAsync();
+
+            Assert.Contains(queue, r => r.Number == "INV-READY" && r.CustomerName == "Draft Co" && r.Total == 900m);
+            Assert.DoesNotContain(queue, r => r.Number == "INV-EMPTY");
+            Assert.DoesNotContain(queue, r => r.Number == "INV-SENT");
+        }
+    }
 }

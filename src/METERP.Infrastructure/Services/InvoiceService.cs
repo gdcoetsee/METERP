@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
@@ -615,6 +616,31 @@ public class InvoiceService : IInvoiceService
             })
             .Where(r => r.BalanceDue > 0)
             .OrderByDescending(r => r.DaysOverdue)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Include(i => i.Customer)
+            .Where(i => i.Status == InvoiceStatus.Draft && i.Lines.Any())
+            .OrderByDescending(i => i.Total)
+            .ThenBy(i => i.InvoiceNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return invoices
+            .Select(i => new ConvertibleDocumentRow(
+                i.Id,
+                "Invoice",
+                i.InvoiceNumber,
+                i.Customer?.Name ?? "—",
+                i.Total,
+                $"/invoices?open={i.Id:D}"))
             .ToList();
     }
 

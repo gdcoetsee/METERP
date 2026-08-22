@@ -80,6 +80,11 @@ public class ExecutiveDashboardServiceTests
                 new(Guid.NewGuid(), "INV-1", "Acme", DateTime.UtcNow.AddDays(-10), 5000m, 0m, 5000m, 10, "1-30"),
                 new(Guid.NewGuid(), "INV-CUR", "Acme", DateTime.UtcNow.AddDays(7), 2000m, 0m, 2000m, 0, "Current")
             });
+        invoices.Setup(s => s.GetUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConvertibleDocumentRow>
+            {
+                new(Guid.NewGuid(), "Invoice", "INV-DRAFT", "Acme", 4500m, "/invoices?open=1")
+            });
 
         var inventory = new Mock<IInventoryService>();
         inventory.Setup(s => s.GetAllItemsAsync(
@@ -141,6 +146,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal("PO-DRAFT", summary.UnsentPurchaseOrderQueue[0].Number);
         Assert.Single(summary.UnsentQuoteQueue);
         Assert.Equal("Q-SEND", summary.UnsentQuoteQueue[0].Number);
+        Assert.Single(summary.UnsentInvoiceQueue);
+        Assert.Equal("INV-DRAFT", summary.UnsentInvoiceQueue[0].Number);
         Assert.Contains(summary.ApprovalQueue, r =>
             r.Kind == "Quote"
             && r.Number == "Q-1"
@@ -231,6 +238,8 @@ public class ExecutiveDashboardServiceTests
         var invoices = new Mock<IInvoiceService>();
         invoices.Setup(s => s.GetAgedDebtorsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AgedDebtorRow>());
+        invoices.Setup(s => s.GetUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
         var inventory = new Mock<IInventoryService>();
         inventory.Setup(s => s.GetAllItemsAsync(
