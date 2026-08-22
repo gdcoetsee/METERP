@@ -602,6 +602,44 @@ public class PpeIssueServiceTests
     }
 
     [Fact]
+    public async Task GetOutstandingQueueAsync_IncludesOpenIssues_ExcludesFullyReturned()
+    {
+        var (service, db, tenantId, inventory) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-OUT",
+                FirstName = "Anele",
+                LastName = "Hold",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var itemId = await inventory.CreateItemAsync(new InventoryItem
+            {
+                Sku = "GLOVE",
+                Name = "Gloves",
+                QuantityOnHand = 20,
+                UnitCost = 10m,
+                IsActive = true
+            });
+            var userId = Guid.NewGuid();
+            var openId = await service.IssueToEmployeeAsync(employee.Id, itemId, 3m, userId);
+            var closedId = await service.IssueToEmployeeAsync(employee.Id, itemId, 2m, userId);
+            Assert.True(await service.ReturnFromEmployeeAsync(closedId, 2m, userId));
+
+            var queue = await service.GetOutstandingQueueAsync();
+
+            Assert.Contains(queue, r => r.Id == openId && r.EmployeeName.Contains("Anele") && r.Outstanding == 3m && r.ItemName.Contains("GLOVE"));
+            Assert.DoesNotContain(queue, r => r.Id == closedId);
+        }
+    }
+
+    [Fact]
     public async Task ReturnFromEmployeeAsync_ThrowsWhenInventoryItemSoftDeleted()
     {
         var (service, db, tenantId, inventory) = Create();

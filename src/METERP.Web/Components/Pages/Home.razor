@@ -15,6 +15,7 @@
 @inject IAssetService AssetService
 @inject ISupplierService SupplierService
 @inject IPurchaseOrderService PurchaseOrderService
+@inject IPpeIssueService PpeIssueService
 @inject IStockRequisitionService RequisitionService
 @inject ILeaveService LeaveService
 @inject IFieldReportService FieldReportService
@@ -647,6 +648,47 @@
                     </table>
                 </div>
             }
+            @if (_executive.OutstandingPpeQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-outstanding-ppe">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Outstanding PPE</th>
+                                <th>Employee</th>
+                                <th class="text-end">Qty</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.OutstandingPpeQueue)
+                            {
+                                <tr>
+                                    <td>@row.ItemName</td>
+                                    <td>@row.EmployeeName</td>
+                                    <td class="text-end">@row.Outstanding.ToString("N2")</td>
+                                    <td class="text-end">
+                                        @if (CanReturnPpe)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    data-testid="home-return-ppe"
+                                                    disabled="@(_returningPpeId == row.Id)"
+                                                    @onclick="() => ReturnOutstandingPpeAsync(row)">
+                                                Return
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-secondary" href="@row.Href"
+                                               data-testid="home-return-ppe">Open</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (cashQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-ready-to-invoice">
@@ -870,11 +912,15 @@
     private Guid? _sendingPoId;
     private Guid? _sendingQuoteId;
     private Guid? _confirmingSoId;
+    private Guid? _returningPpeId;
     private string? _approvingKey;
     private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
     private bool CanSendPurchaseOrders => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
     private bool CanSendQuotes => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
     private bool CanConfirmSalesOrders => CurrentUserService.Permissions.Contains(Permissions.SalesOrdersManage);
+    private bool CanReturnPpe =>
+        CurrentUserService.Permissions.Contains(Permissions.InventoryManage)
+        || CurrentUserService.Permissions.Contains(Permissions.RequisitionsManage);
 
     private static string ApprovalKey(ApprovalQueueRow row) => $"{row.Kind}:{row.Id:D}";
 
@@ -1099,6 +1145,39 @@
         }
 
         throw new InvalidOperationException($"Cannot approve {row.Kind} from Home.");
+    }
+
+    private async Task ReturnOutstandingPpeAsync(PpeOutstandingRow row)
+    {
+        if (_returningPpeId is not null)
+            return;
+        if (CurrentUserService.UserId is not { } userId)
+        {
+            Toast.ShowError("Sign in again to return PPE.");
+            return;
+        }
+
+        _returningPpeId = row.Id;
+        try
+        {
+            var returned = await PpeIssueService.ReturnFromEmployeeAsync(
+                row.Id,
+                row.Outstanding,
+                userId,
+                "Returned from Home register.");
+            if (!returned)
+                throw new InvalidOperationException("PPE issue was not found.");
+            Toast.ShowSuccess($"Returned {row.Outstanding:N2} {row.ItemName} from {row.EmployeeName}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _returningPpeId = null;
+        }
     }
 
     private async Task ConfirmSalesOrderAsync(ConvertibleDocumentRow row)

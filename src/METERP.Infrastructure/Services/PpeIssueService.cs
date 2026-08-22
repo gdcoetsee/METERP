@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -43,6 +44,42 @@ public sealed class PpeIssueService : IPpeIssueService
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<PpeOutstandingRow>> GetOutstandingQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var issues = await _dbContext.Set<EmployeePpeIssue>()
+            .AsNoTracking()
+            .Include(p => p.Employee)
+            .Include(p => p.InventoryItem)
+            .Where(p => p.QuantityReturned < p.Quantity)
+            .OrderBy(p => p.IssuedAt)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return issues
+            .Select(p =>
+            {
+                var employee = p.Employee == null
+                    ? "Unassigned"
+                    : $"{p.Employee.FirstName} {p.Employee.LastName}".Trim();
+                var item = p.InventoryItem == null
+                    ? "PPE"
+                    : string.IsNullOrWhiteSpace(p.InventoryItem.Sku)
+                        ? p.InventoryItem.Name
+                        : $"{p.InventoryItem.Sku} {p.InventoryItem.Name}".Trim();
+                return new PpeOutstandingRow(
+                    p.Id,
+                    employee,
+                    item,
+                    p.QuantityOutstanding,
+                    p.IssuedAt,
+                    "/ppe-history");
+            })
+            .ToList();
     }
 
     public async Task<Guid> IssueToEmployeeAsync(

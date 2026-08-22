@@ -1,3 +1,4 @@
+using METERP.Application.Models;
 using METERP.Domain;
 
 namespace METERP.Application.Services;
@@ -9,6 +10,9 @@ public interface IPpeIssueService
         int page = 1,
         int pageSize = 50,
         CancellationToken ct = default);
+
+    /// <summary>PPE still held by employees (not fully returned).</summary>
+    Task<IReadOnlyList<PpeOutstandingRow>> GetOutstandingQueueAsync(int take = 20, CancellationToken ct = default);
 
     /// <summary>
     /// Issues PPE stock to an employee register entry and decrements inventory.

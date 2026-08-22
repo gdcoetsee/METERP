@@ -120,6 +120,13 @@ public class ExecutiveDashboardServiceTests
                 new(Guid.NewGuid(), "PO", "PO-DRAFT", "Cable Co", 250m, "/purchase-orders?open=2")
             });
 
+        var ppe = new Mock<IPpeIssueService>();
+        ppe.Setup(s => s.GetOutstandingQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PpeOutstandingRow>
+            {
+                new(Guid.NewGuid(), "Thabo Lead", "HARDHAT Hard hat", 2m, DateTime.UtcNow, "/ppe-history")
+            });
+
         var service = new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -131,7 +138,8 @@ public class ExecutiveDashboardServiceTests
             inventory.Object,
             salesOrders.Object,
             opportunities.Object,
-            purchaseOrders.Object);
+            purchaseOrders.Object,
+            ppe.Object);
 
         var summary = await service.GetSummaryAsync();
 
@@ -155,6 +163,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal("INV-DRAFT", summary.UnsentInvoiceQueue[0].Number);
         Assert.Single(summary.UnconfirmedSalesOrderQueue);
         Assert.Equal("SO-DRAFT", summary.UnconfirmedSalesOrderQueue[0].Number);
+        Assert.Single(summary.OutstandingPpeQueue);
+        Assert.Equal("HARDHAT Hard hat", summary.OutstandingPpeQueue[0].ItemName);
         Assert.Contains(summary.ApprovalQueue, r =>
             r.Kind == "Quote"
             && r.Number == "Q-1"
@@ -273,6 +283,10 @@ public class ExecutiveDashboardServiceTests
         purchaseOrders.Setup(s => s.GetUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
+        var ppe = new Mock<IPpeIssueService>();
+        ppe.Setup(s => s.GetOutstandingQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PpeOutstandingRow>());
+
         return new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -284,6 +298,7 @@ public class ExecutiveDashboardServiceTests
             inventory.Object,
             salesOrders.Object,
             opportunities.Object,
-            purchaseOrders.Object);
+            purchaseOrders.Object,
+            ppe.Object);
     }
 }

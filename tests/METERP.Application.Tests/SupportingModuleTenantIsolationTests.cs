@@ -77,7 +77,8 @@ public class SupportingModuleTenantIsolationTests
             inventoryService,
             new SalesOrderService(db, jobService),
             new OpportunityService(db),
-            new PurchaseOrderService(db, inventoryService));
+            new PurchaseOrderService(db, inventoryService),
+            new PpeIssueService(db, inventoryService));
     }
 
     [Fact]
