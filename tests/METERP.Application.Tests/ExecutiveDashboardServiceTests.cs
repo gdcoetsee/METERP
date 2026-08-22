@@ -127,6 +127,13 @@ public class ExecutiveDashboardServiceTests
                 new(Guid.NewGuid(), "Thabo Lead", "HARDHAT Hard hat", 2m, DateTime.UtcNow, "/ppe-history")
             });
 
+        var certs = new Mock<IEmployeeCertificationService>();
+        certs.Setup(s => s.GetExpiringQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CertificationExpiryRow>
+            {
+                new(Guid.NewGuid(), "Sipho Off", "First Aid", DateTime.UtcNow.Date.AddDays(8), 8, "/certifications")
+            });
+
         var service = new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -139,7 +146,8 @@ public class ExecutiveDashboardServiceTests
             salesOrders.Object,
             opportunities.Object,
             purchaseOrders.Object,
-            ppe.Object);
+            ppe.Object,
+            certs.Object);
 
         var summary = await service.GetSummaryAsync();
 
@@ -165,6 +173,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal("SO-DRAFT", summary.UnconfirmedSalesOrderQueue[0].Number);
         Assert.Single(summary.OutstandingPpeQueue);
         Assert.Equal("HARDHAT Hard hat", summary.OutstandingPpeQueue[0].ItemName);
+        Assert.Single(summary.ExpiringCertificationQueue);
+        Assert.Equal("First Aid", summary.ExpiringCertificationQueue[0].CertificationType);
         Assert.Contains(summary.ApprovalQueue, r =>
             r.Kind == "Quote"
             && r.Number == "Q-1"
@@ -287,6 +297,10 @@ public class ExecutiveDashboardServiceTests
         ppe.Setup(s => s.GetOutstandingQueueAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<PpeOutstandingRow>());
 
+        var certs = new Mock<IEmployeeCertificationService>();
+        certs.Setup(s => s.GetExpiringQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<CertificationExpiryRow>());
+
         return new ExecutiveDashboardService(
             quotes.Object,
             requisitions.Object,
@@ -299,6 +313,7 @@ public class ExecutiveDashboardServiceTests
             salesOrders.Object,
             opportunities.Object,
             purchaseOrders.Object,
-            ppe.Object);
+            ppe.Object,
+            certs.Object);
     }
 }

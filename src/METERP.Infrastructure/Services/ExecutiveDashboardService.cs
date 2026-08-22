@@ -18,6 +18,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
     private readonly IOpportunityService _opportunities;
     private readonly IPurchaseOrderService _purchaseOrders;
     private readonly IPpeIssueService _ppe;
+    private readonly IEmployeeCertificationService _certs;
 
     public ExecutiveDashboardService(
         IQuoteService quotes,
@@ -31,7 +32,8 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         ISalesOrderService salesOrders,
         IOpportunityService opportunities,
         IPurchaseOrderService purchaseOrders,
-        IPpeIssueService ppe)
+        IPpeIssueService ppe,
+        IEmployeeCertificationService certs)
     {
         _quotes = quotes;
         _requisitions = requisitions;
@@ -45,6 +47,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         _opportunities = opportunities;
         _purchaseOrders = purchaseOrders;
         _ppe = ppe;
+        _certs = certs;
     }
 
     public async Task<ExecutiveDashboardSummary> GetSummaryAsync(CancellationToken ct = default)
@@ -70,6 +73,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var unsentInvoices = await _invoices.GetUnsentQueueAsync(10, ct);
         var unconfirmedOrders = await _salesOrders.GetUnconfirmedQueueAsync(10, ct);
         var outstandingPpe = await _ppe.GetOutstandingQueueAsync(10, ct);
+        var expiringCerts = await _certs.GetExpiringQueueAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var overdueInvoices = aged.Where(a => a.DaysOverdue > 0).Take(8).ToList();
@@ -106,6 +110,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             UnsentInvoiceQueue = unsentInvoices,
             UnconfirmedSalesOrderQueue = unconfirmedOrders,
             OutstandingPpeQueue = outstandingPpe,
+            ExpiringCertificationQueue = expiringCerts,
             ApprovalQueue = BuildApprovalQueue(pendingQuoteList, pendingReqList, pendingLeaveList, pendingFieldList),
             OverdueInvoiceQueue = overdueInvoices
         };

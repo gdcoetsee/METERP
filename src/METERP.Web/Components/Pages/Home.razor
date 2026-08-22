@@ -701,6 +701,35 @@
                     </table>
                 </div>
             }
+            @if (_executive.ExpiringCertificationQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-expiring-certs">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Ticket</th>
+                                <th>Employee</th>
+                                <th class="text-end">Days</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.ExpiringCertificationQueue)
+                            {
+                                <tr>
+                                    <td>@row.CertificationType</td>
+                                    <td>@row.EmployeeName</td>
+                                    <td class="text-end">@row.DaysRemaining</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-danger" href="@row.Href"
+                                           data-testid="home-expiring-cert">Renew</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (cashQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-ready-to-invoice">

@@ -222,6 +222,11 @@ public class EmployeeCertificationServiceTests
             Assert.Single(expiring);
             Assert.Equal("First Aid", expiring[0].CertificationType);
 
+            var queue = await service.GetExpiringQueueAsync();
+            Assert.Single(queue);
+            Assert.Equal("First Aid", queue[0].CertificationType);
+            Assert.True(queue[0].DaysRemaining <= 10);
+
             var forEmp = await service.GetForEmployeeAsync(employee.Id);
             Assert.Equal(3, forEmp.Count);
         }

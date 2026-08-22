@@ -56,6 +56,8 @@ public sealed class ExecutiveDashboardSummary
 
     public IReadOnlyList<PpeOutstandingRow> OutstandingPpeQueue { get; init; } = Array.Empty<PpeOutstandingRow>();
 
+    public IReadOnlyList<CertificationExpiryRow> ExpiringCertificationQueue { get; init; } = Array.Empty<CertificationExpiryRow>();
+
     public IReadOnlyList<ApprovalQueueRow> ApprovalQueue { get; init; } = Array.Empty<ApprovalQueueRow>();
 
     public IReadOnlyList<AgedDebtorRow> OverdueInvoiceQueue { get; init; } = Array.Empty<AgedDebtorRow>();

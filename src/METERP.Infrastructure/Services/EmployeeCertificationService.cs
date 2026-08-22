@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -39,6 +40,32 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
             .Where(c => !c.NoExpiry && c.ExpiryDate != null && c.ExpiryDate <= until)
             .OrderBy(c => c.ExpiryDate)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<CertificationExpiryRow>> GetExpiringQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var today = DateTime.UtcNow.Date;
+        var certs = await GetExpiringAsync(30, ct);
+        return certs
+            .Take(take)
+            .Select(c =>
+            {
+                var expiry = c.ExpiryDate ?? today;
+                var name = c.Employee == null
+                    ? "Employee"
+                    : $"{c.Employee.FirstName} {c.Employee.LastName}".Trim();
+                return new CertificationExpiryRow(
+                    c.Id,
+                    name,
+                    c.CertificationType,
+                    expiry,
+                    (expiry.Date - today).Days,
+                    "/certifications");
+            })
+            .ToList();
     }
 
     public async Task<Guid> CreateAsync(EmployeeCertification cert, CancellationToken ct = default)
