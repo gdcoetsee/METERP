@@ -724,17 +724,31 @@
                                     : $"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}";
                                 var label = isDeposit ? "Deposit" : isSignOff ? "Sign off" : "Invoice";
                                 var testId = isDeposit ? "home-deposit-invoice" : isSignOff ? "home-signoff-invoice" : "home-ready-invoice";
+                                var canAct = isSignOff ? CanManageJobs : CanChaseInvoices;
                                 <tr>
                                     <td>@row.JobNumber — @row.Title</td>
                                     <td>@row.CustomerName</td>
                                     <td>@row.Reason</td>
                                     <td class="text-end">R @row.UnbilledResidual.ToString("N0")</td>
                                     <td class="text-end">
-                                        <a class="btn btn-sm @(isSignOff ? "btn-outline-warning" : "btn-success")"
-                                           href="@href"
-                                           data-testid="@testId">
-                                            @label
-                                        </a>
+                                        @if (canAct)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm @(isSignOff ? "btn-warning" : "btn-success")"
+                                                    data-testid="@testId"
+                                                    disabled="@(_actingJobId == row.JobId)"
+                                                    @onclick="() => ActOnCashQueueAsync(row)">
+                                                @label
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm @(isSignOff ? "btn-outline-warning" : "btn-success")"
+                                               href="@href"
+                                               data-testid="@testId">
+                                                Open
+                                            </a>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -919,6 +933,7 @@
     private string? billingPortalUrl;
     private bool _initialized;
     private Guid? _convertingId;
+    private Guid? _actingJobId;
     private Guid? _actingInvoiceId;
     private Guid? _sendingInvoiceId;
     private Guid? _sendingPoId;
@@ -931,6 +946,7 @@
     private bool CanSendPurchaseOrders => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
     private bool CanSendQuotes => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
     private bool CanConfirmSalesOrders => CurrentUserService.Permissions.Contains(Permissions.SalesOrdersManage);
+    private bool CanManageJobs => CurrentUserService.Permissions.Contains(Permissions.JobsManage);
     private bool CanReturnPpe =>
         CurrentUserService.Permissions.Contains(Permissions.InventoryManage)
         || CurrentUserService.Permissions.Contains(Permissions.RequisitionsManage);
@@ -1001,6 +1017,59 @@
         finally
         {
             _initialized = true;
+        }
+    }
+
+    private async Task ActOnCashQueueAsync(ReadyToInvoiceJobRow row)
+    {
+        if (_actingJobId is not null)
+            return;
+        if (CurrentUserService.UserId is not { } userId)
+        {
+            Toast.ShowError("Sign in again to continue.");
+            return;
+        }
+
+        _actingJobId = row.JobId;
+        try
+        {
+            if (string.Equals(row.Reason, "Sign-off", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!await JobService.AdvanceWorkSignOffAsync(row.JobId, userId))
+                    throw new InvalidOperationException($"Could not advance work sign-off for {row.JobNumber}.");
+                var job = await JobService.GetByIdAsync(row.JobId);
+                Toast.ShowSuccess(job?.SignOffStatus == JobSignOffStatus.SignedOff
+                    ? $"{row.JobNumber} work sign-off complete — invoice it from the cash queue."
+                    : $"{row.JobNumber} work sign-off advanced.");
+            }
+            else
+            {
+                var docType = string.Equals(row.Reason, "Deposit", StringComparison.OrdinalIgnoreCase)
+                    ? InvoiceDocumentType.Deposit
+                    : InvoiceDocumentType.Final;
+                var invoice = await InvoiceService.CreateBillingDocumentAsync(row.JobId, docType);
+                try
+                {
+                    await InvoiceService.UpdateStatusAsync(invoice.Id, InvoiceStatus.Sent);
+                    Toast.ShowSuccess($"{invoice.InvoiceNumber} raised and sent for {row.JobNumber}.");
+                }
+                catch (Exception sendEx)
+                {
+                    Toast.ShowSuccess($"{invoice.InvoiceNumber} drafted — send failed: {sendEx.Message}");
+                }
+            }
+
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+            _readyToInvoiceCount = _executive.ReadyToInvoiceJobs;
+            _readyToInvoiceValue = _executive.ReadyToInvoiceValue;
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _actingJobId = null;
         }
     }
 
