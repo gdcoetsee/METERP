@@ -89,6 +89,11 @@ public class ExecutiveDashboardServiceTests
             {
                 new(Guid.NewGuid(), "PO", "PO-LATE", "Cable Co", 800m, "/purchase-orders?open=1")
             });
+        purchaseOrders.Setup(s => s.GetUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConvertibleDocumentRow>
+            {
+                new(Guid.NewGuid(), "PO", "PO-DRAFT", "Cable Co", 250m, "/purchase-orders?open=2")
+            });
 
         var service = new ExecutiveDashboardService(
             quotes.Object,
@@ -117,6 +122,8 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(1650m, summary.AwaitingSignOffValue);
         Assert.Equal(1, summary.OverduePurchaseOrders);
         Assert.Equal(800m, summary.OverduePurchaseOrderValue);
+        Assert.Single(summary.UnsentPurchaseOrderQueue);
+        Assert.Equal("PO-DRAFT", summary.UnsentPurchaseOrderQueue[0].Number);
         Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Quote" && r.Number == "Q-1");
         Assert.Contains(summary.ApprovalQueue, r => r.Kind == "Leave");
         Assert.Equal(7000m, summary.AgedDebtorsTotal);
@@ -221,6 +228,8 @@ public class ExecutiveDashboardServiceTests
 
         var purchaseOrders = new Mock<IPurchaseOrderService>();
         purchaseOrders.Setup(s => s.GetOverdueQueueAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        purchaseOrders.Setup(s => s.GetUnsentQueueAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
 
         return new ExecutiveDashboardService(

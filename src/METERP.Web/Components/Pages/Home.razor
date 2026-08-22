@@ -14,6 +14,7 @@
 @inject IInventoryService InventoryService
 @inject IAssetService AssetService
 @inject ISupplierService SupplierService
+@inject IPurchaseOrderService PurchaseOrderService
 @inject ICurrentUserService CurrentUserService
 @inject ITenantService TenantService
 @inject IBillingPortalService BillingPortalService
@@ -438,6 +439,47 @@
                     </table>
                 </div>
             }
+            @if (_executive.UnsentPurchaseOrderQueue.Count > 0)
+            {
+                <div class="table-responsive mt-3" data-testid="home-unsent-pos">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Unsent PO</th>
+                                <th>Supplier</th>
+                                <th class="text-end">Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _executive.UnsentPurchaseOrderQueue)
+                            {
+                                <tr>
+                                    <td>@row.Number</td>
+                                    <td>@row.CustomerName</td>
+                                    <td class="text-end">R @row.Total.ToString("N0")</td>
+                                    <td class="text-end">
+                                        @if (CanSendPurchaseOrders)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-info"
+                                                    data-testid="home-send-po"
+                                                    disabled="@(_sendingPoId == row.Id)"
+                                                    @onclick="() => SendPurchaseOrderAsync(row)">
+                                                Send
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
+                                               data-testid="home-send-po">Open</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (_executive.OverduePurchaseOrderQueue.Count > 0)
             {
                 <div class="table-responsive mt-3" data-testid="home-overdue-pos">
@@ -686,7 +728,9 @@
     private bool _initialized;
     private Guid? _convertingId;
     private Guid? _actingInvoiceId;
+    private Guid? _sendingPoId;
     private bool CanChaseInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
+    private bool CanSendPurchaseOrders => CurrentUserService.Permissions.Contains(Permissions.PurchaseOrdersManage);
 
     protected override async Task OnInitializedAsync()
     {
@@ -802,6 +846,28 @@
         finally
         {
             _actingInvoiceId = null;
+        }
+    }
+
+    private async Task SendPurchaseOrderAsync(ConvertibleDocumentRow row)
+    {
+        if (_sendingPoId is not null)
+            return;
+
+        _sendingPoId = row.Id;
+        try
+        {
+            await PurchaseOrderService.UpdateStatusAsync(row.Id, PurchaseOrderStatus.Sent);
+            Toast.ShowSuccess($"Sent {row.Number} to {row.CustomerName}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _sendingPoId = null;
         }
     }
 

@@ -62,6 +62,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
         var convertOrders = await _salesOrders.GetUnconvertedConfirmedAsync(10, ct);
         var convertOpps = await _opportunities.GetUnquotedWonAsync(10, ct);
         var overduePos = await _purchaseOrders.GetOverdueQueueAsync(10, ct);
+        var unsentPos = await _purchaseOrders.GetUnsentQueueAsync(10, ct);
 
         var aged = await _invoices.GetAgedDebtorsAsync(ct);
         var overdueInvoices = aged.Where(a => a.DaysOverdue > 0).Take(8).ToList();
@@ -93,6 +94,7 @@ public sealed class ExecutiveDashboardService : IExecutiveDashboardService
             OverduePurchaseOrders = overduePos.Count,
             OverduePurchaseOrderValue = overduePos.Sum(p => p.Total),
             OverduePurchaseOrderQueue = overduePos,
+            UnsentPurchaseOrderQueue = unsentPos,
             ApprovalQueue = BuildApprovalQueue(pendingQuoteList, pendingReqList, pendingLeaveList, pendingFieldList),
             OverdueInvoiceQueue = overdueInvoices
         };

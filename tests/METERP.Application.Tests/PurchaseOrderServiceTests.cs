@@ -1544,6 +1544,44 @@ public class PurchaseOrderServiceTests
     }
 
     [Fact]
+    public async Task GetUnsentQueueAsync_IncludesDraftsWithLines_ExcludesSentAndEmpty()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Ready Co", IsActive = true });
+            await db.SaveChangesAsync();
+
+            var unsentId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines = { new PurchaseOrderLine { Description = "Cable", Quantity = 2, UnitPrice = 40m } }
+            });
+            var emptyId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m
+            });
+            var sentId = await service.CreateAsync(new PurchaseOrder
+            {
+                SupplierId = supplierId,
+                TaxRate = 0m,
+                Lines = { new PurchaseOrderLine { Description = "Fuse", Quantity = 1, UnitPrice = 10m } }
+            });
+            await service.UpdateStatusAsync(sentId, PurchaseOrderStatus.Sent);
+
+            var queue = await service.GetUnsentQueueAsync();
+
+            Assert.Contains(queue, r => r.Id == unsentId && r.Kind == "PO" && r.CustomerName == "Ready Co" && r.Total == 80m);
+            Assert.DoesNotContain(queue, r => r.Id == emptyId);
+            Assert.DoesNotContain(queue, r => r.Id == sentId);
+        }
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_Sent_EmailsSupplier_WhenSmtpConfigured()
     {
         var tenantId = Guid.NewGuid();

@@ -793,6 +793,31 @@ public class PurchaseOrderService : IPurchaseOrderService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(
+        int take = 20,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var orders = await _dbContext.Set<PurchaseOrder>()
+            .AsNoTracking()
+            .Include(p => p.Supplier)
+            .Where(p => p.Status == PurchaseOrderStatus.Draft && p.Lines.Any())
+            .OrderBy(p => p.PoDate)
+            .ThenBy(p => p.PoNumber)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return orders
+            .Select(p => new ConvertibleDocumentRow(
+                p.Id,
+                "PO",
+                p.PoNumber,
+                p.Supplier?.Name ?? "—",
+                p.Total,
+                $"/purchase-orders?open={p.Id:D}"))
+            .ToList();
+    }
+
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.PurchaseOrders);
 
     private static void ValidateLine(PurchaseOrderLine line)

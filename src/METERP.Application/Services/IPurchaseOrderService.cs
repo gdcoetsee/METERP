@@ -59,4 +59,7 @@ public interface IPurchaseOrderService
 
     /// <summary>Sent or partially received POs whose expected date has passed.</summary>
     Task<IReadOnlyList<ConvertibleDocumentRow>> GetOverdueQueueAsync(int take = 20, CancellationToken ct = default);
+
+    /// <summary>Draft POs that have lines and can be marked Sent.</summary>
+    Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(int take = 20, CancellationToken ct = default);
 }
