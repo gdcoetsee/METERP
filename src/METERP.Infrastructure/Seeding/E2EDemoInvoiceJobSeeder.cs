@@ -166,27 +166,26 @@ public static class E2EDemoInvoiceJobSeeder
             ValidUntil = DateTime.UtcNow.AddDays(30),
             Status = QuoteStatus.Accepted,
             TaxRate = 0.15m,
-            Notes = DemoNotesMarker
-        }, ct);
-
-        await quoteService.AddLineAsync(new QuoteLine
-        {
-            QuoteId = quoteId,
-            Description = "Panel upgrade labour (8 hours)",
-            Quantity = 8,
-            UnitPrice = 195m,
-            LineType = "Labour",
-            Unit = "hr"
-        }, ct);
-
-        await quoteService.AddLineAsync(new QuoteLine
-        {
-            QuoteId = quoteId,
-            Description = "Travel & site transport (explicit contractor cost)",
-            Quantity = 1,
-            UnitPrice = 620m,
-            LineType = "Travel",
-            Unit = "lot"
+            Notes = DemoNotesMarker,
+            Lines =
+            {
+                new QuoteLine
+                {
+                    Description = "Panel upgrade labour (8 hours)",
+                    Quantity = 8,
+                    UnitPrice = 195m,
+                    LineType = "Labour",
+                    Unit = "hr"
+                },
+                new QuoteLine
+                {
+                    Description = "Travel & site transport (explicit contractor cost)",
+                    Quantity = 1,
+                    UnitPrice = 620m,
+                    LineType = "Travel",
+                    Unit = "lot"
+                }
+            }
         }, ct);
 
         var quote = await quoteService.GetByIdAsync(quoteId, ct);
