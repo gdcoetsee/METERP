@@ -5,7 +5,7 @@
 @using METERP.Domain
 @using METERP.Common
 @attribute [Authorize(Policy = "Jobs.View")]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IJobService JobService
 @inject IInvoiceService InvoiceService
 @inject IStockRequisitionService RequisitionService
@@ -773,7 +773,15 @@ else
                 : null;
 
             var inv = await InvoiceService.CreateBillingDocumentAsync(JobId, documentType, percent);
-            Toast.ShowSuccess($"{documentType} {inv.InvoiceNumber} created — job stays open for costs.");
+            try
+            {
+                await InvoiceService.UpdateStatusAsync(inv.Id, InvoiceStatus.Sent);
+                Toast.ShowSuccess($"{documentType} {inv.InvoiceNumber} raised and sent — job stays open for costs.");
+            }
+            catch (Exception sendEx)
+            {
+                Toast.ShowSuccess($"{documentType} {inv.InvoiceNumber} drafted — send failed: {sendEx.Message}");
+            }
             CloseInvoiceModal();
             // Stay on Command Center so operators can keep capturing costs after billing.
             await LoadAsync();

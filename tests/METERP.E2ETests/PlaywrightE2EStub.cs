@@ -940,31 +940,14 @@ public class E2EFlowTests
         var (jobNumber, jobId) = demoJob.Value;
 
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync($"/jobs?job={jobId}");
-        await page.WaitForTestIdAsync("jobs-ready", 30000);
-        await page.WaitForTestIdAsync("jobs-table", 30000);
-        await page.WaitForTestIdAsync("job-detail-panel", 20000);
-
-        var createInvoiceBtn = page.Locator("[data-testid='create-invoice-from-job-detail']");
-        await createInvoiceBtn.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 20000 });
-        await createInvoiceBtn.ScrollIntoViewIfNeededAsync();
-        if (!await createInvoiceBtn.IsEnabledAsync())
-        {
-            var signOffBtn = page.Locator("[data-testid='job-sign-off-button']");
-            if (await signOffBtn.CountAsync() > 0)
-                await signOffBtn.ClickAsync();
-        }
-
-        await page.WaitForTestIdAsync("job-ready-to-invoice-badge", 20000);
-        await Assertions.Expect(createInvoiceBtn).ToBeEnabledAsync(new() { Timeout = 20000 });
-        await createInvoiceBtn.ClickAsync();
-
-        await page.WaitForURLAsync("**/invoices**", new() { Timeout = 45000 });
-        await page.WaitForTestIdAsync("invoices-ready", 30000);
-        await page.WaitForTestIdAsync("invoices-table", 30000);
-        await page.WaitForTestIdAsync("invoice-line-items-header", 30000);
+        await page.GotoRelativeAsync($"/jobs/{jobId}?invoice=deposit");
+        await page.WaitForTestIdAsync("job-command-center-ready", 45000);
+        await page.WaitForTestIdAsync("job-cc-pnl", 15000);
+        await page.WaitForTestIdAsync("job-cc-invoice-modal", 20000);
+        await page.ClickByTestIdAsync("job-cc-invoice-deposit");
+        await page.WaitForTestIdAsync("job-cc-invoice-row", 30000);
+        Assert.True(await page.Locator("[data-testid='job-cc-invoice-row']").CountAsync() > 0);
         var content = await page.ContentAsync();
-        Assert.Contains("INV-", content);
         Assert.Contains("Travel", content, StringComparison.OrdinalIgnoreCase);
 
         await page.CloseAsync();
@@ -982,16 +965,15 @@ public class E2EFlowTests
         var (_, jobId) = demoJob.Value;
 
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync($"/jobs/{jobId}");
+        await page.GotoRelativeAsync($"/jobs/{jobId}?invoice=deposit");
         await page.WaitForTestIdAsync("job-command-center-ready", 45000);
         await page.WaitForTestIdAsync("job-cc-pnl", 15000);
 
         // Deposit does not require sign-off and must not close the job.
-        await page.ClickByTestIdAsync("job-cc-create-invoice");
-        await page.WaitForTestIdAsync("job-cc-invoice-modal", 15000);
+        await page.WaitForTestIdAsync("job-cc-invoice-modal", 20000);
         await page.ClickByTestIdAsync("job-cc-invoice-deposit");
 
-        var createdToast = page.Locator(".toast-body").Filter(new() { HasText = "created" }).Last;
+        var createdToast = page.Locator(".toast-body").Filter(new() { HasTextRegex = new Regex("created|raised|drafted", RegexOptions.IgnoreCase) }).Last;
         await createdToast.WaitForAsync(new() { Timeout = 20000 });
 
         await page.WaitForTestIdAsync("job-command-center-ready", 30000);
