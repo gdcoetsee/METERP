@@ -721,6 +721,50 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_CreateAsync_SentWithLines_PersistsLines_AddLineThrows()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Seed Customer" });
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db, null);
+        var quoteId = await service.CreateAsync(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            TaxRate = 0.15m,
+            Status = QuoteStatus.Sent,
+            Lines =
+            {
+                new QuoteLine
+                {
+                    Description = "Travel & site transport (explicit contractor cost)",
+                    Quantity = 1,
+                    UnitPrice = 620m,
+                    LineType = "Other",
+                    Unit = "lot"
+                }
+            }
+        });
+
+        var created = await service.GetByIdAsync(quoteId);
+        Assert.NotNull(created);
+        Assert.Equal(QuoteStatus.Sent, created.Status);
+        Assert.Single(created.Lines, l => !l.IsDeleted);
+        Assert.Equal(620m, created.Subtotal);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddLineAsync(new QuoteLine
+        {
+            QuoteId = quoteId,
+            Description = "Late extra line",
+            Quantity = 1,
+            UnitPrice = 10m
+        }));
+    }
+
+    [Fact]
     public async Task QuoteService_DeleteLineAsync_SoftDeletesAndRecalculates()
     {
         var tenantId = Guid.NewGuid();

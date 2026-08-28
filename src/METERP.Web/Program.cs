@@ -1160,7 +1160,7 @@ public class DatabaseSeeder : IHostedService
             var cust = customers.FirstOrDefault();
             if (cust != null)
             {
-                // Create a realistic quote for the first demo customer
+                // Create as Sent with lines on Create — AddLineAsync refuses non-Draft quotes.
                 var q1 = new Quote
                 {
                     CustomerId = cust.Id,
@@ -1168,62 +1168,56 @@ public class DatabaseSeeder : IHostedService
                     ValidUntil = DateTime.UtcNow.AddDays(26),
                     Status = QuoteStatus.Sent,
                     Notes = "DB board upgrade + warehouse lighting retrofit. Includes supply, install, test & commission.",
-                    TaxRate = 0.15m
+                    TaxRate = 0.15m,
+                    Lines =
+                    {
+                        new QuoteLine
+                        {
+                            Description = "DB board 12-way + breakers (complete)",
+                            Quantity = 1,
+                            UnitPrice = 2680m,
+                            LineType = "Material",
+                            Unit = "ea"
+                        },
+                        new QuoteLine
+                        {
+                            Description = "Labour - 2 electricians x 8 hours install & testing",
+                            Quantity = 16,
+                            UnitPrice = 195m,
+                            LineType = "Labour",
+                            Unit = "hr"
+                        },
+                        new QuoteLine
+                        {
+                            Description = "4mm SWA cable 50m + glands & accessories",
+                            Quantity = 1,
+                            UnitPrice = 875m,
+                            LineType = "Material",
+                            Unit = "lot"
+                        },
+                        new QuoteLine
+                        {
+                            Description = "LED high-bay lights 150W (x8)",
+                            Quantity = 8,
+                            UnitPrice = 420m,
+                            LineType = "Material",
+                            Unit = "ea"
+                        },
+                        new QuoteLine
+                        {
+                            Description = "Travel & site transport (explicit contractor cost)",
+                            Quantity = 1,
+                            UnitPrice = 620m,
+                            LineType = "Other",
+                            Unit = "lot"
+                        }
+                    }
                 };
 
                 var quoteId = await quoteService.CreateAsync(q1, cancellationToken);
+                var seededQuote = await quoteService.GetByIdAsync(quoteId, cancellationToken);
 
-                await quoteService.AddLineAsync(new QuoteLine
-                {
-                    QuoteId = quoteId,
-                    Description = "DB board 12-way + breakers (complete)",
-                    Quantity = 1,
-                    UnitPrice = 2680m,
-                    LineType = "Material",
-                    Unit = "ea"
-                }, cancellationToken);
-
-                await quoteService.AddLineAsync(new QuoteLine
-                {
-                    QuoteId = quoteId,
-                    Description = "Labour - 2 electricians x 8 hours install & testing",
-                    Quantity = 16,
-                    UnitPrice = 195m,
-                    LineType = "Labour",
-                    Unit = "hr"
-                }, cancellationToken);
-
-                await quoteService.AddLineAsync(new QuoteLine
-                {
-                    QuoteId = quoteId,
-                    Description = "4mm SWA cable 50m + glands & accessories",
-                    Quantity = 1,
-                    UnitPrice = 875m,
-                    LineType = "Material",
-                    Unit = "lot"
-                }, cancellationToken);
-
-                await quoteService.AddLineAsync(new QuoteLine
-                {
-                    QuoteId = quoteId,
-                    Description = "LED high-bay lights 150W (x8)",
-                    Quantity = 8,
-                    UnitPrice = 420m,
-                    LineType = "Material",
-                    Unit = "ea"
-                }, cancellationToken);
-
-                await quoteService.AddLineAsync(new QuoteLine
-                {
-                    QuoteId = quoteId,
-                    Description = "Travel & site transport (explicit contractor cost)",
-                    Quantity = 1,
-                    UnitPrice = 620m,
-                    LineType = "Other",
-                    Unit = "lot"
-                }, cancellationToken);
-
-                // Demo Sales Order (Quote -> SO -> Job per original vision)
+                // Demo Sales Order (Quote -> SO -> Job). Confirmed + lines on Create.
                 var so = new SalesOrder
                 {
                     QuoteId = quoteId,
@@ -1231,26 +1225,20 @@ public class DatabaseSeeder : IHostedService
                     SoDate = DateTime.UtcNow.AddDays(-3),
                     DeliveryDate = DateTime.UtcNow.AddDays(4),
                     Status = SalesOrderStatus.Confirmed,
-                    TaxRate = 0.15m
-                };
-                var soId = await salesOrderService.CreateAsync(so, cancellationToken);
-
-                // Copy lines for demo (simplified)
-                foreach (var ql in (await quoteService.GetByIdAsync(quoteId, cancellationToken))?.Lines ?? new List<QuoteLine>())
-                {
-                    if (!ql.IsDeleted)
-                    {
-                        await salesOrderService.AddLineAsync(new SalesOrderLine
+                    TaxRate = 0.15m,
+                    Lines = (seededQuote?.Lines ?? [])
+                        .Where(ql => !ql.IsDeleted)
+                        .Select(ql => new SalesOrderLine
                         {
-                            SalesOrderId = soId,
                             Description = ql.Description,
                             Quantity = ql.Quantity,
                             UnitPrice = ql.UnitPrice,
                             Unit = ql.Unit,
                             LineType = ql.LineType
-                        }, cancellationToken);
-                    }
-                }
+                        })
+                        .ToList()
+                };
+                var soId = await salesOrderService.CreateAsync(so, cancellationToken);
 
                 // Convert to Job from SO (demonstrates Quote -> SO -> Job flow)
                 var createdJob = await salesOrderService.ConvertToJobAsync(soId, cancellationToken);
@@ -1455,6 +1443,8 @@ public class DatabaseSeeder : IHostedService
                             };
                             await supplierService.CreateAsync(supplier, cancellationToken);
 
+                            var dbBoardItem = (await inventoryService.GetAllItemsAsync(ct: cancellationToken))
+                                .FirstOrDefault(i => i.Sku == "DB-12W-001");
                             var po = new PurchaseOrder
                             {
                                 SupplierId = supplier.Id,
@@ -1463,23 +1453,22 @@ public class DatabaseSeeder : IHostedService
                                 Status = PurchaseOrderStatus.Received,
                                 TaxRate = 0.15m
                             };
-                            var poId = await purchaseOrderService.CreateAsync(po, cancellationToken);
-
-                            // PO line that will be "received" into inventory (links to existing seeded dbBoard item)
-                            var dbBoardItem = (await inventoryService.GetAllItemsAsync(ct: cancellationToken))
-                                .FirstOrDefault(i => i.Sku == "DB-12W-001");
                             if (dbBoardItem != null)
                             {
-                                await purchaseOrderService.AddLineAsync(new PurchaseOrderLine
+                                po.Lines.Add(new PurchaseOrderLine
                                 {
-                                    PurchaseOrderId = poId,
                                     InventoryItemId = dbBoardItem.Id,
                                     Description = dbBoardItem.Name,
                                     Quantity = 5,
                                     UnitPrice = dbBoardItem.UnitCost,
                                     Unit = dbBoardItem.Unit
-                                }, cancellationToken);
+                                });
+                            }
 
+                            await purchaseOrderService.CreateAsync(po, cancellationToken);
+
+                            if (dbBoardItem != null)
+                            {
                                 // Simulate receipt (updates stock + transaction)
                                 await inventoryService.RecordStockTransactionAsync(
                                     dbBoardItem.Id,
