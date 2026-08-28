@@ -864,6 +864,8 @@ public class DatabaseSeeder : IHostedService
         // Production-ready: Use migrations (now against a guaranteed clean DB in dev)
         await db.Database.MigrateAsync(cancellationToken);
 
+        try
+        {
         // 1. Create a default tenant if none exists
         var existingTenants = await tenantService.GetAllAsync(ct: cancellationToken);
         Guid defaultTenantId;
@@ -1878,23 +1880,25 @@ public class DatabaseSeeder : IHostedService
         if (!betaQuotes.Any())
         {
             var betaCust = (await customerService.GetAllAsync(ct: cancellationToken)).First();
-            var betaQuoteId = await quoteService.CreateAsync(new Quote
+            await quoteService.CreateAsync(new Quote
             {
                 CustomerId = betaCust.Id,
                 QuoteDate = DateTime.UtcNow.AddDays(-2),
                 ValidUntil = DateTime.UtcNow.AddDays(28),
                 Status = QuoteStatus.Sent,
                 Notes = "Beta tenant isolated quote — panel upgrade.",
-                TaxRate = 0.15m
-            }, cancellationToken);
-            await quoteService.AddLineAsync(new QuoteLine
-            {
-                QuoteId = betaQuoteId,
-                Description = "Beta-only travel allowance",
-                Quantity = 1,
-                UnitPrice = 400m,
-                LineType = "Other",
-                Unit = "lot"
+                TaxRate = 0.15m,
+                Lines =
+                {
+                    new QuoteLine
+                    {
+                        Description = "Beta-only travel allowance",
+                        Quantity = 1,
+                        UnitPrice = 400m,
+                        LineType = "Other",
+                        Unit = "lot"
+                    }
+                }
             }, cancellationToken);
         }
 
@@ -1907,7 +1911,7 @@ public class DatabaseSeeder : IHostedService
             if (full?.Lines.Any(l => !l.IsDeleted && l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)) == true)
                 break;
 
-            if (full != null)
+            if (full != null && full.Status == QuoteStatus.Draft)
             {
                 await quoteService.AddLineAsync(new QuoteLine
                 {
@@ -1924,6 +1928,11 @@ public class DatabaseSeeder : IHostedService
         tenantProvider.SetTenantId(defaultTenantId);
 
         await PurgeStaleBillingWebhookEventsAsync(scope.ServiceProvider, config, _logger, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Demo seed or data patch failed after migrate. The app will still start.");
+        }
     }
 
     private static async Task PurgeStaleBillingWebhookEventsAsync(

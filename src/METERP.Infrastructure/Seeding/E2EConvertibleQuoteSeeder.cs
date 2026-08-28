@@ -23,13 +23,28 @@ public static class E2EConvertibleQuoteSeeder
     {
         tenantProvider.SetTenantId(tenantId);
 
-        var demoQuotes = await quoteService.GetAllAsync(pageSize: 500, ct: ct);
-        foreach (var stale in demoQuotes.Where(q =>
-                     q.Notes != null
-                     && q.Notes.Contains(DemoNotesMarker, StringComparison.OrdinalIgnoreCase)
-                     && q.Status is QuoteStatus.Draft or QuoteStatus.Sent))
+        var demoQuotes = (await quoteService.GetAllAsync(pageSize: 500, ct: ct))
+            .Where(q => q.Notes != null
+                        && q.Notes.Contains(DemoNotesMarker, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var candidate in demoQuotes.Where(q => q.Status is QuoteStatus.Draft or QuoteStatus.Sent))
         {
-            await quoteService.DeleteAsync(stale.Id, ct);
+            var full = await quoteService.GetByIdAsync(candidate.Id, ct);
+            if (full?.Lines.Any(l => !l.IsDeleted) == true)
+                return full.QuoteNumber;
+        }
+
+        foreach (var stale in demoQuotes.Where(q => q.Status is QuoteStatus.Draft or QuoteStatus.Rejected or QuoteStatus.Expired))
+        {
+            try
+            {
+                await quoteService.DeleteAsync(stale.Id, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                // Linked/converted quotes stay — never crash host or E2E reset.
+            }
         }
 
         var customer = (await customerService.GetAllAsync(ct: ct))
@@ -47,34 +62,32 @@ public static class E2EConvertibleQuoteSeeder
                 ValidUntil = DateTime.UtcNow.AddDays(29),
                 Status = QuoteStatus.Sent,
                 TaxRate = 0.15m,
-                Notes = DemoNotesMarker
-            }, ct);
-
-            await quoteService.AddLineAsync(new QuoteLine
-            {
-                QuoteId = quoteId,
-                Description = "Panel upgrade labour (8 hours)",
-                Quantity = 8,
-                UnitPrice = 195m,
-                LineType = "Labour",
-                Unit = "hr"
-            }, ct);
-
-            await quoteService.AddLineAsync(new QuoteLine
-            {
-                QuoteId = quoteId,
-                Description = "Travel & site transport (explicit contractor cost)",
-                Quantity = 1,
-                UnitPrice = 620m,
-                LineType = "Travel",
-                Unit = "lot"
+                Notes = DemoNotesMarker,
+                Lines =
+                {
+                    new QuoteLine
+                    {
+                        Description = "Panel upgrade labour (8 hours)",
+                        Quantity = 8,
+                        UnitPrice = 195m,
+                        LineType = "Labour",
+                        Unit = "hr"
+                    },
+                    new QuoteLine
+                    {
+                        Description = "Travel & site transport (explicit contractor cost)",
+                        Quantity = 1,
+                        UnitPrice = 620m,
+                        LineType = "Travel",
+                        Unit = "lot"
+                    }
+                }
             }, ct);
 
             return (await quoteService.GetByIdAsync(quoteId, ct))?.QuoteNumber;
         }
         catch (QuotaExceededException)
         {
-            // Re-use an existing convertible quote when the demo tenant is at its monthly cap.
             var existing = (await quoteService.GetAllAsync("E2E convertible", pageSize: 5, ct: ct))
                 .FirstOrDefault(q => q.Status is QuoteStatus.Draft or QuoteStatus.Sent);
             return existing?.QuoteNumber;

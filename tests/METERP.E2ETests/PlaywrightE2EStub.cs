@@ -2107,6 +2107,98 @@ public class E2EFlowTests
     }
 
     [Fact]
+    public async Task Home_CashDesk_Queues_Render_On_Seeded_Dashboard()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: true);
+        await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
+        await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
+
+        var queueIds = new[]
+        {
+            "home-approvals-queue",
+            "home-unsent-quotes",
+            "home-unconfirmed-orders",
+            "home-convert-to-job",
+            "home-unsent-invoices",
+            "home-overdue-invoices",
+            "home-unsent-pos",
+            "home-overdue-pos",
+            "home-outstanding-ppe",
+            "home-low-stock",
+            "home-expiring-docs",
+            "home-expiring-certs",
+            "home-ready-to-invoice"
+        };
+
+        var found = 0;
+        foreach (var id in queueIds)
+        {
+            if (await page.Locator($"[data-testid='{id}']").CountAsync() > 0)
+                found++;
+        }
+
+        Assert.True(found >= 1, $"Expected at least one Home cash-desk queue on seeded Acme, found {found}.");
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Home_CashDesk_OneClick_Action_Shows_Toast_Or_Navigates()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: true);
+        await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
+        await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
+
+        var actionIds = new[]
+        {
+            "home-approve-item",
+            "home-send-quote",
+            "home-confirm-so",
+            "home-convert-job",
+            "home-send-invoice",
+            "home-chase-invoice",
+            "home-record-payment",
+            "home-send-po",
+            "home-overdue-po",
+            "home-return-ppe",
+            "home-deposit-invoice",
+            "home-signoff-invoice",
+            "home-ready-invoice"
+        };
+
+        ILocator? action = null;
+        foreach (var id in actionIds)
+        {
+            var button = page.Locator($"button[data-testid='{id}']").First;
+            if (await button.CountAsync() == 0)
+                continue;
+            if (!await button.IsEnabledAsync())
+                continue;
+            action = button;
+            break;
+        }
+
+        Assert.True(action is not null, "Expected a one-click Home cash-desk button on seeded Acme.");
+        await action!.ScrollIntoViewIfNeededAsync();
+        await action.ClickAsync();
+
+        var toast = page.Locator(".toast-body").First;
+        try
+        {
+            await toast.WaitForAsync(new() { Timeout = 20000 });
+        }
+        catch (TimeoutException)
+        {
+            Assert.Contains("/jobs", page.Url, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await page.CloseAsync();
+    }
+
+    [Fact]
     public async Task Home_Division_Scorecards_Show_For_Executive_User()
     {
         await E2EHelpers.EnsureAppReadyAsync();

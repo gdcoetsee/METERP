@@ -22,15 +22,35 @@ public static class E2EReceiveDemoPoSeeder
     {
         tenantProvider.SetTenantId(tenantId);
 
-        var demoPos = await purchaseOrderService.GetAllAsync(ct: ct);
-        foreach (var stale in demoPos.Where(p =>
-                     p.Notes != null
-                     && p.Notes.Contains(DemoNotesMarker, StringComparison.OrdinalIgnoreCase)))
+        var demoPos = (await purchaseOrderService.GetAllAsync(pageSize: 200, ct: ct))
+            .Where(p => p.Notes != null
+                        && p.Notes.Contains(DemoNotesMarker, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var candidate in demoPos.Where(p => p.Status == PurchaseOrderStatus.Sent))
         {
-            await purchaseOrderService.DeleteAsync(stale.Id, ct);
+            var full = await purchaseOrderService.GetByIdAsync(candidate.Id, ct);
+            if (full?.Lines.Any(l => !l.IsDeleted) == true)
+                return;
         }
 
-        var panelSupplier = (await supplierService.GetAllAsync(ct: ct))
+        foreach (var stale in demoPos)
+        {
+            try
+            {
+                if (stale.Status == PurchaseOrderStatus.Sent)
+                    await purchaseOrderService.UpdateStatusAsync(stale.Id, PurchaseOrderStatus.Cancelled, ct);
+
+                if (stale.Status is PurchaseOrderStatus.Draft or PurchaseOrderStatus.Cancelled)
+                    await purchaseOrderService.DeleteAsync(stale.Id, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                // Received / locked rows stay — never crash host startup.
+            }
+        }
+
+        var panelSupplier = (await supplierService.GetAllAsync(pageSize: 200, ct: ct))
             .FirstOrDefault(s => s.Name.Contains("Panel Supplies", StringComparison.OrdinalIgnoreCase));
         var ledItem = (await inventoryService.GetAllItemsAsync(ct: ct))
             .FirstOrDefault(i => i.Sku == "LED-HB-150");
@@ -42,7 +62,7 @@ public static class E2EReceiveDemoPoSeeder
             SupplierId = panelSupplier.Id,
             PoDate = DateTime.UtcNow.AddDays(-2),
             ExpectedDate = DateTime.UtcNow.AddDays(2),
-            Status = PurchaseOrderStatus.Sent,
+            Status = PurchaseOrderStatus.Draft,
             TaxRate = 0.15m,
             Notes = "E2E receive demo PO"
         }, ct);
@@ -56,5 +76,7 @@ public static class E2EReceiveDemoPoSeeder
             UnitPrice = ledItem.UnitCost,
             Unit = ledItem.Unit
         }, ct);
+
+        await purchaseOrderService.UpdateStatusAsync(sentPoId, PurchaseOrderStatus.Sent, ct);
     }
 }

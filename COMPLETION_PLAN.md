@@ -9,9 +9,11 @@
 **Primary implementer:** Grok (user preference). Composer delivered Ops Core chunks 1–4.  
 **Brief:** [`OPS_CORE_KICKOFF.md`](OPS_CORE_KICKOFF.md)
 
+**2026-08-28:** Integrity stream and Home cash desk are **done in code**. Ops Core freeze is **lifted** (user: finish the product; AI already in the demo). Active work is **production proof**: CI restore (NU1605 SQLite pin), docker Playwright E2E of the cash desk, then fix what that finds. Do **not** grow more Home queues.
+
 **2026-08-22:** Integrity stream is **done enough**. Home now converts won work, **approves** quotes/REQs/leave/field reports, **sends approved quotes**, queues POs/cash, **chases overdue invoices**, **records remaining payment**, and **sends draft POs** in one click. Payment recording emails the customer a receipt when SMTP is set. Draft invoices and sales orders send/confirm from Home. Outstanding PPE returns from Home. Late POs receive from Home. Home cash queue **signs off, raises deposit, and invoices** in one click. Expiring tickets, company documents, and low-stock SKUs surface on Home. Application.Tests **1350** green.
 
-**Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **speed-to-cash and operator-error loops** — leftover unbilled on close, overdue invoices, and remaining commercial transitions (PO send, payment received, quote approval). AI stays frozen. E2E remains a release checkpoint, not a development gate.
+**Plan change:** Stop further filter-parity / R6-observability as the daily loop. R6 is already a strong partial (health, rate limits, headers, secrets, optional OTLP/Seq). Next work is **prove the cash desk in the browser / E2E**, then remaining production maturity (CI green, flake fixes). New AI features stay out unless a demo path is broken. E2E is now the development gate for release.
 
 | Phase | Status |
 |-------|--------|
@@ -40,16 +42,16 @@ Implementer must **flag plan/product risks** and **consult the user before** cha
 2. **Invoicing does not close the job.** Costs remain captureable after invoice.
 3. **Job closes only** after executive P&L/performance review → Approve close. Hard lock + executive reopen (reason + audit).
 4. **PPE** is **stock issued to employees**, maintained in a **register**. Job link is **optional**, not primary.
-5. **AI freeze** until Ops Core is stable. Completeness over new AI features.
+5. **AI freeze lifted (2026-08-28)** — Ops Core is stable. Copilot stays in the product; do not add new AI modules unless a demo path is broken.
 6. **Payslip v1** = JobLabor contractor payslip (simple deductions) — not SARS full payroll.
 7. Modals where they improve UX. Definition of Done requires service + UI + audit + tests.
 
 ### Next priorities
 
-1. **Speed-to-cash** — executives must see and acknowledge leftover quote on close; overdue invoices must surface; do not count proforma/draft as billed.  
-2. **Operator-error loops** — PPE register, scheduling conflicts, leave vs crew (in progress / done incrementally).  
-3. E2E against docker when validating release (not a development blocker).  
-4. R6 remainder only if a pilot is blocked (observability already optional).
+1. **Prove the cash desk** — docker Playwright + Home one-click actions (convert, approve, send, invoice, chase, receive, PPE).  
+2. **Fix what E2E finds** — UI races, permissions, create-then-send invoice paths.  
+3. **CI green** — restore/unit first, then E2E job.  
+4. R6 remainder only if a paying pilot is next (observability already optional).
 
 **R6 quota UX + field report guards (2026-07-24):** Quotes/Jobs/Invoices disable create actions when monthly quota is exceeded and show page banners. Field reports reject submit/approve on closed jobs and empty content.
 

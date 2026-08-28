@@ -35,7 +35,7 @@ Build a stable **job-centric operational core**:
 | 6 | **Work sign-off** (mgr → exec) is **separate** from **executive close**. Do not merge them. |
 | 7 | Multiple deposit / partial / progress / **final** invoices are allowed while job is open. “Final” is a document type, not job death. Soft warnings only (e.g. large unbilled residual on close). |
 | 8 | **PPE** is **stock issued to employees**, maintained in a **PPE register**. **EmployeeId required; JobId optional.** Do not model PPE as job-primary. |
-| 9 | **AI freeze** until Ops Core is done. |
+| 9 | **AI freeze lifted (2026-08-28)** — Ops Core is done. Do not add new AI modules unless a demo path is broken. |
 | 10 | Prefer **modals** for create/edit/approve/issue. Follow Clean Architecture layers. |
 | 11 | **Definition of Done:** service rules + UI + audit + tests (`dotnet test` green). No “implemented — verify polish.” |
 

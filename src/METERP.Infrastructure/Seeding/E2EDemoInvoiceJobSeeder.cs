@@ -71,7 +71,16 @@ public static class E2EDemoInvoiceJobSeeder
 
         var invoices = await invoiceService.GetAllAsync(pageSize: 500, ct: ct);
         foreach (var invoice in invoices.Where(i => i.JobId == demoJob.Id))
-            await invoiceService.DeleteAsync(invoice.Id, ct);
+        {
+            try
+            {
+                await invoiceService.DeleteAsync(invoice.Id, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                // Paid invoices stay; E2E invoice tests create a fresh job path when needed.
+            }
+        }
 
         // Ops Core: Closed is hard-locked — reopen so E2E can reset costs/invoices cleanly.
         if (demoJob.Status == JobStatus.Closed)
