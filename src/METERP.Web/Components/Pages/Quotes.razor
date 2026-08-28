@@ -539,6 +539,8 @@ else
             editorQuote!.CustomerId = customerId;
         if (query.TryGetValue("notes", out var notes) && !string.IsNullOrWhiteSpace(notes))
             editorQuote!.Notes = notes.ToString();
+        if (query.TryGetValue("newCustomer", out var nc) && nc == "1")
+            showNewCustomer = true;
         // Open the line form immediately on create deep-links (better UX + reliable E2E).
         ShowAddLineForm();
     }

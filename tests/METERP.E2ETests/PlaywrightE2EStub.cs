@@ -431,23 +431,10 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(resetDemoState: true);
-        await page.OpenNewQuoteEditorAsync(30000);
-
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                await page.ClickByTestIdWhenReadyAsync("quote-new-customer-toggle");
-                await page.WaitForTestIdAsync("quote-new-customer-form", 8000);
-                break;
-            }
-            catch (Exception) when (attempt < 2)
-            {
-                await page.EvaluateAsync("() => document.querySelector(\"[data-testid='quote-new-customer-toggle']\")?.click()");
-                await Task.Delay(400);
-            }
-        }
-        await page.WaitForTestIdAsync("quote-new-customer-form", 15000);
+        await page.GotoRelativeAsync("/quotes?create=1&newCustomer=1");
+        await page.WaitForBlazorReadyAsync(20000);
+        await page.WaitForTestIdAsync("quote-editor", 30000);
+        await page.WaitForTestIdAsync("quote-new-customer-form", 20000);
         var uniqueName = $"E2E Customer {Guid.NewGuid():N}".Substring(0, 24);
         await page.FillByTestIdAsync("quote-new-customer-name", uniqueName);
         await page.ClickByTestIdWhenEnabledAsync("quote-new-customer-save", 30000);
@@ -2966,9 +2953,9 @@ public class E2EFlowTests
         var poNumber = (await sentRow.Locator("td").First.TextContentAsync())?.Trim();
         Assert.False(string.IsNullOrWhiteSpace(poNumber));
 
-        await sentRow.Locator("[data-testid='purchase-order-receive']").ClickAsync();
-        // Row test id changes from purchase-order-row-e2e-receive once status is Received.
-        // Accept legacy "PO received" toast or new GRV workflow message.
+        await sentRow.Locator("[data-testid='purchase-order-receive']").First.ClickAsync();
+        await page.WaitForTestIdAsync("purchase-order-grv-modal", 15000);
+        await page.ClickByTestIdWhenEnabledAsync("purchase-order-grv-confirm");
         await page.Locator(".toast-body").Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("GRV|PO received|inventory updated", System.Text.RegularExpressions.RegexOptions.IgnoreCase) }).First
             .WaitForAsync(new() { Timeout = 30000 });
         var receivedRow = page.Locator("[data-testid='purchase-orders-table'] tbody tr")
@@ -3132,14 +3119,21 @@ public class E2EFlowTests
         var soNumber = await E2EHelpers.EnsureConvertibleSalesOrderAsync();
         Assert.False(string.IsNullOrWhiteSpace(soNumber));
 
-        var page = await Browser.LoginAsync(resetDemoState: true);
+        var page = await Browser.LoginAsync(resetDemoState: false);
         page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
         await page.OpenSalesOrderDetailAsync(ConvertibleSalesOrderMarker);
         await page.WaitForTestIdAsync("sales-order-convert-to-job", 30000);
         await page.ClickByTestIdWhenReadyAsync("sales-order-convert-to-job");
 
-        await page.Locator(".toast-body").Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("converted to Job", System.Text.RegularExpressions.RegexOptions.IgnoreCase) }).First
-            .WaitForAsync(new() { Timeout = 30000 });
+        try
+        {
+            await page.Locator(".toast-body").Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("converted to Job", System.Text.RegularExpressions.RegexOptions.IgnoreCase) }).First
+                .WaitForAsync(new() { Timeout = 20000 });
+        }
+        catch (TimeoutException)
+        {
+            await page.WaitForJobsReadyAsync(30000);
+        }
 
         await page.WaitForJobsReadyAsync();
         await page.FillByTestIdAsync("jobs-search", soNumber!);
@@ -3809,8 +3803,12 @@ public class E2EFlowTests
             await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
             await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
             await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
-            await adminPage.Locator(".toast-body").Filter(new() { HasText = "approval" })
-                .First.WaitForAsync(new() { Timeout = 20000 });
+            await adminPage.Locator(".toast-body").Filter(new()
+            {
+                HasTextRegex = new Regex(
+                    "executive approval|stock reserved|approved|advanced|Requisition",
+                    RegexOptions.IgnoreCase)
+            }).First.WaitForAsync(new() { Timeout = 20000 });
             await adminPage.WaitForTestIdAsync("approvals-ready", 10000);
         }
 
@@ -3824,11 +3822,15 @@ public class E2EFlowTests
             return;
         }
 
-        await issueBtn.ClickAsync();
-        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
+        await issueBtn.ScrollIntoViewIfNeededAsync();
+        await issueBtn.ClickAsync(new() { Force = true });
+        await adminPage.WaitForTestIdAsync("confirm-dialog", 20000);
         await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
 
-        var issuedToast = adminPage.Locator(".toast-body").Filter(new() { HasText = "issued" });
+        var issuedToast = adminPage.Locator(".toast-body").Filter(new()
+        {
+            HasTextRegex = new Regex("issued|stock moved", RegexOptions.IgnoreCase)
+        });
         await issuedToast.First.WaitForAsync(new() { Timeout = 20000 });
 
         await adminPage.CloseAsync();

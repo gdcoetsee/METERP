@@ -27,7 +27,10 @@ public static class E2EConvertibleSalesOrderSeeder
                          && so.Notes.Contains(DemoNotesMarker, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        foreach (var candidate in existing.Where(so => so.Status == SalesOrderStatus.Confirmed))
+        var unconvertedIds = (await salesOrderService.GetUnconvertedConfirmedAsync(50, ct))
+            .Select(r => r.Id)
+            .ToHashSet();
+        foreach (var candidate in existing.Where(so => unconvertedIds.Contains(so.Id)))
         {
             var full = await salesOrderService.GetByIdAsync(candidate.Id, ct);
             if (full?.Lines.Any(l => !l.IsDeleted) == true)
@@ -46,21 +49,32 @@ public static class E2EConvertibleSalesOrderSeeder
             }
         }
 
-        var customer = (await customerService.GetAllAsync(ct: ct))
-            .FirstOrDefault(c => c.Name.Contains("Hospital", StringComparison.OrdinalIgnoreCase))
-            ?? (await customerService.GetAllAsync(ct: ct)).FirstOrDefault();
+        var customers = await customerService.GetAllAsync(pageSize: 200, ct: ct);
+        var customer = customers.FirstOrDefault(c =>
+                           c.Name.Contains("Hospital", StringComparison.OrdinalIgnoreCase)
+                           && !string.IsNullOrWhiteSpace(c.Email))
+                       ?? customers.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email));
         if (customer == null)
             return null;
 
-        var quoteId = await quoteService.CreateAsync(new Quote
+        Guid quoteId;
+        try
         {
-            CustomerId = customer.Id,
-            QuoteDate = DateTime.UtcNow,
-            ValidUntil = DateTime.UtcNow.AddDays(30),
-            Status = QuoteStatus.Accepted,
-            TaxRate = 0.15m,
-            Notes = DemoNotesMarker
-        }, ct);
+            quoteId = await quoteService.CreateAsync(new Quote
+            {
+                CustomerId = customer.Id,
+                QuoteDate = DateTime.UtcNow,
+                ValidUntil = DateTime.UtcNow.AddDays(30),
+                Status = QuoteStatus.Accepted,
+                TaxRate = 0.15m,
+                Notes = DemoNotesMarker
+            }, ct);
+        }
+        catch (QuotaExceededException)
+        {
+            var fallback = existing.FirstOrDefault(so => so.Status == SalesOrderStatus.Confirmed);
+            return fallback?.SoNumber;
+        }
 
         var soId = await salesOrderService.CreateAsync(new SalesOrder
         {

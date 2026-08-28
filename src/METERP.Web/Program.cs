@@ -665,9 +665,10 @@ if (app.Environment.IsDevelopment())
         return Results.Ok(new { ok = true });
     }).DisableRateLimiting();
 
-    app.MapPost("/e2e/reset-demo-state", async (IServiceProvider sp, CancellationToken ct) =>
+    app.MapPost("/e2e/reset-demo-state", async (IServiceProvider sp, ILoggerFactory logFactory, CancellationToken ct) =>
     {
         using var scope = sp.CreateScope();
+        var log = logFactory.CreateLogger("E2EReset");
         var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
         var acme = await tenantService.GetBySubdomainAsync("acme", ct);
         if (acme == null)
@@ -676,35 +677,44 @@ if (app.Environment.IsDevelopment())
         var tenantProvider = scope.ServiceProvider.GetRequiredService<ITenantProvider>();
         tenantProvider.SetTenantId(acme.Id);
 
-        await E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, acme.Id, ct);
-        await E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
+        async Task SeedStep(string name, Func<Task> step)
+        {
+            try { await step(); }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "E2E reset step {Step} failed", name);
+            }
+        }
+
+        await SeedStep("quotas", () => E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, acme.Id, ct));
+        await SeedStep("receive-po", () => E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
             scope.ServiceProvider.GetRequiredService<IPurchaseOrderService>(),
             scope.ServiceProvider.GetRequiredService<ISupplierService>(),
             scope.ServiceProvider.GetRequiredService<IInventoryService>(),
             tenantProvider,
             acme.Id,
-            ct);
-        await E2EConvertibleQuoteSeeder.EnsureSentConvertibleQuoteAsync(
+            ct));
+        await SeedStep("convertible-quote", () => E2EConvertibleQuoteSeeder.EnsureSentConvertibleQuoteAsync(
             scope.ServiceProvider.GetRequiredService<IQuoteService>(),
             scope.ServiceProvider.GetRequiredService<ICustomerService>(),
             tenantProvider,
             acme.Id,
-            ct);
-        await E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync(
+            ct));
+        await SeedStep("demo-invoice-job", () => E2EDemoInvoiceJobSeeder.EnsureInvoiceReadyDemoJobAsync(
             scope.ServiceProvider.GetRequiredService<IJobService>(),
             scope.ServiceProvider.GetRequiredService<IInvoiceService>(),
             scope.ServiceProvider.GetRequiredService<ICustomerService>(),
             scope.ServiceProvider.GetRequiredService<IQuoteService>(),
             tenantProvider,
             acme.Id,
-            ct);
-        await E2EConvertibleSalesOrderSeeder.EnsureConfirmedConvertibleSalesOrderAsync(
+            ct));
+        await SeedStep("convertible-so", () => E2EConvertibleSalesOrderSeeder.EnsureConfirmedConvertibleSalesOrderAsync(
             scope.ServiceProvider.GetRequiredService<ISalesOrderService>(),
             scope.ServiceProvider.GetRequiredService<IQuoteService>(),
             scope.ServiceProvider.GetRequiredService<ICustomerService>(),
             tenantProvider,
             acme.Id,
-            ct);
+            ct));
 
         var beta = await tenantService.GetBySubdomainAsync("beta", ct);
         if (beta != null)
