@@ -270,7 +270,11 @@ if (builder.Environment.IsEnvironment("Testing"))
 else
 {
     builder.Services.AddDbContext<AppDbContext>((sp, options) =>
-        options.UseNpgsql(connectionString)
+        options.UseNpgsql(connectionString, npgsql =>
+               {
+                   npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
+                   npgsql.CommandTimeout(60);
+               })
                .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning))
                .AddInterceptors(sp.GetRequiredService<CircuitDbCommandGateInterceptor>()));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
 }
@@ -874,8 +878,6 @@ public class DatabaseSeeder : IHostedService
         // Production-ready: Use migrations (now against a guaranteed clean DB in dev)
         await db.Database.MigrateAsync(cancellationToken);
 
-        try
-        {
         // 1. Create a default tenant if none exists
         var existingTenants = await tenantService.GetAllAsync(ct: cancellationToken);
         Guid defaultTenantId;
@@ -1591,6 +1593,8 @@ public class DatabaseSeeder : IHostedService
         }
 
         tenantProvider.SetTenantId(defaultTenantId);
+        try
+        {
         await E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
             purchaseOrderService,
             supplierService,
@@ -1941,7 +1945,7 @@ public class DatabaseSeeder : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Demo seed or data patch failed after migrate. The app will still start.");
+            _logger.LogError(ex, "E2E/demo data patch failed after core seed. The app will still start.");
         }
     }
 

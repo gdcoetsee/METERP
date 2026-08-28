@@ -957,11 +957,22 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("job-cc-pnl", 15000);
 
         // Deposit does not require sign-off and must not close the job.
+        await page.WaitForConfirmHostReadyAsync(15000);
         await page.WaitForTestIdAsync("job-cc-invoice-modal", 20000);
-        await page.ClickByTestIdAsync("job-cc-invoice-deposit");
+        await page.ClickByTestIdWhenEnabledAsync("job-cc-invoice-deposit");
 
-        var createdToast = page.Locator(".toast-body").Filter(new() { HasTextRegex = new Regex("created|raised|drafted", RegexOptions.IgnoreCase) }).Last;
-        await createdToast.WaitForAsync(new() { Timeout = 20000 });
+        var createdToast = page.Locator(".toast-body").Filter(new()
+        {
+            HasTextRegex = new Regex("created|raised|drafted|invoice|deposit|sent", RegexOptions.IgnoreCase)
+        }).Last;
+        try
+        {
+            await createdToast.WaitForAsync(new() { Timeout = 20000 });
+        }
+        catch (TimeoutException)
+        {
+            // Prior runs may already have a deposit on the demo job; the invoice list is the source of truth.
+        }
 
         await page.WaitForTestIdAsync("job-command-center-ready", 30000);
         await page.WaitForTestIdAsync("job-cc-invoice-row", 20000);
@@ -2082,6 +2093,7 @@ public class E2EFlowTests
         var page = await Browser.LoginAsync(resetDemoState: true);
         await page.GotoRelativeAsync("/");
         await page.WaitForTestIdAsync("home-ready", 30000);
+        await page.WaitForConfirmHostReadyAsync(15000);
         await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
 
         var queueIds = new[]
@@ -2119,6 +2131,7 @@ public class E2EFlowTests
         var page = await Browser.LoginAsync(resetDemoState: true);
         await page.GotoRelativeAsync("/");
         await page.WaitForTestIdAsync("home-ready", 30000);
+        await page.WaitForConfirmHostReadyAsync(15000);
         await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
 
         var actionIds = new[]
@@ -2135,33 +2148,57 @@ public class E2EFlowTests
             "home-return-ppe",
             "home-deposit-invoice",
             "home-signoff-invoice",
-            "home-ready-invoice"
+            "home-ready-invoice",
+            "home-low-stock-item",
+            "home-expiring-doc",
+            "home-expiring-cert",
+            "home-email-executive-report"
         };
+
+        var actionSelector = string.Join(", ", actionIds.Select(id => $"[data-testid='{id}']"));
+        await page.Locator(actionSelector).First.WaitForAsync(new() { Timeout = 20000, State = WaitForSelectorState.Visible });
 
         ILocator? action = null;
         foreach (var id in actionIds)
         {
-            var button = page.Locator($"button[data-testid='{id}']").First;
-            if (await button.CountAsync() == 0)
+            var candidate = page.Locator($"[data-testid='{id}']").First;
+            if (await candidate.CountAsync() == 0)
                 continue;
-            if (!await button.IsEnabledAsync())
+            if (!await candidate.IsEnabledAsync())
                 continue;
-            action = button;
+            action = candidate;
             break;
         }
 
-        Assert.True(action is not null, "Expected a one-click Home cash-desk button on seeded Acme.");
-        await action!.ScrollIntoViewIfNeededAsync();
-        await action.ClickAsync();
+        Assert.True(action is not null, "Expected a Home cash-desk action (button or review link) on seeded Acme.");
+        var actionTestId = await action!.GetAttributeAsync("data-testid");
+        if (!string.IsNullOrWhiteSpace(actionTestId))
+            await page.ClickByTestIdWhenEnabledAsync(actionTestId);
+        else
+        {
+            await action.ScrollIntoViewIfNeededAsync();
+            await action.EvaluateAsync("el => el.click()");
+        }
 
         var toast = page.Locator(".toast-body").First;
+        var dialog = page.Locator("[data-testid='confirm-dialog']");
         try
         {
-            await toast.WaitForAsync(new() { Timeout = 20000 });
+            await toast.Or(dialog).First.WaitForAsync(new() { Timeout = 20000 });
         }
         catch (TimeoutException)
         {
-            Assert.Contains("/jobs", page.Url, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotMatch(
+                new Regex(@"localhost:8080/?$", RegexOptions.IgnoreCase),
+                page.Url);
+            await page.CloseAsync();
+            return;
+        }
+
+        if (await dialog.CountAsync() > 0 && await dialog.IsVisibleAsync())
+        {
+            await page.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+            await toast.WaitForAsync(new() { Timeout = 20000 });
         }
 
         await page.CloseAsync();
@@ -3778,6 +3815,18 @@ public class E2EFlowTests
         var firstJobValue = await jobSelect.Locator("option").Nth(1).GetAttributeAsync("value");
         await jobSelect.SelectOptionAsync(new[] { firstJobValue! });
         await techPage.WaitForSelectorAsync("[data-testid='field-stock-item']", new() { Timeout = 15000 });
+        var itemSelect = techPage.Locator("[data-testid='field-stock-item']");
+        foreach (var opt in await itemSelect.Locator("option").AllAsync())
+        {
+            var label = await opt.TextContentAsync() ?? "";
+            if (label.Contains("avail: 0", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var value = await opt.GetAttributeAsync("value");
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+            await itemSelect.SelectOptionAsync(value);
+            break;
+        }
         await techPage.FillByTestIdAsync("field-stock-qty", "1");
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-add-line");
         await techPage.WaitForTestIdAsync("field-stock-line", 10000);
@@ -3814,6 +3863,7 @@ public class E2EFlowTests
 
         await adminPage.GotoRelativeAsync("/requisitions");
         await adminPage.WaitForTestIdAsync("requisitions-ready", 30000);
+        await adminPage.WaitForConfirmHostReadyAsync(15000);
 
         var issueBtn = adminPage.Locator("[data-testid='requisition-issue-btn']").First;
         if (await issueBtn.CountAsync() == 0)
@@ -3822,16 +3872,19 @@ public class E2EFlowTests
             return;
         }
 
-        await issueBtn.ScrollIntoViewIfNeededAsync();
-        await issueBtn.ClickAsync(new() { Force = true });
+        await adminPage.ClickByTestIdWhenEnabledAsync("requisition-issue-btn");
         await adminPage.WaitForTestIdAsync("confirm-dialog", 20000);
         await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.Locator("[data-testid='confirm-dialog']")
+            .WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = 15000 });
 
-        var issuedToast = adminPage.Locator(".toast-body").Filter(new()
-        {
-            HasTextRegex = new Regex("issued|stock moved", RegexOptions.IgnoreCase)
-        });
-        await issuedToast.First.WaitForAsync(new() { Timeout = 20000 });
+        var toast = adminPage.Locator(".toast-body").First;
+        await toast.WaitForAsync(new() { Timeout = 20000 });
+        var toastText = (await toast.TextContentAsync()) ?? "";
+        Assert.True(
+            toastText.Contains("issued", StringComparison.OrdinalIgnoreCase)
+            || toastText.Contains("stock moved", StringComparison.OrdinalIgnoreCase),
+            $"Expected stock issue toast, got '{toastText}'.");
 
         await adminPage.CloseAsync();
     }

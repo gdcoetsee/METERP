@@ -4,6 +4,7 @@
 @code {
     private ConfirmRequest? _request;
     private readonly Action<ConfirmRequest> _handler;
+    private bool _ready;
 
     public ConfirmDialogHost()
     {
@@ -12,8 +13,14 @@
 
     protected override void OnInitialized()
     {
+        // Prerender must not subscribe: that scoped ConfirmService is discarded, and a
+        // data-testid in prerendered HTML would let E2E click before the circuit is live.
+        if (!RendererInfo.IsInteractive)
+            return;
+
         // Last-mounted host wins (layout hosts mount first; avoid page-level duplicates).
         ConfirmService.Subscribe(_handler);
+        _ready = true;
     }
 
     private void HandleShow(ConfirmRequest request)
@@ -44,6 +51,10 @@
     }
 }
 
+@if (_ready)
+{
+    <span data-testid="confirm-host-ready" class="visually-hidden">ready</span>
+}
 @if (_request != null)
 {
     <div class="meterp-modal-backdrop" data-testid="confirm-dialog-backdrop" @onclick="CancelAsync">

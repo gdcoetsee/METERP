@@ -315,8 +315,9 @@ public static class E2EHelpers
             }
         }
 
+        // Force-click hits whatever is on top (AI FAB). Dispatch on the element itself.
         var fallback = page.Locator($"[data-testid='{testId}']").First;
-        await fallback.ClickAsync(new() { Force = true, Timeout = 10000 });
+        await fallback.EvaluateAsync("el => el.click()");
     }
 
     public static async Task OpenFirstOpportunityDetailAsync(this IPage page, int timeoutMs = 30000)
@@ -604,6 +605,16 @@ public static class E2EHelpers
         {
             // Content selectors below are authoritative when Blazor is already bootstrapped.
         }
+    }
+
+    /// <summary>
+    /// Waits until MainLayout's ConfirmDialogHost has subscribed on the live circuit
+    /// (the marker is omitted during prerender).
+    /// </summary>
+    public static async Task WaitForConfirmHostReadyAsync(this IPage page, int timeoutMs = 15000)
+    {
+        await page.Locator("[data-testid='confirm-host-ready']")
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = timeoutMs });
     }
 
     private static async Task WaitForLoadingGoneAsync(IPage page, string? loadingTestId, int timeoutMs)

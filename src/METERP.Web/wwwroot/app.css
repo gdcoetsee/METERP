@@ -24,6 +24,8 @@ main {
 
 .content {
     padding-top: 1.1rem;
+    /* Keep last-row table actions out from under the floating AI launcher. */
+    padding-bottom: 6rem;
 }
 
 .nav-scrollable {
