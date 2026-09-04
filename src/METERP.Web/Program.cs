@@ -1010,12 +1010,14 @@ public class DatabaseSeeder : IHostedService
         }
 
         var demoCustomers = await customerService.GetAllAsync(ct: cancellationToken);
-        if (demoCustomers.Any() && !await db.Set<RecurringJobSchedule>().AnyAsync(cancellationToken))
+        const string recurringTitle = "Quarterly panel inspection (recurring)";
+        if (demoCustomers.Any()
+            && !await db.Set<RecurringJobSchedule>().AnyAsync(s => s.Title == recurringTitle, cancellationToken))
         {
             await recurringJobService.CreateAsync(new RecurringJobSchedule
             {
                 CustomerId = demoCustomers[0].Id,
-                Title = "Quarterly panel inspection (recurring)",
+                Title = recurringTitle,
                 IntervalDays = 90,
                 NextRunDate = DateTime.UtcNow.Date.AddDays(14),
                 DefaultQuotedTotal = 8500m

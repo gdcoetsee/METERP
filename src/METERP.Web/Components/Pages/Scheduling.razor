@@ -80,7 +80,7 @@
                 <div class="modal-body">
                     <div class="mb-2">
                         <label class="form-label" for="recurring-title">Title</label>
-                        <input id="recurring-title" class="form-control" data-testid="scheduling-recurring-title" @bind="_newRecurringTitle" />
+                        <input id="recurring-title" class="form-control" data-testid="scheduling-recurring-title" @bind="_newRecurringTitle" @bind:event="oninput" />
                     </div>
                     <div class="mb-2">
                         <label class="form-label" for="recurring-customer">Customer</label>

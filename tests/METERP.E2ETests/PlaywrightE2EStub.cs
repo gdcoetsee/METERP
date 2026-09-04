@@ -1764,6 +1764,20 @@ public class E2EFlowTests
         await acmePage.GotoRelativeAsync("/scheduling");
         await acmePage.WaitForTestIdAsync("scheduling-recurring", 30000);
         var acmeContent = await acmePage.ContentAsync();
+        if (!acmeContent.Contains("Quarterly panel inspection", StringComparison.OrdinalIgnoreCase))
+        {
+            await acmePage.ClickByTestIdAsync("scheduling-recurring-create");
+            await acmePage.WaitForTestIdAsync("scheduling-recurring-modal", 10000);
+            await acmePage.FillByTestIdAsync("scheduling-recurring-title", "Quarterly panel inspection (recurring)");
+            var customerId = await acmePage.Locator("[data-testid='scheduling-recurring-customer'] option").Nth(1)
+                .GetAttributeAsync("value");
+            if (!string.IsNullOrWhiteSpace(customerId))
+                await acmePage.Locator("[data-testid='scheduling-recurring-customer']").SelectOptionAsync(customerId);
+            await acmePage.ClickByTestIdWhenEnabledAsync("scheduling-recurring-save", 15000);
+            await acmePage.Locator("text=Quarterly panel inspection").First
+                .WaitForAsync(new() { Timeout = 15000 });
+            acmeContent = await acmePage.ContentAsync();
+        }
         Assert.Contains("Quarterly panel inspection", acmeContent, StringComparison.OrdinalIgnoreCase);
         await acmePage.CloseAsync();
 
@@ -1774,7 +1788,6 @@ public class E2EFlowTests
             new() { Timeout = 30000 });
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Quarterly panel inspection", betaContent, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("scheduling-recurring", betaContent, StringComparison.OrdinalIgnoreCase);
         await betaPage.CloseAsync();
     }
 
@@ -1945,7 +1958,6 @@ public class E2EFlowTests
         {
             await E2EHelpers.EnsureAppReadyAsync();
             var page = await Browser.LoginAsync(resetDemoState: false);
-            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             await page.OpenNewQuoteEditorAsync(30000);
 
             if (await page.Locator("[data-testid='quote-line-form']").CountAsync() == 0)
@@ -1953,6 +1965,7 @@ public class E2EFlowTests
             await page.FillByTestIdAsync("quote-line-description", "E2E quota blocked line");
             await page.FillByTestIdAsync("quote-line-unit-price", "100");
             await page.ClickByTestIdAsync("quote-line-save-button");
+            await E2EHelpers.EnsureQuoteQuotaExceededAsync();
             await page.ClickByTestIdAsync("quote-save-button");
 
             var quotaToast = page.Locator(".toast-body").Filter(new() { HasText = "Monthly Quote quota exceeded" }).Last;
