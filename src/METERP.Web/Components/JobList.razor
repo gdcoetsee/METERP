@@ -74,7 +74,7 @@ else
 {
     <div class="card mt-3 border-primary" data-testid="job-detail-panel">
         <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <h6 class="mb-0">@SelectedJob.JobNumber — @SelectedJob.Title</h6>
+            <h6 class="mb-0"><span data-testid="job-detail-number">@SelectedJob.JobNumber</span> — @SelectedJob.Title</h6>
             <button class="btn btn-sm btn-light" @onclick="() => OnCloseView.InvokeAsync()">Close</button>
         </div>
         <div class="card-body small">

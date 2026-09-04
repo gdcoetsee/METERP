@@ -1,5 +1,6 @@
 @page "/ai-copilot"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components
 @using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
@@ -241,7 +242,6 @@ else if (_aiQuotaExhausted)
 
 @code {
     private string userQuestion = "";
-    private string? lastResponse;
     private bool _thinking;
     private bool _copilotReady;
     private bool _aiFeatureEnabled = true;
@@ -269,6 +269,10 @@ else if (_aiQuotaExhausted)
     private bool _autoOptimizeAfterRender;
 
     private TenantBranding _branding = TenantBranding.Default;
+    private string lastResponse = BuildImmediateOfflineAnswer("Ask about quotes, travel, jobs, or stock.");
+
+    [SupplyParameterFromQuery(Name = "scope")]
+    public string? ScopeFromQuery { get; set; }
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.JobsManage) || CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
 
@@ -322,16 +326,23 @@ else if (_aiQuotaExhausted)
         }
         catch { }
 
-        // Consume pending scope from Opportunities (or other CRM) for seamless AI handoff
+        // Consume pending scope from Opportunities (query string first — localStorage is a fallback).
+        if (!string.IsNullOrWhiteSpace(ScopeFromQuery))
+        {
+            bidScope = ScopeFromQuery;
+            _autoOptimizeAfterRender = true;
+        }
+
         try
         {
             var pendingScope = await JS.InvokeAsync<string>("localStorage.getItem", "pendingAiScope");
-            if (!string.IsNullOrWhiteSpace(pendingScope))
+            if (string.IsNullOrWhiteSpace(bidScope) && !string.IsNullOrWhiteSpace(pendingScope))
             {
                 bidScope = pendingScope;
                 _autoOptimizeAfterRender = true;
-                await JS.InvokeVoidAsync("localStorage.removeItem", "pendingAiScope");
             }
+            if (!string.IsNullOrWhiteSpace(pendingScope))
+                await JS.InvokeVoidAsync("localStorage.removeItem", "pendingAiScope");
 
             var pendingOppId = await JS.InvokeAsync<string>("localStorage.getItem", "pendingOpportunityId");
             if (!string.IsNullOrWhiteSpace(pendingOppId) && Guid.TryParse(pendingOppId, out var oppId))

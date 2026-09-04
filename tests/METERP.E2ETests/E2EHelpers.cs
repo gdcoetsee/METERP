@@ -185,6 +185,28 @@ public static class E2EHelpers
         await page.WaitForTestIdAsync("job-detail-panel", timeoutMs);
     }
 
+    public static async Task AssertJobDetailShowsTravelAsync(IPage page, bool expectQuoteNumber = false)
+    {
+        var panel = page.Locator("[data-testid='job-detail-panel']");
+        await panel.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 20000 });
+
+        var heading = (await page.Locator("[data-testid='job-detail-number']").TextContentAsync())
+            ?? (await panel.Locator("h6").TextContentAsync())
+            ?? string.Empty;
+        if (!heading.Contains("J-", StringComparison.OrdinalIgnoreCase)
+            && !heading.Contains("JOB-", StringComparison.OrdinalIgnoreCase)
+            && !heading.StartsWith("J", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Expected a job number in the detail heading, got '{heading}'.");
+        }
+
+        var body = ((await panel.InnerTextAsync()) ?? string.Empty) + (await page.ContentAsync());
+        if (!body.Contains("travel", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Expected travel on the converted job page.");
+        if (expectQuoteNumber && !body.Contains("Q-", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Expected originating quote number on the converted job page.");
+    }
+
     /// <summary>Opens a quote row's editor via Edit/View, falling back to ?open= deep link.</summary>
     public static async Task OpenQuoteRowEditorAsync(this IPage page, ILocator row, int timeoutMs = 30000)
     {

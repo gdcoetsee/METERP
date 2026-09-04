@@ -793,10 +793,7 @@ public class E2EFlowTests
             jobRow = page.Locator("[data-testid='jobs-table'] tbody tr").First;
 
         await page.OpenJobDetailPanelAsync(jobRow, 30000);
-
-        var content = await page.ContentAsync();
-        Assert.Contains("J-", content);
-        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
+        await E2EHelpers.AssertJobDetailShowsTravelAsync(page);
 
         await page.CloseAsync();
     }
@@ -868,10 +865,7 @@ public class E2EFlowTests
 
         await Assertions.Expect(jobRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
         await page.OpenJobDetailPanelAsync(jobRow, 30000);
-
-        var content = await page.ContentAsync();
-        Assert.Contains("J-", content);
-        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
+        await E2EHelpers.AssertJobDetailShowsTravelAsync(page);
 
         await page.CloseAsync();
     }
@@ -912,11 +906,7 @@ public class E2EFlowTests
 
         await Assertions.Expect(travelJobRow).ToHaveCountAsync(1, new() { Timeout = 20000 });
         await page.OpenJobDetailPanelAsync(travelJobRow, 30000);
-
-        var content = await page.ContentAsync();
-        Assert.Contains("J-", content);
-        Assert.Contains("Q-", content);
-        Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
+        await E2EHelpers.AssertJobDetailShowsTravelAsync(page, expectQuoteNumber: true);
 
         await page.CloseAsync();
     }
