@@ -66,13 +66,17 @@
 </div>
 
 <!-- Floating AI Copilot launcher for that "next level" feel -->
-<AuthorizeView>
-    <Authorized>
-        <a href="/ai-copilot" class="btn btn-primary position-fixed rounded-circle shadow ai-fab" 
-           title="Open AI Copilot" data-testid="ai-copilot-launcher">
-            <span style="font-size: 1.4rem;">✨</span>
-        </a>
-    </Authorized>
+<AuthorizeView Policy="Portal.Access" Context="portalAuth">
+    <NotAuthorized>
+        <AuthorizeView Context="staffAuth">
+            <Authorized>
+                <a href="/ai-copilot" class="btn btn-primary position-fixed rounded-circle shadow ai-fab"
+                   title="Open Grok Bot" data-testid="ai-copilot-launcher">
+                    <span style="font-size: 1.4rem;">✨</span>
+                </a>
+            </Authorized>
+        </AuthorizeView>
+    </NotAuthorized>
 </AuthorizeView>
 
 <TenantBrandingStyles />

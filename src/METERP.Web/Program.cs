@@ -1,4 +1,7 @@
+using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -49,6 +52,14 @@ if (builder.Environment.IsDevelopment())
                 Environment.SetEnvironmentVariable(key, value);
         }
     }
+}
+
+var xaiApiKey = Environment.GetEnvironmentVariable("XAI_API_KEY");
+if (!string.IsNullOrWhiteSpace(xaiApiKey) && string.IsNullOrWhiteSpace(builder.Configuration["Ai:ApiKey"]))
+{
+    builder.Configuration["Ai:ApiKey"] = xaiApiKey;
+    builder.Configuration["Ai:BaseUrl"] ??= METERP.Common.AiProviderProfiles.DefaultBaseUrl;
+    builder.Configuration["Ai:Model"] ??= METERP.Common.AiProviderProfiles.DefaultModel;
 }
 
 builder.Services.AddMeterpOpenTelemetry(builder.Configuration, builder.Environment);
@@ -148,6 +159,8 @@ builder.Services.AddScoped<IBillingWebhookMaintenanceService, BillingWebhookMain
 builder.Services.AddScoped<IStripeCustomerPortalClient, StripeCustomerPortalClient>();
 builder.Services.AddScoped<IBillingPortalService, BillingPortalService>();
 builder.Services.AddScoped<ISchedulingService, SchedulingService>();
+builder.Services.AddScoped<ICustomerPortalService, CustomerPortalService>();
+builder.Services.AddScoped<IAccountingExportService, AccountingExportService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ConfirmService>();
@@ -211,7 +224,11 @@ builder.Services.AddRateLimiter(options =>
             || httpContext.Request.Path.StartsWithSegments("/_framework")
             || httpContext.Request.Path.StartsWithSegments("/e2e")
             || httpContext.Request.Path.StartsWithSegments("/login-complete")
-            || httpContext.Request.Path.StartsWithSegments("/login-2fa"))
+            || httpContext.Request.Path.StartsWithSegments("/login-2fa")
+            || httpContext.Request.Path.StartsWithSegments("/portal/login")
+            || httpContext.Request.Path.StartsWithSegments("/external-login")
+            || httpContext.Request.Path.StartsWithSegments("/signin-google")
+            || httpContext.Request.Path.StartsWithSegments("/signin-microsoft"))
             return RateLimitPartition.GetNoLimiter("infra");
 
         // Tighter limit on AI Copilot page loads (complements in-service AI throttle).
@@ -300,7 +317,44 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/login";
     options.LogoutPath = "/logout";
     options.AccessDeniedPath = "/access-denied";
+    options.Cookie.HttpOnly = true;
+    options.SlidingExpiration = true;
+    options.ExpireTimeSpan = TimeSpan.FromHours(8);
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        || builder.Environment.IsEnvironment("Testing")
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
 });
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+        | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
+var googleSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleSecret))
+{
+    builder.Services.AddAuthentication().AddGoogle(options =>
+    {
+        options.ClientId = googleClientId;
+        options.ClientSecret = googleSecret;
+    });
+}
+
+var msClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
+var msSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"];
+if (!string.IsNullOrWhiteSpace(msClientId) && !string.IsNullOrWhiteSpace(msSecret))
+{
+    builder.Services.AddAuthentication().AddMicrosoftAccount(options =>
+    {
+        options.ClientId = msClientId;
+        options.ClientSecret = msSecret;
+    });
+}
 
 // Authorization policies based on permissions (claim-based)
 builder.Services.AddAuthorization(options =>
@@ -420,6 +474,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Field.View", policy =>
         policy.RequireClaim("Permission", Permissions.FieldView, Permissions.JobsManage, Permissions.TenantsManage));
 
+    options.AddPolicy("Portal.Access", policy =>
+        policy.RequireClaim("Permission", Permissions.PortalAccess));
+
     options.AddPolicy("Approvals.View", policy =>
         policy.RequireClaim("Permission", Permissions.ApprovalsView, Permissions.TenantsManage));
 
@@ -458,6 +515,9 @@ if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<DatabaseSeeder>();
 
 var app = builder.Build();
+
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
+    app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -779,6 +839,41 @@ app.MapPost("/webhooks/stripe", async (
         })
     };
 }).DisableRateLimiting();
+
+app.MapGet("/external-login/{provider}", (
+    string provider,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    var scheme = provider is "Google" or "Microsoft" ? provider : null;
+    if (scheme == null)
+        return Results.NotFound();
+
+    var props = signInManager.ConfigureExternalAuthenticationProperties(scheme, "/external-callback");
+    return Results.Challenge(props, [scheme]);
+}).AllowAnonymous().DisableRateLimiting();
+
+app.MapGet("/external-callback", async (
+    HttpContext http,
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    var info = await signInManager.GetExternalLoginInfoAsync();
+    if (info == null)
+        return Results.Redirect("/login");
+
+    var email = info.Principal.FindFirstValue(System.Security.Claims.ClaimTypes.Email)
+                ?? info.Principal.FindFirstValue("email");
+    if (string.IsNullOrWhiteSpace(email))
+        return Results.Redirect("/login");
+
+    var user = await userManager.Users.IgnoreQueryFilters()
+        .FirstOrDefaultAsync(u => u.NormalizedEmail == userManager.NormalizeEmail(email));
+    if (user == null)
+        return Results.Redirect("/login?error=no-account");
+
+    await signInManager.SignInAsync(user, isPersistent: false);
+    return Results.Redirect(user.CustomerId.HasValue ? "/portal" : "/");
+}).AllowAnonymous().DisableRateLimiting();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -1104,6 +1199,48 @@ public class DatabaseSeeder : IHostedService
                 Province = "Western Cape"
             };
             await customerService.CreateAsync(cust2, cancellationToken);
+        }
+
+        var hospitalCustomer = (await customerService.GetAllAsync(ct: cancellationToken))
+            .FirstOrDefault(c => c.Email == "procurement@jhgh.co.za"
+                                 || c.Name.Contains("Hospital", StringComparison.OrdinalIgnoreCase));
+        const string portalEmail = "procurement@jhgh.co.za";
+        if (hospitalCustomer != null)
+        {
+            var portalUser = await userManager.FindByEmailAsync(portalEmail);
+            if (portalUser == null)
+            {
+                portalUser = new ApplicationUser
+                {
+                    UserName = portalEmail,
+                    Email = portalEmail,
+                    EmailConfirmed = true,
+                    TenantId = defaultTenantId,
+                    CustomerId = hospitalCustomer.Id
+                };
+                if (!(await userManager.CreateAsync(portalUser, "Demo123!")).Succeeded)
+                    portalUser = null;
+            }
+            else if (portalUser.CustomerId != hospitalCustomer.Id)
+            {
+                portalUser.CustomerId = hospitalCustomer.Id;
+                await userManager.UpdateAsync(portalUser);
+            }
+
+            if (portalUser != null)
+            {
+                var seededPortalUser = portalUser;
+                async Task EnsureClaim(string type, string value)
+                {
+                    var claims = await userManager.GetClaimsAsync(seededPortalUser);
+                    if (!claims.Any(c => c.Type == type && c.Value == value))
+                        await userManager.AddClaimAsync(seededPortalUser, new System.Security.Claims.Claim(type, value));
+                }
+
+                await EnsureClaim("Permission", Permissions.PortalAccess);
+                await EnsureClaim("TenantId", defaultTenantId.ToString());
+                await EnsureClaim("CustomerId", hospitalCustomer.Id.ToString());
+            }
         }
 
         // 4.5 Seed CRM opportunities (tenant-isolated pipeline)

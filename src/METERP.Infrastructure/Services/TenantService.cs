@@ -160,6 +160,10 @@ public class TenantService : ITenantService
         existing.AiBaseUrl = string.IsNullOrWhiteSpace(tenant.AiBaseUrl) ? null : tenant.AiBaseUrl.TrimEnd('/');
         existing.AiModel = string.IsNullOrWhiteSpace(tenant.AiModel) ? null : tenant.AiModel.Trim();
         existing.AiUseTenantKey = tenant.AiUseTenantKey;
+        existing.AccountingProvider = tenant.AccountingProvider;
+        existing.AccountingSalesAccountCode = string.IsNullOrWhiteSpace(tenant.AccountingSalesAccountCode)
+            ? "200"
+            : tenant.AccountingSalesAccountCode.Trim();
 
         await _dbContext.SaveChangesAsync(ct);
     }

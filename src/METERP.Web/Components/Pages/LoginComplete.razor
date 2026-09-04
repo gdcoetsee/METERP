@@ -31,8 +31,10 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Passwordless dev/E2E shortcut — never expose in production.
-        if (!Environment.IsDevelopment()
+        // Email-only shortcut is Development/Testing. Production must present a one-time ticket
+        // issued after password or 2FA verification.
+        if (string.IsNullOrWhiteSpace(Twofa)
+            && !Environment.IsDevelopment()
             && !string.Equals(Environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase))
         {
             Navigation.NavigateTo("/login", forceLoad: true);
@@ -78,7 +80,7 @@
         // Now safe to sign in — this request is a fresh top-level navigation from forceLoad.
         await SignInManager.SignInAsync(user, isPersistent: false);
 
-        // Full reload to bootstrap the new authenticated circuit cleanly.
-        Navigation.NavigateTo("/", forceLoad: true);
+        var next = user.CustomerId.HasValue ? "/portal" : "/";
+        Navigation.NavigateTo(next, forceLoad: true);
     }
 }

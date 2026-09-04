@@ -1,3 +1,58 @@
+/* Auth + customer portal */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  background: radial-gradient(1200px 600px at 10% -10%, #1b4f8a 0%, #0f1724 45%, #0b1220 100%);
+  color: #f8fafc;
+}
+.auth-hero { padding: 4rem 4rem 4rem 5rem; display: flex; flex-direction: column; justify-content: center; }
+.auth-kicker { letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.75rem; color: #93c5fd; margin-bottom: 1rem; }
+.auth-hero h1 { font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.2; margin-bottom: 1rem; color: #fff; }
+.auth-hero p { max-width: 36rem; color: #cbd5e1; }
+.auth-card {
+  margin: auto 3rem;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 1.25rem;
+  padding: 2.25rem;
+  box-shadow: 0 25px 60px rgba(0,0,0,.35);
+}
+.auth-card h2 { font-weight: 700; margin-bottom: 0.35rem; }
+.portal-shell { min-height: 100vh; background: #f4f7fb; }
+.portal-header {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0.85rem 1.5rem;
+  background: #10233d;
+  color: #fff;
+}
+.portal-brand { display: flex; align-items: center; gap: 0.6rem; color: #fff; text-decoration: none; font-weight: 600; }
+.portal-brand-mark {
+  width: 2rem; height: 2rem; border-radius: 0.6rem;
+  background: #3b82f6; display: grid; place-items: center; font-weight: 800;
+}
+.portal-nav { display: flex; gap: 1rem; flex: 1; }
+.portal-nav a { color: #cbd5e1; text-decoration: none; font-weight: 500; }
+.portal-nav a.active, .portal-nav a:hover { color: #fff; }
+.portal-main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+.portal-title { font-weight: 700; margin-bottom: 0.35rem; }
+.portal-kicker { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem; }
+.portal-stat { background: #fff; border-radius: 1rem; padding: 1.25rem; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+.portal-stat-value { font-size: 1.6rem; font-weight: 700; }
+.portal-stat-label { color: #64748b; }
+.portal-panel { border-radius: 1rem; }
+.portal-row { display: flex; gap: 0.75rem; padding: 0.65rem 0; border-bottom: 1px solid #e2e8f0; }
+.help-hero { margin-bottom: 1.5rem; }
+.help-toc a { display: block; color: #334155; text-decoration: none; padding: 0.2rem 0; }
+.help-section { margin-bottom: 2rem; }
+.help-section h2 { font-size: 1.35rem; margin-bottom: 0.75rem; }
+@media (max-width: 900px) {
+  .auth-shell { grid-template-columns: 1fr; }
+  .auth-hero { padding: 2rem 1.5rem 0; }
+  .auth-card { margin: 1.5rem; }
+  .portal-header { flex-wrap: wrap; }
+}
+
 /* Professional UI enhancements for METERP - modern, clean, contractor-friendly */
 :root {
   --primary-color: #0d6efd;

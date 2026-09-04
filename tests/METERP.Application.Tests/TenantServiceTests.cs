@@ -256,6 +256,24 @@ public class TenantServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsAccountingPackage()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var tenant = await SeedTenantAsync(db, "Acme", "acme");
+
+        tenant.AccountingProvider = AccountingProvider.Xero;
+        tenant.AccountingSalesAccountCode = "4000";
+        await service.UpdateAsync(tenant);
+
+        var updated = await service.GetByIdAsync(tenant.Id);
+        Assert.NotNull(updated);
+        Assert.Equal(AccountingProvider.Xero, updated.AccountingProvider);
+        Assert.Equal("4000", updated.AccountingSalesAccountCode);
+    }
+
+    [Fact]
     public async Task IncrementQuoteCountAsync_NoOpForEmptyTenantId()
     {
         var dbName = Guid.NewGuid().ToString();

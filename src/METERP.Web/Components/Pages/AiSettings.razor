@@ -35,6 +35,18 @@
 }
 else
 {
+    <div class="card mb-3">
+        <div class="card-body">
+            <h2 class="h5">Connect your AI subscription</h2>
+            <p class="text-muted">Industry-standard: sign in at the provider, create an API key, paste it once. Grok is the default operator for quotes, job variance, and copilot.</p>
+            <div class="d-flex flex-wrap gap-2" data-testid="ai-connect-buttons">
+                <a class="btn btn-dark" href="https://console.x.ai" target="_blank" rel="noopener" @onclick="ConnectGrok" @onclick:preventDefault="false" data-testid="ai-connect-grok">Continue with Grok</a>
+                <a class="btn btn-outline-primary" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" @onclick="ConnectGemini" @onclick:preventDefault="false">Continue with Google</a>
+                <a class="btn btn-outline-secondary" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" @onclick="ConnectOpenAi" @onclick:preventDefault="false">Continue with OpenAI</a>
+            </div>
+            <small class="text-muted d-block mt-2">Each button opens the provider console and fills Grok/Gemini/OpenAI defaults below. Paste the key and Save.</small>
+        </div>
+    </div>
     <div class="card">
         <div class="card-body">
             <div class="mb-3">
@@ -96,7 +108,7 @@ else
                 <li><strong>Groq (Free tier):</strong> <code>https://api.groq.com/openai/v1</code> + <code>llama-3.3-70b-versatile</code></li>
                 <li><strong>Ollama (Local, Free):</strong> <code>http://localhost:11434/v1</code> + <code>llama3</code></li>
                 <li><strong>OpenRouter:</strong> free models e.g. <code>google/gemini-2.0-flash-exp:free</code></li>
-                <li><strong>Grok (xAI):</strong> requires paid API credits at console.x.ai (X Premium does not include API)</li>
+                <li><strong>Grok (xAI) — default:</strong> <code>https://api.x.ai/v1</code> + <code>grok-4.6</code>. Key from console.x.ai (X Premium ≠ API credits).</li>
                 <li><strong>OpenAI:</strong> <code>https://api.openai.com/v1</code> + <code>gpt-4o-mini</code></li>
             </ul>
         </div>
@@ -109,7 +121,7 @@ else
     private bool _testing;
     private bool effectiveConfigured;
 
-    private string provider = AiProviderProfiles.GoogleGemini;
+    private string provider = AiProviderProfiles.Grok;
     private string baseUrl = "";
     private string model = "";
     private bool useTenantKey;
@@ -145,6 +157,17 @@ else
             baseUrl = preset.BaseUrl;
             model = preset.Model;
         }
+    }
+
+    private void ConnectGrok() => ApplyProvider(AiProviderProfiles.Grok);
+    private void ConnectGemini() => ApplyProvider(AiProviderProfiles.GoogleGemini);
+    private void ConnectOpenAi() => ApplyProvider(AiProviderProfiles.OpenAi);
+
+    private void ApplyProvider(string name)
+    {
+        provider = name;
+        useTenantKey = true;
+        OnProviderChanged();
     }
 
     private async Task SaveSettings()

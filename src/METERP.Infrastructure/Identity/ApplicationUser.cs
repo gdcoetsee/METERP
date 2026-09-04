@@ -10,7 +10,6 @@ public class ApplicationUser : IdentityUser<Guid>
 {
     public Guid TenantId { get; set; }
 
-    // Future extensibility for contracting ERP:
-    // public string FullName { get; set; } = string.Empty;
-    // public string? PhoneNumber { get; set; }
+    /// <summary>When set, this login is a customer-portal user scoped to that customer only.</summary>
+    public Guid? CustomerId { get; set; }
 }

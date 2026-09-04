@@ -8,7 +8,9 @@ public interface ICurrentUserService
 {
     Guid? UserId { get; }
     Guid TenantId { get; }
+    Guid? CustomerId { get; }
     string? UserName { get; }
     bool IsAuthenticated { get; }
     IReadOnlyList<string> Permissions { get; }
+    bool IsCustomerPortalUser { get; }
 }

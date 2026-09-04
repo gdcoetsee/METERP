@@ -1,0 +1,75 @@
+@page "/portal/login"
+@layout Layout.EmptyLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using METERP.Application.Services
+@using METERP.Infrastructure.Identity
+@using METERP.Infrastructure.Persistence
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IPendingTwoFactorChallengeStore ChallengeStore
+@inject IServiceScopeFactory ScopeFactory
+@inject METERP.Application.Interfaces.ITenantProvider TenantProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Customer portal — METERP</PageTitle>
+<span data-testid="portal-login-ready" class="visually-hidden">ready</span>
+
+<div class="auth-shell">
+    <section class="auth-hero">
+        <p class="auth-kicker">For your customers</p>
+        <h1>See quotes, invoices, and what is still outstanding — without calling the office.</h1>
+        <p>Your contractor shares this portal so you can approve work and pay on time. Travel and VAT are already on the documents.</p>
+    </section>
+    <section class="auth-card">
+        <h2>Sign in</h2>
+        <p class="text-muted">Use the email on your quotes. Demo: <strong>procurement@jhgh.co.za</strong> / <strong>Demo123!</strong></p>
+        @if (loginFailed)
+        {
+            <div class="alert alert-danger">We could not sign you in. Check the email and password, or ask your contractor to enable portal access.</div>
+        }
+        <label class="form-label">Email</label>
+        <input class="form-control mb-3" @bind="email" data-testid="portal-login-email" autocomplete="username" />
+        <label class="form-label">Password</label>
+        <input type="password" class="form-control mb-4" @bind="password" data-testid="portal-login-password" autocomplete="current-password" />
+        <button class="btn btn-primary w-100 py-2" @onclick="HandleLogin" data-testid="portal-login-submit">Continue to portal</button>
+        <p class="small text-muted mt-3 mb-0"><a href="/login">Staff sign in</a> · <a href="/help">How the portal works</a></p>
+    </section>
+</div>
+
+@code {
+    private string email = "";
+    private string password = "";
+    private bool loginFailed;
+
+    private async Task HandleLogin()
+    {
+        loginFailed = false;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            loginFailed = true;
+            return;
+        }
+
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var normalized = UserManager.NormalizeEmail(email);
+        var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
+        if (user == null)
+        {
+            TenantProvider.SetTenantId(Guid.Empty);
+            user = await UserManager.FindByEmailAsync(email);
+        }
+
+        if (user == null || user.CustomerId == null || !await UserManager.CheckPasswordAsync(user, password))
+        {
+            loginFailed = true;
+            password = "";
+            return;
+        }
+
+        var ticket = ChallengeStore.CreateChallenge(user.Id);
+        Navigation.NavigateTo($"/login-complete?twofa={Uri.EscapeDataString(ticket)}", forceLoad: true);
+    }
+}

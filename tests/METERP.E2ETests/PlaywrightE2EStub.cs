@@ -2331,6 +2331,7 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(resetDemoState: true);
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
+        await page.WaitForTestIdAsync("account-billing-usage-card", 20000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Billing", content);
@@ -4329,6 +4330,47 @@ public class E2EFlowTests
         var hasNoEmployee = await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0;
         Assert.True(hasBalance || hasNoEmployee, "Expected leave balance card or no-employee empty state.");
 
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Help_Manual_Explains_Spine_And_Portal()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.NewPageAsync();
+        await page.GotoRelativeAsync("/help");
+        await page.WaitForTestIdAsync("help-ready", 20000);
+        var body = await page.ContentAsync();
+        Assert.Contains("Command Center", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Customer portal", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Grok", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Sage", body, StringComparison.OrdinalIgnoreCase);
+        await page.CloseAsync();
+    }
+
+    [Fact]
+    public async Task CustomerPortal_Login_Shows_Own_Invoices()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.NewPageAsync();
+        await page.GotoRelativeAsync("/portal/login");
+        await page.WaitForTestIdAsync("portal-login-ready", 20000);
+        await page.FillByTestIdAsync("portal-login-email", "procurement@jhgh.co.za");
+        await page.FillByTestIdAsync("portal-login-password", E2EHelpers.AcmePassword);
+        await page.ClickByTestIdAsync("portal-login-submit");
+        await page.WaitForTestIdAsync("portal-ready", 30000);
+        var body = await page.ContentAsync();
+        Assert.Contains("Johannesburg", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Cape Town Mining", body, StringComparison.OrdinalIgnoreCase);
+
+        await page.ClickByTestIdAsync("portal-nav-invoices");
+        await page.WaitForSelectorAsync(
+            "[data-testid='portal-invoices-table'], [data-testid='portal-invoices-empty']",
+            new() { Timeout = 20000 });
+        await page.ClickByTestIdAsync("portal-nav-quotes");
+        await page.WaitForSelectorAsync(
+            "[data-testid='portal-quotes-table'], [data-testid='portal-quotes-empty']",
+            new() { Timeout = 20000 });
         await page.CloseAsync();
     }
 }

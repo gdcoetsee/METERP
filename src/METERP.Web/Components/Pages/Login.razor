@@ -15,36 +15,58 @@
 @inject METERP.Application.Interfaces.ITenantProvider TenantProvider
 @inject NavigationManager Navigation
 
-<PageTitle>Login - METERP</PageTitle>
+<PageTitle>Sign in — METERP</PageTitle>
+@layout Layout.EmptyLayout
+@inject IConfiguration Config
 
 <span data-testid="login-ready" class="visually-hidden">ready</span>
 
-<h3>Login</h3>
-
-<p class="text-muted">Demo: <strong>admin@acme.demo</strong> / <strong>Demo123!</strong></p>
-
-@if (loginFailed)
-{
-    <div class="alert alert-danger mb-3">Invalid email or password. Please try again.</div>
-}
-
-<div class="mb-3">
-    <label class="form-label">Email</label>
-    <input class="form-control" @bind="loginModel.Email" data-testid="login-email" />
+<div class="auth-shell">
+    <section class="auth-hero">
+        <p class="auth-kicker">Contractor ERP</p>
+        <h1>Quotes, jobs, travel, and invoices — without the paperwork pile.</h1>
+        <p>Office, field, and customers each get a door. Grok Bot sits on top when you connect your xAI, Google, or OpenAI subscription.</p>
+    </section>
+    <section class="auth-card">
+        <h2>Staff sign in</h2>
+        <p class="text-muted">Demo: <strong>admin@acme.demo</strong> / <strong>Demo123!</strong></p>
+        @if (loginFailed)
+        {
+            <div class="alert alert-danger mb-3">Invalid email or password. Please try again.</div>
+        }
+        <label class="form-label">Email</label>
+        <input class="form-control mb-3" @bind="loginModel.Email" data-testid="login-email" autocomplete="username" />
+        <label class="form-label">Password</label>
+        <input type="password" class="form-control mb-3" @bind="loginModel.Password" data-testid="login-password" autocomplete="current-password" />
+        <button class="btn btn-primary w-100 py-2 mb-3" @onclick="HandleLogin" data-testid="login-submit">Sign in</button>
+        @if (HasGoogle || HasMicrosoft || HasX)
+        {
+            <p class="text-center text-muted small my-2">or continue with your work account</p>
+            <div class="d-grid gap-2 mb-3">
+                @if (HasGoogle)
+                {
+                    <a class="btn btn-outline-dark" href="/external-login/Google" data-testid="login-google">Continue with Google</a>
+                }
+                @if (HasMicrosoft)
+                {
+                    <a class="btn btn-outline-dark" href="/external-login/Microsoft" data-testid="login-microsoft">Continue with Microsoft</a>
+                }
+                @if (HasX)
+                {
+                    <a class="btn btn-outline-dark" href="/external-login/X" data-testid="login-x">Continue with X</a>
+                }
+            </div>
+        }
+        <p class="small text-muted mb-0">2FA is asked after password when enabled. Customers use <a href="/portal/login">the customer portal</a>. New staff: ask an admin. <a href="/help">User manual</a></p>
+    </section>
 </div>
-<div class="mb-3">
-    <label class="form-label">Password</label>
-    <input type="password" class="form-control" @bind="loginModel.Password" data-testid="login-password" />
-</div>
-
-<p class="small text-muted">Accounts with TOTP 2FA enabled will be prompted for an authenticator code after password verification.</p>
-
-<button class="btn btn-primary" @onclick="HandleLogin" style="font-size:1.2rem; padding:10px 20px;" data-testid="login-submit">LOG IN</button>
 
 @code {
     private LoginModel loginModel { get; set; } = new();
-
     private bool loginFailed;
+    private bool HasGoogle => !string.IsNullOrWhiteSpace(Config["Authentication:Google:ClientId"]);
+    private bool HasMicrosoft => !string.IsNullOrWhiteSpace(Config["Authentication:Microsoft:ClientId"]);
+    private bool HasX => !string.IsNullOrWhiteSpace(Config["Authentication:X:ConsumerKey"]);
 
     private async Task HandleLogin()
     {
@@ -93,8 +115,8 @@
             return;
         }
 
-        // Do NOT call SignInManager here (interactive circuit has already started the response).
-        Navigation.NavigateTo($"/login-complete?email={Uri.EscapeDataString(loginModel.Email)}", forceLoad: true);
+        var ticket = ChallengeStore.CreateChallenge(user.Id);
+        Navigation.NavigateTo($"/login-complete?twofa={Uri.EscapeDataString(ticket)}", forceLoad: true);
     }
 
     public class LoginModel

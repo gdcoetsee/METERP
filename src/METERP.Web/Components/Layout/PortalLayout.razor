@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+
+<div class="portal-shell">
+    <header class="portal-header">
+        <a href="/portal" class="portal-brand" data-testid="portal-home-link">
+            <span class="portal-brand-mark">M</span>
+            <span>Customer portal</span>
+        </a>
+        <nav class="portal-nav" aria-label="Customer portal">
+            <a href="/portal" class="@(IsActive("/portal") ? "active" : "")" data-testid="portal-nav-home">Home</a>
+            <a href="/portal/quotes" class="@(IsActive("/portal/quotes") ? "active" : "")" data-testid="portal-nav-quotes">Quotes</a>
+            <a href="/portal/invoices" class="@(IsActive("/portal/invoices") ? "active" : "")" data-testid="portal-nav-invoices">Invoices</a>
+            <a href="/help" data-testid="portal-nav-help">Help</a>
+        </nav>
+        <a href="/logout" class="btn btn-sm btn-outline-light" data-testid="portal-logout">Sign out</a>
+    </header>
+    <main class="portal-main">
+        @Body
+    </main>
+</div>
+
+<METERP.Web.Components.Shared.ToastContainer />
+<METERP.Web.Components.Shared.ConfirmDialogHost />
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private bool IsActive(string path)
+    {
+        var relative = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        if (relative == "/") relative = "/portal";
+        return path == "/portal"
+            ? relative is "/portal" or "/portal/"
+            : relative.StartsWith(path, StringComparison.OrdinalIgnoreCase);
+    }
+}

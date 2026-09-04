@@ -145,8 +145,10 @@ public class DocumentSequenceServiceTests
     {
         public Guid? UserId => Guid.NewGuid();
         public Guid TenantId => Guid.Empty;
+        public Guid? CustomerId => null;
         public string? UserName => "test";
         public bool IsAuthenticated => true;
         public IReadOnlyList<string> Permissions => Array.Empty<string>();
+        public bool IsCustomerPortalUser => false;
     }
 }

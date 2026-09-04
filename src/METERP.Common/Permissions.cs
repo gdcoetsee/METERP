@@ -83,6 +83,9 @@ public static class Permissions
     // Field portal (technicians — mobile-first restricted UI)
     public const string FieldView = "Field.View";
 
+    /// <summary>Customer-facing portal (quotes + invoices for the linked customer only).</summary>
+    public const string PortalAccess = "Portal.Access";
+
     // Approvals hub (managers / executives — unified workflow queue)
     public const string ApprovalsView = "Approvals.View";
 

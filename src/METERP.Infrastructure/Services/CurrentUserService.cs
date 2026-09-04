@@ -31,6 +31,17 @@ public class CurrentUserService : ICurrentUserService
 
     public Guid TenantId => _tenantProvider.GetCurrentTenantId();
 
+    public Guid? CustomerId
+    {
+        get
+        {
+            var raw = _httpContextAccessor.HttpContext?.User?.FindFirst("CustomerId")?.Value;
+            return Guid.TryParse(raw, out var id) && id != Guid.Empty ? id : null;
+        }
+    }
+
+    public bool IsCustomerPortalUser => CustomerId.HasValue;
+
     public string? UserName => _httpContextAccessor.HttpContext?.User?.Identity?.Name;
 
     public bool IsAuthenticated => _httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated ?? false;

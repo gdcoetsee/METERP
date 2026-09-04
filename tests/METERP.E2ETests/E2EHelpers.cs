@@ -1167,7 +1167,7 @@ public static class E2EHelpers
             "account-hub-ready" =>
                 "[data-testid='account-tab-billing'], [data-testid='account-tab-security']",
             "account-billing-ready" =>
-                "[data-testid='account-billing-tier'], [data-testid='account-billing-no-tenant'], [data-testid='account-billing-quota-exceeded-banner']",
+                "[data-testid='account-billing-tier'], [data-testid='account-billing-usage-card']",
             "account-security-ready" =>
                 "[data-testid='2fa-enable-button'], [data-testid='2fa-status-enabled'], [data-testid='2fa-status-disabled']",
             _ => $"[data-testid='{panelTestId}']"

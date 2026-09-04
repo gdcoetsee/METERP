@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <!-- Blazor Server and EF/Identity for foundation -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="9.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="9.0.*" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.*" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="9.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.*">

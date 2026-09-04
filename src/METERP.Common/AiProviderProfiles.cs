@@ -14,17 +14,20 @@ public static class AiProviderProfiles
     public const string OpenAi = "OpenAI";
     public const string Custom = "Custom";
 
-    /// <summary>All presets; free-tier options listed first.</summary>
+    /// <summary>All presets; Grok (xAI) is the default operator assistant.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
+        Grok,
         GoogleGemini,
         Groq,
         Ollama,
         OpenRouter,
-        Grok,
         OpenAi,
         Custom
     ];
+
+    public const string DefaultBaseUrl = "https://api.x.ai/v1";
+    public const string DefaultModel = "grok-4.6";
 
     public static (string BaseUrl, string Model, string Hint) GetPreset(string provider) =>
         provider switch
@@ -46,9 +49,9 @@ public static class AiProviderProfiles
                 "google/gemini-2.0-flash-exp:free",
                 "OpenRouter — includes free model slugs; requires OpenRouter API key"),
             Grok => (
-                "https://api.x.ai/v1",
-                "grok-3-mini",
-                "xAI developer API (xai- key) — requires purchased API credits; X Premium does not include this"),
+                DefaultBaseUrl,
+                DefaultModel,
+                "Sign in at console.x.ai, create an API key (xai-…), then paste it here. Grok can create quotes, analyse jobs, and answer ops questions."),
             OpenAi => (
                 "https://api.openai.com/v1",
                 "gpt-4o-mini",

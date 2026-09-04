@@ -1,0 +1,128 @@
+@page "/portal"
+@layout Layout.PortalLayout
+@attribute [Authorize(Policy = "Portal.Access")]
+@rendermode InteractiveServer
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@inject ICustomerPortalService Portal
+@inject ICurrentUserService CurrentUser
+@inject NavigationManager Nav
+
+<PageTitle>Your account</PageTitle>
+<span data-testid="portal-ready" class="visually-hidden">ready</span>
+
+@if (_error != null)
+{
+    <div class="alert alert-warning">@_error</div>
+}
+else if (_dash == null)
+{
+    <p class="text-muted">Loading your account…</p>
+}
+else
+{
+    <p class="portal-kicker">Welcome back</p>
+    <h1 class="portal-title">@_dash.CustomerName</h1>
+    <p class="text-muted mb-4">Quotes we have sent you, invoices that are due, and a running balance. Ask the office if anything looks wrong.</p>
+
+    <div class="row g-3 mb-4" data-testid="portal-stats">
+        <div class="col-md-4">
+            <div class="portal-stat">
+                <div class="portal-stat-value" data-testid="portal-balance">R @_dash.BalanceDue.ToString("N2")</div>
+                <div class="portal-stat-label">Outstanding</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="portal-stat">
+                <div class="portal-stat-value">@_dash.OpenInvoiceCount</div>
+                <div class="portal-stat-label">Open invoices</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="portal-stat">
+                <div class="portal-stat-value">@_dash.OpenQuoteCount</div>
+                <div class="portal-stat-label">Quotes awaiting you</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card portal-panel">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Latest invoices</h2>
+                        <a href="/portal/invoices">View all</a>
+                    </div>
+                    @if (!_dash.Invoices.Any())
+                    {
+                        <p class="text-muted mb-0">No invoices yet.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0" data-testid="portal-invoice-list">
+                            @foreach (var invoice in _dash.Invoices.Take(5))
+                            {
+                                <li class="portal-row">
+                                    <strong>@invoice.InvoiceNumber</strong>
+                                    <span>@invoice.Status · due @invoice.DueDate.ToString("dd MMM yyyy")</span>
+                                    <span class="ms-auto">R @invoice.BalanceDue.ToString("N2")</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card portal-panel">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Latest quotes</h2>
+                        <a href="/portal/quotes">View all</a>
+                    </div>
+                    @if (!_dash.Quotes.Any())
+                    {
+                        <p class="text-muted mb-0">No quotes yet.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0" data-testid="portal-quote-list">
+                            @foreach (var quote in _dash.Quotes.Take(5))
+                            {
+                                <li class="portal-row">
+                                    <strong>@quote.QuoteNumber</strong>
+                                    <span>@quote.Status · valid to @quote.ValidUntil.ToString("dd MMM yyyy")</span>
+                                    <span class="ms-auto">R @quote.Total.ToString("N2")</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private CustomerPortalDashboard? _dash;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentUser.CustomerId is not { } customerId)
+        {
+            Nav.NavigateTo("/portal/login", forceLoad: true);
+            return;
+        }
+
+        try
+        {
+            _dash = await Portal.GetDashboardAsync(customerId);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

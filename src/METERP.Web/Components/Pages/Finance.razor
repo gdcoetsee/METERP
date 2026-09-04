@@ -7,6 +7,8 @@
 @attribute [Authorize(Policy = "Finance.View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IFinanceService FinanceService
+@inject IAccountingExportService AccountingExport
+@inject ITenantService TenantService
 @inject ICurrentUserService CurrentUserService
 @inject IJSRuntime JS
 @inject ToastService ToastService
@@ -72,6 +74,21 @@ else
                     <p class="small text-muted">In a full system this would be driven from invoices/costs/POs. For MVP the seeder posts example entries.</p>
                     <button class="btn btn-sm btn-outline-primary mb-2" @onclick="Refresh">Refresh Balances</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="ExportGlCsv" data-testid="finance-export-gl-csv">Export GL CSV</button>
+                    <hr />
+                    <h6>Sage / Xero</h6>
+                    <p class="small text-muted">Export sent invoices as a bookkeeper import. Webhook URL on the tenant still receives JSON on invoice create.</p>
+                    <label class="form-label small">Package</label>
+                    <select class="form-select form-select-sm mb-2" @bind="_provider" data-testid="finance-accounting-provider">
+                        <option value="@AccountingProvider.None">Not set</option>
+                        <option value="@AccountingProvider.Sage">Sage</option>
+                        <option value="@AccountingProvider.Xero">Xero</option>
+                    </select>
+                    <label class="form-label small">Sales account code</label>
+                    <input class="form-control form-control-sm mb-2" @bind="_accountCode" data-testid="finance-accounting-code" />
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="SaveAccountingSettings" data-testid="finance-save-accounting">Save package</button>
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="ExportAccountingCsv" data-testid="finance-export-accounting-csv">Export sales CSV</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -81,6 +98,8 @@ else
 @code {
     private List<AccountBalanceRow> accountRows = new();
     private bool _loading = true;
+    private AccountingProvider _provider = AccountingProvider.None;
+    private string _accountCode = "200";
 
     private bool CanManage => CurrentUserService.Permissions.Contains(Permissions.FinanceManage);
 
@@ -95,6 +114,12 @@ else
         try
         {
             accountRows = (await FinanceService.GetAccountsWithBalancesAsync()).ToList();
+            var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+            if (tenant != null)
+            {
+                _provider = tenant.AccountingProvider;
+                _accountCode = string.IsNullOrWhiteSpace(tenant.AccountingSalesAccountCode) ? "200" : tenant.AccountingSalesAccountCode;
+            }
         }
         finally
         {
@@ -145,6 +170,42 @@ else
         finally
         {
             ToastService.ShowSuccess("GL journal CSV copied to clipboard.");
+        }
+    }
+
+    private async Task SaveAccountingSettings()
+    {
+        try
+        {
+            var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
+            if (tenant == null)
+            {
+                ToastService.ShowError("Tenant not found.");
+                return;
+            }
+
+            tenant.AccountingProvider = _provider;
+            tenant.AccountingSalesAccountCode = _accountCode;
+            await TenantService.UpdateAsync(tenant);
+            ToastService.ShowSuccess("Sage/Xero package saved for this tenant.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ExportAccountingCsv()
+    {
+        try
+        {
+            var result = await AccountingExport.ExportOutstandingSalesAsync(_provider, _accountCode);
+            await JS.InvokeVoidAsync("meterpUi.downloadText", result.FileName, result.Csv, "text/csv;charset=utf-8");
+            ToastService.ShowSuccess($"Exported {result.InvoiceCount} invoice(s) for {_provider}.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
         }
     }
 }

@@ -16,7 +16,12 @@ public interface IUserService
     /// <summary>
     /// Creates a new user, sets tenant, hashes password, assigns to role, and ensures permission claims flow.
     /// </summary>
-    Task<(bool Succeeded, string[] Errors)> CreateUserAsync(string email, string password, string role, CancellationToken ct = default);
+    Task<(bool Succeeded, string[] Errors)> CreateUserAsync(
+        string email,
+        string password,
+        string role,
+        Guid? customerId = null,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Changes the primary role for the user (removes other roles, adds the new one).

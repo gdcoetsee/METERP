@@ -169,6 +169,54 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateUserAsync_PortalUser_LinksCustomerWithoutStaffRole()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new TestHarness(tenantId);
+        var customerId = Guid.NewGuid();
+        harness.Db.Customers.Add(new METERP.Domain.Customer
+        {
+            Id = customerId,
+            TenantId = tenantId,
+            Name = "Hospital"
+        });
+        await harness.Db.SaveChangesAsync();
+
+        var (ok, errors) = await harness.Service.CreateUserAsync(
+            "buyer@hospital.test", "SecurePass1!", "", customerId);
+
+        Assert.True(ok, string.Join("; ", errors));
+        var created = await harness.UserManager.FindByEmailAsync("buyer@hospital.test");
+        Assert.NotNull(created);
+        Assert.Equal(customerId, created!.CustomerId);
+        var claims = await harness.UserManager.GetClaimsAsync(created);
+        Assert.Contains(claims, c => c.Type == "CustomerId" && c.Value == customerId.ToString());
+        Assert.Contains(claims, c => c.Type == "Permission" && c.Value == Permissions.PortalAccess);
+        Assert.Empty(await harness.Service.GetUserRolesAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task CreateUserAsync_PortalUser_RejectsStaffRole()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new TestHarness(tenantId);
+        await SeedRoleAsync(harness.RoleManager, tenantId, "Manager", Permissions.QuotesView);
+        var customerId = Guid.NewGuid();
+        harness.Db.Customers.Add(new METERP.Domain.Customer
+        {
+            Id = customerId,
+            TenantId = tenantId,
+            Name = "Hospital"
+        });
+        await harness.Db.SaveChangesAsync();
+
+        var (ok, errors) = await harness.Service.CreateUserAsync(
+            "mixed@hospital.test", "SecurePass1!", "Manager", customerId);
+        Assert.False(ok);
+        Assert.Contains(errors, e => e.Contains("staff role", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task CreateUserAsync_FailsWhenEmailTooLong()
     {
         using var harness = new TestHarness(Guid.NewGuid());

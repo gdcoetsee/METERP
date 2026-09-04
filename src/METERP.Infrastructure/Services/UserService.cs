@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Services;
 using METERP.Common;
+using METERP.Domain;
 using METERP.Infrastructure.Identity;
 using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
@@ -69,7 +70,12 @@ public class UserService : IUserService
         return list.Select(u => new UserSummary(u.Id, u.Email ?? "", u.UserName)).ToList();
     }
 
-    public async Task<(bool Succeeded, string[] Errors)> CreateUserAsync(string email, string password, string role, CancellationToken ct = default)
+    public async Task<(bool Succeeded, string[] Errors)> CreateUserAsync(
+        string email,
+        string password,
+        string role,
+        Guid? customerId = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
             return (false, new[] { "A valid email address is required." });
@@ -81,6 +87,22 @@ public class UserService : IUserService
         if (password.Length > 128)
             return (false, new[] { "Password cannot exceed 128 characters." });
 
+        if (customerId is { } linkedCustomer)
+        {
+            if (linkedCustomer == Guid.Empty)
+                return (false, new[] { "Select a customer for the portal login." });
+            if (!string.IsNullOrWhiteSpace(role))
+                return (false, new[] { "Customer portal logins cannot have a staff role." });
+            var customer = await _dbContext.Set<Customer>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == linkedCustomer, ct);
+            if (customer == null)
+                return (false, new[] { "Customer not found." });
+        }
+        else if (string.IsNullOrWhiteSpace(role))
+        {
+            return (false, new[] { "A role is required for staff users." });
+        }
+
         var currentTenant = _tenantProvider.GetCurrentTenantId();
 
         var user = new ApplicationUser
@@ -88,7 +110,8 @@ public class UserService : IUserService
             Email = email,
             UserName = email,
             EmailConfirmed = true,
-            TenantId = currentTenant
+            TenantId = currentTenant,
+            CustomerId = customerId
         };
 
         var createResult = await _userManager.CreateAsync(user, password);
@@ -121,14 +144,21 @@ public class UserService : IUserService
         // Add TenantId claim so the CurrentTenantProvider can pick it up on next login
         await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("TenantId", user.TenantId.ToString()));
 
-        // Mirror permission claims from the role (defense in depth)
-        var roleEntity = await _roleManager.FindByNameAsync(role);
-        if (roleEntity != null)
+        if (customerId is { } portalCustomer)
         {
-            var roleClaims = await _roleManager.GetClaimsAsync(roleEntity);
-            foreach (var claim in roleClaims.Where(c => c.Type == "Permission"))
+            await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("CustomerId", portalCustomer.ToString()));
+            await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Permission", Permissions.PortalAccess));
+        }
+        else if (!string.IsNullOrWhiteSpace(role))
+        {
+            var roleEntity = await _roleManager.FindByNameAsync(role);
+            if (roleEntity != null)
             {
-                await _userManager.AddClaimAsync(user, claim);
+                var roleClaims = await _roleManager.GetClaimsAsync(roleEntity);
+                foreach (var claim in roleClaims.Where(c => c.Type == "Permission"))
+                {
+                    await _userManager.AddClaimAsync(user, claim);
+                }
             }
         }
 

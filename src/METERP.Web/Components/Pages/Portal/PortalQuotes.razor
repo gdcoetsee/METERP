@@ -1,0 +1,102 @@
+@page "/portal/quotes"
+@layout Layout.PortalLayout
+@attribute [Authorize(Policy = "Portal.Access")]
+@rendermode InteractiveServer
+@using METERP.Application.Interfaces
+@using METERP.Application.Services
+@using METERP.Domain
+@using METERP.Web.Services
+@inject ICustomerPortalService Portal
+@inject ICurrentUserService CurrentUser
+@inject NavigationManager Nav
+@inject ConfirmService Confirm
+@inject ToastService Toast
+
+<PageTitle>Quotes</PageTitle>
+<h1 class="portal-title">Quotes</h1>
+<p class="text-muted">Estimates we have sent you. Accept here when you want the work to start — travel is listed as its own line.</p>
+
+@if (_dash == null)
+{
+    <p class="text-muted">Loading…</p>
+}
+else if (!_dash.Quotes.Any())
+{
+    <p class="text-muted" data-testid="portal-quotes-empty">No quotes yet.</p>
+}
+else
+{
+    <div class="table-responsive card portal-panel">
+        <table class="table mb-0" data-testid="portal-quotes-table">
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Date</th>
+                    <th>Valid until</th>
+                    <th>Status</th>
+                    <th class="text-end">Total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var quote in _dash.Quotes)
+                {
+                    <tr>
+                        <td>@quote.QuoteNumber</td>
+                        <td>@quote.QuoteDate.ToString("yyyy-MM-dd")</td>
+                        <td>@quote.ValidUntil.ToString("yyyy-MM-dd")</td>
+                        <td>@quote.Status</td>
+                        <td class="text-end">R @quote.Total.ToString("N2")</td>
+                        <td class="text-end">
+                            @if (quote.Status == QuoteStatus.Sent)
+                            {
+                                <button type="button" class="btn btn-sm btn-primary"
+                                        data-testid="portal-quote-accept"
+                                        @onclick="() => AcceptAsync(quote)">
+                                    Accept
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private CustomerPortalDashboard? _dash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentUser.CustomerId is not { } customerId)
+        {
+            Nav.NavigateTo("/portal/login", forceLoad: true);
+            return;
+        }
+        _dash = await Portal.GetDashboardAsync(customerId);
+    }
+
+    private async Task AcceptAsync(Quote quote)
+    {
+        if (CurrentUser.CustomerId is not { } customerId)
+            return;
+
+        var ok = await Confirm.ConfirmAsync(
+            $"Accept {quote.QuoteNumber} for R {quote.Total:N2}? We will convert this to a job on our side.",
+            "Accept quote",
+            "Accept quote");
+        if (!ok) return;
+
+        try
+        {
+            await Portal.AcceptQuoteAsync(customerId, quote.Id);
+            Toast.ShowSuccess($"{quote.QuoteNumber} accepted. Thank you.");
+            _dash = await Portal.GetDashboardAsync(customerId);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+}

@@ -28,4 +28,7 @@ RUN dotnet publish "METERP.Web.csproj" -c Release -o /app/publish /p:UseAppHost=
 FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+RUN mkdir -p /app/logs /app/dataprotection-keys \
+    && if id app >/dev/null 2>&1; then chown -R app:app /app; fi
+USER $APP_UID
 ENTRYPOINT ["dotnet", "METERP.Web.dll"]

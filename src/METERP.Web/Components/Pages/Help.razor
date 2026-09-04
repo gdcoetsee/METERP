@@ -1,0 +1,93 @@
+@page "/help"
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+@using Microsoft.AspNetCore.Authorization
+
+<PageTitle>How to use METERP</PageTitle>
+<span data-testid="help-ready" class="visually-hidden">ready</span>
+
+<div class="help-hero">
+    <p class="portal-kicker">User manual</p>
+    <h1>How to run the business in METERP</h1>
+    <p class="lead text-muted">This is the working guide for office staff, field technicians, executives, and customers. Follow the spine: opportunity → quote → job → invoice. Travel is always a separate cost.</p>
+</div>
+
+<div class="row g-4 help-body">
+    <div class="col-lg-3">
+        <nav class="help-toc card portal-panel p-3" aria-label="Manual sections">
+            <strong class="d-block mb-2">Jump to</strong>
+            <a href="#staff-login">Sign in</a>
+            <a href="#cash-desk">Home cash desk</a>
+            <a href="#quotes">Quotes &amp; travel</a>
+            <a href="#jobs">Jobs &amp; Command Center</a>
+            <a href="#stock">Stock, POs, PPE</a>
+            <a href="#invoices">Invoices &amp; Sage/Xero</a>
+            <a href="#portal">Customer portal</a>
+            <a href="#grok">Grok Bot</a>
+            <a href="#field">Field app</a>
+        </nav>
+    </div>
+    <div class="col-lg-9">
+        <section id="staff-login" class="help-section">
+            <h2>Sign in (staff)</h2>
+            <p>Go to <a href="/login">/login</a>. Demo office user is <code>admin@acme.demo</code> / <code>Demo123!</code>. If your company connected Google, Microsoft, or X, use those buttons — we only sign in emails that already have a METERP account (an administrator must create you first).</p>
+            <p>Accounts with authenticator 2FA will ask for a 6-digit code after the password. Customers use <a href="/portal/login">/portal/login</a>, not this screen.</p>
+        </section>
+        <section id="cash-desk" class="help-section">
+            <h2>Home cash desk</h2>
+            <p>After login, Home is the daily queue: approve quotes/requisitions/leave/field reports, send approved quotes, convert won work to jobs, raise deposit invoices, chase overdue invoices, record remaining payment, receive late POs, and return outstanding PPE. One click per row. Confirm dialogs always ask before money or stock moves.</p>
+        </section>
+        <section id="quotes" class="help-section">
+            <h2>Quotes</h2>
+            <ol>
+                <li>Open <strong>Quotes</strong> → New Quote (or <code>/quotes?create=1</code>).</li>
+                <li>Pick a customer or create one on the form.</li>
+                <li>Add lines: labour, materials, and a separate <strong>Travel</strong> line. Unit cost + GP% sets sell price.</li>
+                <li>Save, submit for executive approval, then <strong>Sent</strong> (approval is required before send).</li>
+                <li>When the customer accepts, convert to a job (or sales order first). Travel copies onto the job.</li>
+            </ol>
+        </section>
+        <section id="jobs" class="help-section">
+            <h2>Jobs &amp; Command Center</h2>
+            <p>Open a job at <code>/jobs/&#123;id&#125;</code>. Capture labour, material costs, field reports, and travel until the job is <strong>Closed</strong>. Raising an invoice does <em>not</em> close the job. Close is an executive P&amp;L review: Approve close → hard lock. Reopen needs an executive reason and is audited.</p>
+            <p>Work sign-off (manager → executive) is separate from close. Emergency jobs can start without a quote.</p>
+        </section>
+        <section id="stock" class="help-section">
+            <h2>Stock, purchase orders, PPE</h2>
+            <p>Field techs submit requisitions from the field portal. Managers then executives approve. Catalog lines reserve stock; shortfall goes to procurement → PO → GRV (goods receipt) → issue to the job. Non-catalog (free-text) lines always go to procurement. PPE is issued to an <strong>employee</strong>; job is optional. Return PPE from Home or the PPE register — stock is restocked.</p>
+        </section>
+        <section id="invoices" class="help-section">
+            <h2>Invoices, payments, Sage &amp; Xero</h2>
+            <p>Create deposit / progress / final invoices from Command Center or Home while the job is open. Record payments (POP download when attached). On <strong>Finance</strong>, choose Sage or Xero and export a sales CSV your bookkeeper can import. If the tenant has an invoice webhook URL, sent invoices are also posted there as JSON.</p>
+            <ul>
+                <li><strong>Sage</strong> — sales daybook CSV (type, account, date, reference, net/VAT/gross).</li>
+                <li><strong>Xero</strong> — official sales invoice import columns (contact, invoice number, dates, qty, unit amount, tax type, ZAR).</li>
+            </ul>
+        </section>
+        <section id="portal" class="help-section">
+            <h2>Customer portal</h2>
+            <p>Customers sign in at <a href="/portal/login">/portal/login</a> with the email on their customer record. They see only their quotes and invoices and the outstanding balance. They can <strong>Accept</strong> a sent quote and send an <strong>I've paid</strong> notice (the office still records the receipt). They cannot see jobs, stock, or other customers. Office staff create portal users from Users (tick “Customer portal login” and pick the customer). Demo: <code>procurement@jhgh.co.za</code> / <code>Demo123!</code>.</p>
+        </section>
+        <section id="grok" class="help-section">
+            <h2>Grok Bot (AI copilot)</h2>
+            <p>Open <strong>AI Copilot</strong> (sparkle button) or <a href="/ai-copilot">/ai-copilot</a>. Ask in plain language: “create a quote with travel for Johannesburg General Hospital”, “why is this job over budget?”, “what is low in stock?”. Apply suggestions onto a real quote or job, then download the PDF.</p>
+            <p>To use <strong>your own Grok / Gemini / OpenAI subscription</strong>: go to <a href="/settings/ai">AI Settings</a> (tenant managers). Click <strong>Continue with Grok</strong> (or Google / OpenAI), sign in at the provider console, paste the API key, and save. Keys are encrypted at rest. Platform <code>XAI_API_KEY</code> / <code>Ai__ApiKey</code> is used when tenant override is off.</p>
+        </section>
+        <section id="field" class="help-section">
+            <h2>Field technicians</h2>
+            <p>Field users land on <a href="/field">/field</a>: jobs, stock requisitions, leave, field reports. They are denied office modules (finance, users, AI settings). Submit reports with real content; closed jobs reject new reports.</p>
+        </section>
+        <section class="help-section">
+            <h2>Roles at a glance</h2>
+            <table class="table">
+                <thead><tr><th>Who</th><th>Where</th><th>Does</th></tr></thead>
+                <tbody>
+                    <tr><td>Executive / Admin</td><td>Home, Approvals, Command Center</td><td>Approve, send, invoice, close jobs, AI settings, Sage/Xero export</td></tr>
+                    <tr><td>Manager</td><td>Approvals, Jobs</td><td>First-pass approvals, labour, costs</td></tr>
+                    <tr><td>Technician</td><td>/field</td><td>Reports, stock REQ, leave</td></tr>
+                    <tr><td>Customer</td><td>/portal</td><td>Own quotes and invoices only</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</div>

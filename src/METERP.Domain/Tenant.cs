@@ -51,8 +51,14 @@ public class Tenant : BaseEntity
     public string? SubscriptionStatus { get; set; }
 
     // === Integrations (per-tenant hooks for sellable SaaS) ===
-    /// <summary>Optional HTTPS endpoint for invoice.created webhook payloads (Zapier, custom ERP, etc.).</summary>
+    /// <summary>Optional HTTPS endpoint for invoice.created webhook payloads (Zapier, Sage/Xero middleware, custom ERP).</summary>
     public string? InvoiceWebhookUrl { get; set; }
+
+    /// <summary>Sage or Xero sales export format used on Finance and invoice-send webhooks.</summary>
+    public AccountingProvider AccountingProvider { get; set; } = AccountingProvider.None;
+
+    /// <summary>Sales account code written into Sage/Xero CSV (e.g. 200 / 4000).</summary>
+    public string? AccountingSalesAccountCode { get; set; } = "200";
 
     /// <summary>Optional email for operational alerts (invoice created, low stock). Falls back to Email:DefaultNotificationTo.</summary>
     public string? NotificationEmail { get; set; }

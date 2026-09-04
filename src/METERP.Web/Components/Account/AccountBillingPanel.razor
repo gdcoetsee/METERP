@@ -99,6 +99,12 @@ else
         try
         {
             var tenantId = CurrentUserService.TenantId;
+            for (var attempt = 0; attempt < 5 && tenantId == Guid.Empty; attempt++)
+            {
+                await Task.Delay(150);
+                tenantId = CurrentUserService.TenantId;
+            }
+
             if (tenantId == Guid.Empty)
             {
                 if (generation == _loadGeneration)
