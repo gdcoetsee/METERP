@@ -403,6 +403,7 @@ else
     private string lineUnitPriceText = "";
 
     private bool showNewCustomer;
+    private bool _createQueryApplied;
     private string newCustomerName = "";
     private string newCustomerEmail = "";
     private string newCustomerPhone = "";
@@ -529,20 +530,38 @@ else
         finally { _lineSaving = false; }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _createQueryApplied || !UserCanManage)
+            return;
+
+        HandleCreateQuery();
+        if (_createQueryApplied)
+            await InvokeAsync(StateHasChanged);
+    }
+
     private void HandleCreateQuery()
     {
         var uri = Nav.ToAbsoluteUri(Nav.Uri);
         var query = QueryHelpers.ParseQuery(uri.Query);
         if (!query.TryGetValue("create", out var create) || create != "1" || !UserCanManage) return;
-        ShowCreateEditor();
+
+        var wantNewCustomer = query.TryGetValue("newCustomer", out var nc) && nc == "1";
+        if (editorQuote == null || !editorIsNew)
+            ShowCreateEditor();
+        if (editorQuote == null)
+            return;
+
         if (query.TryGetValue("customerId", out var cid) && Guid.TryParse(cid, out var customerId) && customerId != Guid.Empty)
-            editorQuote!.CustomerId = customerId;
+            editorQuote.CustomerId = customerId;
         if (query.TryGetValue("notes", out var notes) && !string.IsNullOrWhiteSpace(notes))
-            editorQuote!.Notes = notes.ToString();
-        if (query.TryGetValue("newCustomer", out var nc) && nc == "1")
+            editorQuote.Notes = notes.ToString();
+        if (wantNewCustomer)
             showNewCustomer = true;
-        // Open the line form immediately on create deep-links (better UX + reliable E2E).
-        ShowAddLineForm();
+        if (!showLineForm)
+            ShowAddLineForm();
+
+        _createQueryApplied = true;
     }
 
     /// <summary>Opens an existing quote from ?open={id} (stable path for E2E / deep links).</summary>

@@ -4,6 +4,7 @@ using Xunit;
 
 namespace METERP.Web.Tests;
 
+[Collection("RateLimit")]
 public class AiCopilotRateLimitTests : IClassFixture<MeterpWebApplicationFactory>
 {
     private readonly HttpClient _client;

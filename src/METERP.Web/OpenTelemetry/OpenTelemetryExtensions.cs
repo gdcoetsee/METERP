@@ -13,12 +13,15 @@ public static class OpenTelemetryExtensions
         IConfiguration configuration,
         IHostEnvironment environment)
     {
+        // Console export is opt-in. Do not auto-enable in Development — docker CI uses that
+        // environment and console spans flood GitHub Actions logs past the test results.
+        _ = environment;
         var section = configuration.GetSection(OpenTelemetryOptions.SectionName);
         services.Configure<OpenTelemetryOptions>(section);
         var options = section.Get<OpenTelemetryOptions>() ?? new OpenTelemetryOptions();
 
         var serviceName = string.IsNullOrWhiteSpace(options.ServiceName) ? "METERP" : options.ServiceName;
-        var useConsole = ShouldUseConsoleExporter(options, environment);
+        var useConsole = options.EnableConsoleExporter;
         var useOtlp = !string.IsNullOrWhiteSpace(options.OtlpEndpoint);
 
         services.AddOpenTelemetry()
@@ -51,10 +54,6 @@ public static class OpenTelemetryExtensions
 
         return services;
     }
-
-    private static bool ShouldUseConsoleExporter(OpenTelemetryOptions options, IHostEnvironment environment) =>
-        options.EnableConsoleExporter
-        || (environment.IsDevelopment() && string.IsNullOrWhiteSpace(options.OtlpEndpoint));
 
     private static void ConfigureOtlpExporter(OtlpExporterOptions otlp, OpenTelemetryOptions options, string signal)
     {

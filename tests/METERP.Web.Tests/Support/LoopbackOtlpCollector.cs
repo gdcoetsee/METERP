@@ -14,12 +14,21 @@ public sealed class LoopbackOtlpCollector : IAsyncDisposable
     private readonly Task _listenTask;
     private readonly SemaphoreSlim _traceReceived = new(0);
     private readonly SemaphoreSlim _metricReceived = new(0);
+    private readonly object _sync = new();
+    private readonly List<byte[]> _tracePayloads = new();
+    private int _traceExportCount;
+    private int _metricExportCount;
 
     public int Port { get; }
     public string Endpoint => $"http://127.0.0.1:{Port}";
-    public int TraceExportCount { get; private set; }
-    public int MetricExportCount { get; private set; }
-    public List<byte[]> TracePayloads { get; } = new();
+    public int TraceExportCount => Volatile.Read(ref _traceExportCount);
+    public int MetricExportCount => Volatile.Read(ref _metricExportCount);
+
+    public IReadOnlyList<byte[]> GetTracePayloadsSnapshot()
+    {
+        lock (_sync)
+            return _tracePayloads.ToArray();
+    }
 
     public LoopbackOtlpCollector()
     {
@@ -90,13 +99,14 @@ public sealed class LoopbackOtlpCollector : IAsyncDisposable
 
                 if (path.Equals("/v1/traces", StringComparison.OrdinalIgnoreCase))
                 {
-                    TraceExportCount++;
-                    TracePayloads.Add(payload);
+                    lock (_sync)
+                        _tracePayloads.Add(payload);
+                    Interlocked.Increment(ref _traceExportCount);
                     _traceReceived.Release();
                 }
                 else
                 {
-                    MetricExportCount++;
+                    Interlocked.Increment(ref _metricExportCount);
                     _metricReceived.Release();
                 }
 

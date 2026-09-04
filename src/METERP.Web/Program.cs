@@ -210,7 +210,8 @@ builder.Services.AddRateLimiter(options =>
             || httpContext.Request.Path.StartsWithSegments("/_blazor")
             || httpContext.Request.Path.StartsWithSegments("/_framework")
             || httpContext.Request.Path.StartsWithSegments("/e2e")
-            || httpContext.Request.Path.StartsWithSegments("/login-complete"))
+            || httpContext.Request.Path.StartsWithSegments("/login-complete")
+            || httpContext.Request.Path.StartsWithSegments("/login-2fa"))
             return RateLimitPartition.GetNoLimiter("infra");
 
         // Tighter limit on AI Copilot page loads (complements in-service AI throttle).

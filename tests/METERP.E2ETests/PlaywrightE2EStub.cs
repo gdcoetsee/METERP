@@ -434,6 +434,8 @@ public class E2EFlowTests
         await page.GotoRelativeAsync("/quotes?create=1&newCustomer=1");
         await page.WaitForBlazorReadyAsync(20000);
         await page.WaitForTestIdAsync("quote-editor", 30000);
+        if (await page.Locator("[data-testid='quote-new-customer-form']").CountAsync() == 0)
+            await page.ClickByTestIdAsync("quote-new-customer-toggle");
         await page.WaitForTestIdAsync("quote-new-customer-form", 20000);
         var uniqueName = $"E2E Customer {Guid.NewGuid():N}".Substring(0, 24);
         await page.FillByTestIdAsync("quote-new-customer-name", uniqueName);

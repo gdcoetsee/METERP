@@ -27,7 +27,7 @@ public class OpenTelemetryOtlpExportTests
         await collector.WaitForTraceExportAsync(TimeSpan.FromSeconds(15));
 
         Assert.True(collector.TraceExportCount >= 1);
-        Assert.Contains(collector.TracePayloads, payload =>
+        Assert.Contains(collector.GetTracePayloadsSnapshot(), payload =>
             Encoding.UTF8.GetString(payload).Contains("METERP-Otlp-Export", StringComparison.Ordinal));
     }
 

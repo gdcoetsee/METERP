@@ -15,7 +15,21 @@ jobs:
         with:
           dotnet-version: '9.0.x'
       - name: Restore and test (unit + web integration, exclude E2E)
-        run: dotnet test METERP.sln --configuration Release --filter "Category!=E2E" --verbosity normal
+        run: >
+          dotnet test METERP.sln
+          --configuration Release
+          --filter "Category!=E2E"
+          --logger "trx;LogFileName=unit.trx"
+          --results-directory unit-results
+          --verbosity normal
+
+      - name: Upload unit results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-results
+          path: unit-results/*.trx
+          if-no-files-found: ignore
 
   e2e-tests:
     runs-on: ubuntu-latest
@@ -72,19 +86,27 @@ jobs:
           METERP_BASE_URL: http://localhost:8080
           METERP_REQUIRE_MAILPIT: "true"
           METERP_MAILPIT_API_URL: http://localhost:8025
-        run: dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj --configuration Release --filter "Category=E2E" --verbosity normal
+        run: >
+          dotnet test tests/METERP.E2ETests/METERP.E2ETests.csproj
+          --configuration Release
+          --filter "Category=E2E"
+          --logger "trx;LogFileName=e2e.trx"
+          --results-directory e2e-results
+          --verbosity normal
 
-      - name: Upload failure screenshots
+      - name: Upload E2E results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failure-screenshots
-          path: e2e-failure-*.png
+          name: e2e-results
+          path: |
+            e2e-results/*.trx
+            e2e-failure-*.png
           if-no-files-found: ignore
 
       - name: Docker logs on failure
         if: failure()
-        run: docker compose logs
+        run: docker compose logs --no-color --tail=200 web
 
       - name: Tear down
         if: always()

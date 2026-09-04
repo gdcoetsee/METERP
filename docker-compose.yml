@@ -22,7 +22,7 @@ services:
       - Billing__WebhookEventRetentionDays=90
       # Optional OTLP export — set when starting with --profile observability (see .env.example).
       - OpenTelemetry__OtlpEndpoint=${OpenTelemetry__OtlpEndpoint:-}
-      - OpenTelemetry__EnableConsoleExporter=${OpenTelemetry__EnableConsoleExporter:-true}
+      - OpenTelemetry__EnableConsoleExporter=${OpenTelemetry__EnableConsoleExporter:-false}
       # Mailpit SMTP (docker service below) — real email in demo without external SMTP.
       - Email__SmtpHost=${Email__SmtpHost:-mailpit}
       - Email__SmtpPort=${Email__SmtpPort:-1025}
