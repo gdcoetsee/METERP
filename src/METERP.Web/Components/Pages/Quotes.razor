@@ -185,7 +185,7 @@ else
                         <h6 class="mb-2">New Customer</h6>
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <input class="form-control form-control-sm" @bind="newCustomerName" placeholder="Company name *" data-testid="quote-new-customer-name" />
+                                <input class="form-control form-control-sm" @bind="newCustomerName" @bind:event="oninput" placeholder="Company name *" data-testid="quote-new-customer-name" />
                             </div>
                             <div class="col-md-3">
                                 <input class="form-control form-control-sm" @bind="newCustomerEmail" placeholder="Email" />

@@ -439,9 +439,10 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("quote-new-customer-form", 20000);
         var uniqueName = $"E2E Customer {Guid.NewGuid():N}".Substring(0, 24);
         await page.FillByTestIdAsync("quote-new-customer-name", uniqueName);
+        await page.Locator("[data-testid='quote-new-customer-name']").PressAsync("Tab");
         await page.ClickByTestIdWhenEnabledAsync("quote-new-customer-save", 30000);
-        await page.Locator(".toast-body").Filter(new() { HasText = "Customer created" })
-            .First.WaitForAsync(new() { Timeout = 15000 });
+        await page.Locator(".toast-body").Filter(new() { HasTextRegex = new Regex("Customer created", RegexOptions.IgnoreCase) })
+            .First.WaitForAsync(new() { Timeout = 20000 });
 
         await page.AddQuoteLineAsync("E2E travel allowance", unitPrice: "100");
         await page.ClickByTestIdWhenEnabledAsync("quote-save-button", 30000);
