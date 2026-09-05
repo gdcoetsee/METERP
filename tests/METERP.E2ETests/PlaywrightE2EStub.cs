@@ -2236,9 +2236,10 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("home-ready", 30000);
         await page.WaitForTestIdAsync("home-division-scorecards", 30000);
 
-        var content = await page.ContentAsync();
-        Assert.Contains("Division scorecards", content, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Johannesburg Operations", content, StringComparison.OrdinalIgnoreCase);
+        // ContentAsync can still be the Blazor shell after InteractiveServer hydration.
+        var scorecards = (await page.Locator("[data-testid='home-division-scorecards']").InnerTextAsync()) ?? string.Empty;
+        Assert.Contains("Division scorecards", scorecards, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Johannesburg Operations", scorecards, StringComparison.OrdinalIgnoreCase);
 
         await page.CloseSessionAsync();
     }
@@ -2423,7 +2424,8 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("account-billing-tier", 10000);
 
         await page.WaitForAccountReadyAsync("account-security-ready", "/account-security");
-        var securityContent = await page.ContentAsync();
+        await page.WaitForTestIdAsync("account-security-card", 15000);
+        var securityContent = (await page.Locator("[data-testid='account-security-card']").InnerTextAsync()) ?? string.Empty;
         Assert.Contains("Two-Factor Authentication", securityContent);
 
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
@@ -3220,8 +3222,9 @@ public class E2EFlowTests
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
         await acmePage.GotoRelativeAsync("/finance");
         await acmePage.WaitForTestIdAsync("finance-ready", 30000);
-        var acmeContent = await acmePage.ContentAsync();
-        Assert.Contains("4000", acmeContent);
+        await acmePage.WaitForTestIdAsync("finance-accounts-table", 15000);
+        var acmeTable = (await acmePage.Locator("[data-testid='finance-accounts-table']").InnerTextAsync()) ?? string.Empty;
+        Assert.Contains("4000", acmeTable);
         await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
