@@ -9,6 +9,9 @@ public sealed class CircuitDbContextGate
 
     public Task WaitAsync(CancellationToken ct = default) => _semaphore.WaitAsync(ct);
 
+    /// <summary>Synchronous wait — avoids WaitAsync().GetResult() deadlocks on the Blazor circuit sync context.</summary>
+    public void Wait(CancellationToken ct = default) => _semaphore.Wait(ct);
+
     public void Release()
     {
         if (_semaphore.CurrentCount == 0)

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Playwright;
 
 namespace METERP.E2ETests;
@@ -17,8 +18,10 @@ public static class E2EHelpers
     public const string BetaPassword = "Demo123!";
 
     private static int _loginCount;
+    private static int _demoReady;
     private static IPlaywright? _trackedPlaywright;
     private static IBrowser? _trackedBrowser;
+    private static readonly ConcurrentDictionary<IBrowserContext, byte> OpenContexts = new();
 
     /// <summary>
     /// Enables periodic Chromium recycle during long sequential E2E runs (reduces stale Blazor circuit pressure).
@@ -68,8 +71,7 @@ public static class E2EHelpers
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            var page = await browser.NewPageAsync();
-            page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
+            var page = await browser.NewSessionAsync();
 
             try
             {
@@ -91,7 +93,7 @@ public static class E2EHelpers
             catch (Exception ex)
             {
                 lastError = ex;
-                await page.CloseAsync();
+                await page.CloseSessionAsync();
                 if (attempt < 2)
                     await Task.Delay(1500);
             }
@@ -100,11 +102,58 @@ public static class E2EHelpers
         throw new InvalidOperationException($"Login failed for {loginEmail} after 3 attempts.", lastError);
     }
 
+    /// <summary>
+    /// New incognito context + page. Closing the page alone does not drop the SignalR circuit.
+    /// </summary>
+    public static async Task<IPage> NewSessionAsync(this IBrowser browser)
+    {
+        var context = await browser.NewContextAsync();
+        OpenContexts.TryAdd(context, 0);
+        var page = await context.NewPageAsync();
+        page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
+        return page;
+    }
+
+    /// <summary>Closes the browser context so the Blazor circuit is actually dropped.</summary>
+    public static async Task CloseSessionAsync(this IPage page)
+    {
+        IBrowserContext? context = null;
+        try { context = page.Context; }
+        catch { /* already closed */ }
+
+        try
+        {
+            if (context != null)
+                await context.CloseAsync();
+            else
+                await page.CloseAsync();
+        }
+        catch
+        {
+            try { await page.CloseAsync(); }
+            catch { /* ignore */ }
+        }
+
+        if (context != null)
+            OpenContexts.TryRemove(context, out _);
+    }
+
+    public static async Task CloseTrackedContextsAsync()
+    {
+        foreach (var context in OpenContexts.Keys)
+        {
+            try { await context.CloseAsync(); }
+            catch { /* already closed */ }
+            OpenContexts.TryRemove(context, out _);
+        }
+    }
+
     private static async Task<IBrowser> MaybeRecycleBrowserAsync(IBrowser browser)
     {
         if (_trackedPlaywright == null || _trackedBrowser == null || !ReferenceEquals(browser, _trackedBrowser))
             return browser;
 
+        await CloseTrackedContextsAsync();
         await _trackedBrowser.DisposeAsync();
         await Task.Delay(750);
         _trackedBrowser = await _trackedPlaywright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
@@ -550,7 +599,9 @@ public static class E2EHelpers
     public static async Task OpenSchedulingAssignPanelAsync(this IPage page, int timeoutMs = 30000)
     {
         await page.GotoRelativeAsync("/scheduling");
-        await page.WaitForTestIdAsync("scheduling-ready", timeoutMs);
+        await page.WaitForSelectorAsync(
+            "[data-testid='scheduling-ready'], [data-testid='scheduling-empty'], [data-testid='scheduling-calendar']",
+            new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
 
         var assignBtn = page.Locator("[data-testid='scheduling-view-assign']").First;
         if (await assignBtn.CountAsync() == 0)
@@ -1390,10 +1441,14 @@ public static class E2EHelpers
                     continue;
                 }
 
-                // Health can pass before DatabaseSeeder finishes — poll E2E setup until demo data exists.
+                if (Volatile.Read(ref _demoReady) == 1)
+                    return;
+
+                // Health can pass before DatabaseSeeder finishes — seed once, not on every test.
                 if (await TryPrepareE2EDemoDataAsync(url))
                 {
-                    await Task.Delay(1000);
+                    Interlocked.Exchange(ref _demoReady, 1);
+                    await Task.Delay(500);
                     return;
                 }
             }

@@ -30,6 +30,9 @@ public sealed class E2EBrowserFixture : IAsyncLifetime
         try { await E2EHelpers.DisableBetaTwoFactorAsync(); }
         catch { /* ignore */ }
 
+        try { await E2EHelpers.CloseTrackedContextsAsync(); }
+        catch { /* ignore */ }
+
         try
         {
             await E2EHelpers.GetBrowser().DisposeAsync();

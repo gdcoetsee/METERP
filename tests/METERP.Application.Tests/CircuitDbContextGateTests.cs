@@ -24,4 +24,16 @@ public class CircuitDbContextGateTests
         gate.Release();
         gate.Release();
     }
+
+    [Fact]
+    public void Wait_ThenRelease_AllowsAnotherWait()
+    {
+        var gate = new CircuitDbContextGate();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+        gate.Wait(cts.Token);
+        gate.Release();
+        gate.Wait(cts.Token);
+        gate.Release();
+    }
 }

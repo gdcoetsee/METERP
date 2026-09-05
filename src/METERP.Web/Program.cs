@@ -88,7 +88,13 @@ builder.Host.UseSerilog();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddCircuitOptions(options =>
+    {
+        // Playwright closes pages faster than the default 3-minute retention; keep the circuit table small.
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromSeconds(30);
+        options.DisconnectedCircuitMaxRetained = 16;
+    });
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddMemoryCache();

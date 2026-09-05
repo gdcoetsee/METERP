@@ -18,7 +18,7 @@ public sealed class CircuitDbCommandGateInterceptor : DbCommandInterceptor
         CommandEventData eventData,
         InterceptionResult<DbDataReader> result)
     {
-        _gate.WaitAsync().GetAwaiter().GetResult();
+        _gate.Wait();
         return base.ReaderExecuting(command, eventData, result);
     }
 
@@ -68,7 +68,7 @@ public sealed class CircuitDbCommandGateInterceptor : DbCommandInterceptor
         CommandEventData eventData,
         InterceptionResult<int> result)
     {
-        _gate.WaitAsync().GetAwaiter().GetResult();
+        _gate.Wait();
         return base.NonQueryExecuting(command, eventData, result);
     }
 
@@ -118,7 +118,7 @@ public sealed class CircuitDbCommandGateInterceptor : DbCommandInterceptor
         CommandEventData eventData,
         InterceptionResult<object> result)
     {
-        _gate.WaitAsync().GetAwaiter().GetResult();
+        _gate.Wait();
         return base.ScalarExecuting(command, eventData, result);
     }
 

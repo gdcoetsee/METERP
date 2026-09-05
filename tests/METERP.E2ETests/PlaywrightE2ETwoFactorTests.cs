@@ -20,7 +20,7 @@ public class E2ETwoFactorFlowTests
             await E2EHelpers.EnsureAppReadyAsync();
             var secretMaterial = await EnableTwoFactorForBetaAsync();
 
-            var loginPage = await Browser.NewPageAsync();
+            var loginPage = await Browser.NewSessionAsync();
             await loginPage.GotoAsync($"{E2EHelpers.BaseUrl}/login");
             await loginPage.WaitForTestIdAsync("login-email");
             await loginPage.Locator("[data-testid='login-email']").PressSequentiallyAsync(E2EHelpers.BetaEmail);
@@ -56,7 +56,7 @@ public class E2ETwoFactorFlowTests
             Assert.True(loggedIn, "Expected authenticator login to succeed after 2FA enable.");
             var home = await loginPage.ContentAsync();
             Assert.Contains("Beta", home, StringComparison.OrdinalIgnoreCase);
-            await loginPage.CloseAsync();
+            await loginPage.CloseSessionAsync();
         }
         finally
         {
@@ -101,7 +101,7 @@ public class E2ETwoFactorFlowTests
 
             await setupPage.ClickByTestIdAsync("2fa-disable-button");
             await setupPage.WaitForTestIdAsync("2fa-status-disabled", 20000);
-            await setupPage.CloseAsync();
+            await setupPage.CloseSessionAsync();
         }
         finally
         {
@@ -137,7 +137,7 @@ public class E2ETwoFactorFlowTests
             await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
             await setupPage.ClickByTestIdAsync("2fa-confirm-button");
             await setupPage.WaitForTestIdAsync("2fa-status-enabled", 30000);
-            await setupPage.CloseAsync();
+            await setupPage.CloseSessionAsync();
 
             await E2EHelpers.WaitForMailpitSubjectAsync("Two-factor authentication enabled");
 
@@ -166,7 +166,7 @@ public class E2ETwoFactorFlowTests
         await setupPage.Locator("[data-testid='2fa-confirm-code']").PressSequentiallyAsync(setupCode, new() { Delay = 80 });
         await setupPage.ClickByTestIdAsync("2fa-confirm-button");
         await setupPage.WaitForTestIdAsync("2fa-status-enabled", 30000);
-        await setupPage.CloseAsync();
+        await setupPage.CloseSessionAsync();
 
         return secretMaterial;
     }

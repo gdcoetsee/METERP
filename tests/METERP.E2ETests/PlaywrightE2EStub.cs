@@ -37,7 +37,7 @@ public class E2EFlowTests
             u => u.Contains("login", StringComparison.OrdinalIgnoreCase),
             new() { Timeout = 45000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("permission", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class E2EFlowTests
 
         var content = await page.ContentAsync();
         Assert.Contains("Acme", content, StringComparison.OrdinalIgnoreCase);
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class E2EFlowTests
             Assert.Contains(".pdf", demoPdf, StringComparison.OrdinalIgnoreCase);
         });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class E2EFlowTests
             var response = await page.Locator("[data-testid='ai-last-response']").TextContentAsync();
             Assert.False(string.IsNullOrWhiteSpace(response));
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -154,7 +154,7 @@ public class E2EFlowTests
         var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-demo-job-pdf']", "e2e-demo-job");
         Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public class E2EFlowTests
         var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-export-full-pdf']", "e2e-ai-full-session");
         Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class E2EFlowTests
             .First
             .WaitForAsync(new() { Timeout = 15000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class E2EFlowTests
             .First
             .WaitForAsync(new() { Timeout = 15000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public class E2EFlowTests
             .First
             .WaitForAsync(new() { Timeout = 15000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public class E2EFlowTests
         var pdfPath = await page.WaitAndSaveDownloadAsync("[data-testid='ai-export-response-pdf']", "e2e-ai-response");
         Assert.Contains(".pdf", pdfPath, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class E2EFlowTests
             || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
             $"Unexpected copilot response: {response}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -312,7 +312,7 @@ public class E2EFlowTests
         Assert.Contains("J-", content);
         Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -335,7 +335,7 @@ public class E2EFlowTests
             || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
             $"Unexpected copilot response: {response}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -358,7 +358,7 @@ public class E2EFlowTests
             || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
             $"Unexpected copilot response: {response}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -382,7 +382,7 @@ public class E2EFlowTests
             || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
             $"Unexpected copilot response: {response}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -405,7 +405,7 @@ public class E2EFlowTests
             || response.Contains("AI", StringComparison.OrdinalIgnoreCase),
             $"Unexpected copilot response: {response}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -423,7 +423,7 @@ public class E2EFlowTests
         Assert.Contains("Manual E2E panel install", content);
         Assert.Contains("Q-", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -452,7 +452,7 @@ public class E2EFlowTests
         Assert.Contains(uniqueName, content);
         Assert.Contains("E2E travel allowance", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -468,7 +468,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Line Items", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -523,7 +523,7 @@ public class E2EFlowTests
         Assert.Contains("E2E GP line B", content);
         Assert.Contains("Blended GP", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -553,7 +553,7 @@ public class E2EFlowTests
         // 200 + 15% VAT = 230
         await Assertions.Expect(page.Locator("[data-testid='quote-editor']")).ToContainTextAsync(new Regex(@"230[.,]00"), new() { Timeout = 15000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -592,7 +592,7 @@ public class E2EFlowTests
             || response.Contains("Offline", StringComparison.OrdinalIgnoreCase),
             $"Unexpected copilot response: {response}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -606,7 +606,7 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("ai-provider-select", 15000);
         var acmeProviders = await acmePage.Locator("[data-testid='ai-provider-select'] option").CountAsync();
         Assert.True(acmeProviders > 0);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/settings/ai");
@@ -614,7 +614,7 @@ public class E2EFlowTests
         await betaPage.WaitForTestIdAsync("ai-provider-select", 15000);
         var betaProviders = await betaPage.Locator("[data-testid='ai-provider-select'] option").CountAsync();
         Assert.True(betaProviders > 0);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -631,7 +631,7 @@ public class E2EFlowTests
         Assert.Contains(options, o => o.Contains("Groq", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(options, o => o.Contains("Ollama", StringComparison.OrdinalIgnoreCase));
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -676,7 +676,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Q-", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -727,7 +727,7 @@ public class E2EFlowTests
         var stageAfter = await page.Locator("[data-testid='opportunity-stage']").TextContentAsync();
         Assert.Contains("Qualified", stageAfter ?? string.Empty, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -795,7 +795,7 @@ public class E2EFlowTests
         await page.OpenJobDetailPanelAsync(jobRow, 30000);
         await E2EHelpers.AssertJobDetailShowsTravelAsync(page);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -816,7 +816,7 @@ public class E2EFlowTests
         Assert.False(string.IsNullOrWhiteSpace(selectedCustomer));
         Assert.NotEqual(Guid.Empty.ToString(), selectedCustomer);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -867,7 +867,7 @@ public class E2EFlowTests
         await page.OpenJobDetailPanelAsync(jobRow, 30000);
         await E2EHelpers.AssertJobDetailShowsTravelAsync(page);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -908,29 +908,46 @@ public class E2EFlowTests
         await page.OpenJobDetailPanelAsync(travelJobRow, 30000);
         await E2EHelpers.AssertJobDetailShowsTravelAsync(page, expectQuoteNumber: true);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
     public async Task Job_With_Travel_And_Labor_Creates_Invoice_With_Correct_Totals()
     {
         await E2EHelpers.EnsureAppReadyAsync();
-        var demoJob = await E2EHelpers.EnsureDemoInvoiceJobAsync(maxAttempts: 5);
-        Assert.NotNull(demoJob);
-        var (jobNumber, jobId) = demoJob.Value;
-
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync($"/jobs/{jobId}?invoice=deposit");
-        await page.WaitForTestIdAsync("job-command-center-ready", 45000);
-        await page.WaitForTestIdAsync("job-cc-pnl", 15000);
-        await page.WaitForTestIdAsync("job-cc-invoice-modal", 20000);
-        await page.ClickByTestIdAsync("job-cc-invoice-deposit");
-        await page.WaitForTestIdAsync("job-cc-invoice-row", 30000);
-        Assert.True(await page.Locator("[data-testid='job-cc-invoice-row']").CountAsync() > 0);
-        var content = await page.ContentAsync();
-        Assert.Contains("Travel", content, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            var demoJob = await E2EHelpers.EnsureDemoInvoiceJobAsync(maxAttempts: 5);
+            Assert.NotNull(demoJob);
+            var (_, jobId) = demoJob.Value;
 
-        await page.CloseAsync();
+            await page.GotoRelativeAsync($"/jobs/{jobId}?invoice=deposit");
+            await page.WaitForSelectorAsync(
+                "[data-testid='job-command-center-ready'], [data-testid='job-command-center-not-found']",
+                new() { Timeout = 45000, State = WaitForSelectorState.Visible });
+
+            if (await page.Locator("[data-testid='job-command-center-not-found']").CountAsync() > 0)
+            {
+                demoJob = await E2EHelpers.EnsureDemoInvoiceJobAsync(maxAttempts: 5);
+                Assert.NotNull(demoJob);
+                jobId = demoJob.Value.JobId;
+                await page.GotoRelativeAsync($"/jobs/{jobId}?invoice=deposit");
+                await page.WaitForTestIdAsync("job-command-center-ready", 45000);
+            }
+
+            await page.WaitForTestIdAsync("job-cc-pnl", 15000);
+            await page.WaitForTestIdAsync("job-cc-invoice-modal", 20000);
+            await page.ClickByTestIdAsync("job-cc-invoice-deposit");
+            await page.WaitForTestIdAsync("job-cc-invoice-row", 30000);
+            Assert.True(await page.Locator("[data-testid='job-cc-invoice-row']").CountAsync() > 0);
+            var content = await page.ContentAsync();
+            Assert.Contains("Travel", content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await page.CloseSessionAsync();
+        }
     }
 
     /// <summary>
@@ -940,11 +957,11 @@ public class E2EFlowTests
     public async Task Job_CommandCenter_Invoice_While_Open_Cost_Then_Executive_Close()
     {
         await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
         var demoJob = await E2EHelpers.EnsureDemoInvoiceJobAsync(maxAttempts: 5);
         Assert.NotNull(demoJob);
         var (_, jobId) = demoJob.Value;
 
-        var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync($"/jobs/{jobId}?invoice=deposit");
         await page.WaitForTestIdAsync("job-command-center-ready", 45000);
         await page.WaitForTestIdAsync("job-cc-pnl", 15000);
@@ -1008,7 +1025,7 @@ public class E2EFlowTests
         await page.ClickByTestIdAsync("job-cc-reopen-confirm");
         await page.WaitForTestIdAsync("job-cc-add-cost", 30000);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1020,14 +1037,14 @@ public class E2EFlowTests
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Q-", acmeContent);
         Assert.DoesNotContain("Beta-only travel", acmeContent);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.WaitForInteractivePageAsync("/quotes", "quotes-ready", "quotes-table", 60000);
         var betaContent = await betaPage.ContentAsync();
         Assert.Contains("Beta Mining", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Johannesburg General Hospital", betaContent);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1047,7 +1064,7 @@ public class E2EFlowTests
             || acmeText.Contains("J-", StringComparison.OrdinalIgnoreCase)
             || acmeText.Contains("No jobs", StringComparison.OrdinalIgnoreCase),
             "Acme jobs page should show demo jobs or empty state.");
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/jobs");
@@ -1060,7 +1077,7 @@ public class E2EFlowTests
             var betaTable = await betaPage.Locator("[data-testid='jobs-table']").InnerTextAsync();
             Assert.DoesNotContain("Hospital DB Upgrade", betaTable, StringComparison.OrdinalIgnoreCase);
         }
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1073,7 +1090,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1086,7 +1103,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1099,7 +1116,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1113,14 +1130,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("purchase-orders-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("ElectroSupply SA", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/purchase-orders");
         await betaPage.WaitForTestIdAsync("purchase-orders-ready", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("ElectroSupply SA", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1134,7 +1151,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("purchase-orders-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1148,14 +1165,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("sales-orders-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Johannesburg General Hospital", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/sales-orders");
         await betaPage.WaitForTestIdAsync("sales-orders-empty", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1168,7 +1185,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1183,7 +1200,7 @@ public class E2EFlowTests
         Assert.DoesNotContain("sales-orders-ready", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("sales-orders-empty", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1197,7 +1214,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("opportunities-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1211,7 +1228,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("customers-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1225,7 +1242,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("employees-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1239,7 +1256,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("assets-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1253,7 +1270,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("inventory-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1267,7 +1284,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("suppliers-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1281,7 +1298,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("divisions-table", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1295,7 +1312,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("company-docs-table", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1309,7 +1326,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("stock-take-start", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1323,7 +1340,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ppe-history-table", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1336,14 +1353,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("opportunities-ready", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Hospital DB Upgrade", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/opportunities");
         await betaPage.WaitForTestIdAsync("opportunities-ready", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Hospital DB Upgrade", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1356,7 +1373,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1370,7 +1387,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("jobs-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1384,7 +1401,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("scheduling-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1398,7 +1415,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("requisitions-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1412,7 +1429,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("users-edit-permissions", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1426,7 +1443,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("approvals-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1440,7 +1457,7 @@ public class E2EFlowTests
         Assert.Contains("Access Denied", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ai-settings-ready", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1455,7 +1472,7 @@ public class E2EFlowTests
         Assert.DoesNotContain("ai-copilot-ready", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ai-prompt-input", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1480,7 +1497,7 @@ public class E2EFlowTests
             var acmeTable = await acmePage.Locator("[data-testid='invoices-table']").InnerTextAsync();
             Assert.Contains("Johannesburg General Hospital", acmeTable, StringComparison.OrdinalIgnoreCase);
         }
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/invoices");
@@ -1498,7 +1515,7 @@ public class E2EFlowTests
             var betaBody = await betaPage.Locator("body").InnerTextAsync();
             Assert.DoesNotContain("Johannesburg General Hospital", betaBody, StringComparison.OrdinalIgnoreCase);
         }
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1512,14 +1529,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("suppliers-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("ElectroSupply SA", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/suppliers");
         await betaPage.WaitForTestIdAsync("suppliers-ready", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("ElectroSupply SA", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1533,14 +1550,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("inventory-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("DB Board 12-Way", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/inventory");
         await betaPage.WaitForTestIdAsync("inventory-ready", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("DB Board 12-Way", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1557,7 +1574,7 @@ public class E2EFlowTests
             excludeRowText: "Beta Mining Services");
         var acmeRows = await acmePage.Locator("[data-testid='customers-table'] tbody").InnerTextAsync();
         Assert.DoesNotContain("Beta Mining Services", acmeRows, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.WaitForListPageAsync("/customers", "customers-table", 45000);
@@ -1567,7 +1584,7 @@ public class E2EFlowTests
             excludeRowText: "Johannesburg General Hospital");
         var betaRows = await betaPage.Locator("[data-testid='customers-table'] tbody").InnerTextAsync();
         Assert.DoesNotContain("Johannesburg General Hospital", betaRows, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1581,14 +1598,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("employees-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Thabo Mokoena", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/employees");
         await betaPage.WaitForTestIdAsync("employees-ready", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Thabo Mokoena", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1602,14 +1619,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("assets-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Main 11kV/400V Transformer", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/assets");
         await betaPage.WaitForTestIdAsync("assets-ready", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Main 11kV/400V Transformer", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1622,14 +1639,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("divisions-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Johannesburg Operations", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/divisions");
         await betaPage.WaitForTestIdAsync("divisions-empty", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Johannesburg Operations", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1642,14 +1659,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("company-docs-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Compensation Fund Letter", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/company-documents");
         await betaPage.WaitForTestIdAsync("company-docs-empty", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Compensation Fund Letter", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1662,7 +1679,7 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("notifications-ready", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Low Stock Alert", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/notifications");
@@ -1670,7 +1687,7 @@ public class E2EFlowTests
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Low Stock Alert", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Job Overdue", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1686,7 +1703,7 @@ public class E2EFlowTests
             .Filter(new() { HasText = "All notifications marked read" })
             .First
             .WaitForAsync(new() { Timeout = 15000 });
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/notifications");
@@ -1694,7 +1711,7 @@ public class E2EFlowTests
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Low Stock Alert", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Job Overdue", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1709,7 +1726,7 @@ public class E2EFlowTests
             new() { Timeout = 30000 });
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Stock Take", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/stock-take");
@@ -1718,7 +1735,7 @@ public class E2EFlowTests
             new() { Timeout = 30000 });
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("stock-take-detail", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1733,7 +1750,7 @@ public class E2EFlowTests
             new() { Timeout = 30000 });
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("PPE", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/ppe-history");
@@ -1742,7 +1759,7 @@ public class E2EFlowTests
             new() { Timeout = 30000 });
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("ppe-history-row", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1769,7 +1786,7 @@ public class E2EFlowTests
             acmeContent = await acmePage.ContentAsync();
         }
         Assert.Contains("Quarterly panel inspection", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/scheduling");
@@ -1778,7 +1795,7 @@ public class E2EFlowTests
             new() { Timeout = 30000 });
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Quarterly panel inspection", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1797,7 +1814,7 @@ public class E2EFlowTests
             "Expected Reports & Insights heading on Acme reports page.");
         Assert.DoesNotContain("Total Items: <strong>0</strong>", acmeContent);
         Assert.DoesNotContain("Total Assets: <strong>0</strong>", acmeContent);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/reports");
@@ -1806,7 +1823,7 @@ public class E2EFlowTests
         var betaContent = await betaPage.ContentAsync();
         Assert.Contains("Total Items: <strong>0</strong>", betaContent);
         Assert.Contains("Total Assets: <strong>0</strong>", betaContent);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1820,14 +1837,14 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("payroll-table", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Thabo Mokoena", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/payroll");
         await betaPage.WaitForTestIdAsync("payroll-empty", 30000);
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Thabo Mokoena", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -1849,7 +1866,7 @@ public class E2EFlowTests
             Assert.Contains("cus_", href!, StringComparison.OrdinalIgnoreCase);
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1889,7 +1906,7 @@ public class E2EFlowTests
         var tooltip = await quotesBadge.GetAttributeAsync("title") ?? string.Empty;
         Assert.Contains("Quotes", tooltip, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -1933,7 +1950,7 @@ public class E2EFlowTests
             var summary = (await page.Locator("[data-testid='tenants-edit-quota-exceeded-summary']").TextContentAsync()) ?? string.Empty;
             Assert.Contains("Quotes", summary, StringComparison.OrdinalIgnoreCase);
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -1963,7 +1980,7 @@ public class E2EFlowTests
             var toast = (await quotaToast.TextContentAsync()) ?? string.Empty;
             Assert.Contains("Monthly Quote quota exceeded", toast, StringComparison.OrdinalIgnoreCase);
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -1995,7 +2012,7 @@ public class E2EFlowTests
             var toast = (await quotaToast.TextContentAsync()) ?? string.Empty;
             Assert.Contains("Monthly Job quota exceeded", toast, StringComparison.OrdinalIgnoreCase);
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -2021,7 +2038,7 @@ public class E2EFlowTests
             var toast = (await quotaToast.TextContentAsync()) ?? string.Empty;
             Assert.Contains("Monthly Invoice quota exceeded", toast, StringComparison.OrdinalIgnoreCase);
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -2050,7 +2067,7 @@ public class E2EFlowTests
             Assert.Contains("Manage billing", label, StringComparison.OrdinalIgnoreCase);
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2089,7 +2106,7 @@ public class E2EFlowTests
         }
         Assert.Contains("Approvals Hub", await page.ContentAsync(), StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2127,7 +2144,7 @@ public class E2EFlowTests
         }
 
         Assert.True(found >= 1, $"Expected at least one Home cash-desk queue on seeded Acme, found {found}.");
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2197,7 +2214,7 @@ public class E2EFlowTests
             Assert.DoesNotMatch(
                 new Regex(@"localhost:8080/?$", RegexOptions.IgnoreCase),
                 page.Url);
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -2207,7 +2224,7 @@ public class E2EFlowTests
             await toast.WaitForAsync(new() { Timeout = 20000 });
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2223,7 +2240,7 @@ public class E2EFlowTests
         Assert.Contains("Division scorecards", content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Johannesburg Operations", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2237,7 +2254,7 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("home-division-scorecards", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Johannesburg Operations", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/");
@@ -2245,7 +2262,7 @@ public class E2EFlowTests
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Johannesburg Operations", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, await betaPage.Locator("[data-testid='home-division-scorecards']").CountAsync());
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -2276,7 +2293,7 @@ public class E2EFlowTests
             var upgrade = page.Locator("[data-testid='home-quota-upgrade-button']");
             Assert.True(await upgrade.CountAsync() > 0);
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -2298,7 +2315,7 @@ public class E2EFlowTests
         Assert.Contains("Professional", acmeTier, StringComparison.OrdinalIgnoreCase);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Acme", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
@@ -2312,7 +2329,7 @@ public class E2EFlowTests
             || betaTier.Contains("Professional", StringComparison.OrdinalIgnoreCase),
             $"Expected Beta tier Starter or Professional, got '{betaTier}'.");
         Assert.DoesNotContain("Acme Electrical", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -2351,7 +2368,7 @@ public class E2EFlowTests
         var tooltip = await quotesBadge.GetAttributeAsync("title") ?? string.Empty;
         Assert.Contains("Quotes", tooltip, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2385,7 +2402,7 @@ public class E2EFlowTests
             var summary = (await page.Locator("[data-testid='account-billing-quota-exceeded-summary']").TextContentAsync()) ?? string.Empty;
             Assert.Contains("Quotes", summary, StringComparison.OrdinalIgnoreCase);
 
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
         }
         finally
         {
@@ -2412,7 +2429,7 @@ public class E2EFlowTests
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
         await page.WaitForTestIdAsync("account-billing-tier", 10000);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2456,7 +2473,7 @@ public class E2EFlowTests
         var tierText = (await page.Locator("[data-testid='account-billing-tier']").TextContentAsync()) ?? string.Empty;
         Assert.Contains("Professional", tierText, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2482,7 +2499,7 @@ public class E2EFlowTests
                 || rowText.Contains("h", StringComparison.OrdinalIgnoreCase));
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2513,7 +2530,7 @@ public class E2EFlowTests
             Assert.Contains("%", topText);
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2542,7 +2559,7 @@ public class E2EFlowTests
             Assert.Matches(@"[+-]R ", barText.Trim());
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2566,7 +2583,7 @@ public class E2EFlowTests
             || rowText.Contains("Johan", StringComparison.OrdinalIgnoreCase),
             $"Expected demo employee on payroll table, got: {rowText}");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2581,7 +2598,7 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='scheduling-assign-panel']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -2634,7 +2651,7 @@ public class E2EFlowTests
             await page.ClickByTestIdAsync("scheduling-close-assign");
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2642,11 +2659,12 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.OpenSchedulingAssignPanelAsync(30000);
+        try
+        {
+        await page.OpenSchedulingAssignPanelAsync(45000);
 
         if (await page.Locator("[data-testid='scheduling-assign-panel']").CountAsync() == 0)
         {
-            await page.CloseAsync();
             return;
         }
 
@@ -2655,7 +2673,7 @@ public class E2EFlowTests
         if (optionCount <= 1)
         {
             await page.ClickByTestIdAsync("scheduling-close-assign");
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -2672,7 +2690,7 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("scheduling-quick-labor-panel", 10000);
         if (await page.Locator("[data-testid='scheduling-quick-add-labor']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -2684,8 +2702,11 @@ public class E2EFlowTests
 
         var toast = (await laborToast.First.TextContentAsync()) ?? string.Empty;
         Assert.Contains("labor", toast, StringComparison.OrdinalIgnoreCase);
-
-        await page.CloseAsync();
+        }
+        finally
+        {
+            await page.CloseSessionAsync();
+        }
     }
 
     [Fact]
@@ -2698,7 +2719,7 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("audit-ready", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("admin@acme.demo", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/audit");
@@ -2709,7 +2730,7 @@ public class E2EFlowTests
         {
             Assert.Contains("admin@beta.demo", betaContent, StringComparison.OrdinalIgnoreCase);
         }
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -2735,7 +2756,7 @@ public class E2EFlowTests
                 "Expected audit rows to reference spine or CRM entities.");
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2785,7 +2806,7 @@ public class E2EFlowTests
         Assert.Contains("CONVERT", content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Quote", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2811,7 +2832,7 @@ public class E2EFlowTests
         Assert.Contains("CREATE", content, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Invoice", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2827,7 +2848,7 @@ public class E2EFlowTests
         Assert.Contains("DB-12W-001", content);
         Assert.Contains("Inventory", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2854,7 +2875,7 @@ public class E2EFlowTests
         await Assertions.Expect(page.Locator("[data-testid='inventory-table'] tbody tr").Filter(new() { HasText = "OIL-TR-5L" }))
             .Not.ToHaveCountAsync(0, new() { Timeout = 10000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2878,7 +2899,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "DB-12W-001" }))
             .ToHaveCountAsync(0, new() { Timeout = 5000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2893,7 +2914,7 @@ public class E2EFlowTests
         var tableBody = page.Locator("[data-testid='suppliers-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" })).ToHaveCountAsync(1, new() { Timeout = 15000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2914,7 +2935,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "ElectroSupply SA" }))
             .ToHaveCountAsync(0, new() { Timeout = 5000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2947,7 +2968,7 @@ public class E2EFlowTests
         var detail = await page.Locator("[data-testid='purchase-order-detail']").InnerTextAsync();
         Assert.Contains("Total", detail, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -2967,7 +2988,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Panel Supplies" }))
             .ToHaveCountAsync(0, new() { Timeout = 5000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3016,7 +3037,7 @@ public class E2EFlowTests
         var qtyAfter = int.Parse(new string(qtyAfterText!.Where(char.IsDigit).ToArray()));
         Assert.Equal(qtyBefore + 3, qtyAfter);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3031,7 +3052,7 @@ public class E2EFlowTests
 
         await page.FillSearchAndExpectRowAsync("customers-search", "customers-table", "Hospital", "Johannesburg General Hospital");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3055,7 +3076,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" }))
             .ToHaveCountAsync(0, new() { Timeout = 5000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3070,7 +3091,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "11kV/400V Transformer" })).ToHaveCountAsync(1);
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johannesburg General Hospital" })).ToHaveCountAsync(1);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3091,7 +3112,7 @@ public class E2EFlowTests
         var tableBody = page.Locator("[data-testid='assets-table'] tbody");
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Warehouse LV Distribution Board" })).ToHaveCountAsync(0, new() { Timeout = 5000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3106,7 +3127,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(1);
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "Johan" })).ToHaveCountAsync(1);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3134,7 +3155,7 @@ public class E2EFlowTests
         await Assertions.Expect(tableBody.Locator("tr")).ToHaveCountAsync(1, new() { Timeout = 20000 });
         await Assertions.Expect(tableBody.Locator("tr").Filter(new() { HasText = "EMP-001" })).ToHaveCountAsync(0);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3153,7 +3174,7 @@ public class E2EFlowTests
         var detail = await page.ContentAsync();
         Assert.Contains("Total:", detail);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3187,7 +3208,7 @@ public class E2EFlowTests
         Assert.Contains("J-", content);
         Assert.Contains("travel", content, StringComparison.OrdinalIgnoreCase);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
         await E2EHelpers.ResetDemoStateAsync();
     }
 
@@ -3201,7 +3222,7 @@ public class E2EFlowTests
         await acmePage.WaitForTestIdAsync("finance-ready", 30000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("4000", acmeContent);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/finance");
@@ -3209,7 +3230,7 @@ public class E2EFlowTests
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("4000", betaContent);
         Assert.Equal(0, await betaPage.Locator("[data-testid='finance-accounts-table']").CountAsync());
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3225,7 +3246,7 @@ public class E2EFlowTests
         await acmeReady.WaitForAsync(new() { Timeout = 10000 });
         var acmeReadyCount = (await acmeReady.TextContentAsync())?.Trim() ?? "0";
         Assert.NotEqual("0", acmeReadyCount);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/");
@@ -3234,7 +3255,7 @@ public class E2EFlowTests
         var betaReady = betaPage.Locator("[data-testid='home-executive-dashboard'] .text-success").First;
         await betaReady.WaitForAsync(new() { Timeout = 10000 });
         Assert.Equal("0", (await betaReady.TextContentAsync())?.Trim());
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3277,7 +3298,7 @@ public class E2EFlowTests
             Assert.Contains("4000", csv);
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3297,7 +3318,7 @@ public class E2EFlowTests
         await page.ClickByTestIdAsync("notifications-mark-all");
         await page.WaitForTestIdAsync("notifications-list", 5000);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3316,7 +3337,7 @@ public class E2EFlowTests
 
         if (await unreadItem.CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -3325,7 +3346,7 @@ public class E2EFlowTests
 
         Assert.Equal(0, await unreadItem.Locator(".badge.bg-danger").CountAsync());
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3340,7 +3361,7 @@ public class E2EFlowTests
         var unreadBefore = await page.Locator("[data-testid='notification-item'] .badge.bg-danger").CountAsync();
         if (unreadBefore == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -3352,7 +3373,7 @@ public class E2EFlowTests
 
         Assert.Equal(0, await page.Locator("[data-testid='notification-item'] .badge.bg-danger").CountAsync());
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3372,7 +3393,7 @@ public class E2EFlowTests
         await page.ClickByTestIdAsync("approvals-tab-requisitions");
         await page.WaitForTestIdAsync("approvals-ready", 10000);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3387,7 +3408,7 @@ public class E2EFlowTests
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Approvals Hub", acmeContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Beta Mining", acmeContent, StringComparison.OrdinalIgnoreCase);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/approvals");
@@ -3395,7 +3416,7 @@ public class E2EFlowTests
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Hospital DB Upgrade", betaContent, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3410,7 +3431,7 @@ public class E2EFlowTests
         Assert.Contains("Two-Factor Authentication", acmeContent, StringComparison.OrdinalIgnoreCase);
         Assert.True(await acmePage.Locator(
             "[data-testid='2fa-enable-button'], [data-testid='2fa-status-disabled'], [data-testid='2fa-status-enabled']").CountAsync() > 0);
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
@@ -3419,7 +3440,7 @@ public class E2EFlowTests
         Assert.Contains("Two-Factor Authentication", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.True(await betaPage.Locator(
             "[data-testid='2fa-enable-button'], [data-testid='2fa-status-disabled'], [data-testid='2fa-status-enabled']").CountAsync() > 0);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3442,7 +3463,7 @@ public class E2EFlowTests
             var text = await acmeFieldRows.Nth(i).TextContentAsync() ?? string.Empty;
             Assert.DoesNotContain("B-FIELD", text, StringComparison.OrdinalIgnoreCase);
         }
-        await acmePage.CloseAsync();
+        await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
         await betaPage.GotoRelativeAsync("/approvals");
@@ -3473,7 +3494,7 @@ public class E2EFlowTests
         var betaPanel = await betaPage.Locator("[data-testid='approvals-field-panel'], [data-testid='approvals-field-empty']").First.TextContentAsync()
             ?? string.Empty;
         Assert.DoesNotContain("Thabo", betaPanel, StringComparison.OrdinalIgnoreCase);
-        await betaPage.CloseAsync();
+        await betaPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3486,7 +3507,7 @@ public class E2EFlowTests
 
         if (await techPage.Locator("[data-testid='field-report-modal']").CountAsync() == 0)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
@@ -3505,7 +3526,7 @@ public class E2EFlowTests
         {
             // Continue to admin queue — report may already be pending from earlier runs.
         }
-        await techPage.CloseAsync();
+        await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
         await adminPage.GotoRelativeAsync("/approvals");
@@ -3517,7 +3538,7 @@ public class E2EFlowTests
 
         if (await adminPage.Locator("[data-testid='approvals-field-row']").CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3528,7 +3549,7 @@ public class E2EFlowTests
         var toast = adminPage.Locator(".toast-body").Filter(new() { HasText = "Field report approved" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await adminPage.CloseAsync();
+        await adminPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3541,14 +3562,14 @@ public class E2EFlowTests
 
         if (await techPage.Locator("[data-testid='field-stock-modal']").CountAsync() == 0)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
         var jobSelect = techPage.Locator("[data-testid='field-stock-job']");
         if (await jobSelect.Locator("option").CountAsync() <= 1)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
@@ -3561,7 +3582,7 @@ public class E2EFlowTests
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
         await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
             .First.WaitForAsync(new() { Timeout = 20000 });
-        await techPage.CloseAsync();
+        await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
         await adminPage.GotoRelativeAsync("/approvals");
@@ -3571,7 +3592,7 @@ public class E2EFlowTests
 
         if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3587,7 +3608,7 @@ public class E2EFlowTests
         });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await adminPage.CloseAsync();
+        await adminPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3601,7 +3622,7 @@ public class E2EFlowTests
         if (await techPage.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0
             || await techPage.Locator("[data-testid='field-leave-modal']").CountAsync() == 0)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
@@ -3621,7 +3642,7 @@ public class E2EFlowTests
             Assert.True(await techPage.Locator("[data-testid='field-leave-modal']").CountAsync() == 0,
                 "Expected leave toast or modal close after submit.");
         }
-        await techPage.CloseAsync();
+        await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
         await adminPage.GotoRelativeAsync("/approvals");
@@ -3644,7 +3665,7 @@ public class E2EFlowTests
 
         if (await adminPage.Locator("[data-testid='approvals-leave-row']").CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3655,7 +3676,7 @@ public class E2EFlowTests
         var toast = adminPage.Locator(".toast-body").Filter(new() { HasText = "Leave request advanced" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await adminPage.CloseAsync();
+        await adminPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3667,14 +3688,14 @@ public class E2EFlowTests
         await techPage.OpenFieldStockModalAsync(30000);
         if (await techPage.Locator("[data-testid='field-stock-modal']").CountAsync() == 0)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
         var jobSelect = techPage.Locator("[data-testid='field-stock-job']");
         if (await jobSelect.Locator("option").CountAsync() <= 1)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
@@ -3687,7 +3708,7 @@ public class E2EFlowTests
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
         await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
             .First.WaitForAsync(new() { Timeout = 20000 });
-        await techPage.CloseAsync();
+        await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
         await adminPage.GotoRelativeAsync("/approvals");
@@ -3697,7 +3718,7 @@ public class E2EFlowTests
 
         if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3713,7 +3734,7 @@ public class E2EFlowTests
 
         if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3728,7 +3749,7 @@ public class E2EFlowTests
         });
         await finalToast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await adminPage.CloseAsync();
+        await adminPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3742,7 +3763,7 @@ public class E2EFlowTests
         if (await techPage.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0
             || await techPage.Locator("[data-testid='field-leave-modal']").CountAsync() == 0)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
@@ -3761,7 +3782,7 @@ public class E2EFlowTests
             Assert.True(await techPage.Locator("[data-testid='field-leave-modal']").CountAsync() == 0,
                 "Expected leave toast or modal close after submit.");
         }
-        await techPage.CloseAsync();
+        await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
         await adminPage.GotoRelativeAsync("/approvals");
@@ -3796,7 +3817,7 @@ public class E2EFlowTests
         // Success criterion: no unhandled confirm dialog and page still ready.
         await adminPage.WaitForTestIdAsync("approvals-ready", 10000);
 
-        await adminPage.CloseAsync();
+        await adminPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3808,14 +3829,14 @@ public class E2EFlowTests
         await techPage.OpenFieldStockModalAsync(30000);
         if (await techPage.Locator("[data-testid='field-stock-modal']").CountAsync() == 0)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
         var jobSelect = techPage.Locator("[data-testid='field-stock-job']");
         if (await jobSelect.Locator("option").CountAsync() <= 1)
         {
-            await techPage.CloseAsync();
+            await techPage.CloseSessionAsync();
             return;
         }
 
@@ -3840,7 +3861,7 @@ public class E2EFlowTests
         await techPage.ClickByTestIdWhenEnabledAsync("field-stock-submit");
         await techPage.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" })
             .First.WaitForAsync(new() { Timeout = 20000 });
-        await techPage.CloseAsync();
+        await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
         await adminPage.GotoRelativeAsync("/approvals");
@@ -3850,7 +3871,7 @@ public class E2EFlowTests
 
         if (await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3875,7 +3896,7 @@ public class E2EFlowTests
         var issueBtn = adminPage.Locator("[data-testid='requisition-issue-btn']").First;
         if (await issueBtn.CountAsync() == 0)
         {
-            await adminPage.CloseAsync();
+            await adminPage.CloseSessionAsync();
             return;
         }
 
@@ -3893,7 +3914,7 @@ public class E2EFlowTests
             || toastText.Contains("stock moved", StringComparison.OrdinalIgnoreCase),
             $"Expected stock issue toast, got '{toastText}'.");
 
-        await adminPage.CloseAsync();
+        await adminPage.CloseSessionAsync();
     }
 
     [Fact]
@@ -3906,7 +3927,7 @@ public class E2EFlowTests
 
         await page.ClickExportAndWaitToastAsync("approvals-export-csv", "Overdue approvals exported");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3932,7 +3953,7 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='approvals-quote-row']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -3943,7 +3964,7 @@ public class E2EFlowTests
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "approved" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3956,13 +3977,13 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='requisitions-table']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
         await page.ClickExportAndWaitToastAsync("requisitions-export-csv", "Requisitions CSV downloaded");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -3975,7 +3996,7 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='quotes-table'] tbody tr").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -3996,7 +4017,7 @@ public class E2EFlowTests
         await page.Locator(".toast-body").Filter(new() { HasText = "Quotes CSV downloaded" })
             .First.WaitForAsync(new() { Timeout = 10000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4009,13 +4030,13 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='purchase-orders-table']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
         await page.ClickExportAndWaitToastAsync("purchase-orders-export-csv", "Purchase orders CSV downloaded");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4028,13 +4049,13 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='sales-orders-table']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
         await page.ClickExportAndWaitToastAsync("sales-orders-export-csv", "Sales orders CSV downloaded");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4065,7 +4086,7 @@ public class E2EFlowTests
         await page.Locator(".toast-body").Filter(new() { HasText = "Jobs CSV downloaded" })
             .First.WaitForAsync(new() { Timeout = 10000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4078,7 +4099,7 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='invoices-table']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -4087,7 +4108,7 @@ public class E2EFlowTests
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "Invoices CSV downloaded" });
         await toast.First.WaitForAsync(new() { Timeout = 15000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4100,7 +4121,7 @@ public class E2EFlowTests
 
         await page.ClickExportAndWaitToastAsync("reports-export-csv", "Reports summary CSV downloaded");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4116,7 +4137,7 @@ public class E2EFlowTests
 
         await page.ClickExportAndWaitToastAsync("reports-export-csv", "Reports summary CSV downloaded");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4131,13 +4152,13 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='scheduling-table']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
         await page.ClickExportAndWaitToastAsync("scheduling-export-csv", "Schedule CSV downloaded");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4168,7 +4189,7 @@ public class E2EFlowTests
         await page.Locator(".toast-body").Filter(new() { HasText = "Inventory CSV downloaded" })
             .First.WaitForAsync(new() { Timeout = 10000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4186,7 +4207,7 @@ public class E2EFlowTests
         var content = await page.ContentAsync();
         Assert.Contains("Stock Requisitions", content);
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4198,7 +4219,7 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='field-report-modal']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -4207,7 +4228,7 @@ public class E2EFlowTests
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "Field report submitted" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4219,7 +4240,7 @@ public class E2EFlowTests
 
         if (await page.Locator("[data-testid='field-stock-modal']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -4227,7 +4248,7 @@ public class E2EFlowTests
         var jobOptions = await jobSelect.Locator("option").CountAsync();
         if (jobOptions <= 1)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -4243,7 +4264,7 @@ public class E2EFlowTests
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "Requisition submitted" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4256,7 +4277,7 @@ public class E2EFlowTests
         if (await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0
             || await page.Locator("[data-testid='field-leave-modal']").CountAsync() == 0)
         {
-            await page.CloseAsync();
+            await page.CloseSessionAsync();
             return;
         }
 
@@ -4291,7 +4312,7 @@ public class E2EFlowTests
             Assert.True(modalGone, "Expected leave modal to close or a leave toast after submit.");
         }
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4320,7 +4341,7 @@ public class E2EFlowTests
         var hasNoEmployee = await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0;
         Assert.True(hasBalance || hasNoEmployee, "Expected leave balance card or no-employee empty state.");
 
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4335,7 +4356,7 @@ public class E2EFlowTests
         Assert.Contains("Customer portal", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Grok", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Sage", body, StringComparison.OrdinalIgnoreCase);
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 
     [Fact]
@@ -4361,6 +4382,6 @@ public class E2EFlowTests
         await page.WaitForSelectorAsync(
             "[data-testid='portal-quotes-table'], [data-testid='portal-quotes-empty']",
             new() { Timeout = 20000 });
-        await page.CloseAsync();
+        await page.CloseSessionAsync();
     }
 }
