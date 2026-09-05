@@ -2237,7 +2237,7 @@ public class E2EFlowTests
         await page.WaitForTestIdAsync("home-division-scorecards", 30000);
 
         // ContentAsync can still be the Blazor shell after InteractiveServer hydration.
-        var scorecards = (await page.Locator("[data-testid='home-division-scorecards']").InnerTextAsync()) ?? string.Empty;
+        var scorecards = (await page.Locator("[data-testid='home-division-scorecards']").InnerTextAsync(new() { Timeout = 10_000 })) ?? string.Empty;
         Assert.Contains("Division scorecards", scorecards, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Johannesburg Operations", scorecards, StringComparison.OrdinalIgnoreCase);
 
@@ -2425,7 +2425,7 @@ public class E2EFlowTests
 
         await page.WaitForAccountReadyAsync("account-security-ready", "/account-security");
         await page.WaitForTestIdAsync("account-security-card", 15000);
-        var securityContent = (await page.Locator("[data-testid='account-security-card']").InnerTextAsync()) ?? string.Empty;
+        var securityContent = (await page.Locator("[data-testid='account-security-card']").InnerTextAsync(new() { Timeout = 10_000 })) ?? string.Empty;
         Assert.Contains("Two-Factor Authentication", securityContent);
 
         await page.WaitForAccountReadyAsync("account-billing-ready", "/account-billing");
@@ -3223,7 +3223,7 @@ public class E2EFlowTests
         await acmePage.GotoRelativeAsync("/finance");
         await acmePage.WaitForTestIdAsync("finance-ready", 30000);
         await acmePage.WaitForTestIdAsync("finance-accounts-table", 15000);
-        var acmeTable = (await acmePage.Locator("[data-testid='finance-accounts-table']").InnerTextAsync()) ?? string.Empty;
+        var acmeTable = (await acmePage.Locator("[data-testid='finance-accounts-table']").InnerTextAsync(new() { Timeout = 10_000 })) ?? string.Empty;
         Assert.Contains("4000", acmeTable);
         await acmePage.CloseSessionAsync();
 

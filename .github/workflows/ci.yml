@@ -34,6 +34,7 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     needs: unit-tests
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -92,10 +93,11 @@ jobs:
           --filter "Category=E2E"
           --logger "trx;LogFileName=e2e.trx"
           --results-directory e2e-results
+          --blame-hang-timeout 8m
           --verbosity normal
 
       - name: Upload E2E results
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-results
@@ -105,7 +107,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Docker logs on failure
-        if: failure()
+        if: failure() || cancelled()
         run: docker compose logs --no-color --tail=200 web
 
       - name: Tear down
