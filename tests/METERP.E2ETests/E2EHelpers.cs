@@ -596,9 +596,12 @@ public static class E2EHelpers
     }
 
     /// <summary>Opens scheduling assign panel for the first job (deep-link preferred).</summary>
-    public static async Task OpenSchedulingAssignPanelAsync(this IPage page, int timeoutMs = 60000)
+    public static async Task OpenSchedulingAssignPanelAsync(this IPage page, int timeoutMs = 30000)
     {
-        await page.WaitForSchedulingBoardAsync(timeoutMs);
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForSelectorAsync(
+            "[data-testid='scheduling-ready'], [data-testid='scheduling-empty'], [data-testid='scheduling-calendar']",
+            new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
 
         var assignBtn = page.Locator("[data-testid='scheduling-view-assign']").First;
         if (await assignBtn.CountAsync() == 0)
@@ -826,16 +829,6 @@ public static class E2EHelpers
         await page.GotoRelativeAsync(relativePath, waitForCommit: true);
         await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
         await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
-    }
-
-    public static async Task WaitForReportsReadyAsync(this IPage page, int timeoutMs = 60000)
-    {
-        await WaitForInteractivePageAsync(page, "/reports", "reports-ready", "reports-ready", timeoutMs);
-    }
-
-    public static async Task WaitForSchedulingBoardAsync(this IPage page, int timeoutMs = 60000)
-    {
-        await WaitForInteractivePageAsync(page, "/scheduling", "scheduling-ready", "scheduling-calendar", timeoutMs);
     }
 
     public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)

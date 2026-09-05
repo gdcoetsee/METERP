@@ -1768,7 +1768,8 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
 
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
-        await acmePage.WaitForSchedulingBoardAsync();
+        await acmePage.GotoRelativeAsync("/scheduling");
+        await acmePage.WaitForTestIdAsync("scheduling-recurring", 30000);
         var acmeContent = await acmePage.ContentAsync();
         if (!acmeContent.Contains("Quarterly panel inspection", StringComparison.OrdinalIgnoreCase))
         {
@@ -1788,7 +1789,10 @@ public class E2EFlowTests
         await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await betaPage.WaitForSchedulingBoardAsync();
+        await betaPage.GotoRelativeAsync("/scheduling");
+        await betaPage.WaitForSelectorAsync(
+            "[data-testid='scheduling-ready'], [data-testid='scheduling-empty'], [data-testid='scheduling-calendar']",
+            new() { Timeout = 30000 });
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Quarterly panel inspection", betaContent, StringComparison.OrdinalIgnoreCase);
         await betaPage.CloseSessionAsync();
@@ -1800,7 +1804,9 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
 
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
-        await acmePage.WaitForReportsReadyAsync();
+        await acmePage.GotoRelativeAsync("/reports");
+        await acmePage.WaitForBlazorReadyAsync(20000);
+        await acmePage.WaitForTestIdAsync("reports-ready", 45000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.True(
             acmeContent.Contains("Reports & Insights", StringComparison.OrdinalIgnoreCase)
@@ -1811,7 +1817,9 @@ public class E2EFlowTests
         await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await betaPage.WaitForReportsReadyAsync();
+        await betaPage.GotoRelativeAsync("/reports");
+        await betaPage.WaitForBlazorReadyAsync(20000);
+        await betaPage.WaitForTestIdAsync("reports-ready", 45000);
         var betaContent = await betaPage.ContentAsync();
         Assert.Contains("Total Items: <strong>0</strong>", betaContent);
         Assert.Contains("Total Assets: <strong>0</strong>", betaContent);
@@ -2475,8 +2483,9 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.WaitForReportsReadyAsync();
-        await page.WaitForTestIdAsync("reports-utilization-card", 15000);
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForTestIdAsync("reports-utilization-card", 10000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Technician Utilization", content);
@@ -2500,7 +2509,10 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.WaitForReportsReadyAsync();
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForSelectorAsync(
+            "[data-testid='reports-ready'], [data-testid='reports-profitability-card']",
+            new() { Timeout = 45000, State = WaitForSelectorState.Visible });
         await page.WaitForTestIdAsync("reports-profitability-card", 15000);
 
         var content = await page.ContentAsync();
@@ -2530,8 +2542,9 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.WaitForReportsReadyAsync();
-        await page.WaitForTestIdAsync("reports-cashflow-card", 15000);
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForTestIdAsync("reports-cashflow-card", 10000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Cashflow Forecast", content);
@@ -4108,7 +4121,8 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.WaitForReportsReadyAsync();
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 30000);
 
         await page.ClickExportAndWaitToastAsync("reports-export-csv", "Reports summary CSV downloaded");
 
@@ -4120,7 +4134,8 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await page.WaitForReportsReadyAsync();
+        await page.GotoRelativeAsync("/reports");
+        await page.WaitForTestIdAsync("reports-ready", 30000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Total Items: <strong>0</strong>", content);
@@ -4135,7 +4150,10 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.WaitForSchedulingBoardAsync();
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForSelectorAsync(
+            "[data-testid='scheduling-calendar'], [data-testid='scheduling-ready'], [data-testid='scheduling-empty']",
+            new() { Timeout = 45000, State = WaitForSelectorState.Visible });
 
         if (await page.Locator("[data-testid='scheduling-table']").CountAsync() == 0)
         {
