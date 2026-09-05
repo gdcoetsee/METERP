@@ -108,8 +108,6 @@ public static class E2EHelpers
     public static async Task<IPage> NewSessionAsync(this IBrowser browser)
     {
         var context = await browser.NewContextAsync();
-        context.SetDefaultTimeout(30_000);
-        context.SetDefaultNavigationTimeout(45_000);
         OpenContexts.TryAdd(context, 0);
         var page = await context.NewPageAsync();
         page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
@@ -126,13 +124,13 @@ public static class E2EHelpers
         try
         {
             if (context != null)
-                await context.CloseAsync().WaitAsync(TimeSpan.FromSeconds(8));
+                await context.CloseAsync().WaitAsync(TimeSpan.FromSeconds(2));
             else
-                await page.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await page.CloseAsync().WaitAsync(TimeSpan.FromSeconds(2));
         }
         catch
         {
-            try { await page.CloseAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+            try { await page.CloseAsync().WaitAsync(TimeSpan.FromSeconds(1)); }
             catch { /* ignore */ }
         }
 
@@ -144,7 +142,7 @@ public static class E2EHelpers
     {
         foreach (var context in OpenContexts.Keys)
         {
-            try { await context.CloseAsync().WaitAsync(TimeSpan.FromSeconds(8)); }
+            try { await context.CloseAsync().WaitAsync(TimeSpan.FromSeconds(2)); }
             catch { /* already closed */ }
             OpenContexts.TryRemove(context, out _);
         }

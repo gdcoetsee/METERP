@@ -34,7 +34,7 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     needs: unit-tests
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -93,7 +93,7 @@ jobs:
           --filter "Category=E2E"
           --logger "trx;LogFileName=e2e.trx"
           --results-directory e2e-results
-          --blame-hang-timeout 8m
+          --blame-hang-timeout 5m
           --verbosity normal
 
       - name: Upload E2E results
