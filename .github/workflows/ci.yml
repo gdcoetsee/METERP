@@ -93,7 +93,7 @@ jobs:
           --filter "Category=E2E"
           --logger "trx;LogFileName=e2e.trx"
           --results-directory e2e-results
-          --blame-hang-timeout 5m
+          --blame-hang-timeout 90s
           --verbosity normal
 
       - name: Upload E2E results

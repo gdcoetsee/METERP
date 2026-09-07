@@ -69,7 +69,7 @@ public static class E2EHelpers
 
         Exception? lastError = null;
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
             var page = await browser.NewSessionAsync();
 
@@ -81,21 +81,21 @@ public static class E2EHelpers
 
                 await page.GotoAsync(
                     $"{url}/login-complete?email={Uri.EscapeDataString(loginEmail)}&_={DateTime.UtcNow.Ticks}",
-                    new() { Timeout = 60000, WaitUntil = WaitUntilState.Load });
+                    new() { Timeout = 20000, WaitUntil = WaitUntilState.Load });
                 await page.WaitForURLAsync(
                     u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
-                    new() { Timeout = 60000 });
+                    new() { Timeout = 20000 });
                 // Blazor Server keeps SignalR open — NetworkIdle never settles reliably.
-                await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 30000 });
-                await page.WaitForAppReadyAsync(20000);
+                await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 15000 });
+                await page.WaitForAppReadyAsync(15000);
                 return page;
             }
             catch (Exception ex)
             {
                 lastError = ex;
                 await page.CloseSessionAsync();
-                if (attempt < 2)
-                    await Task.Delay(1500);
+                if (attempt == 0)
+                    await Task.Delay(400);
             }
         }
 
@@ -171,17 +171,19 @@ public static class E2EHelpers
     /// <summary>
     /// Waits for InteractiveServer content. One reload if the circuit did not hydrate.
     /// </summary>
-    public static async Task WaitForCircuitContentAsync(this IPage page, string selector, int timeoutMs = 30000)
+    public static async Task WaitForCircuitContentAsync(this IPage page, string selector, int timeoutMs = 20000)
     {
+        timeoutMs = Math.Clamp(timeoutMs, 5000, 20000);
+
         async Task WaitOnceAsync(int ms)
         {
-            await page.WaitForBlazorReadyAsync(Math.Min(12000, ms));
+            await page.WaitForBlazorReadyAsync(Math.Min(8000, ms));
             await page.WaitForSelectorAsync(selector, new() { Timeout = ms, State = WaitForSelectorState.Visible });
         }
 
         try
         {
-            await WaitOnceAsync(Math.Max(10000, timeoutMs / 2));
+            await WaitOnceAsync(Math.Max(8000, timeoutMs / 2));
             return;
         }
         catch (TimeoutException)
@@ -205,7 +207,7 @@ public static class E2EHelpers
     /// <summary>Opens the quote create editor via deep link (most reliable on InteractiveServer).</summary>
     public static async Task OpenNewQuoteEditorAsync(this IPage page, int timeoutMs = 30000)
     {
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
@@ -213,7 +215,7 @@ public static class E2EHelpers
                 // (Playwright select binding is unreliable with Blazor InputSelect/Guid).
                 await page.GotoAsync(
                     $"{BaseUrl.TrimEnd('/')}/quotes?create=1",
-                    new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                    new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
                 await page.WaitForBlazorReadyAsync(20000);
                 await page.WaitForSelectorAsync(
                     "[data-testid='quote-editor']",
@@ -227,7 +229,7 @@ public static class E2EHelpers
                 {
                     await page.GotoAsync(
                         $"{BaseUrl.TrimEnd('/')}/quotes?create=1&customerId={Uri.EscapeDataString(customerId)}",
-                        new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                        new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
                     await page.WaitForBlazorReadyAsync(20000);
                     await page.WaitForSelectorAsync(
                         "[data-testid='quote-editor']",
@@ -260,7 +262,7 @@ public static class E2EHelpers
 
         await page.GotoAsync(
             $"{BaseUrl.TrimEnd('/')}/jobs?panel={jobId}",
-            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
         await page.WaitForBlazorReadyAsync(20000);
         await page.WaitForTestIdAsync("job-detail-panel", timeoutMs);
     }
@@ -317,7 +319,7 @@ public static class E2EHelpers
         {
             await page.GotoAsync(
                 $"{BaseUrl.TrimEnd('/')}/quotes?open={quoteId}",
-                new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
             await page.WaitForBlazorReadyAsync(20000);
             await page.WaitForTestIdAsync("quote-editor", timeoutMs);
             return;
@@ -544,7 +546,7 @@ public static class E2EHelpers
     {
         await page.GotoAsync(
             $"{BaseUrl.TrimEnd('/')}/field/stock?new=1",
-            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
         await page.WaitForBlazorReadyAsync(20000);
         await page.WaitForTestIdAsync("field-stock-ready", timeoutMs);
         try
@@ -568,7 +570,7 @@ public static class E2EHelpers
         {
             await page.GotoAsync(
                 $"{BaseUrl.TrimEnd('/')}/field/leave?new=1",
-                new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
             await page.WaitForBlazorReadyAsync(20000);
             await page.WaitForTestIdAsync("field-leave-ready", timeoutMs);
             if (await page.Locator("[data-testid='field-leave-no-employee']").CountAsync() > 0)
@@ -606,7 +608,7 @@ public static class E2EHelpers
     {
         await page.GotoAsync(
             $"{BaseUrl.TrimEnd('/')}/field/jobs?report=1",
-            new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+            new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
         await page.WaitForBlazorReadyAsync(20000);
         await page.WaitForTestIdAsync("field-jobs-ready", timeoutMs);
         if (await page.Locator("[data-testid='field-job-row']").CountAsync() == 0)
@@ -780,8 +782,9 @@ public static class E2EHelpers
         this IPage page,
         string relativePath,
         string tableTestId,
-        int timeoutMs = 60000)
+        int timeoutMs = 20000)
     {
+        timeoutMs = Math.Clamp(timeoutMs, 5000, 20000);
         var tableSelector = $"[data-testid='{tableTestId}']";
         var loadingTestId = InferLoadingTestId(tableTestId);
 
@@ -827,8 +830,9 @@ public static class E2EHelpers
         string relativePath,
         string readyTestId,
         string contentTestId,
-        int timeoutMs = 25000)
+        int timeoutMs = 20000)
     {
+        timeoutMs = Math.Clamp(timeoutMs, 5000, 20000);
         var contentSelector = $"[data-testid='{contentTestId}']";
         var loadingTestId = contentTestId.EndsWith("-loading", StringComparison.Ordinal)
             ? contentTestId
@@ -853,8 +857,9 @@ public static class E2EHelpers
         throw new TimeoutException($"Timed out waiting for {contentSelector} on {relativePath}.");
     }
 
-    public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)
+    public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 20000)
     {
+        timeoutMs = Math.Clamp(timeoutMs, 5000, 20000);
         await WaitForInteractivePageAsync(page, "/jobs", "jobs-ready", "jobs-table", timeoutMs);
         await WaitForLoadingGoneAsync(page, "jobs-loading", timeoutMs / 2);
         await page.Locator("[data-testid='jobs-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
@@ -907,7 +912,7 @@ public static class E2EHelpers
                 {
                     await page.GotoAsync(
                         $"{BaseUrl.TrimEnd('/')}/sales-orders?panel={Uri.EscapeDataString(soId)}",
-                        new() { WaitUntil = WaitUntilState.Load, Timeout = 60000 });
+                        new() { WaitUntil = WaitUntilState.Load, Timeout = 20000 });
                     await page.WaitForBlazorReadyAsync(20000);
                     await page.WaitForTestIdAsync("sales-order-detail", timeoutMs);
                     return;
@@ -1048,7 +1053,7 @@ public static class E2EHelpers
         await page.GotoAsync($"{url}/{cleanPath}", new()
         {
             WaitUntil = waitForCommit ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded,
-            Timeout = 60000
+            Timeout = 20000
         });
         try
         {
@@ -1254,9 +1259,10 @@ public static class E2EHelpers
         this IPage page,
         string panelTestId,
         string relativePath,
-        int timeoutMs = 25000,
+        int timeoutMs = 20000,
         bool resetDemoOnRetry = false)
     {
+        timeoutMs = Math.Clamp(timeoutMs, 5000, 20000);
         var loadedSelector = panelTestId switch
         {
             "account-hub-ready" =>
