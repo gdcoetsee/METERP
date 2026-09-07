@@ -74,9 +74,10 @@ public class E2ETwoFactorFlowTests
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
-            await setupPage.GotoRelativeAsync("/account");
-            await setupPage.WaitForCircuitContentAsync("[data-testid='account-hub-ready']", 30000);
-            await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
+            await setupPage.GotoRelativeAsync("/account-security");
+            await setupPage.WaitForCircuitContentAsync(
+                "[data-testid='2fa-enable-button'], [data-testid='2fa-status-enabled'], [data-testid='2fa-status-disabled']",
+                30000);
 
             var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
 
@@ -127,9 +128,10 @@ public class E2ETwoFactorFlowTests
             await E2EHelpers.DisableBetaTwoFactorAsync();
 
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
-            await setupPage.GotoRelativeAsync("/account");
-            await setupPage.WaitForCircuitContentAsync("[data-testid='account-hub-ready']", 30000);
-            await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
+            await setupPage.GotoRelativeAsync("/account-security");
+            await setupPage.WaitForCircuitContentAsync(
+                "[data-testid='2fa-enable-button'], [data-testid='2fa-status-enabled'], [data-testid='2fa-status-disabled']",
+                30000);
 
             var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
 
@@ -156,9 +158,10 @@ public class E2ETwoFactorFlowTests
     {
         await E2EHelpers.DisableBetaTwoFactorAsync();
         var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
-        await setupPage.GotoRelativeAsync("/account");
-        await setupPage.WaitForCircuitContentAsync("[data-testid='account-hub-ready']", 30000);
-        await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
+        await setupPage.GotoRelativeAsync("/account-security");
+        await setupPage.WaitForCircuitContentAsync(
+            "[data-testid='2fa-enable-button'], [data-testid='2fa-status-enabled'], [data-testid='2fa-status-disabled']",
+            30000);
 
         var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
 

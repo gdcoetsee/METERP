@@ -785,45 +785,38 @@ public static class E2EHelpers
         var tableSelector = $"[data-testid='{tableTestId}']";
         var loadingTestId = InferLoadingTestId(tableTestId);
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
                 await page.GotoRelativeAsync(relativePath, waitForCommit: true);
-                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
+                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 2, 15000));
                 await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
                 await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
                 await page.Locator($"{tableSelector} tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
                 return;
             }
-            catch (TimeoutException) when (attempt < 2)
+            catch (TimeoutException) when (attempt == 0)
             {
                 await RetryListPageRecoveryAsync(page, relativePath);
             }
         }
 
-        await page.GotoRelativeAsync(relativePath, waitForCommit: true);
-        await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
-        await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
-        await page.WaitForSelectorAsync(tableSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
-        await page.Locator($"{tableSelector} tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
+        throw new TimeoutException($"Timed out waiting for {tableSelector} on {relativePath}.");
     }
 
     private static async Task RetryListPageRecoveryAsync(IPage page, string relativePath)
     {
-        try { await ResetDemoStateAsync(); }
-        catch { /* dev endpoints unavailable */ }
-
         try
         {
-            await page.ReloadAsync(new() { WaitUntil = WaitUntilState.Commit, Timeout = 60000 });
+            await page.ReloadAsync(new() { WaitUntil = WaitUntilState.Commit, Timeout = 15000 });
         }
         catch (TimeoutException)
         {
             await page.GotoRelativeAsync(relativePath, waitForCommit: true);
         }
 
-        await Task.Delay(2000);
+        await Task.Delay(400);
     }
 
     /// <summary>
@@ -834,32 +827,30 @@ public static class E2EHelpers
         string relativePath,
         string readyTestId,
         string contentTestId,
-        int timeoutMs = 60000)
+        int timeoutMs = 25000)
     {
         var contentSelector = $"[data-testid='{contentTestId}']";
         var loadingTestId = contentTestId.EndsWith("-loading", StringComparison.Ordinal)
             ? contentTestId
             : readyTestId.Replace("-ready", "-loading", StringComparison.Ordinal);
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
                 await page.GotoRelativeAsync(relativePath, waitForCommit: true);
-                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
+                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 2, 15000));
                 await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs / 2);
                 await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
                 return;
             }
-            catch (TimeoutException) when (attempt < 2)
+            catch (TimeoutException) when (attempt == 0)
             {
                 await RetryListPageRecoveryAsync(page, relativePath);
             }
         }
 
-        await page.GotoRelativeAsync(relativePath, waitForCommit: true);
-        await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
-        await page.WaitForSelectorAsync(contentSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        throw new TimeoutException($"Timed out waiting for {contentSelector} on {relativePath}.");
     }
 
     public static async Task WaitForJobsReadyAsync(this IPage page, int timeoutMs = 45000)
@@ -1263,8 +1254,8 @@ public static class E2EHelpers
         this IPage page,
         string panelTestId,
         string relativePath,
-        int timeoutMs = 45000,
-        bool resetDemoOnRetry = true)
+        int timeoutMs = 25000,
+        bool resetDemoOnRetry = false)
     {
         var loadedSelector = panelTestId switch
         {
@@ -1284,18 +1275,18 @@ public static class E2EHelpers
             _ => null
         };
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
                 var url = $"{BaseUrl}/{relativePath.TrimStart('/')}";
-                await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.Commit, Timeout = 60000 });
-                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 3, 20000));
+                await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.Commit, Timeout = 30000 });
+                await page.WaitForBlazorReadyAsync(Math.Min(timeoutMs / 2, 15000));
                 await WaitForLoadingGoneAsync(page, loadingTestId, timeoutMs);
                 await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
                 return;
             }
-            catch (TimeoutException) when (attempt < 2)
+            catch (TimeoutException) when (attempt == 0)
             {
                 if (resetDemoOnRetry)
                 {
@@ -1303,13 +1294,11 @@ public static class E2EHelpers
                     catch { /* dev endpoints unavailable */ }
                 }
 
-                await Task.Delay(2000);
+                await Task.Delay(400);
             }
         }
 
-        var finalUrl = $"{BaseUrl}/{relativePath.TrimStart('/')}";
-        await page.GotoAsync(finalUrl, new() { WaitUntil = WaitUntilState.Commit, Timeout = 60000 });
-        await page.WaitForSelectorAsync(loadedSelector, new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
+        throw new TimeoutException($"Timed out waiting for {loadedSelector} on {relativePath}.");
     }
 
     /// <summary>
