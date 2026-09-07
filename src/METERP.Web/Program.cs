@@ -31,6 +31,7 @@ using METERP.Web.Services;
 using METERP.Web.OpenTelemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+ThreadPool.SetMinThreads(64, 64);
 
 // Load repo-root .env in Development so `dotnet run` matches docker-compose Ai__* keys.
 if (builder.Environment.IsDevelopment())
@@ -91,9 +92,19 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddCircuitOptions(options =>
     {
-        // Playwright closes pages faster than the default 3-minute retention; keep the circuit table small.
-        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromSeconds(10);
-        options.DisconnectedCircuitMaxRetained = 8;
+        // Dev/E2E: drop disconnected circuits immediately so scoped DbContexts cannot exhaust Npgsql.
+        // Production: keep a short reconnect window for wifi/mobile flaps.
+        if (builder.Environment.IsDevelopment()
+            || string.Equals(builder.Environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase))
+        {
+            options.DisconnectedCircuitRetentionPeriod = TimeSpan.Zero;
+            options.DisconnectedCircuitMaxRetained = 0;
+        }
+        else
+        {
+            options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromSeconds(30);
+            options.DisconnectedCircuitMaxRetained = 8;
+        }
     });
 
 builder.Services.AddCascadingAuthenticationState();
@@ -296,9 +307,8 @@ else
     builder.Services.AddDbContext<AppDbContext>((sp, options) =>
         options.UseNpgsql(connectionString, npgsql =>
                {
-                   // Short delays: pool exhaustion must fail fast, not block circuits for 50s.
-                   npgsql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(2), null);
-                   npgsql.CommandTimeout(60);
+                   npgsql.ExecutionStrategy(d => new FailFastNpgsqlRetryingExecutionStrategy(d));
+                   npgsql.CommandTimeout(30);
                })
                .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning))
                .AddInterceptors(sp.GetRequiredService<CircuitDbCommandGateInterceptor>()));  // Dev: log instead of throw on pending migrations (common during feature dev). For prod, always add migration first.
@@ -664,7 +674,8 @@ if (app.Environment.IsDevelopment())
         if (tenant == null)
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
-        await E2EDemoQuotaSeeder.EnsureQuoteQuotaExceededAsync(tenantService, tenant.Id, ct);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await E2EDemoQuotaSeeder.EnsureQuoteQuotaExceededAsync(db, tenant.Id, ct);
         return Results.Ok(new { ok = true, limit = 1, used = 1 });
     }).DisableRateLimiting();
 
@@ -676,7 +687,8 @@ if (app.Environment.IsDevelopment())
         if (tenant == null)
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
-        await E2EDemoQuotaSeeder.EnsureJobQuotaExceededAsync(tenantService, tenant.Id, ct);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await E2EDemoQuotaSeeder.EnsureJobQuotaExceededAsync(db, tenant.Id, ct);
         return Results.Ok(new { ok = true, limit = 1, used = 1 });
     }).DisableRateLimiting();
 
@@ -688,7 +700,8 @@ if (app.Environment.IsDevelopment())
         if (tenant == null)
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
-        await E2EDemoQuotaSeeder.EnsureInvoiceQuotaExceededAsync(tenantService, tenant.Id, ct);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await E2EDemoQuotaSeeder.EnsureInvoiceQuotaExceededAsync(db, tenant.Id, ct);
         return Results.Ok(new { ok = true, limit = 1, used = 1 });
     }).DisableRateLimiting();
 
@@ -700,7 +713,8 @@ if (app.Environment.IsDevelopment())
         if (tenant == null)
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
-        await E2EDemoQuotaSeeder.EnsureAiQuotaExceededAsync(tenantService, tenant.Id, ct);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await E2EDemoQuotaSeeder.EnsureAiQuotaExceededAsync(db, tenant.Id, ct);
         return Results.Ok(new { ok = true, limit = 1, used = 1 });
     }).DisableRateLimiting();
 
@@ -712,7 +726,14 @@ if (app.Environment.IsDevelopment())
         if (tenant == null)
             return Results.NotFound(new { error = "Acme demo tenant not found." });
 
-        await E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, tenant.Id, ct);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await E2EDemoQuotaSeeder.ResetDemoQuotasAsync(db, tenant.Id, ct);
+        return Results.Ok(new { ok = true });
+    }).DisableRateLimiting();
+
+    app.MapPost("/e2e/clear-connection-pool", () =>
+    {
+        NpgsqlConnection.ClearAllPools();
         return Results.Ok(new { ok = true });
     }).DisableRateLimiting();
 
@@ -758,7 +779,8 @@ if (app.Environment.IsDevelopment())
             }
         }
 
-        await SeedStep("quotas", () => E2EDemoQuotaSeeder.ResetDemoQuotasAsync(tenantService, acme.Id, ct));
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await SeedStep("quotas", () => E2EDemoQuotaSeeder.ResetDemoQuotasAsync(db, acme.Id, ct));
         await SeedStep("receive-po", () => E2EReceiveDemoPoSeeder.EnsureSentReceiveDemoPoAsync(
             scope.ServiceProvider.GetRequiredService<IPurchaseOrderService>(),
             scope.ServiceProvider.GetRequiredService<ISupplierService>(),
@@ -908,13 +930,14 @@ app.MapGet("/login-complete", async (
         if (userId == null)
             return Results.Redirect("/login");
 
-        user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
+        user = await db.Users.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
     }
     else if (!string.IsNullOrWhiteSpace(email))
     {
         var normalized = userManager.NormalizeEmail(email);
         user = await db.Users
             .IgnoreQueryFilters()
+            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
 
         if (user == null)

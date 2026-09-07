@@ -51,10 +51,13 @@ public static class E2EHelpers
 
         // Periodic reset stabilizes long runs without paying full reset cost on every login (~2–3s each).
         var loginNumber = Interlocked.Increment(ref _loginCount);
-        if (loginNumber % 8 == 0)
+        try { await CloseTrackedContextsAsync(); }
+        catch { /* leftover sessions from a failed test */ }
+
+        if (loginNumber % 6 == 0)
             browser = await MaybeRecycleBrowserAsync(browser);
 
-        if (resetDemoState || loginNumber % 4 == 1)
+        if (resetDemoState || loginNumber % 6 == 1)
         {
             try { await ResetDemoStateAsync(url); }
             catch { /* dev endpoints unavailable on older images */ }
@@ -81,12 +84,10 @@ public static class E2EHelpers
 
                 await page.GotoAsync(
                     $"{url}/login-complete?email={Uri.EscapeDataString(loginEmail)}&_={DateTime.UtcNow.Ticks}",
-                    new() { Timeout = 20000, WaitUntil = WaitUntilState.Load });
+                    new() { Timeout = 15000, WaitUntil = WaitUntilState.Commit });
                 await page.WaitForURLAsync(
                     u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
-                    new() { Timeout = 20000 });
-                // Blazor Server keeps SignalR open — NetworkIdle never settles reliably.
-                await page.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = 15000 });
+                    new() { Timeout = 15000 });
                 await page.WaitForAppReadyAsync(15000);
                 return page;
             }
@@ -155,7 +156,9 @@ public static class E2EHelpers
 
         await CloseTrackedContextsAsync();
         await _trackedBrowser.DisposeAsync();
-        await Task.Delay(750);
+        await Task.Delay(400);
+        try { await ClearConnectionPoolAsync(); }
+        catch { /* older images */ }
         _trackedBrowser = await _trackedPlaywright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
         try { await ResetDemoStateAsync(); }
         catch { /* dev endpoints unavailable on older images */ }
@@ -1244,6 +1247,14 @@ public static class E2EHelpers
         var url = (baseUrl ?? BaseUrl).TrimEnd('/');
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         var response = await client.PostAsync($"{url}/e2e/reset-demo-state", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task ClearConnectionPoolAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl ?? BaseUrl).TrimEnd('/');
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        var response = await client.PostAsync($"{url}/e2e/clear-connection-pool", null);
         response.EnsureSuccessStatusCode();
     }
 

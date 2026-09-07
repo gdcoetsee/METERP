@@ -1,101 +1,103 @@
+using Microsoft.EntityFrameworkCore;
 using METERP.Application.Services;
 using METERP.Domain;
+using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
 
 namespace METERP.Infrastructure.Seeding;
 
 /// <summary>
 /// Idempotent demo quota setup for quota-exceeded E2E (Acme tenant only).
+/// Uses ExecuteUpdate so leftover Blazor circuits cannot 500 on RowVersion conflicts.
 /// </summary>
 public static class E2EDemoQuotaSeeder
 {
     public const int DemoMonthlyLimit = 10_000;
 
-    public static async Task EnsureQuoteQuotaExceededAsync(
-        ITenantService tenantService,
+    public static Task EnsureQuoteQuotaExceededAsync(
+        AppDbContext db,
         Guid tenantId,
-        CancellationToken ct = default)
-    {
-        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Quote, ct);
-    }
+        CancellationToken ct = default) =>
+        SetQuotaAtLimitAsync(db, tenantId, QuotaType.Quote, ct);
 
-    public static async Task EnsureJobQuotaExceededAsync(
-        ITenantService tenantService,
+    public static Task EnsureJobQuotaExceededAsync(
+        AppDbContext db,
         Guid tenantId,
-        CancellationToken ct = default)
-    {
-        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Job, ct);
-    }
+        CancellationToken ct = default) =>
+        SetQuotaAtLimitAsync(db, tenantId, QuotaType.Job, ct);
 
-    public static async Task EnsureInvoiceQuotaExceededAsync(
-        ITenantService tenantService,
+    public static Task EnsureInvoiceQuotaExceededAsync(
+        AppDbContext db,
         Guid tenantId,
-        CancellationToken ct = default)
-    {
-        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.Invoice, ct);
-    }
+        CancellationToken ct = default) =>
+        SetQuotaAtLimitAsync(db, tenantId, QuotaType.Invoice, ct);
 
-    public static async Task EnsureAiQuotaExceededAsync(
-        ITenantService tenantService,
+    public static Task EnsureAiQuotaExceededAsync(
+        AppDbContext db,
         Guid tenantId,
-        CancellationToken ct = default)
-    {
-        await SetQuotaAtLimitAsync(tenantService, tenantId, QuotaType.AiCall, ct);
-    }
+        CancellationToken ct = default) =>
+        SetQuotaAtLimitAsync(db, tenantId, QuotaType.AiCall, ct);
 
     private static async Task SetQuotaAtLimitAsync(
-        ITenantService tenantService,
+        AppDbContext db,
         Guid tenantId,
         QuotaType type,
         CancellationToken ct)
     {
-        var tenant = await tenantService.GetByIdAsync(tenantId, ct);
-        if (tenant == null)
-            return;
-
-        tenant.UsagePeriodStartUtc = QuotaService.GetCurrentPeriodStartUtc();
-
-        switch (type)
+        var periodStart = QuotaService.GetCurrentPeriodStartUtc();
+        var updated = type switch
         {
-            case QuotaType.Quote:
-                tenant.MaxQuotesPerMonth = 1;
-                tenant.PeriodQuotesCreated = 1;
-                break;
-            case QuotaType.Job:
-                tenant.MaxJobsPerMonth = 1;
-                tenant.PeriodJobsCreated = 1;
-                break;
-            case QuotaType.Invoice:
-                tenant.MaxInvoicesPerMonth = 1;
-                tenant.PeriodInvoicesIssued = 1;
-                break;
-            case QuotaType.AiCall:
-                tenant.MaxAiCallsPerMonth = 1;
-                tenant.PeriodAiCalls = 1;
-                break;
-        }
+            QuotaType.Quote => await db.Tenants.IgnoreQueryFilters()
+                .Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.MaxQuotesPerMonth, 1)
+                    .SetProperty(t => t.PeriodQuotesCreated, 1)
+                    .SetProperty(t => t.UsagePeriodStartUtc, periodStart), ct),
+            QuotaType.Job => await db.Tenants.IgnoreQueryFilters()
+                .Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.MaxJobsPerMonth, 1)
+                    .SetProperty(t => t.PeriodJobsCreated, 1)
+                    .SetProperty(t => t.UsagePeriodStartUtc, periodStart), ct),
+            QuotaType.Invoice => await db.Tenants.IgnoreQueryFilters()
+                .Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.MaxInvoicesPerMonth, 1)
+                    .SetProperty(t => t.PeriodInvoicesIssued, 1)
+                    .SetProperty(t => t.UsagePeriodStartUtc, periodStart), ct),
+            QuotaType.AiCall => await db.Tenants.IgnoreQueryFilters()
+                .Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.MaxAiCallsPerMonth, 1)
+                    .SetProperty(t => t.PeriodAiCalls, 1)
+                    .SetProperty(t => t.UsagePeriodStartUtc, periodStart), ct),
+            _ => 0
+        };
 
-        await tenantService.UpdateAsync(tenant, ct);
+        if (updated == 0)
+            throw new InvalidOperationException($"Demo tenant {tenantId} was not updated for {type} quota.");
     }
 
     public static async Task ResetDemoQuotasAsync(
-        ITenantService tenantService,
+        AppDbContext db,
         Guid tenantId,
         CancellationToken ct = default)
     {
-        var tenant = await tenantService.GetByIdAsync(tenantId, ct);
-        if (tenant == null)
-            return;
+        var periodStart = QuotaService.GetCurrentPeriodStartUtc();
+        var updated = await db.Tenants.IgnoreQueryFilters()
+            .Where(t => t.Id == tenantId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.MaxQuotesPerMonth, DemoMonthlyLimit)
+                .SetProperty(t => t.MaxJobsPerMonth, DemoMonthlyLimit)
+                .SetProperty(t => t.MaxInvoicesPerMonth, DemoMonthlyLimit)
+                .SetProperty(t => t.MaxAiCallsPerMonth, DemoMonthlyLimit)
+                .SetProperty(t => t.PeriodQuotesCreated, 0)
+                .SetProperty(t => t.PeriodJobsCreated, 0)
+                .SetProperty(t => t.PeriodInvoicesIssued, 0)
+                .SetProperty(t => t.PeriodAiCalls, 0)
+                .SetProperty(t => t.UsagePeriodStartUtc, periodStart), ct);
 
-        tenant.MaxQuotesPerMonth = DemoMonthlyLimit;
-        tenant.MaxJobsPerMonth = DemoMonthlyLimit;
-        tenant.MaxInvoicesPerMonth = DemoMonthlyLimit;
-        tenant.MaxAiCallsPerMonth = DemoMonthlyLimit;
-        tenant.PeriodQuotesCreated = 0;
-        tenant.PeriodJobsCreated = 0;
-        tenant.PeriodInvoicesIssued = 0;
-        tenant.PeriodAiCalls = 0;
-        tenant.UsagePeriodStartUtc = QuotaService.GetCurrentPeriodStartUtc();
-        await tenantService.UpdateAsync(tenant, ct);
+        if (updated == 0)
+            throw new InvalidOperationException($"Demo tenant {tenantId} was not reset.");
     }
 }
