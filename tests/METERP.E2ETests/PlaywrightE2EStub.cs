@@ -2096,13 +2096,12 @@ public class E2EFlowTests
         await page.Locator("[data-testid='home-executive-dashboard'] a[href='/approvals']").ClickAsync();
         try
         {
-            await page.WaitForTestIdAsync("approvals-ready", 30000);
+            await page.WaitForTestIdAsync("approvals-ready", 15000);
         }
         catch (TimeoutException)
         {
-            // Deep-link fallback if SPA navigation lags under circuit pressure.
-            await page.GotoRelativeAsync("/approvals");
-            await page.WaitForTestIdAsync("approvals-ready", 30000);
+            // Deep-link + circuit reload if SPA navigation lags under circuit pressure.
+            await page.WaitForApprovalsReadyAsync();
         }
         Assert.Contains("Approvals Hub", await page.ContentAsync(), StringComparison.OrdinalIgnoreCase);
 
@@ -3385,8 +3384,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/approvals");
-        await page.WaitForTestIdAsync("approvals-ready", 30000);
+        await page.WaitForApprovalsReadyAsync();
         await page.WaitForTestIdAsync("approvals-tabs", 10000);
 
         var content = await page.ContentAsync();
@@ -3406,8 +3404,7 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
 
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
-        await acmePage.GotoRelativeAsync("/approvals");
-        await acmePage.WaitForTestIdAsync("approvals-ready", 30000);
+        await acmePage.WaitForApprovalsReadyAsync();
         await acmePage.WaitForTestIdAsync("approvals-tabs", 10000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.Contains("Approvals Hub", acmeContent, StringComparison.OrdinalIgnoreCase);
@@ -3415,8 +3412,7 @@ public class E2EFlowTests
         await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await betaPage.GotoRelativeAsync("/approvals");
-        await betaPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await betaPage.WaitForApprovalsReadyAsync();
         var betaContent = await betaPage.ContentAsync();
         Assert.DoesNotContain("Johannesburg General Hospital", betaContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Hospital DB Upgrade", betaContent, StringComparison.OrdinalIgnoreCase);
@@ -3453,8 +3449,7 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
 
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
-        await acmePage.GotoRelativeAsync("/approvals");
-        await acmePage.WaitForTestIdAsync("approvals-ready", 30000);
+        await acmePage.WaitForApprovalsReadyAsync();
         await acmePage.ClickByTestIdAsync("approvals-tab-field");
         await acmePage.WaitForSelectorAsync(
             "[data-testid='approvals-field-panel'], [data-testid='approvals-field-list'], [data-testid='approvals-field-empty']",
@@ -3470,8 +3465,7 @@ public class E2EFlowTests
         await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await betaPage.GotoRelativeAsync("/approvals");
-        await betaPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await betaPage.WaitForApprovalsReadyAsync();
         for (var attempt = 0; attempt < 3; attempt++)
         {
             await betaPage.ClickByTestIdAsync("approvals-tab-field");
@@ -3533,8 +3527,7 @@ public class E2EFlowTests
         await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
-        await adminPage.GotoRelativeAsync("/approvals");
-        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.WaitForApprovalsReadyAsync();
         await adminPage.ClickByTestIdAsync("approvals-tab-field");
         await adminPage.WaitForSelectorAsync(
             "[data-testid='approvals-field-panel'], [data-testid='approvals-field-list'], [data-testid='approvals-field-empty']",
@@ -3589,8 +3582,7 @@ public class E2EFlowTests
         await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
-        await adminPage.GotoRelativeAsync("/approvals");
-        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.WaitForApprovalsReadyAsync();
         await adminPage.ClickByTestIdAsync("approvals-tab-requisitions");
         await adminPage.WaitForTestIdAsync("approvals-requisitions-list", 20000);
 
@@ -3649,8 +3641,7 @@ public class E2EFlowTests
         await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
-        await adminPage.GotoRelativeAsync("/approvals");
-        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.WaitForApprovalsReadyAsync();
         for (var attempt = 0; attempt < 3; attempt++)
         {
             await adminPage.ClickByTestIdAsync("approvals-tab-leave");
@@ -3715,8 +3706,7 @@ public class E2EFlowTests
         await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
-        await adminPage.GotoRelativeAsync("/approvals");
-        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.WaitForApprovalsReadyAsync();
         await adminPage.ClickByTestIdAsync("approvals-tab-requisitions");
         await adminPage.WaitForTestIdAsync("approvals-requisitions-list", 20000);
 
@@ -3789,8 +3779,7 @@ public class E2EFlowTests
         await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
-        await adminPage.GotoRelativeAsync("/approvals");
-        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.WaitForApprovalsReadyAsync();
         for (var attempt = 0; attempt < 3; attempt++)
         {
             await adminPage.ClickByTestIdAsync("approvals-tab-leave");
@@ -3868,8 +3857,7 @@ public class E2EFlowTests
         await techPage.CloseSessionAsync();
 
         var adminPage = await Browser.LoginAsync();
-        await adminPage.GotoRelativeAsync("/approvals");
-        await adminPage.WaitForTestIdAsync("approvals-ready", 30000);
+        await adminPage.WaitForApprovalsReadyAsync();
         await adminPage.ClickByTestIdAsync("approvals-tab-requisitions");
         await adminPage.WaitForTestIdAsync("approvals-requisitions-list", 20000);
 
@@ -3926,8 +3914,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/approvals");
-        await page.WaitForTestIdAsync("approvals-ready", 30000);
+        await page.WaitForApprovalsReadyAsync();
 
         await page.ClickExportAndWaitToastAsync("approvals-export-csv", "Overdue approvals exported");
 
@@ -3948,8 +3935,7 @@ public class E2EFlowTests
         await page.Locator(".toast-body").Filter(new() { HasText = "Submitted for executive approval" })
             .First.WaitForAsync(new() { Timeout = 20000 });
 
-        await page.GotoRelativeAsync("/approvals");
-        await page.WaitForTestIdAsync("approvals-ready", 30000);
+        await page.WaitForApprovalsReadyAsync();
         await page.ClickByTestIdAsync("approvals-tab-quotes");
         await page.WaitForSelectorAsync(
             "[data-testid='approvals-quotes-list'], [data-testid='approvals-quotes-empty']",

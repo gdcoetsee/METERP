@@ -868,6 +868,14 @@ public static class E2EHelpers
         await page.Locator("[data-testid='jobs-table'] tbody tr").First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = timeoutMs / 2 });
     }
 
+    /// <summary>
+    /// Approvals Hub is InteractiveServer with prerender:false — reload once if the circuit misses first paint.
+    /// </summary>
+    public static async Task WaitForApprovalsReadyAsync(this IPage page, int timeoutMs = 20000)
+    {
+        await WaitForInteractivePageAsync(page, "/approvals", "approvals-ready", "approvals-tabs", timeoutMs);
+    }
+
     public static async Task OpenJobDetailAsync(
         this IPage page,
         string searchMarker,

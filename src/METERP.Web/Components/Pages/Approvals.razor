@@ -247,6 +247,8 @@
             _activeTab = Tab.Trim().ToLowerInvariant();
         }
 
+        // First paint of approvals-ready/tabs before sequential queue queries (InteractiveServer, no prerender).
+        await Task.Yield();
         await LoadAsync();
     }
 
@@ -265,6 +267,10 @@
             UpdateTabCount("leave", _pendingLeave.Count);
             UpdateTabCount("field", _pendingFieldReports.Count);
             UpdateTabCount("all", _pendingQuotes.Count + _pendingRequisitions.Count + _pendingLeave.Count + _pendingFieldReports.Count);
+        }
+        catch (Exception)
+        {
+            Toast.ShowError("Could not load the approvals queue.");
         }
         finally
         {
