@@ -876,6 +876,18 @@ public static class E2EHelpers
         await WaitForInteractivePageAsync(page, "/approvals", "approvals-ready", "approvals-tabs", timeoutMs);
     }
 
+    /// <summary>
+    /// Reports is InteractiveServer with prerender:false — reload once if the circuit misses first paint.
+    /// </summary>
+    public static async Task WaitForReportsReadyAsync(this IPage page, int timeoutMs = 30000)
+    {
+        timeoutMs = Math.Clamp(timeoutMs, 10000, 25000);
+        await page.GotoRelativeAsync("/reports", waitForCommit: true);
+        await page.WaitForCircuitContentAsync("[data-testid='reports-shell']", 20000);
+        await WaitForLoadingGoneAsync(page, "reports-loading", timeoutMs);
+        await page.WaitForTestIdAsync("reports-ready", timeoutMs);
+    }
+
     public static async Task OpenJobDetailAsync(
         this IPage page,
         string searchMarker,

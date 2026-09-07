@@ -1804,9 +1804,7 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
 
         var acmePage = await Browser.LoginAsync(E2EHelpers.AcmeEmail, E2EHelpers.AcmePassword);
-        await acmePage.GotoRelativeAsync("/reports");
-        await acmePage.WaitForBlazorReadyAsync(20000);
-        await acmePage.WaitForTestIdAsync("reports-ready", 45000);
+        await acmePage.WaitForReportsReadyAsync(45000);
         var acmeContent = await acmePage.ContentAsync();
         Assert.True(
             acmeContent.Contains("Reports & Insights", StringComparison.OrdinalIgnoreCase)
@@ -1817,9 +1815,7 @@ public class E2EFlowTests
         await acmePage.CloseSessionAsync();
 
         var betaPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await betaPage.GotoRelativeAsync("/reports");
-        await betaPage.WaitForBlazorReadyAsync(20000);
-        await betaPage.WaitForTestIdAsync("reports-ready", 45000);
+        await betaPage.WaitForReportsReadyAsync(45000);
         var betaContent = await betaPage.ContentAsync();
         Assert.Contains("Total Items: <strong>0</strong>", betaContent);
         Assert.Contains("Total Assets: <strong>0</strong>", betaContent);
@@ -2482,8 +2478,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForReportsReadyAsync();
         await page.WaitForTestIdAsync("reports-utilization-card", 10000);
 
         var content = await page.ContentAsync();
@@ -2508,9 +2503,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-shell", 15000);
-        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForReportsReadyAsync();
         await page.WaitForTestIdAsync("reports-profitability-card", 10000);
 
         var content = await page.ContentAsync();
@@ -2540,8 +2533,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForReportsReadyAsync();
         await page.WaitForTestIdAsync("reports-cashflow-card", 10000);
 
         var content = await page.ContentAsync();
@@ -4106,8 +4098,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
-        await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForReportsReadyAsync();
 
         await page.ClickExportAndWaitToastAsync("reports-export-csv", "Reports summary CSV downloaded");
 
@@ -4119,8 +4110,7 @@ public class E2EFlowTests
     {
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword);
-        await page.GotoRelativeAsync("/reports");
-        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForReportsReadyAsync();
 
         var content = await page.ContentAsync();
         Assert.Contains("Total Items: <strong>0</strong>", content);

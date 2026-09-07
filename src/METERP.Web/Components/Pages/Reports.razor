@@ -298,6 +298,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // First paint of reports-shell/loading before sequential insight queries (InteractiveServer, no prerender).
+        await Task.Yield();
         try
         {
             if (CurrentUserService.TenantId != Guid.Empty)
@@ -356,9 +358,9 @@ else
                 _sampleGLBalance = await FinanceService.GetAccountBalanceAsync(first.Id);
             }
         }
-        catch (TimeoutException)
+        catch (Exception)
         {
-            // Circuit DB gate timed out; show whatever was loaded instead of hanging the page.
+            Toast.ShowError("Could not load reports.");
         }
         finally
         {
