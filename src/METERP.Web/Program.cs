@@ -92,8 +92,8 @@ builder.Services.AddRazorComponents()
     .AddCircuitOptions(options =>
     {
         // Playwright closes pages faster than the default 3-minute retention; keep the circuit table small.
-        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromSeconds(30);
-        options.DisconnectedCircuitMaxRetained = 16;
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromSeconds(10);
+        options.DisconnectedCircuitMaxRetained = 8;
     });
 
 builder.Services.AddCascadingAuthenticationState();
@@ -296,7 +296,8 @@ else
     builder.Services.AddDbContext<AppDbContext>((sp, options) =>
         options.UseNpgsql(connectionString, npgsql =>
                {
-                   npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
+                   // Short delays: pool exhaustion must fail fast, not block circuits for 50s.
+                   npgsql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(2), null);
                    npgsql.CommandTimeout(60);
                })
                .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning))
@@ -876,6 +877,55 @@ app.MapGet("/external-callback", async (
         .FirstOrDefaultAsync(u => u.NormalizedEmail == userManager.NormalizeEmail(email));
     if (user == null)
         return Results.Redirect("/login?error=no-account");
+
+    await signInManager.SignInAsync(user, isPersistent: false);
+    return Results.Redirect(user.CustomerId.HasValue ? "/portal" : "/");
+}).AllowAnonymous().DisableRateLimiting();
+
+// HTTP redirect (not InteractiveServer) so E2E login does not leak a Blazor circuit/DbContext.
+app.MapGet("/login-complete", async (
+    string? email,
+    string? twofa,
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager,
+    IPendingTwoFactorChallengeStore challengeStore,
+    ITenantProvider tenantProvider,
+    AppDbContext db,
+    IWebHostEnvironment env) =>
+{
+    if (string.IsNullOrWhiteSpace(twofa)
+        && !env.IsDevelopment()
+        && !string.Equals(env.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Redirect("/login");
+    }
+
+    ApplicationUser? user = null;
+
+    if (!string.IsNullOrWhiteSpace(twofa))
+    {
+        var userId = challengeStore.ConsumeChallenge(twofa);
+        if (userId == null)
+            return Results.Redirect("/login");
+
+        user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
+    }
+    else if (!string.IsNullOrWhiteSpace(email))
+    {
+        var normalized = userManager.NormalizeEmail(email);
+        user = await db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized);
+
+        if (user == null)
+        {
+            tenantProvider.SetTenantId(Guid.Empty);
+            user = await userManager.FindByEmailAsync(email);
+        }
+    }
+
+    if (user == null)
+        return Results.Redirect("/login");
 
     await signInManager.SignInAsync(user, isPersistent: false);
     return Results.Redirect(user.CustomerId.HasValue ? "/portal" : "/");

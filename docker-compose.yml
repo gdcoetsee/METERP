@@ -14,7 +14,8 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       # Connection string uses docker service name "postgres" as host. This overrides appsettings.
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=METERP;Username=postgres;Password=postgres;Port=5432;Maximum Pool Size=40;Timeout=15
+      # Pool 100: Blazor Server circuits + E2E login/reset; postgres max_connections=200.
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=METERP;Username=postgres;Password=postgres;Port=5432;Maximum Pool Size=100;Timeout=15;Connection Idle Lifetime=60
       - Seq__ServerUrl=http://seq:5341
       - Cache__RedisConnection=redis:6379
       - Billing__CustomerPortalBaseUrl=https://billing.stripe.com/p/login/demo_meterp
