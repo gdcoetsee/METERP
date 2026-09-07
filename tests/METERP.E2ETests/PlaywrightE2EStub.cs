@@ -2510,10 +2510,9 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/reports");
-        await page.WaitForSelectorAsync(
-            "[data-testid='reports-ready'], [data-testid='reports-profitability-card']",
-            new() { Timeout = 45000, State = WaitForSelectorState.Visible });
-        await page.WaitForTestIdAsync("reports-profitability-card", 15000);
+        await page.WaitForTestIdAsync("reports-shell", 15000);
+        await page.WaitForTestIdAsync("reports-ready", 30000);
+        await page.WaitForTestIdAsync("reports-profitability-card", 10000);
 
         var content = await page.ContentAsync();
         Assert.Contains("Job Profitability", content);
@@ -4151,9 +4150,10 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForTestIdAsync("scheduling-shell", 15000);
         await page.WaitForSelectorAsync(
             "[data-testid='scheduling-calendar'], [data-testid='scheduling-ready'], [data-testid='scheduling-empty']",
-            new() { Timeout = 45000, State = WaitForSelectorState.Visible });
+            new() { Timeout = 30000, State = WaitForSelectorState.Visible });
 
         if (await page.Locator("[data-testid='scheduling-table']").CountAsync() == 0)
         {

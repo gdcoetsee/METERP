@@ -26,7 +26,7 @@
 
 <PageTitle>Reports & Insights</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2" data-testid="reports-shell">
     <div>
         <h1 class="mb-0">Reports &amp; Insights</h1>
         <p class="text-muted mb-0">High-level operational summary for the current tenant.</p>
@@ -355,6 +355,10 @@ else
                 _glFirstAccountCode = string.IsNullOrWhiteSpace(first.AccountCode) ? first.Name : $"{first.AccountCode} {first.Name}";
                 _sampleGLBalance = await FinanceService.GetAccountBalanceAsync(first.Id);
             }
+        }
+        catch (TimeoutException)
+        {
+            // Circuit DB gate timed out; show whatever was loaded instead of hanging the page.
         }
         finally
         {
