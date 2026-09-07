@@ -4150,10 +4150,9 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.GotoRelativeAsync("/scheduling");
-        await page.WaitForTestIdAsync("scheduling-shell", 15000);
-        await page.WaitForSelectorAsync(
-            "[data-testid='scheduling-calendar'], [data-testid='scheduling-ready'], [data-testid='scheduling-empty']",
-            new() { Timeout = 30000, State = WaitForSelectorState.Visible });
+        await page.WaitForCircuitContentAsync(
+            "[data-testid='scheduling-shell'], [data-testid='scheduling-calendar'], [data-testid='scheduling-ready'], [data-testid='scheduling-empty']",
+            30000);
 
         if (await page.Locator("[data-testid='scheduling-table']").CountAsync() == 0)
         {

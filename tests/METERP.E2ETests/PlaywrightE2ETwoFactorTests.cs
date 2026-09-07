@@ -75,7 +75,7 @@ public class E2ETwoFactorFlowTests
 
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.GotoRelativeAsync("/account");
-            await setupPage.WaitForTestIdAsync("account-hub-ready", 30000);
+            await setupPage.WaitForCircuitContentAsync("[data-testid='account-hub-ready']", 30000);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
@@ -128,7 +128,7 @@ public class E2ETwoFactorFlowTests
 
             var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
             await setupPage.GotoRelativeAsync("/account");
-            await setupPage.WaitForTestIdAsync("account-hub-ready", 30000);
+            await setupPage.WaitForCircuitContentAsync("[data-testid='account-hub-ready']", 30000);
             await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
             var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();
@@ -157,7 +157,7 @@ public class E2ETwoFactorFlowTests
         await E2EHelpers.DisableBetaTwoFactorAsync();
         var setupPage = await Browser.LoginAsync(E2EHelpers.BetaEmail, E2EHelpers.BetaPassword, resetDemoState: false);
         await setupPage.GotoRelativeAsync("/account");
-        await setupPage.WaitForTestIdAsync("account-hub-ready", 30000);
+        await setupPage.WaitForCircuitContentAsync("[data-testid='account-hub-ready']", 30000);
         await setupPage.WaitForAccountReadyAsync("account-security-ready", "/account-security");
 
         var secretMaterial = await setupPage.BeginTwoFactorSetupAsync();

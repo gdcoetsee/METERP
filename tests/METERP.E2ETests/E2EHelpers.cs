@@ -169,6 +169,37 @@ public static class E2EHelpers
     }
 
     /// <summary>
+    /// Waits for InteractiveServer content. One reload if the circuit did not hydrate.
+    /// </summary>
+    public static async Task WaitForCircuitContentAsync(this IPage page, string selector, int timeoutMs = 30000)
+    {
+        async Task WaitOnceAsync(int ms)
+        {
+            await page.WaitForBlazorReadyAsync(Math.Min(12000, ms));
+            await page.WaitForSelectorAsync(selector, new() { Timeout = ms, State = WaitForSelectorState.Visible });
+        }
+
+        try
+        {
+            await WaitOnceAsync(Math.Max(10000, timeoutMs / 2));
+            return;
+        }
+        catch (TimeoutException)
+        {
+            try
+            {
+                await page.ReloadAsync(new() { WaitUntil = WaitUntilState.Commit, Timeout = 20000 });
+            }
+            catch (TimeoutException)
+            {
+                // Selector wait below is authoritative.
+            }
+
+            await WaitOnceAsync(timeoutMs);
+        }
+    }
+
+    /// <summary>
     /// Clicks an AI quick-prompt and waits for ai-last-response (retries if the circuit missed the first click).
     /// </summary>
     /// <summary>Opens the quote create editor via deep link (most reliable on InteractiveServer).</summary>
