@@ -1,0 +1,207 @@
+@implements IDisposable
+
+<div class="meterp-picker" data-testid="@($"{TestId}-wrap")">
+    <div class="meterp-picker-control @(_open ? "is-open" : "") @(ShowRequiredError ? "is-invalid" : "")">
+        <input type="search"
+               class="form-control @(ShowRequiredError ? "is-invalid" : "")"
+               value="@InputDisplay"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               autocomplete="off"
+               aria-required="@Required.ToString().ToLowerInvariant()"
+               aria-invalid="@ShowRequiredError.ToString().ToLowerInvariant()"
+               aria-expanded="@_open.ToString().ToLowerInvariant()"
+               aria-haspopup="listbox"
+               role="combobox"
+               data-testid="@($"{TestId}-search")"
+               @onfocus="OpenAsync"
+               @oninput="OnInputAsync"
+               @onkeydown="OnKeyDownAsync"
+               @onblur="OnBlurAsync" />
+        <i class="bi bi-search meterp-picker-icon" aria-hidden="true"></i>
+    </div>
+
+    @if (_open && !Disabled)
+    {
+        <div class="meterp-picker-menu" @onmousedown:preventDefault="true">
+            @if (_searching)
+            {
+                <div class="meterp-picker-empty">Searching…</div>
+            }
+            else if (VisibleOptions.Count == 0)
+            {
+                <div class="meterp-picker-empty">
+                    No matches. Type another name@(AllowCreate ? " or create a new record" : "").
+                </div>
+            }
+            else
+            {
+                <ul class="meterp-picker-list" role="listbox">
+                    @foreach (var opt in VisibleOptions)
+                    {
+                        <li>
+                            <button type="button"
+                                    class="meterp-picker-option @(opt.Id == Value ? "is-selected" : "")"
+                                    role="option"
+                                    data-testid="@($"{TestId}-option")"
+                                    data-value="@opt.Id"
+                                    @onclick="() => SelectAsync(opt)">
+                                <span>@opt.Label</span>
+                                @if (!string.IsNullOrWhiteSpace(opt.SubLabel))
+                                {
+                                    <small>@opt.SubLabel</small>
+                                }
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+            @if (AllowCreate && OnCreate.HasDelegate)
+            {
+                <button type="button"
+                        class="meterp-picker-create"
+                        data-testid="@CreateTestId"
+                        @onclick="CreateAsync">
+                    @CreateLabel
+                </button>
+            }
+        </div>
+    }
+
+    <select class="visually-hidden"
+            data-testid="@TestId"
+            value="@Value"
+            disabled="@Disabled"
+            aria-hidden="true"
+            tabindex="-1"
+            @onchange="OnNativeChange">
+        <option value="@Guid.Empty">@Placeholder</option>
+        @foreach (var opt in Options)
+        {
+            <option value="@opt.Id">@opt.Label</option>
+        }
+        @if (Value != Guid.Empty && Options.All(o => o.Id != Value))
+        {
+            <option value="@Value">@(string.IsNullOrWhiteSpace(SelectedLabel) ? Value.ToString() : SelectedLabel)</option>
+        }
+    </select>
+</div>
+
+@if (ShowRequiredError)
+{
+    <div class="invalid-feedback d-block">@RequiredMessage</div>
+}
+
+@code {
+    [Parameter] public Guid Value { get; set; }
+    [Parameter] public EventCallback<Guid> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<EntityPickerOption> Options { get; set; } = Array.Empty<EntityPickerOption>();
+    [Parameter] public string? SelectedLabel { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Search…";
+    [Parameter] public string TestId { get; set; } = "entity-picker";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool ShowRequiredError { get; set; }
+    [Parameter] public string RequiredMessage { get; set; } = "This field is required.";
+    [Parameter] public bool AllowCreate { get; set; }
+    [Parameter] public string CreateLabel { get; set; } = "+ Create new";
+    [Parameter] public string CreateTestId { get; set; } = "entity-picker-create";
+    [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+
+    private bool _open;
+    private bool _searching;
+    private string _query = "";
+    private CancellationTokenSource? _cts;
+
+    private IReadOnlyList<EntityPickerOption> VisibleOptions => Options;
+
+    private string InputDisplay => _open
+        ? _query
+        : (!string.IsNullOrWhiteSpace(SelectedLabel) ? SelectedLabel : _query);
+
+    private async Task OpenAsync()
+    {
+        if (Disabled) return;
+        _open = true;
+        _query = "";
+        await SearchAsync("");
+    }
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        _open = true;
+        await SearchAsync(_query);
+    }
+
+    private async Task SearchAsync(string term)
+    {
+        if (!OnSearch.HasDelegate) return;
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        _searching = true;
+        try
+        {
+            await Task.Delay(220, token);
+            await OnSearch.InvokeAsync(term);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+                _searching = false;
+        }
+    }
+
+    private async Task SelectAsync(EntityPickerOption opt)
+    {
+        _open = false;
+        _query = "";
+        await ValueChanged.InvokeAsync(opt.Id);
+    }
+
+    private async Task OnNativeChange(ChangeEventArgs e)
+    {
+        var id = Guid.TryParse(e.Value?.ToString(), out var parsed) ? parsed : Guid.Empty;
+        _open = false;
+        await ValueChanged.InvokeAsync(id);
+    }
+
+    private async Task CreateAsync()
+    {
+        _open = false;
+        await OnCreate.InvokeAsync();
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _open = false;
+            _query = "";
+            return;
+        }
+
+        if (e.Key == "Enter" && _open && VisibleOptions.Count == 1)
+            await SelectAsync(VisibleOptions[0]);
+    }
+
+    private async Task OnBlurAsync()
+    {
+        await Task.Delay(180);
+        _open = false;
+        _query = "";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

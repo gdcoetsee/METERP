@@ -10,6 +10,7 @@
 @inject IInvoiceService InvoiceService
 @inject IStockRequisitionService RequisitionService
 @inject IInventoryService InventoryService
+@inject IEmployeeService EmployeeService
 @inject ICurrentUserService CurrentUser
 @inject ToastService Toast
 @inject NavigationManager Nav
@@ -382,14 +383,15 @@ else
                     }
                 </ul>
             }
-            <input class="form-control form-control-sm mb-1" placeholder="Search stock…" value="@_reqSearch"
-                   @oninput="OnReqSearch" data-testid="job-cc-req-search" />
-            <select class="form-select form-select-sm mb-1" @bind="_reqItemId" data-testid="job-cc-req-item">
-                @foreach (var item in _reqItems)
-                {
-                    <option value="@item.Id">@item.Sku — @item.Name (avail @item.QuantityAvailable.ToString("N0"))</option>
-                }
-            </select>
+            <label class="form-label small meterp-required">Stock item</label>
+            <EntityPicker TestId="job-cc-req-item"
+                          Value="_reqItemId"
+                          ValueChanged="OnReqItemPicked"
+                          Options="ReqItemOptions"
+                          SelectedLabel="@ReqItemLabel"
+                          Placeholder="Type SKU or name"
+                          OnSearch="SearchReqItemsAsync" />
+            <input type="hidden" data-testid="job-cc-req-search" value="@_reqSearch" />
             <div class="row g-1">
                 <div class="col-5">
                     <input type="number" min="0.01" step="0.01" class="form-control form-control-sm" @bind="_reqQty" data-testid="job-cc-req-qty" />
@@ -433,7 +435,7 @@ else
 {
     <FormModal IsOpen="true" Title="Add job cost" TestId="job-cc-cost-modal" OnClose="CloseCostModal">
         <div class="mb-2">
-            <label class="form-label">Description</label>
+            <label class="form-label meterp-required">Description</label>
             <input class="form-control" @bind="_costDescription" data-testid="job-cc-cost-description" />
         </div>
         <div class="mb-2">
@@ -445,7 +447,7 @@ else
             </select>
         </div>
         <div class="mb-3">
-            <label class="form-label">Amount (R)</label>
+            <label class="form-label meterp-required">Amount (R)</label>
             <input type="number" step="0.01" class="form-control" @bind="_costAmount" data-testid="job-cc-cost-amount" />
         </div>
         <div class="d-flex gap-2 justify-content-end">
@@ -459,12 +461,20 @@ else
 {
     <FormModal IsOpen="true" Title="Add labor" TestId="job-cc-labor-modal" OnClose="CloseLaborModal">
         <div class="mb-2">
-            <label class="form-label">Technician</label>
-            <input class="form-control" @bind="_laborTechnician" data-testid="job-cc-labor-technician" />
+            <label class="form-label meterp-required">Technician</label>
+            <EntityPicker TestId="job-cc-labor-employee"
+                          Value="_laborEmployeeId"
+                          ValueChanged="OnLaborEmployeePicked"
+                          Options="LaborEmployeeOptions"
+                          SelectedLabel="@LaborEmployeeName"
+                          Placeholder="Type an employee name"
+                          OnSearch="SearchLaborEmployeesAsync" />
+            <span class="meterp-field-hint">Pick a person so hours flow to payroll. You can still type a name below for call-out labour.</span>
+            <input class="form-control mt-2" @bind="_laborTechnician" data-testid="job-cc-labor-technician" placeholder="Or type a name" />
         </div>
         <div class="row g-2 mb-2">
             <div class="col-6">
-                <label class="form-label">Hours</label>
+                <label class="form-label meterp-required">Hours</label>
                 <input type="number" step="0.25" class="form-control" @bind="_laborHours" data-testid="job-cc-labor-hours" />
             </div>
             <div class="col-6">
@@ -601,14 +611,74 @@ else
     private string _costType = "Travel";
     private decimal _costAmount;
     private string _laborTechnician = "";
+    private Guid _laborEmployeeId;
+    private List<Employee> _laborEmployees = new();
     private decimal _laborHours = 8m;
     private decimal _laborRate = 195m;
-    private DateTime _laborDate = DateTime.Today;
+    private DateTime _laborDate = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
     private string _closeNotes = "";
     private string _reopenReason = "";
     private string _cancelReason = "";
     private InvoiceDocumentType _invoiceDocType = InvoiceDocumentType.Deposit;
     private decimal _invoicePercent = 30m;
+
+    private IReadOnlyList<EntityPickerOption> ReqItemOptions =>
+        _reqItems.Select(i => new EntityPickerOption
+        {
+            Id = i.Id,
+            Label = $"{i.Sku} — {i.Name}",
+            SubLabel = $"Avail {i.QuantityAvailable:N0}"
+        }).ToList();
+    private string? ReqItemLabel
+    {
+        get
+        {
+            var item = _reqItems.FirstOrDefault(i => i.Id == _reqItemId);
+            return item == null ? null : $"{item.Sku} — {item.Name}";
+        }
+    }
+
+    private IReadOnlyList<EntityPickerOption> LaborEmployeeOptions =>
+        _laborEmployees.Select(e => new EntityPickerOption { Id = e.Id, Label = $"{e.FirstName} {e.LastName}" }).ToList();
+    private string? LaborEmployeeName
+    {
+        get
+        {
+            var e = _laborEmployees.FirstOrDefault(x => x.Id == _laborEmployeeId);
+            return e == null ? null : $"{e.FirstName} {e.LastName}";
+        }
+    }
+
+    private Task OnReqItemPicked(Guid id)
+    {
+        _reqItemId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchReqItemsAsync(string term)
+    {
+        _reqSearch = term ?? "";
+        await LoadReqItemsAsync();
+    }
+
+    private async Task OnLaborEmployeePicked(Guid id)
+    {
+        _laborEmployeeId = id;
+        var emp = _laborEmployees.FirstOrDefault(e => e.Id == id)
+            ?? (id == Guid.Empty ? null : await EmployeeService.GetByIdAsync(id));
+        if (emp != null)
+        {
+            _laborTechnician = $"{emp.FirstName} {emp.LastName}".Trim();
+            if (emp.DefaultHourlyRate > 0)
+                _laborRate = emp.DefaultHourlyRate;
+        }
+    }
+
+    private async Task SearchLaborEmployeesAsync(string term)
+    {
+        _laborEmployees = (await EmployeeService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50)).ToList();
+    }
 
     private bool CanManage => CurrentUser.Permissions.Contains(Permissions.JobsManage);
     private bool CanInvoice => CurrentUser.Permissions.Contains(Permissions.InvoicesManage);
@@ -953,20 +1023,30 @@ else
         }
     }
 
-    private void CloseLaborModal() => _showLaborModal = false;
+    private void CloseLaborModal()
+    {
+        _showLaborModal = false;
+        _laborEmployeeId = Guid.Empty;
+        _laborTechnician = "";
+    }
 
     private async Task SaveLaborAsync()
     {
-        if (string.IsNullOrWhiteSpace(_laborTechnician) || _laborHours <= 0) return;
+        if ((_laborEmployeeId == Guid.Empty && string.IsNullOrWhiteSpace(_laborTechnician)) || _laborHours <= 0)
+        {
+            Toast.ShowError("Pick a technician or type a name, and enter hours.");
+            return;
+        }
         try
         {
             await JobService.AddLaborAsync(new JobLabor
             {
                 JobId = JobId,
-                Technician = _laborTechnician.Trim(),
+                EmployeeId = _laborEmployeeId == Guid.Empty ? null : _laborEmployeeId,
+                Technician = string.IsNullOrWhiteSpace(_laborTechnician) ? null : _laborTechnician.Trim(),
                 Hours = _laborHours,
                 HourlyRate = _laborRate > 0 ? _laborRate : 195m,
-                WorkDate = _laborDate
+                WorkDate = DateTime.SpecifyKind(_laborDate.Date, DateTimeKind.Utc)
             });
             Toast.ShowSuccess("Labor added.");
             CloseLaborModal();

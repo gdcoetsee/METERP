@@ -21,13 +21,14 @@
     <span data-testid="assets-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Assets</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Asset</button>
-    }
-</div>
+<PageHeader Title="Assets" Subtitle="Plant and equipment on customer sites. Name is required." TestId="assets-page-header">
+    <Actions>
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-asset-button">New asset</button>
+        }
+    </Actions>
+</PageHeader>
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
@@ -42,7 +43,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading assets...</em></p>
+    <ListSkeleton Rows="6" TestId="assets-loading" AriaLabel="Loading assets" />
 }
 else if (assets == null || !assets.Any())
 {
@@ -104,22 +105,25 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit Asset" : "New Asset")</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit asset" : "New asset")"
+               Size="lg"
+               TestId="asset-form-modal"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="currentAsset" OnValidSubmit="SaveAsset" FormName="AssetForm">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Customer *</label>
-                        <select class="form-select" @bind="currentAsset.CustomerId" required>
-                            <option value="">-- Select customer --</option>
-                            @foreach (var c in availableCustomers)
-                            {
-                                <option value="@c.Id">@c.Name</option>
-                            }
-                        </select>
+                        <label class="form-label meterp-required">Customer</label>
+                        <EntityPicker TestId="asset-customer-select"
+                                      Value="currentAsset.CustomerId"
+                                      ValueChanged="OnAssetCustomerPicked"
+                                      Options="AssetCustomerOptions"
+                                      SelectedLabel="@AssetCustomerName"
+                                      Placeholder="Type a company name"
+                                      Required="true"
+                                      OnSearch="SearchAssetCustomersAsync" />
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Asset Type</label>
@@ -128,7 +132,7 @@ else
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Name / Description *</label>
+                    <label class="form-label meterp-required">Name / description</label>
                     <InputText class="form-control" @bind-Value="currentAsset.Name" required />
                 </div>
 
@@ -163,23 +167,23 @@ else
                     <InputTextArea class="form-control" @bind-Value="currentAsset.Notes" rows="2" />
                 </div>
 
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save Asset</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
-                </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveAsset">Save asset</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedAsset != null)
 {
-    <div class="card mt-4 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedAsset.AssetNumber — @selectedAsset.Name</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseAssetView">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedAsset.AssetNumber} — {selectedAsset.Name}")"
+               Size="lg"
+               TestId="asset-detail"
+               OnClose="CloseAssetView">
+        <ChildContent>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <strong>Customer:</strong> @(selectedAsset.Customer?.Name ?? "—")<br />
@@ -232,13 +236,20 @@ else
                     <button class="btn btn-sm btn-secondary ms-1" @onclick="CancelNote">Cancel</button>
                 </div>
             }
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseAssetView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
     private List<Asset> assets = new();
     private List<Customer> availableCustomers = new();
+    private IReadOnlyList<EntityPickerOption> AssetCustomerOptions =>
+        availableCustomers.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
+    private string? AssetCustomerName =>
+        availableCustomers.FirstOrDefault(c => c.Id == currentAsset.CustomerId)?.Name;
     private Asset currentAsset = new();
     private Asset? selectedAsset;
     private bool showForm;
@@ -271,8 +282,27 @@ else
 
     private Task LoadCustomers() => _dataGate.RunAsync(async () =>
     {
-        availableCustomers = (await CustomerService.GetAllAsync()).ToList();
+        availableCustomers = (await CustomerService.GetAllAsync(pageSize: 50)).ToList();
     });
+
+    private Task OnAssetCustomerPicked(Guid id)
+    {
+        currentAsset.CustomerId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchAssetCustomersAsync(string term)
+    {
+        availableCustomers = (await CustomerService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .ToList();
+        if (currentAsset.CustomerId != Guid.Empty && availableCustomers.All(c => c.Id != currentAsset.CustomerId))
+        {
+            var extra = await CustomerService.GetByIdAsync(currentAsset.CustomerId);
+            if (extra != null)
+                availableCustomers.Insert(0, extra);
+        }
+    }
 
     private Task LoadAssets() => _dataGate.RunAsync(async () =>
     {

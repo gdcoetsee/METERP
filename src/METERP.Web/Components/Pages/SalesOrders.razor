@@ -19,12 +19,13 @@
 
 <PageTitle>Sales Orders</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h1 class="mb-0">Sales Orders</h1>
-    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="sales-orders-export" OnExportCsv="ExportCsvAsync" Disabled="@_loading" />
-</div>
+<PageHeader Title="Sales orders" Subtitle="Accepted quotes become sales orders. Open one to confirm or convert to a job." TestId="sales-orders-page-header">
+    <Actions>
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="sales-orders-export" OnExportCsv="ExportCsvAsync" Disabled="@_loading" />
+    </Actions>
+</PageHeader>
 
-<div class="mb-3" style="max-width: 420px;">
+<div class="meterp-filter-bar">
     <div class="input-group">
         <input type="search" class="form-control" placeholder="Search SO # or customer..."
                value="@searchTerm" @oninput="OnSearchInput" data-testid="sales-orders-search" />
@@ -37,7 +38,7 @@
 
 @if (_loading)
 {
-    <p data-testid="sales-orders-loading"><em>Loading sales orders...</em></p>
+    <ListSkeleton Rows="6" TestId="sales-orders-loading" AriaLabel="Loading sales orders" />
 }
 else if (sos == null || !sos.Any())
 {
@@ -91,12 +92,13 @@ else
 
 @if (selectedSO != null)
 {
-    <div class="card mt-4 border-primary" data-testid="sales-order-detail">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedSO.SoNumber — @(selectedSO.Customer?.Name)</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseSOView">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedSO.SoNumber} — {selectedSO.Customer?.Name}")"
+               Size="xl"
+               TestId="sales-order-detail"
+               CloseOnBackdrop="false"
+               OnClose="CloseSOView">
+        <ChildContent>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <strong>Status:</strong> @GetStatusBadge(selectedSO.Status)<br />
@@ -139,8 +141,11 @@ else
             {
                 <button class="btn btn-success btn-sm" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(selectedSO)">Convert to Job</button>
             }
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseSOView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {

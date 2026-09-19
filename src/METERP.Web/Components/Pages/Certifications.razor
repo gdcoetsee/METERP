@@ -13,16 +13,14 @@
 
 <PageTitle>Employee certifications</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Employee certifications</h1>
-        <p class="text-muted small mb-0">Licences and tickets with expiry tracking (alerts via compliance scan).</p>
-    </div>
+<PageHeader Title="Certifications" Subtitle="Licences and tickets with expiry tracking." TestId="certs-page-header">
+    <Actions>
     @if (CanManage)
     {
-        <button type="button" class="btn btn-primary" data-testid="certs-add-btn" @onclick="OpenAdd">+ Add certification</button>
+        <button type="button" class="btn btn-primary" data-testid="certs-add-btn" @onclick="OpenAdd">Add certification</button>
     }
-</div>
+    </Actions>
+</PageHeader>
 
 <div class="mb-3" style="max-width: 360px;">
     <label class="form-label small">Employee filter</label>
@@ -37,7 +35,7 @@
 
 @if (_loading)
 {
-    <p data-testid="certs-loading"><em>Loading…</em></p>
+    <ListSkeleton Rows="5" TestId="certs-loading" AriaLabel="Loading certifications" />
 }
 else if (_certs.Count == 0)
 {
@@ -90,14 +88,15 @@ else
 {
     <FormModal IsOpen="true" Title="Add certification" TestId="certs-form-modal" OnClose="() => _showForm = false">
         <div class="mb-3">
-            <label class="form-label">Employee *</label>
-            <select class="form-select" @bind="_formEmployeeId" data-testid="certs-form-employee">
-                <option value="@Guid.Empty">— Select —</option>
-                @foreach (var e in _employees)
-                {
-                    <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName</option>
-                }
-            </select>
+            <label class="form-label meterp-required">Employee</label>
+            <EntityPicker TestId="certs-form-employee"
+                          Value="_formEmployeeId"
+                          ValueChanged="OnCertEmployeePicked"
+                          Options="CertEmployeeOptions"
+                          SelectedLabel="@CertEmployeeName"
+                          Placeholder="Type an employee name"
+                          Required="true"
+                          OnSearch="SearchCertEmployeesAsync" />
         </div>
         <div class="mb-3">
             <label class="form-label">Type *</label>
@@ -138,6 +137,29 @@ else
     private DateTime? _formExpiry = DateTime.UtcNow.Date.AddYears(1);
 
     private bool CanManage => CurrentUser.Permissions.Contains(Permissions.EmployeesManage);
+
+    private IReadOnlyList<EntityPickerOption> CertEmployeeOptions =>
+        _employees.Select(e => new EntityPickerOption { Id = e.Id, Label = $"{e.EmployeeNumber} — {e.FirstName} {e.LastName}" }).ToList();
+    private string? CertEmployeeName
+    {
+        get
+        {
+            var e = _employees.FirstOrDefault(x => x.Id == _formEmployeeId);
+            return e == null ? null : $"{e.EmployeeNumber} — {e.FirstName} {e.LastName}";
+        }
+    }
+
+    private Task OnCertEmployeePicked(Guid id)
+    {
+        _formEmployeeId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchCertEmployeesAsync(string term)
+    {
+        _employees = (await EmployeeService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50)).ToList();
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -1356,4 +1356,30 @@ public class StockRequisitionServiceTests
                 && t.Message.Contains("Duplicate request")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task UpdatePendingLineQuantity_AndApprove_StoresNote()
+    {
+        var (service, db, tenantId, _) = Create();
+        await using (db)
+        {
+            var (job, item) = await SeedJobAndItemAsync(db, tenantId, onHand: 10m);
+            var id = await service.SubmitAsync(new StockRequisition
+            {
+                TenantId = tenantId,
+                JobId = job.Id,
+                RequestedByUserId = Guid.NewGuid(),
+                Lines = [new StockRequisitionLine { InventoryItemId = item.Id, QuantityRequested = 3 }]
+            });
+
+            var lineId = (await db.Set<StockRequisitionLine>().FirstAsync(l => l.StockRequisitionId == id)).Id;
+            await service.UpdatePendingLineQuantityAsync(lineId, 5);
+            Assert.True(await service.ApproveManagerAsync(id, Guid.NewGuid(), "Cut to 5 and proceed."));
+
+            var saved = await db.Set<StockRequisition>().Include(r => r.Lines).FirstAsync(r => r.Id == id);
+            Assert.Equal(5m, saved.Lines.First().QuantityRequested);
+            Assert.Equal("Cut to 5 and proceed.", saved.ApproverNote);
+            Assert.Equal(RequisitionStatus.PendingExecutive, saved.Status);
+        }
+    }
 }

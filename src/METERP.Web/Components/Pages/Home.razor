@@ -38,7 +38,16 @@
     <span data-testid="home-ready" class="visually-hidden">ready</span>
 }
 
-<h1 class="mb-4">METERP Dashboard @if (AiAssistantService.IsConfigured) { <span class="badge bg-primary align-middle" style="font-size:0.6rem;">AI Enabled</span> }</h1>
+<PageHeader Title="Home" Subtitle="What needs you today — quotes, jobs, cash, and approvals." TestId="home-page-header">
+    <Actions>
+        @if (AiAssistantService.IsConfigured)
+        {
+            <span class="badge bg-primary">AI enabled</span>
+        }
+        <a href="/quotes?create=1" class="btn btn-primary" data-testid="home-new-quote">New quote</a>
+        <a href="/jobs" class="btn btn-outline-secondary">Jobs</a>
+    </Actions>
+</PageHeader>
 
 @if (currentTenant != null)
 {
@@ -84,122 +93,44 @@
     }
 }
 
-<div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-primary">@customerCount</h3>
-                <div class="text-muted">Customers</div>
-                <a href="customers" class="btn btn-sm btn-outline-primary mt-2">Manage</a>
+<div class="row g-2 mb-4">
+    <div class="col-6 col-md-3">
+        <a href="quotes" class="card text-decoration-none h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small">Quotes</div>
+                <div class="fs-4 fw-semibold">@quoteCount</div>
             </div>
-        </div>
+        </a>
     </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-info">@quoteCount</h3>
-                <div class="text-muted">Quotes</div>
-                <a href="quotes" class="btn btn-sm btn-outline-info mt-2">View Quotes</a>
+    <div class="col-6 col-md-3">
+        <a href="jobs" class="card text-decoration-none h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small">Open jobs</div>
+                <div class="fs-4 fw-semibold">@jobCount</div>
             </div>
-        </div>
+        </a>
     </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-warning">@jobCount</h3>
-                <div class="text-muted">Jobs</div>
-                <a href="jobs" class="btn btn-sm btn-outline-warning mt-2">Track Jobs</a>
+    <div class="col-6 col-md-3">
+        <a href="invoices" class="card text-decoration-none h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small">Invoices</div>
+                <div class="fs-4 fw-semibold">@invoiceCount</div>
             </div>
-        </div>
+        </a>
     </div>
-    @if (_readyToInvoiceCount > 0)
-    {
-        <div class="col-md-3">
-            <div class="card text-center border-success" data-testid="home-ready-to-invoice-card">
-                <div class="card-body">
-                    <h3 class="text-success">@_readyToInvoiceCount</h3>
-                    <div class="text-muted">Ready to invoice</div>
-                    <div class="small text-success">R @_readyToInvoiceValue.ToString("N0") quoted value</div>
-                    <a href="jobs" class="btn btn-sm btn-success mt-2">Invoice now</a>
-                </div>
-            </div>
-        </div>
-    }
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-success">@invoiceCount</h3>
-                <div class="text-muted">Invoices</div>
-                <a href="invoices" class="btn btn-sm btn-outline-success mt-2">Invoicing</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-secondary">@inventoryCount</h3>
-                <div class="text-muted">Inventory Items</div>
-                <a href="inventory" class="btn btn-sm btn-outline-secondary mt-2">Manage Stock</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-info">@assetCount</h3>
-                <div class="text-muted">Assets</div>
-                <a href="assets" class="btn btn-sm btn-outline-info mt-2">Manage Assets</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
-                <h3 class="text-dark">@_supplierCount</h3>
-                <div class="text-muted">Suppliers</div>
-                <a href="suppliers" class="btn btn-sm btn-outline-dark mt-2">Purchasing</a>
+    <div class="col-6 col-md-3">
+        <div class="card h-100 @( _readyToInvoiceCount > 0 ? "border-success" : "")" data-testid="home-ready-to-invoice-card">
+            <div class="card-body py-3">
+                <div class="text-muted small">Ready to invoice</div>
+                <div class="fs-4 fw-semibold text-success">@_readyToInvoiceCount</div>
+                @if (_readyToInvoiceCount > 0)
+                {
+                    <a href="jobs" class="small">Invoice now · R @_readyToInvoiceValue.ToString("N0")</a>
+                }
             </div>
         </div>
     </div>
 </div>
-
-<!-- Commercial usage visibility (from tracked counters on Tenant) -->
-<div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card text-center border-dark">
-            <div class="card-body">
-                <h3 class="text-dark">@(currentTenant?.TotalJobsCreated ?? 0)</h3>
-                <div class="text-muted small">Jobs (tenant)</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center border-dark">
-            <div class="card-body">
-                <h3 class="text-dark">@(currentTenant?.TotalAiCalls ?? 0)</h3>
-                <div class="text-muted small">AI Calls (tenant)</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center border-dark">
-            <div class="card-body">
-                <h3 class="text-success">@(currentTenant?.TotalQuotesCreated ?? 0)</h3>
-                <div class="text-muted small">Quotes (tenant)</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center border-dark">
-            <div class="card-body">
-                <h3 class="text-warning">R @(currentTenant?.TotalRevenueBilled.ToString("N0") ?? "0")</h3>
-                <div class="text-muted small">Revenue Billed (tenant)</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<p class="mt-3 small text-muted">New in complete ERP: Purchasing (Suppliers + POs with inventory receipt), Finance (CoA + Journals), HR/Employees (labor linkage). See /finance, /employees, /suppliers, /purchase-orders.</p>
 
 @if (_showRoleDashboard)
 {
@@ -273,6 +204,7 @@
 
 @if (_showExecutiveView && _executive != null)
 {
+    <h2 class="h5 mb-3">Needs you</h2>
     <div class="card mb-4 border-primary" data-testid="home-executive-dashboard">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <span>Executive accountability</span>

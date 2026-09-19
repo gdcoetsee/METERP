@@ -20,16 +20,18 @@
     <span data-testid="customers-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Customers</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Customer</button>
-    }
-</div>
+<PageHeader Title="Customers" Subtitle="Companies you quote, job, and invoice. Name is required; the rest can wait." TestId="customers-page-header">
+    <Actions>
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-customer-button">New customer</button>
+        }
+    </Actions>
+</PageHeader>
 
-<div class="mb-3" style="max-width: 420px;">
+<div class="meterp-filter-bar">
     <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
         <input type="search" class="form-control" data-testid="customers-search" placeholder="Search name, email or phone..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
@@ -41,7 +43,7 @@
 
 @if (_loading)
 {
-    <p data-testid="customers-loading"><em>Loading customers...</em></p>
+    <ListSkeleton Rows="6" TestId="customers-loading" AriaLabel="Loading customers" />
 }
 else if (customers == null)
 {
@@ -55,7 +57,12 @@ else if (!customers.Any())
     }
     else
     {
-        <div class="alert alert-info">No customers found for this tenant. Create your first one!</div>
+        <EmptyState Title="No customers yet"
+                    Description="Add a company before you quote. Name is required; contact details can wait."
+                    Icon="🏢"
+                    CtaText="@(UserCanManage ? "New customer" : null)"
+                    TestId="customers-empty"
+                    OnCta="ShowCreateForm" />
     }
 }
 else
@@ -113,88 +120,92 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit Customer" : "New Customer")</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit customer" : "New customer")"
+               Size="lg"
+               TestId="customer-form-modal"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="currentCustomer" OnValidSubmit="SaveCustomer" FormName="CustomerForm">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Name / Company *</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.Name" required />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Company Reg Number</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.CompanyRegistrationNumber" />
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">VAT Number</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.VatNumber" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Phone</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.Phone" />
+                <div class="meterp-section">
+                    <div class="meterp-section-title">Company</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label meterp-required">Name / company</label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.Name" required />
+                            <span class="meterp-field-hint">Required. This is how they appear on quotes and invoices.</span>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Company reg number <span class="text-muted fw-normal">(optional)</span></label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.CompanyRegistrationNumber" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">VAT number <span class="text-muted fw-normal">(optional)</span></label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.VatNumber" />
+                        </div>
                     </div>
                 </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Email</label>
-                        <InputText type="email" class="form-control" @bind-Value="currentCustomer.Email" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">City</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.City" />
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Address</label>
-                    <InputText class="form-control" @bind-Value="currentCustomer.AddressLine1" placeholder="Street Address" />
-                    <InputText class="form-control mt-1" @bind-Value="currentCustomer.AddressLine2" placeholder="Address Line 2" />
-                </div>
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Province</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.Province" />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Postal Code</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.PostalCode" />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Country</label>
-                        <InputText class="form-control" @bind-Value="currentCustomer.Country" />
+                <div class="meterp-section">
+                    <div class="meterp-section-title">Contact</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Phone <span class="text-muted fw-normal">(optional)</span></label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.Phone" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email <span class="text-muted fw-normal">(optional)</span></label>
+                            <InputText type="email" class="form-control" @bind-Value="currentCustomer.Email" />
+                        </div>
                     </div>
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Notes</label>
-                    <InputTextArea class="form-control" @bind-Value="currentCustomer.Notes" rows="2" />
-                </div>
-
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save Customer</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                <div class="meterp-section mb-0">
+                    <div class="meterp-section-title">Address</div>
+                    <div class="mb-2">
+                        <InputText class="form-control" @bind-Value="currentCustomer.AddressLine1" placeholder="Street address" />
+                    </div>
+                    <InputText class="form-control mb-3" @bind-Value="currentCustomer.AddressLine2" placeholder="Address line 2" />
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">City</label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.City" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Province</label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.Province" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Postal code</label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.PostalCode" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Country</label>
+                            <InputText class="form-control" @bind-Value="currentCustomer.Country" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                            <InputTextArea class="form-control" @bind-Value="currentCustomer.Notes" rows="2" />
+                        </div>
+                    </div>
                 </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveCustomer">Save customer</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedCustomer != null)
 {
-    <div class="card mt-4 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <h5 class="mb-0">@selectedCustomer.Name - Contacts</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseCustomerView">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedCustomer.Name} — contacts")"
+               Size="lg"
+               TestId="customer-detail"
+               CloseOnBackdrop="false"
+               OnClose="CloseCustomerView">
+        <ChildContent>
             <div class="mb-3">
                 <strong>Details:</strong> @selectedCustomer.Phone | @selectedCustomer.Email<br />
                 @selectedCustomer.AddressLine1, @selectedCustomer.City
@@ -262,8 +273,11 @@ else
                     </EditForm>
                 </div>
             }
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseCustomerView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
@@ -283,11 +297,16 @@ else
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.CustomersManage);
 
+    [SupplyParameterFromQuery(Name = "search")]
+    public string? QuerySearch { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
         try
         {
+            if (!string.IsNullOrWhiteSpace(QuerySearch))
+                searchTerm = QuerySearch;
             await LoadCustomers();
         }
         finally
@@ -368,19 +387,26 @@ else
 
     private async Task SaveCustomer()
     {
-        if (isEditing)
+        try
         {
-            await CustomerService.UpdateAsync(currentCustomer);
-        }
-        else
-        {
-            await CustomerService.CreateAsync(currentCustomer);
-        }
+            if (isEditing)
+            {
+                await CustomerService.UpdateAsync(currentCustomer);
+            }
+            else
+            {
+                await CustomerService.CreateAsync(currentCustomer);
+            }
 
-        showForm = false;
-        ToastService.ShowSuccess("Customer saved successfully.");
-        await LoadCustomers();
-        currentCustomer = new();
+            showForm = false;
+            ToastService.ShowSuccess("Customer saved successfully.");
+            await LoadCustomers();
+            currentCustomer = new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
     }
 
     private void CancelForm()

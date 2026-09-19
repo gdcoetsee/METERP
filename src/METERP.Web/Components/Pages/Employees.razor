@@ -18,16 +18,14 @@
     <span data-testid="employees-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Employees</h1>
-        <p class="text-muted small mb-0">HR master data for labor, leave, PPE, and payroll.</p>
-    </div>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" data-testid="employees-new" @onclick="ShowCreateForm">+ New Employee</button>
-    }
-</div>
+<PageHeader Title="Employees" Subtitle="People who book labour, leave, PPE, and payroll. Employee number and name are required." TestId="employees-page-header">
+    <Actions>
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" data-testid="employees-new" @onclick="ShowCreateForm">New employee</button>
+        }
+    </Actions>
+</PageHeader>
 
 <div class="d-flex flex-wrap gap-3 mb-3 align-items-end">
     <div style="max-width: 420px; flex: 1;">
@@ -48,7 +46,7 @@
 
 @if (_loading)
 {
-    <p data-testid="employees-loading"><em>Loading employees...</em></p>
+    <ListSkeleton Rows="6" TestId="employees-loading" AriaLabel="Loading employees" />
 }
 else if (employees == null || !employees.Any())
 {
@@ -127,15 +125,15 @@ else
         <EditForm Model="currentEmployee" OnValidSubmit="SaveEmployee" FormName="EmployeeForm">
             <div class="row">
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Employee # *</label>
+                    <label class="form-label meterp-required">Employee #</label>
                     <InputText class="form-control" @bind-Value="currentEmployee.EmployeeNumber" required data-testid="employee-number" />
                 </div>
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">First Name *</label>
+                    <label class="form-label meterp-required">First name</label>
                     <InputText class="form-control" @bind-Value="currentEmployee.FirstName" required data-testid="employee-first-name" />
                 </div>
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Last Name *</label>
+                    <label class="form-label meterp-required">Last name</label>
                     <InputText class="form-control" @bind-Value="currentEmployee.LastName" required data-testid="employee-last-name" />
                 </div>
             </div>
@@ -165,14 +163,14 @@ else
                     </InputSelect>
                 </div>
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Manager</label>
-                    <InputSelect class="form-select" @bind-Value="currentEmployee.ManagerEmployeeId">
-                        <option value="">— None —</option>
-                        @foreach (var m in _managers.Where(x => x.Id != currentEmployee.Id))
-                        {
-                            <option value="@m.Id">@m.FirstName @m.LastName</option>
-                        }
-                    </InputSelect>
+                    <label class="form-label">Manager <span class="text-muted fw-normal">(optional)</span></label>
+                    <EntityPicker TestId="employee-manager-select"
+                                  Value="@(currentEmployee.ManagerEmployeeId ?? Guid.Empty)"
+                                  ValueChanged="OnManagerPicked"
+                                  Options="ManagerPickerOptions"
+                                  SelectedLabel="@SelectedManagerName"
+                                  Placeholder="Type a name, or leave blank"
+                                  OnSearch="SearchManagersAsync" />
                 </div>
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Hire date</label>
@@ -216,12 +214,12 @@ else
 
 @if (selectedEmployee != null)
 {
-    <div class="card mt-4 border-primary" data-testid="employee-detail">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedEmployee.EmployeeNumber — @selectedEmployee.FirstName @selectedEmployee.LastName</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseEmployeeView">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedEmployee.EmployeeNumber} — {selectedEmployee.FirstName} {selectedEmployee.LastName}")"
+               Size="lg"
+               TestId="employee-detail"
+               OnClose="CloseEmployeeView">
+        <ChildContent>
             <div class="row">
                 <div class="col-md-6">
                     <strong>Title:</strong> @(selectedEmployee.JobTitle ?? "—")<br />
@@ -243,8 +241,11 @@ else
                 <p class="mt-2 mb-0 small"><strong>Notes:</strong> @selectedEmployee.Notes</p>
             }
             <p class="mt-3 text-muted small mb-0">POPIA: employee personal data is for operational HR only. Job labor uses this rate unless overridden on the timesheet.</p>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseEmployeeView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
@@ -264,6 +265,37 @@ else
     private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.EmployeesManage);
+
+    private IReadOnlyList<EntityPickerOption> ManagerPickerOptions =>
+        _managers.Where(x => x.Id != currentEmployee.Id)
+            .Select(m => new EntityPickerOption { Id = m.Id, Label = $"{m.FirstName} {m.LastName}" })
+            .ToList();
+
+    private string? SelectedManagerName
+    {
+        get
+        {
+            var id = currentEmployee.ManagerEmployeeId;
+            if (id == null || id == Guid.Empty) return null;
+            var m = _managers.FirstOrDefault(x => x.Id == id);
+            return m == null ? null : $"{m.FirstName} {m.LastName}";
+        }
+    }
+
+    private Task OnManagerPicked(Guid id)
+    {
+        currentEmployee.ManagerEmployeeId = id == Guid.Empty ? null : id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchManagersAsync(string term)
+    {
+        var loaded = (await EmployeeService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50, includeInactive: false))
+            .Where(x => x.Id != currentEmployee.Id)
+            .ToList();
+        _managers = loaded;
+    }
 
     protected override async Task OnInitializedAsync()
     {

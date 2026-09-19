@@ -23,18 +23,17 @@
     <span data-testid="purchase-orders-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h1 class="mb-0">Purchase Orders</h1>
-    <div class="d-flex gap-2 align-items-center">
+<PageHeader Title="Purchase orders" Subtitle="Buy materials from suppliers. Supplier is required before you can add lines." TestId="purchase-orders-page-header">
+    <Actions>
         <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="purchase-orders-export" OnExportCsv="ExportCsvAsync" />
         @if (UserCanManage)
         {
-            <button class="btn btn-primary" @onclick="ShowCreateForm">+ New PO</button>
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-po-button">New PO</button>
         }
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
-<div class="mb-3" style="max-width: 420px;">
+<div class="meterp-filter-bar">
     <div class="input-group">
         <input type="search" class="form-control" data-testid="purchase-orders-search" placeholder="Search PO #, supplier or notes..."
                value="@searchTerm" @oninput="OnSearchInput" />
@@ -47,7 +46,7 @@
 
 @if (_loading)
 {
-    <p data-testid="purchase-orders-loading"><em>Loading purchase orders...</em></p>
+    <ListSkeleton Rows="6" TestId="purchase-orders-loading" AriaLabel="Loading purchase orders" />
 }
 else if (pos == null || !pos.Any())
 {
@@ -103,65 +102,68 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit PO" : "New Purchase Order")</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit purchase order" : "New purchase order")"
+               Size="lg"
+               TestId="purchase-order-form-modal"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="currentPO" OnValidSubmit="SavePO" FormName="POForm">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Supplier *</label>
-                        <select class="form-select" @bind="currentPO.SupplierId" required>
-                            <option value="">-- Select supplier --</option>
-                            @foreach (var s in availableSuppliers)
-                            {
-                                <option value="@s.Id">@s.Name</option>
-                            }
-                        </select>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label meterp-required">Supplier</label>
+                        <EntityPicker TestId="purchase-order-supplier-select"
+                                      Value="currentPO.SupplierId"
+                                      ValueChanged="OnPoSupplierPicked"
+                                      Options="SupplierPickerOptions"
+                                      SelectedLabel="@SelectedSupplierName"
+                                      Placeholder="Type a supplier name"
+                                      Required="true"
+                                      OnSearch="SearchSuppliersAsync" />
+                        <span class="meterp-field-hint">Required. Type to search — the list is not limited to the first few names.</span>
                     </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">PO Date</label>
+                    <div class="col-md-3">
+                        <label class="form-label">PO date</label>
                         <InputDate class="form-control" @bind-Value="currentPO.PoDate" />
                     </div>
-                    <div class="col-md-3 mb-3">
+                    <div class="col-md-3">
                         <label class="form-label">Expected</label>
                         <InputDate class="form-control" @bind-Value="currentPO.ExpectedDate" />
                     </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Notes</label>
-                    <InputTextArea class="form-control" @bind-Value="currentPO.Notes" rows="2" />
-                </div>
-
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save PO</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
+                    <div class="col-12">
+                        <label class="form-label">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                        <InputTextArea class="form-control" @bind-Value="currentPO.Notes" rows="2" />
+                    </div>
                 </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SavePO">Save PO</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedPO != null)
 {
-    <div class="card mt-4 border-primary" data-testid="purchase-order-detail">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedPO.PoNumber — @(selectedPO.Supplier?.Name)</h5>
-            <div>
-                <button class="btn btn-sm btn-light me-2" @onclick="ClosePOView">Close</button>
-                @if (UserCanManage && selectedPO.Status == PurchaseOrderStatus.Draft)
-                {
-                    <button class="btn btn-sm btn-info me-2" data-testid="purchase-order-send" @onclick="() => MarkSent(selectedPO)">Mark Sent</button>
-                }
-                @if (UserCanManage && (selectedPO.Status == PurchaseOrderStatus.Sent || selectedPO.Status == PurchaseOrderStatus.PartiallyReceived))
-                {
-                    <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => OpenReceiveModal(selectedPO)">Create GRV</button>
-                }
-            </div>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedPO.PoNumber} — {selectedPO.Supplier?.Name}")"
+               Size="full"
+               TestId="purchase-order-detail"
+               CloseOnBackdrop="false"
+               OnClose="ClosePOView">
+        <HeaderActions>
+            @if (UserCanManage && selectedPO.Status == PurchaseOrderStatus.Draft)
+            {
+                <button class="btn btn-sm btn-info" data-testid="purchase-order-send" @onclick="() => MarkSent(selectedPO)">Mark sent</button>
+            }
+            @if (UserCanManage && (selectedPO.Status == PurchaseOrderStatus.Sent || selectedPO.Status == PurchaseOrderStatus.PartiallyReceived))
+            {
+                <button class="btn btn-sm btn-success" data-testid="purchase-order-receive" @onclick="() => OpenReceiveModal(selectedPO)">Create GRV</button>
+            }
+        </HeaderActions>
+        <ChildContent>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <strong>Status:</strong> @GetStatusBadge(selectedPO.Status)<br />
@@ -267,8 +269,11 @@ else
             }
 
             <p class="mt-3 text-muted small">Mark the PO as Sent before receiving. Creating a GRV records a formal goods receipt, updates on-hand quantities for linked inventory items, and auto-reserves stock for linked requisitions. Partial receipts are supported — enter qty per line and supplier delivery note.</p>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="ClosePOView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (_showReceiveModal && _receivePo != null)
@@ -396,9 +401,32 @@ else
         }
     }
 
-    private async Task LoadSuppliersForPickerCore()
+    private IReadOnlyList<EntityPickerOption> SupplierPickerOptions =>
+        availableSuppliers.Select(s => new EntityPickerOption { Id = s.Id, Label = s.Name }).ToList();
+
+    private string? SelectedSupplierName =>
+        availableSuppliers.FirstOrDefault(s => s.Id == currentPO.SupplierId)?.Name
+        ?? selectedPO?.Supplier?.Name;
+
+    private Task OnPoSupplierPicked(Guid id)
     {
-        availableSuppliers = (await SupplierService.GetAllAsync()).ToList();
+        currentPO.SupplierId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadSuppliersForPickerCore() => await SearchSuppliersAsync("");
+
+    private async Task SearchSuppliersAsync(string term)
+    {
+        availableSuppliers = (await SupplierService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .ToList();
+        if (currentPO.SupplierId != Guid.Empty && availableSuppliers.All(s => s.Id != currentPO.SupplierId))
+        {
+            var extra = await SupplierService.GetByIdAsync(currentPO.SupplierId);
+            if (extra != null)
+                availableSuppliers.Insert(0, extra);
+        }
     }
 
     private Task LoadPOs() => _dataGate.RunAsync(LoadPOsCore);

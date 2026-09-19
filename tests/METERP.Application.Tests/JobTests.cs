@@ -981,6 +981,32 @@ public class JobTests
     }
 
     [Fact]
+    public async Task JobService_AddLaborAsync_AcceptsLocalCalendarWorkDateAsUtc()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var job = new Job { TenantId = tenantId, CustomerId = Guid.NewGuid(), Title = "L", Status = JobStatus.InProgress };
+        db.Set<Job>().Add(job);
+        await db.SaveChangesAsync();
+        var service = new JobService(db, null);
+
+        var localDate = new DateTime(2026, 9, 19, 0, 0, 0, DateTimeKind.Local);
+        await service.AddLaborAsync(new JobLabor
+        {
+            JobId = job.Id,
+            Hours = 8,
+            HourlyRate = 100m,
+            Technician = "Site tech",
+            WorkDate = localDate
+        });
+
+        var labor = await db.Set<JobLabor>().SingleAsync(l => l.JobId == job.Id);
+        Assert.Equal(DateTimeKind.Utc, labor.WorkDate.Kind);
+        Assert.Equal(new DateTime(2026, 9, 19), labor.WorkDate.Date);
+        Assert.Equal(TimeSpan.Zero, labor.WorkDate.TimeOfDay);
+    }
+
+    [Fact]
     public async Task JobService_AddLaborAsync_RejectsInactiveEmployee()
     {
         var tenantId = Guid.NewGuid();

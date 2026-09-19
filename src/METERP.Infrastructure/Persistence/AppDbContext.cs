@@ -193,13 +193,69 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public override int SaveChanges()
     {
         ApplyAuditAndTenant();
-        return base.SaveChanges();
+        NormalizeDateTimesToUtc();
+        try
+        {
+            return base.SaveChanges();
+        }
+        catch
+        {
+            DiscardFailedChanges();
+            throw;
+        }
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         ApplyAuditAndTenant();
-        return base.SaveChangesAsync(cancellationToken);
+        NormalizeDateTimesToUtc();
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            DiscardFailedChanges();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Npgsql timestamptz rejects DateTimeKind.Local from HTML date inputs / DateTime.Today.
+    /// Date-only values are stored as UTC midnight of that calendar date.
+    /// </summary>
+    private void NormalizeDateTimesToUtc()
+    {
+        foreach (var entry in ChangeTracker.Entries()
+                     .Where(e => e.State is EntityState.Added or EntityState.Modified))
+        {
+            foreach (var prop in entry.Properties)
+            {
+                if (prop.CurrentValue is DateTime dt)
+                    prop.CurrentValue = ToStoredUtc(dt);
+            }
+        }
+    }
+
+    internal static DateTime ToStoredUtc(DateTime value)
+    {
+        if (value.Kind == DateTimeKind.Utc)
+            return value;
+        if (value.TimeOfDay == TimeSpan.Zero)
+            return DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
+        return value.Kind == DateTimeKind.Local
+            ? value.ToUniversalTime()
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    private void DiscardFailedChanges()
+    {
+        foreach (var entry in ChangeTracker.Entries()
+                     .Where(e => e.State is EntityState.Added or EntityState.Deleted or EntityState.Modified)
+                     .ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     private void ApplyAuditAndTenant()

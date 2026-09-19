@@ -149,6 +149,7 @@ builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IPayrollService, PayrollService>();
 builder.Services.AddScoped<IWorkforceReportService, WorkforceReportService>();
 builder.Services.AddScoped<IJobReportService, JobReportService>();
+builder.Services.AddScoped<IOperationalReportService, OperationalReportService>();
 builder.Services.AddScoped<ICashflowReportService, CashflowReportService>();
 builder.Services.AddScoped<ITenantBillingViewService, TenantBillingViewService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
@@ -953,6 +954,17 @@ app.MapGet("/login-complete", async (
     await signInManager.SignInAsync(user, isPersistent: false);
     return Results.Redirect(user.CustomerId.HasValue ? "/portal" : "/");
 }).AllowAnonymous().DisableRateLimiting();
+
+app.MapGet("/api/notifications/poll", async (ITenantNotificationService notifications) =>
+{
+    var items = await notifications.GetForCurrentUserAsync(1, 15);
+    var unread = await notifications.GetUnreadCountAsync();
+    return Results.Ok(new
+    {
+        unread,
+        items = items.Select(n => new { n.Id, n.Title, n.Message, n.IsRead })
+    });
+}).RequireAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

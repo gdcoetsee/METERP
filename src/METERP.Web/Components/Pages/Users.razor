@@ -14,13 +14,14 @@
 
 <PageTitle>Users</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Users</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New User</button>
-    }
-</div>
+<PageHeader Title="Users" Subtitle="Staff and portal logins for this tenant. Email is required." TestId="users-page-header">
+    <Actions>
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-user-button">New user</button>
+        }
+    </Actions>
+</PageHeader>
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
@@ -35,7 +36,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading users...</em></p>
+    <ListSkeleton Rows="6" TestId="users-loading" AriaLabel="Loading users" />
 }
 else if (users == null || !users.Any())
 {
@@ -102,22 +103,24 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>Create New User</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="New user"
+               Size="lg"
+               TestId="user-form-modal"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="newUserModel" OnValidSubmit="CreateUser" FormName="CreateUserForm">
                 <DataAnnotationsValidator />
                 <ValidationSummary />
 
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Email *</label>
+                        <label class="form-label meterp-required">Email</label>
                         <InputText type="email" class="form-control" @bind-Value="newUserModel.Email" required />
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Password *</label>
+                        <label class="form-label meterp-required">Password</label>
                         <InputText type="password" class="form-control" @bind-Value="newUserModel.Password" required />
                         <div class="form-text">Minimum 8 characters, upper + lower + digit.</div>
                     </div>
@@ -131,14 +134,15 @@ else
                 @if (newUserModel.IsPortal)
                 {
                     <div class="mb-3" style="max-width: 420px;">
-                        <label class="form-label">Customer *</label>
-                        <select class="form-select" @bind="newUserModel.CustomerId" data-testid="users-portal-customer">
-                            <option value="@Guid.Empty">-- Select customer --</option>
-                            @foreach (var customer in portalCustomers)
-                            {
-                                <option value="@customer.Id">@customer.Name</option>
-                            }
-                        </select>
+                        <label class="form-label meterp-required">Customer</label>
+                        <EntityPicker TestId="users-portal-customer"
+                                      Value="newUserModel.CustomerId"
+                                      ValueChanged="OnPortalCustomerPicked"
+                                      Options="PortalCustomerOptions"
+                                      SelectedLabel="@PortalCustomerName"
+                                      Placeholder="Type a company name"
+                                      Required="true"
+                                      OnSearch="SearchPortalCustomersAsync" />
                         <div class="form-text">They sign in at /portal/login and cannot see jobs, stock, or other customers.</div>
                     </div>
                 }
@@ -156,23 +160,23 @@ else
                     </div>
                 }
 
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Create User</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
-                </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="CreateUser">Create user</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedUser != null)
 {
-    <div class="card mt-4 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedUser.Email</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseUserView">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@selectedUser.Email"
+               Size="lg"
+               TestId="user-detail"
+               OnClose="CloseUserView">
+        <ChildContent>
             <div class="mb-3">
                 <strong>Username:</strong> @selectedUser.UserName
             </div>
@@ -235,9 +239,11 @@ else
                     }
                 </div>
             }
-
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseUserView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 <SlideOverPanel IsOpen="_permissionsPanelOpen"
@@ -287,6 +293,25 @@ else
     private const int PageSize = 10;
 
     private CreateUserModel newUserModel = new();
+
+    private IReadOnlyList<EntityPickerOption> PortalCustomerOptions =>
+        portalCustomers.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
+
+    private string? PortalCustomerName =>
+        portalCustomers.FirstOrDefault(c => c.Id == newUserModel.CustomerId)?.Name;
+
+    private Task OnPortalCustomerPicked(Guid id)
+    {
+        newUserModel.CustomerId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchPortalCustomersAsync(string term)
+    {
+        portalCustomers = (await CustomerService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .ToList();
+    }
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.UsersManage);
 

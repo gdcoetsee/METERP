@@ -13,7 +13,9 @@ public interface IFieldReportService
 
     Task<Guid> SubmitAsync(FieldReport report, CancellationToken ct = default);
 
-    Task<bool> ApproveAsync(Guid reportId, Guid approverUserId, CancellationToken ct = default);
+    Task<bool> ApproveAsync(Guid reportId, Guid approverUserId, string? note = null, CancellationToken ct = default);
+
+    Task UpdatePendingAsync(FieldReport report, CancellationToken ct = default);
 
     Task<bool> RejectAsync(Guid reportId, Guid approverUserId, string reason, CancellationToken ct = default);
 }

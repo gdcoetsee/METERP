@@ -15,12 +15,11 @@
 
 <PageTitle>Finance</PageTitle>
 
-<h1>Finance & Accounting</h1>
-<p class="text-muted">Minimal GL / Chart of Accounts for job costing and invoicing visibility (Phase 3).</p>
+<PageHeader Title="Finance" Subtitle="Chart of accounts and GL snapshot for job costing. Journals from invoices and costs post here." TestId="finance-page-header" />
 
 @if (_loading)
 {
-    <p data-testid="finance-loading">Loading accounts...</p>
+    <ListSkeleton Rows="6" TestId="finance-loading" AriaLabel="Loading accounts" />
 }
 else if (!accountRows.Any())
 {

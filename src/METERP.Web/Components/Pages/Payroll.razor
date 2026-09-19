@@ -15,24 +15,18 @@
 
 <PageTitle>Payroll</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Payroll <span class="badge bg-secondary">JobLabor</span></h1>
-        <p class="text-muted small mb-0">
-            Contractor payslips from linked <strong>JobLabor</strong>. Simple configurable deductions — not full SARS payroll.
-        </p>
-    </div>
-    <div class="d-flex gap-2">
+<PageHeader Title="Payroll" Subtitle="Payslips from job labour. Not a SARS statutory run — deductions are a simple percent plus a fixed amount." TestId="payroll-page-header">
+    <Actions>
         <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="payroll-export"
                        OnExportCsv="ExportPeriodCsvAsync" Disabled="@_loading" />
         @if (CanManage)
         {
             <button class="btn btn-primary" data-testid="payroll-generate-button" @onclick="RefreshPayslipsAsync" disabled="@_loading">
-                Refresh period payslips
+                Refresh period
             </button>
         }
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 <div class="card mb-3" data-testid="payroll-period-card">
     <div class="card-body row g-3 align-items-end">
@@ -58,7 +52,7 @@
 
 @if (_loading)
 {
-    <p data-testid="payroll-loading"><em>Loading payroll summaries...</em></p>
+    <ListSkeleton Rows="6" TestId="payroll-loading" AriaLabel="Loading payroll" />
 }
 else if (!employees.Any())
 {
@@ -106,27 +100,32 @@ else
 
 @if (selectedEmp != null)
 {
-    <div class="card mt-4 border-primary" data-testid="payroll-payslip-card">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <span>Payslip — @selectedEmp.EmployeeNumber @selectedEmp.Name — @_periodLabel</span>
-            <button type="button" class="btn btn-sm btn-light" @onclick="() => selectedEmp = null">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"Payslip — {selectedEmp.EmployeeNumber} {selectedEmp.Name} — {_periodLabel}")"
+               Size="md"
+               TestId="payroll-payslip-card"
+               OnClose="ClosePayslip">
+        <ChildContent>
             <p class="mb-1">Title: @(selectedEmp.JobTitle ?? "—")</p>
             <p class="mb-1">Hours from JobLabor: @selectedEmp.Hours.ToString("N1") (mandatory capacity @selectedEmp.MandatoryHoursPerMonth.ToString("N0") h/mo)</p>
             <p class="mb-1">Gross: R @selectedEmp.GrossPay.ToString("N2")</p>
             <p class="mb-1">Deductions: R @selectedEmp.Deductions.ToString("N2")</p>
-            <p class="fs-5 mb-3"><strong>Net Pay: R @selectedEmp.NetPay.ToString("N2")</strong></p>
-            <button class="btn btn-success btn-sm" data-testid="payroll-download-payslip" @onclick="DownloadPayslipCsv">Download Payslip CSV</button>
-            <button class="btn btn-outline-success btn-sm ms-1" data-testid="payroll-download-payslip-pdf" @onclick="DownloadPayslipPdf">Download Payslip PDF</button>
-            <small class="text-muted d-block mt-2">@selectedEmp.LaborEntryCount JobLabor record(s). Not a SARS IRP5 / statutory payroll run.</small>
-        </div>
-    </div>
+            <p class="fs-5 mb-3"><strong>Net pay: R @selectedEmp.NetPay.ToString("N2")</strong></p>
+            <small class="text-muted d-block">@selectedEmp.LaborEntryCount JobLabor record(s). Not a SARS IRP5 / statutory payroll run.</small>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ClosePayslip">Close</button>
+            <button class="btn btn-outline-success" data-testid="payroll-download-payslip" @onclick="DownloadPayslipCsv">CSV</button>
+            <button class="btn btn-primary" data-testid="payroll-download-payslip-pdf" @onclick="DownloadPayslipPdf">PDF</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
     private List<PayrollEmployeeSummary> employees = new();
     private PayrollEmployeeSummary? selectedEmp;
+
+    private void ClosePayslip() => selectedEmp = null;
     private TenantBranding _branding = TenantBranding.Default;
     private bool _loading = true;
     private string _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");

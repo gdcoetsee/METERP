@@ -17,7 +17,7 @@ public interface IQuoteService
 
     Task SubmitForExecutiveApprovalAsync(Guid quoteId, Guid submittedByUserId, CancellationToken ct = default);
 
-    Task ExecutiveApproveAsync(Guid quoteId, Guid approverUserId, CancellationToken ct = default);
+    Task ExecutiveApproveAsync(Guid quoteId, Guid approverUserId, string? note = null, CancellationToken ct = default);
 
     Task ExecutiveRejectAsync(Guid quoteId, Guid approverUserId, string reason, CancellationToken ct = default);
 
@@ -36,6 +36,9 @@ public interface IQuoteService
     Task SendAsync(Guid quoteId, CancellationToken ct = default);
 
     // Line item management (inline like Contacts on Customer)
+    /// <summary>Executive may revise draft lines while the quote is pending approval.</summary>
+    Task ExecutiveReviseLineAsync(QuoteLine line, CancellationToken ct = default);
+
     Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default);
     Task UpdateLineAsync(QuoteLine line, CancellationToken ct = default);
     Task DeleteLineAsync(Guid lineId, CancellationToken ct = default);

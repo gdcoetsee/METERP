@@ -30,8 +30,8 @@ else
             <tbody>
                 @foreach (var j in Jobs)
                 {
-                    <tr data-testid="@GetJobRowTestId(j)">
-                        <td><a href="@($"/jobs/{j.Id}")" class="fw-bold text-decoration-none" data-testid="job-command-center-link">@j.JobNumber</a></td>
+                    <tr data-testid="@GetJobRowTestId(j)" style="cursor:pointer;" @onclick="() => OnView.InvokeAsync(j)" title="Open job">
+                        <td><a href="@($"/jobs/{j.Id}")" class="fw-bold text-decoration-none" data-testid="job-command-center-link" @onclick:stopPropagation="true">@j.JobNumber</a></td>
                         <td><strong>@j.Title</strong><br /><small class="text-muted">@(j.Customer?.Name ?? "")</small></td>
                         <td>
                             @((MarkupString)GetJobStatusBadge(j.Status))
@@ -72,12 +72,14 @@ else
 
 @if (SelectedJob != null)
 {
-    <div class="card mt-3 border-primary" data-testid="job-detail-panel">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <h6 class="mb-0"><span data-testid="job-detail-number">@SelectedJob.JobNumber</span> — @SelectedJob.Title</h6>
-            <button class="btn btn-sm btn-light" @onclick="() => OnCloseView.InvokeAsync()">Close</button>
-        </div>
-        <div class="card-body small">
+    <FormModal IsOpen="true"
+               Title="@($"{SelectedJob.JobNumber} — {SelectedJob.Title}")"
+               Size="xl"
+               TestId="job-detail-panel"
+               CloseOnBackdrop="false"
+               OnClose="OnCloseView">
+        <ChildContent>
+            <span class="visually-hidden" data-testid="job-detail-number">@SelectedJob.JobNumber</span>
             <div>Quoted: <strong>R @SelectedJob.QuotedTotal.ToString("N2")</strong></div>
             <div>Actual (incl. labor + travel): <strong>R @(GetActualTotal(SelectedJob).ToString("N2"))</strong></div>
             <div class="mt-1">Variance: <strong>R @(GetVariance(SelectedJob).ToString("N2"))</strong></div>
@@ -287,8 +289,12 @@ else
                 }
                 <small class="text-muted">Upload site photos - stored in demo (base64). Real: cloud storage.</small>
             </div>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="() => OnCloseView.InvokeAsync()">Close</button>
+            <a href="@($"/jobs/{SelectedJob.Id}")" class="btn btn-primary" data-testid="job-command-center-from-panel">Open command center</a>
+        </Footer>
+    </FormModal>
 }
 
 @code {

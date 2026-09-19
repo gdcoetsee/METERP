@@ -1,0 +1,145 @@
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="meterp-notify-wrap" data-testid="topbar-notifications-wrap">
+    <button type="button"
+            class="btn btn-outline-secondary meterp-notify-bell"
+            title="Notifications"
+            data-testid="topbar-notifications"
+            @onclick="ToggleAsync"
+            @onclick:preventDefault="true">
+        <i class="bi bi-bell-fill" aria-hidden="true"></i>
+        @if (_unread > 0)
+        {
+            <span class="meterp-notify-badge" data-testid="topbar-notifications-count">@(_unread > 99 ? "99+" : _unread.ToString())</span>
+        }
+    </button>
+    @if (_open)
+    {
+        <div class="meterp-notify-panel" data-testid="topbar-notifications-panel">
+            <div class="meterp-notify-panel-head">
+                <span>Notifications</span>
+                <a href="/notifications" class="small">See all</a>
+            </div>
+            @if (_items.Count == 0)
+            {
+                <div class="p-3 small text-muted">You're all caught up.</div>
+            }
+            else
+            {
+                @foreach (var n in _items.Take(8))
+                {
+                    <button type="button"
+                            class="meterp-notify-item @(n.IsRead ? "" : "is-unread")"
+                            @onclick="() => OpenItem(n)">
+                        <strong class="d-block small">@n.Title</strong>
+                        <span class="small text-muted">@n.Message</span>
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private int _unread;
+    private bool _open;
+    private bool _primed;
+    private bool _disposed;
+    private readonly List<PollItem> _items = new();
+    private readonly HashSet<Guid> _seenIds = new();
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Task.Delay(400);
+        await RefreshAsync(toastNew: false);
+        _cts = new CancellationTokenSource();
+        _ = PollAsync(_cts.Token);
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+                await InvokeAsync(() => RefreshAsync(toastNew: true));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        _open = !_open;
+        if (_open)
+            await RefreshAsync(toastNew: false);
+    }
+
+    private void OpenItem(PollItem n)
+    {
+        _open = false;
+        Nav.NavigateTo("/notifications");
+    }
+
+    private async Task RefreshAsync(bool toastNew)
+    {
+        if (_disposed) return;
+        try
+        {
+            var poll = await JS.InvokeAsync<PollDto>("meterpUi.pollNotifications");
+            _unread = poll.Unread;
+            _items.Clear();
+            _items.AddRange(poll.Items ?? []);
+
+            if (!_primed)
+            {
+                foreach (var n in _items)
+                    _seenIds.Add(n.Id);
+                _primed = true;
+            }
+            else if (toastNew)
+            {
+                foreach (var n in _items.Where(i => _seenIds.Add(i.Id)).Reverse())
+                    Toast.ShowNotification(n.Title, n.Message);
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+
+    private sealed class PollDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("unread")]
+        public int Unread { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("items")]
+        public List<PollItem> Items { get; set; } = new();
+    }
+
+    private sealed class PollItem
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public Guid Id { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string Title { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public string Message { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("isRead")]
+        public bool IsRead { get; set; }
+    }
+}

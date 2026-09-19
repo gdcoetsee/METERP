@@ -131,7 +131,22 @@ public sealed class FieldReportService : IFieldReportService
         return report.Id;
     }
 
-    public async Task<bool> ApproveAsync(Guid reportId, Guid approverUserId, CancellationToken ct = default)
+    public async Task UpdatePendingAsync(FieldReport report, CancellationToken ct = default)
+    {
+        var existing = await _dbContext.Set<FieldReport>().FirstOrDefaultAsync(r => r.Id == report.Id, ct)
+            ?? throw new InvalidOperationException("Field report not found.");
+        if (existing.Status != FieldReportStatus.PendingApproval)
+            throw new InvalidOperationException("Only pending field reports can be revised.");
+
+        existing.HoursWorked = report.HoursWorked;
+        existing.TravelCost = report.TravelCost;
+        existing.Comments = report.Comments;
+        existing.MaterialsUsed = report.MaterialsUsed;
+        existing.WorkDate = DateTime.SpecifyKind(report.WorkDate.Date, DateTimeKind.Utc);
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> ApproveAsync(Guid reportId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var report = await _dbContext.Set<FieldReport>()
             .FirstOrDefaultAsync(r => r.Id == reportId, ct);
@@ -190,6 +205,13 @@ public sealed class FieldReportService : IFieldReportService
         report.Status = FieldReportStatus.Approved;
         report.ApprovedByUserId = approverUserId;
         report.ApprovedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            var trimmed = note.Trim();
+            if (trimmed.Length > 500)
+                throw new InvalidOperationException("Approver note cannot exceed 500 characters.");
+            report.ApproverNote = trimmed;
+        }
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)
@@ -235,6 +257,7 @@ public sealed class FieldReportService : IFieldReportService
         report.ApprovedByUserId = approverUserId;
         report.ApprovedAt = DateTime.UtcNow;
         report.RejectionReason = reason;
+        report.ApproverNote = reason;
         await _dbContext.SaveChangesAsync(ct);
 
         if (_audit != null)

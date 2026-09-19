@@ -1,0 +1,22 @@
+<div class="meterp-page-header" data-testid="@TestId">
+    <div class="meterp-page-header-text">
+        <h1>@Title</h1>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <p class="meterp-page-kicker">@Subtitle</p>
+        }
+    </div>
+    @if (Actions != null)
+    {
+        <div class="meterp-page-header-actions">
+            @Actions
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public string TestId { get; set; } = "page-header";
+}

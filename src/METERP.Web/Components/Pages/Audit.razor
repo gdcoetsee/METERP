@@ -9,13 +9,11 @@
 
 <PageTitle>Audit Log</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Audit Log</h1>
-        <p class="text-muted small mb-0">Tenant-isolated history of quotes, jobs, invoices, compliance, and CRM actions.</p>
-    </div>
-    <button class="btn btn-outline-secondary btn-sm" data-testid="audit-export-csv" @onclick="ExportLog">Export CSV</button>
-</div>
+<PageHeader Title="Audit log" Subtitle="What changed, who did it, and when — tenant-isolated." TestId="audit-page-header">
+    <Actions>
+        <button class="btn btn-outline-secondary" data-testid="audit-export-csv" @onclick="ExportLog">Export CSV</button>
+    </Actions>
+</PageHeader>
 
 <div class="row g-2 mb-3" data-testid="audit-filters">
     <div class="col-md-2">

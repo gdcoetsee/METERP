@@ -65,6 +65,10 @@ else
                             <span class="badge bg-secondary">@r.Status</span>
                         </div>
                         <div class="text-muted">@r.HoursWorked.ToString("N1")h · travel R @r.TravelCost.ToString("N0")</div>
+                        @if (!string.IsNullOrWhiteSpace(r.ApproverNote))
+                        {
+                            <div class="small mt-1">Approver: @r.ApproverNote</div>
+                        }
                     </div>
                 }
             </div>

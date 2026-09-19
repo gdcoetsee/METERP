@@ -87,7 +87,7 @@ public static class E2EHelpers
                     new() { Timeout = 15000, WaitUntil = WaitUntilState.Commit });
                 await page.WaitForURLAsync(
                     u => !u.Contains("login", StringComparison.OrdinalIgnoreCase),
-                    new() { Timeout = 15000 });
+                    new() { Timeout = 15000, WaitUntil = WaitUntilState.Commit });
                 await page.WaitForAppReadyAsync(15000);
                 return page;
             }
@@ -224,9 +224,10 @@ public static class E2EHelpers
                     "[data-testid='quote-editor']",
                     new() { Timeout = timeoutMs, State = WaitForSelectorState.Visible });
 
-                var customerId = await page.Locator("[data-testid='quote-customer-select'] option")
-                    .Nth(1)
-                    .GetAttributeAsync("value");
+                await page.WaitForSelectorAsync(
+                    "[data-testid='quote-customer-select'] option",
+                    new() { Timeout = 10000, State = WaitForSelectorState.Attached });
+                var customerId = await FirstRealCustomerIdAsync(page);
                 if (!string.IsNullOrWhiteSpace(customerId)
                     && !string.Equals(customerId, Guid.Empty.ToString(), StringComparison.OrdinalIgnoreCase))
                 {
@@ -248,6 +249,25 @@ public static class E2EHelpers
         }
 
         await page.WaitForTestIdAsync("quote-editor", timeoutMs);
+    }
+
+    private static async Task<string?> FirstRealCustomerIdAsync(IPage page)
+    {
+        var options = page.Locator("[data-testid='quote-customer-select'] option");
+        var count = await options.CountAsync();
+        for (var i = 0; i < count; i++)
+        {
+            var value = await options.Nth(i).GetAttributeAsync("value");
+            if (!string.IsNullOrWhiteSpace(value)
+                && !string.Equals(value, Guid.Empty.ToString(), StringComparison.OrdinalIgnoreCase))
+                return value;
+        }
+
+        var pickerOption = page.Locator("[data-testid='quote-customer-select-option']").First;
+        if (await pickerOption.CountAsync() > 0)
+            return await pickerOption.GetAttributeAsync("data-value");
+
+        return null;
     }
 
     /// <summary>Opens the jobs list detail panel via ?panel= deep link.</summary>
@@ -453,6 +473,34 @@ public static class E2EHelpers
         var fallback = page.Locator("[data-testid='opportunity-card-with-customer'], [data-testid='opportunity-card']").First;
         await fallback.ClickAsync(new() { Force = true });
         await page.WaitForTestIdAsync("opportunity-detail", timeoutMs);
+    }
+
+    /// <summary>
+    /// Opens a queue row review overlay and clicks Approve (no confirm dialog).
+    /// </summary>
+    public static async Task ApproveFromReviewAsync(
+        this IPage page,
+        string rowTestId,
+        string reviewTestId,
+        string approveTestId,
+        string? noteTestId = null,
+        string? note = null)
+    {
+        await page.Locator($"[data-testid='{rowTestId}']").First.ClickAsync();
+        await page.WaitForTestIdAsync(reviewTestId, 15000);
+        if (!string.IsNullOrWhiteSpace(noteTestId) && !string.IsNullOrWhiteSpace(note))
+            await page.FillByTestIdAsync(noteTestId, note);
+        await page.ClickByTestIdWhenEnabledAsync(approveTestId);
+        try
+        {
+            await page.WaitForSelectorAsync(
+                $"[data-testid='{reviewTestId}']",
+                new() { State = WaitForSelectorState.Hidden, Timeout = 20000 });
+        }
+        catch (TimeoutException)
+        {
+            /* overlay may already have unmounted */
+        }
     }
 
     public static async Task FillByTestIdAsync(this IPage page, string testId, string value)

@@ -14,24 +14,22 @@
     <span data-testid="ai-settings-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h1>AI Settings</h1>
-        <p class="text-muted mb-0">Configure your tenant's AI provider. Deployment defaults apply when tenant override is off.</p>
-    </div>
-    @if (effectiveConfigured)
-    {
-        <span class="badge bg-success">AI Configured</span>
-    }
-    else
-    {
-        <span class="badge bg-warning text-dark">Not Configured</span>
-    }
-</div>
+<PageHeader Title="AI settings" Subtitle="Connect a provider for this tenant. Deployment defaults apply when override is off." TestId="ai-settings-page-header">
+    <Actions>
+        @if (effectiveConfigured)
+        {
+            <span class="badge bg-success">Configured</span>
+        }
+        else
+        {
+            <span class="badge bg-warning text-dark">Not configured</span>
+        }
+    </Actions>
+</PageHeader>
 
 @if (_loading)
 {
-    <p><em>Loading settings...</em></p>
+    <ListSkeleton Rows="4" TestId="ai-settings-loading" AriaLabel="Loading AI settings" />
 }
 else
 {

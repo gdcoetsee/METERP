@@ -21,13 +21,14 @@
     <span data-testid="tenants-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Tenants</h1>
-    @if (UserCanManage)
-    {
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Tenant</button>
-    }
-</div>
+<PageHeader Title="Tenants" Subtitle="Companies on this METERP instance. Name and subdomain are required." TestId="tenants-page-header">
+    <Actions>
+        @if (UserCanManage)
+        {
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-tenant-button">New tenant</button>
+        }
+    </Actions>
+</PageHeader>
 
 <div class="mb-3" style="max-width: 420px;">
     <div class="input-group">
@@ -42,7 +43,7 @@
 
 @if (_loading)
 {
-    <p data-testid="tenants-loading"><em>Loading tenants...</em></p>
+    <ListSkeleton Rows="6" TestId="tenants-loading" AriaLabel="Loading tenants" />
 }
 else if (tenants == null || !tenants.Any())
 {
@@ -129,19 +130,21 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4" data-testid="tenant-edit-form">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit Tenant" : "New Tenant")</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit tenant" : "New tenant")"
+               Size="xl"
+               TestId="tenant-edit-form"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="currentTenant" OnValidSubmit="SaveTenant" FormName="TenantForm">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Name *</label>
+                        <label class="form-label meterp-required">Name</label>
                         <InputText class="form-control" @bind-Value="currentTenant.Name" required />
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Subdomain *</label>
+                        <label class="form-label meterp-required">Subdomain</label>
                         <InputText class="form-control" @bind-Value="currentTenant.Subdomain" required placeholder="e.g. acme" />
                         <div class="form-text">Lowercase, unique identifier (used for tenant routing later).</div>
                     </div>
@@ -270,13 +273,13 @@ else
                     </div>
                 }
 
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save Tenant</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
-                </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveTenant">Save tenant</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {

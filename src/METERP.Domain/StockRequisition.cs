@@ -29,6 +29,9 @@ public class StockRequisition : BaseEntity
 
     public string? RejectionReason { get; set; }
 
+    /// <summary>Note from the approver, shown back to the requester on approve or reject.</summary>
+    public string? ApproverNote { get; set; }
+
     public Guid? PurchaseOrderId { get; set; }
     public PurchaseOrder? PurchaseOrder { get; set; }
 

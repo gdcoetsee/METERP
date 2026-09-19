@@ -14,11 +14,13 @@ public interface ILeaveService
 
     Task<Guid> SubmitRequestAsync(LeaveRequest request, CancellationToken ct = default);
 
-    Task<bool> ApproveManagerAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default);
+    Task<bool> ApproveManagerAsync(Guid requestId, Guid approverUserId, string? note = null, CancellationToken ct = default);
 
-    Task<bool> ApproveExecutiveAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default);
+    Task<bool> ApproveExecutiveAsync(Guid requestId, Guid approverUserId, string? note = null, CancellationToken ct = default);
 
-    Task<bool> ApproveHrAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default);
+    Task<bool> ApproveHrAsync(Guid requestId, Guid approverUserId, string? note = null, CancellationToken ct = default);
+
+    Task UpdatePendingAsync(LeaveRequest request, CancellationToken ct = default);
 
     Task<bool> RejectAsync(Guid requestId, Guid approverUserId, string reason, CancellationToken ct = default);
 

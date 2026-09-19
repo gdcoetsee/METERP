@@ -749,6 +749,10 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<string>("MaterialsUsed")
                         .HasColumnType("text");
 
+                    b.Property<string>("ApproverNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
 
@@ -1890,6 +1894,10 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<string>("Reason")
                         .HasColumnType("text");
 
+                    b.Property<string>("ApproverNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
 
@@ -1935,6 +1943,9 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<DateTime>("ExpectedClose")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("BoardOrder")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -2268,6 +2279,10 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<Guid?>("ExecutiveApprovedByUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ExecutiveDecisionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("ExecutiveRejectionReason")
                         .HasColumnType("text");
@@ -2642,6 +2657,10 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<Guid?>("PurchaseOrderId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ApproverNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");

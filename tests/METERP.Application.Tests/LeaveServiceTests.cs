@@ -1440,6 +1440,52 @@ public class LeaveServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task UpdatePending_AndApprove_StoresNote()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var employee = new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-NOTE",
+                FirstName = "Pat",
+                LastName = "Lee",
+                HireDate = DateTime.UtcNow.AddYears(-1),
+                AnnualLeaveEntitlementDays = 20,
+                IsActive = true
+            };
+            db.Set<Employee>().Add(employee);
+            await db.SaveChangesAsync();
+
+            var requestId = await service.SubmitRequestAsync(new LeaveRequest
+            {
+                TenantId = tenantId,
+                EmployeeId = employee.Id,
+                StartDate = DateTime.UtcNow.AddDays(10),
+                EndDate = DateTime.UtcNow.AddDays(11),
+                Reason = "Personal"
+            });
+
+            await service.UpdatePendingAsync(new LeaveRequest
+            {
+                Id = requestId,
+                StartDate = DateTime.UtcNow.AddDays(12),
+                EndDate = DateTime.UtcNow.AddDays(14),
+                DaysRequested = 3,
+                Reason = "Extended"
+            });
+
+            Assert.True(await service.ApproveManagerAsync(requestId, Guid.NewGuid(), "Dates look fine."));
+            var saved = await db.Set<LeaveRequest>().FirstAsync(r => r.Id == requestId);
+            Assert.Equal(3m, saved.DaysRequested);
+            Assert.Equal("Extended", saved.Reason);
+            Assert.Equal("Dates look fine.", saved.ApproverNote);
+            Assert.Equal(LeaveRequestStatus.PendingExecutive, saved.Status);
+        }
+    }
+
     private sealed class TestCurrentUser : ICurrentUserService
     {
         public Guid? UserId => Guid.NewGuid();

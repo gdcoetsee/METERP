@@ -8,17 +8,15 @@
 
 <PageTitle>Divisions</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Divisions</h1>
-        <p class="text-muted small mb-0">Branches for accountability, performance scorecards, and job assignment.</p>
-    </div>
-    <AuthorizeView Policy="Divisions.Manage">
-        <Authorized>
-            <button type="button" class="btn btn-primary btn-sm" data-testid="divisions-add" @onclick="OpenCreate">Add division</button>
-        </Authorized>
-    </AuthorizeView>
-</div>
+<PageHeader Title="Divisions" Subtitle="Branches for accountability, scorecards, and job assignment." TestId="divisions-page-header">
+    <Actions>
+        <AuthorizeView Policy="Divisions.Manage">
+            <Authorized>
+                <button type="button" class="btn btn-primary" data-testid="divisions-add" @onclick="OpenCreate">Add division</button>
+            </Authorized>
+        </AuthorizeView>
+    </Actions>
+</PageHeader>
 
 @if (_loading)
 {

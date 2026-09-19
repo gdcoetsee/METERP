@@ -1,0 +1,299 @@
+@using METERP.Application.Services
+@using METERP.Common
+@using METERP.Domain
+@using METERP.Web.Reports
+@inject IOperationalReportService Reports
+@inject IDivisionService Divisions
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+<div data-testid="reports-library">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <div>
+            <h5 class="mb-0">Executive reports</h5>
+            <p class="small text-muted mb-0">Live operational packs — jobs, quotes, cash, stock, people. Filter jobs by division.</p>
+        </div>
+    </div>
+
+    <div class="meterp-report-shell">
+        <nav class="meterp-report-nav" data-testid="reports-catalog">
+            @foreach (var cat in Categories)
+            {
+                <div class="meterp-report-nav-cat">@cat</div>
+                @foreach (var item in _catalog.Where(c => c.Category == cat))
+                {
+                    <button type="button"
+                            class="meterp-report-nav-btn @(_key == item.Key ? "is-active" : "")"
+                            data-testid="@item.TestId"
+                            @onclick="() => OpenAsync(item.Key)">
+                        @item.Title
+                    </button>
+                }
+            }
+        </nav>
+
+        <div class="meterp-report-main">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                <div class="flex-grow-1">
+                    <h6 class="mb-0">@_title</h6>
+                    @if (!string.IsNullOrWhiteSpace(_summary))
+                    {
+                        <p class="small text-muted mb-0">@_summary</p>
+                    }
+                </div>
+                @if (_supportsDivision)
+                {
+                    <select class="form-select form-select-sm" style="width:auto;min-width:12rem;"
+                            data-testid="reports-division-filter"
+                            @bind="_divisionId" @bind:after="ReloadAsync">
+                        <option value="@Guid.Empty">All divisions</option>
+                        @foreach (var d in _divisions)
+                        {
+                            <option value="@d.Id">@d.Name</option>
+                        }
+                    </select>
+                }
+                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(_busy || _rows.Count == 0)"
+                        data-testid="reports-runner-csv" @onclick="ExportCsvAsync">CSV</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(_busy || _rows.Count == 0)"
+                        @onclick="ExportPdfAsync">PDF</button>
+            </div>
+
+            @if (_busy)
+            {
+                <p class="text-muted mb-0">Loading report…</p>
+            }
+            else if (_rows.Count == 0)
+            {
+                <p class="text-muted mb-0">No rows for this report yet.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover" data-testid="reports-runner-table">
+                        <thead>
+                            <tr>
+                                @foreach (var h in _headers)
+                                {
+                                    <th>@h</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var i = 0; i < _rows.Count; i++)
+                            {
+                                var index = i;
+                                var row = _rows[i];
+                                var jobId = _rowIds.Count > i ? _rowIds[i] : Guid.Empty;
+                                <tr style="@(jobId != Guid.Empty ? "cursor:pointer;" : null)"
+                                    @onclick="() => OpenJobAsync(jobId)">
+                                    @foreach (var cell in row)
+                                    {
+                                        <td>@cell</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (_rowIds.Count > 0)
+                {
+                    <p class="small text-muted mb-0">Click a job row for the full performance pack (costs, labor, dates, margin).</p>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@if (_job != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"{_job.JobNumber} — {_job.Title}")"
+               Size="xl"
+               TestId="reports-job-performance"
+               CloseOnBackdrop="false"
+               OnClose="CloseJob">
+        <ChildContent>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4"><strong>Customer</strong><div>@_job.Customer</div></div>
+                <div class="col-md-4"><strong>Division</strong><div>@_job.Division</div></div>
+                <div class="col-md-4"><strong>Assigned</strong><div>@_job.Assigned</div></div>
+                <div class="col-md-3"><strong>Status</strong><div>@_job.Status</div></div>
+                <div class="col-md-3"><strong>Sign-off</strong><div>@_job.SignOff</div></div>
+                <div class="col-md-3"><strong>Scheduled</strong><div>@(_job.ScheduledStart?.ToString("yyyy-MM-dd") ?? "—")</div></div>
+                <div class="col-md-3"><strong>Completed</strong><div>@(_job.CompletedDate?.ToString("yyyy-MM-dd") ?? "—")</div></div>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Quoted</span><div>R @_job.Quoted.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Labor</span><div>R @_job.Labor.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Travel</span><div>R @_job.Travel.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Materials</span><div>R @_job.Materials.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Other</span><div>R @_job.Other.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Actual</span><div>R @_job.Actual.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Variance</span><div>R @_job.Variance.ToString("N2")</div></div></div>
+                <div class="col"><div class="border rounded p-2"><span class="small text-muted">Margin</span><div>@_job.MarginPercent.ToString("0.0")%</div></div></div>
+            </div>
+            <h6>Cost lines</h6>
+            @if (_job.Costs.Count == 0)
+            {
+                <p class="small text-muted">No job costs posted.</p>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>Type</th><th>Description</th><th class="text-end">Amount</th><th>Date</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in _job.Costs)
+                    {
+                        <tr>
+                            <td>@c.Type</td>
+                            <td>@c.Description</td>
+                            <td class="text-end">R @c.Amount.ToString("N2")</td>
+                            <td>@c.Date.ToString("yyyy-MM-dd")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            <h6>Labor</h6>
+            @if (_job.LaborLines.Count == 0)
+            {
+                <p class="small text-muted mb-0">No labor posted.</p>
+            }
+            else
+            {
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Technician</th><th class="text-end">Hours</th><th class="text-end">Rate</th><th class="text-end">Total</th><th>Date</th></tr></thead>
+                    <tbody>
+                    @foreach (var l in _job.LaborLines)
+                    {
+                        <tr>
+                            <td>@l.Technician</td>
+                            <td class="text-end">@l.Hours.ToString("N1")</td>
+                            <td class="text-end">R @l.Rate.ToString("N2")</td>
+                            <td class="text-end">R @l.Total.ToString("N2")</td>
+                            <td>@l.Date.ToString("yyyy-MM-dd")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseJob">Close</button>
+        </Footer>
+    </FormModal>
+}
+
+@code {
+    private IReadOnlyList<ReportDefinition> _catalog = [];
+    private List<Division> _divisions = new();
+    private string _key = "jobs";
+    private string _title = "Job performance";
+    private string? _summary;
+    private bool _supportsDivision = true;
+    private bool _busy = true;
+    private Guid _divisionId = Guid.Empty;
+    private string[] _headers = [];
+    private List<string[]> _rows = new();
+    private List<Guid> _rowIds = new();
+    private JobPerformanceDetail? _job;
+
+    private IEnumerable<string> Categories => _catalog.Select(c => c.Category).Distinct();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _catalog = Reports.GetCatalog();
+        try
+        {
+            _divisions = (await Divisions.GetAllAsync()).ToList();
+        }
+        catch
+        {
+            _divisions = new();
+        }
+        await OpenAsync("jobs");
+    }
+
+    private async Task OpenAsync(string key)
+    {
+        _key = key;
+        var def = _catalog.FirstOrDefault(c => c.Key == key);
+        _title = def?.Title ?? "Report";
+        _supportsDivision = def?.SupportsDivision ?? false;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        _rows = new();
+        _rowIds = new();
+        _summary = null;
+        try
+        {
+            Guid? div = _supportsDivision && _divisionId != Guid.Empty ? _divisionId : null;
+            var table = await Reports.RunAsync(_key, div);
+            _title = table.Title;
+            _headers = table.Headers;
+            _rows = table.Rows.ToList();
+            _summary = table.Summary;
+            _rowIds = table.RowIds?.ToList() ?? new();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OpenJobAsync(Guid jobId)
+    {
+        if (jobId == Guid.Empty) return;
+        try
+        {
+            _job = await Reports.GetJobPerformanceAsync(jobId);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private void CloseJob() => _job = null;
+
+    private async Task ExportCsvAsync()
+    {
+        if (_rows.Count == 0) return;
+        try
+        {
+            var csv = TabularExportHelper.BuildCsv(string.Join(",", _headers), _rows.Select(r => r.AsEnumerable()));
+            try { await JS.InvokeVoidAsync("meterpUi.downloadText", $"{_key}-report.csv", csv, "text/csv;charset=utf-8"); }
+            catch { }
+            Toast.ShowSuccess("Report CSV downloaded.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        if (_rows.Count == 0) return;
+        try
+        {
+            var pdf = TabularPdfGenerator.Generate(_title, _headers, _rows);
+            try { await JS.InvokeVoidAsync("meterpUi.downloadBytes", $"{_key}-report.pdf", Convert.ToBase64String(pdf), "application/pdf"); }
+            catch { }
+            Toast.ShowSuccess("Report PDF downloaded.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+}

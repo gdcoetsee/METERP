@@ -1153,7 +1153,9 @@ public class JobService : IJobService
         if (!string.IsNullOrWhiteSpace(labor.Description) && labor.Description.Trim().Length > 500)
             throw new InvalidOperationException("Labor description cannot exceed 500 characters.");
 
-        labor.WorkDate = labor.WorkDate == default ? DateTime.UtcNow.Date : labor.WorkDate.Date;
+        labor.WorkDate = labor.WorkDate == default
+            ? DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc)
+            : DateTime.SpecifyKind(labor.WorkDate.Date, DateTimeKind.Utc);
         if (labor.WorkDate > DateTime.UtcNow.Date.AddDays(1))
             throw new InvalidOperationException("Labor work date cannot be more than one day in the future.");
         if (labor.WorkDate < DateTime.UtcNow.Date.AddYears(-2))

@@ -2,15 +2,22 @@
 @inject ToastService ToastService
 @implements IDisposable
 
-<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100" data-testid="toast-container">
     @foreach (var toast in _toasts)
     {
-        <div class="toast show align-items-center text-white @GetBgClass(toast.Type) border-0 mb-2" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast show align-items-center mb-2 @(toast.Type == ToastType.Notification ? "meterp-notify-card" : $"text-white border-0 {GetBgClass(toast.Type)}")"
+             role="alert" aria-live="assertive" aria-atomic="true"
+             data-testid="@(toast.Type == ToastType.Notification ? "live-notification" : "toast")">
             <div class="d-flex">
                 <div class="toast-body">
+                    @if (!string.IsNullOrWhiteSpace(toast.Title))
+                    {
+                        <strong class="d-block">@toast.Title</strong>
+                    }
                     @toast.Message
                 </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" @onclick="() => Dismiss(toast)" aria-label="Close"></button>
+                <button type="button" class="btn-close @(toast.Type == ToastType.Notification ? "" : "btn-close-white") me-2 m-auto"
+                        @onclick="() => Dismiss(toast)" aria-label="Close"></button>
             </div>
         </div>
     }

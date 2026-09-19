@@ -21,16 +21,15 @@
     <span data-testid="inventory-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h1 class="mb-0">Inventory</h1>
-    <div class="d-flex gap-2 align-items-center">
+<PageHeader Title="Inventory" Subtitle="Stock you issue to jobs. Name and SKU should be unique." TestId="inventory-page-header">
+    <Actions>
         <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="inventory-export" OnExportCsv="ExportCsvAsync" />
         @if (UserCanManage)
         {
-            <button class="btn btn-primary" @onclick="ShowCreateForm">+ New Item</button>
+            <button class="btn btn-primary" @onclick="ShowCreateForm" data-testid="new-inventory-button">New item</button>
         }
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 <div class="mb-3 d-flex gap-2" style="max-width: 520px;">
     <div class="input-group flex-grow-1">
@@ -58,7 +57,7 @@
 
 @if (_loading)
 {
-    <p data-testid="inventory-loading"><em>Loading inventory...</em></p>
+    <ListSkeleton Rows="6" TestId="inventory-loading" AriaLabel="Loading inventory" />
 }
 else if (items == null || !items.Any())
 {
@@ -129,11 +128,13 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit Item" : "New Inventory Item")</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit item" : "New inventory item")"
+               Size="lg"
+               TestId="inventory-form-modal"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="currentItem" OnValidSubmit="SaveItem" FormName="InventoryItemForm">
                 <div class="row">
                     <div class="col-md-4 mb-3">
@@ -141,7 +142,7 @@ else
                         <InputText class="form-control" @bind-Value="currentItem.Sku" />
                     </div>
                     <div class="col-md-8 mb-3">
-                        <label class="form-label">Name *</label>
+                        <label class="form-label meterp-required">Name</label>
                         <InputText class="form-control" @bind-Value="currentItem.Name" required />
                     </div>
                 </div>
@@ -177,23 +178,24 @@ else
                     </div>
                 </div>
 
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save Item</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
-                </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveItem">Save item</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedItem != null)
 {
-    <div class="card mt-4 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedItem.Name (@selectedItem.Sku)</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseItemView">Close</button>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedItem.Name} ({selectedItem.Sku})")"
+               Size="lg"
+               TestId="inventory-detail"
+               CloseOnBackdrop="false"
+               OnClose="CloseItemView">
+        <ChildContent>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <strong>On Hand:</strong> @selectedItem.QuantityOnHand @selectedItem.Unit<br />
@@ -244,15 +246,22 @@ else
             {
                 <p class="text-muted">No transactions recorded yet.</p>
             }
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseItemView">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (showAdjustForm && adjustItem != null)
 {
-    <div class="card mt-3 border-warning">
-        <div class="card-header bg-warning text-dark">Adjust Stock for @adjustItem.Name</div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"Adjust stock — {adjustItem.Name}")"
+               Size="md"
+               Layer="2"
+               TestId="inventory-adjust-modal"
+               OnClose="CancelAdjust">
+        <ChildContent>
             <div class="row g-2">
                 <div class="col-md-3">
                     <label class="form-label">Quantity Change</label>
@@ -276,9 +285,12 @@ else
                     <button class="btn btn-warning w-100" @onclick="SubmitAdjustment">Record</button>
                 </div>
             </div>
-            <button class="btn btn-sm btn-secondary mt-2" @onclick="CancelAdjust">Cancel</button>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CancelAdjust">Cancel</button>
+            <button class="btn btn-warning" @onclick="SubmitAdjustment">Record</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {

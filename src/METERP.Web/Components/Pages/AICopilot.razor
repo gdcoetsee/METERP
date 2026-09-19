@@ -47,22 +47,18 @@ else if (_aiQuotaExhausted)
     </div>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h1>✨ AI Copilot</h1>
-        <p class="text-muted mb-0">Your intelligent assistant for better bids, lower variance, and smarter operations.</p>
-    </div>
-    <div>
+<PageHeader Title="AI Copilot" Subtitle="Bid help, variance analysis, and quote drafts. Does not replace checking the numbers." TestId="ai-copilot-page-header">
+    <Actions>
         @if (_aiConfigured)
         {
-            <span class="badge bg-success">AI Connected (@_aiProvider)</span>
+            <span class="badge bg-success">Connected (@_aiProvider)</span>
         }
         else
         {
-            <span class="badge bg-warning text-dark">AI Not Configured — <a href="/settings/ai" class="alert-link">configure in Settings</a> or set Ai__* in .env</span>
+            <a href="/settings/ai" class="badge bg-warning text-dark text-decoration-none">Not configured — open settings</a>
         }
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 <div class="row">
     <div class="col-lg-4">

@@ -32,6 +32,11 @@ public class ToastService : IDisposable
         Show(new ToastMessage(message, ToastType.Info, durationMs));
     }
 
+    public void ShowNotification(string title, string message, int durationMs = 6000)
+    {
+        Show(new ToastMessage(message, ToastType.Notification, durationMs, title));
+    }
+
     private void Show(ToastMessage toast)
     {
         OnShow?.Invoke(toast);
@@ -54,11 +59,12 @@ public class ToastService : IDisposable
     }
 }
 
-public record ToastMessage(string Message, ToastType Type, int DurationMs);
+public record ToastMessage(string Message, ToastType Type, int DurationMs, string? Title = null);
 
 public enum ToastType
 {
     Success,
     Error,
-    Info
+    Info,
+    Notification
 }

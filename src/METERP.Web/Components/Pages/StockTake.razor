@@ -11,16 +11,14 @@
 
 <PageTitle>Stock Take</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Stock Take</h1>
-        <p class="text-muted small mb-0">Cycle counts with variance posting — paperless stores reconciliation.</p>
-    </div>
-    @if (CanManage)
-    {
-        <button type="button" class="btn btn-primary" data-testid="stock-take-start" @onclick="StartSessionAsync">Start new session</button>
-    }
-</div>
+<PageHeader Title="Stock take" Subtitle="Cycle counts with variance posted to stock. Start a session, count, then post." TestId="stock-take-page-header">
+    <Actions>
+        @if (CanManage)
+        {
+            <button type="button" class="btn btn-primary" data-testid="stock-take-start" @onclick="StartSessionAsync">Start session</button>
+        }
+    </Actions>
+</PageHeader>
 
 @if (_loading)
 {

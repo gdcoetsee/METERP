@@ -3531,9 +3531,8 @@ public class E2EFlowTests
             return;
         }
 
-        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-field-approve");
-        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.ApproveFromReviewAsync(
+            "approvals-field-row", "approvals-field-review", "approvals-field-approve");
 
         var toast = adminPage.Locator(".toast-body").Filter(new() { HasText = "Field report approved" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
@@ -3584,9 +3583,8 @@ public class E2EFlowTests
             return;
         }
 
-        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
-        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.ApproveFromReviewAsync(
+            "approvals-requisition-row", "approvals-requisition-review", "approvals-requisition-approve");
 
         var toast = adminPage.Locator(".toast-body").Filter(new()
         {
@@ -3656,9 +3654,8 @@ public class E2EFlowTests
             return;
         }
 
-        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-leave-approve");
-        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.ApproveFromReviewAsync(
+            "approvals-leave-row", "approvals-leave-review", "approvals-leave-approve");
 
         var toast = adminPage.Locator(".toast-body").Filter(new() { HasText = "Leave request advanced" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });
@@ -3709,9 +3706,8 @@ public class E2EFlowTests
         }
 
         // First approve may be manager→executive or (if queue mixed) executive→reserved.
-        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
-        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.ApproveFromReviewAsync(
+            "approvals-requisition-row", "approvals-requisition-review", "approvals-requisition-approve");
         await adminPage.Locator(".toast-body").Filter(new()
         {
             HasTextRegex = new System.Text.RegularExpressions.Regex(
@@ -3724,9 +3720,8 @@ public class E2EFlowTests
             return;
         }
 
-        await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
-        await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-        await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+        await adminPage.ApproveFromReviewAsync(
+            "approvals-requisition-row", "approvals-requisition-review", "approvals-requisition-approve");
 
         var finalToast = adminPage.Locator(".toast-body").Filter(new()
         {
@@ -3790,9 +3785,8 @@ public class E2EFlowTests
 
         for (var step = 0; step < 3 && await adminPage.Locator("[data-testid='approvals-leave-row']").CountAsync() > 0; step++)
         {
-            await adminPage.ClickByTestIdWhenEnabledAsync("approvals-leave-approve");
-            await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-            await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+            await adminPage.ApproveFromReviewAsync(
+                "approvals-leave-row", "approvals-leave-review", "approvals-leave-approve");
             await adminPage.Locator(".toast-body").Filter(new() { HasText = "Leave request advanced" })
                 .First.WaitForAsync(new() { Timeout = 20000 });
             await adminPage.WaitForTestIdAsync("approvals-ready", 10000);
@@ -3861,9 +3855,8 @@ public class E2EFlowTests
 
         for (var step = 0; step < 2 && await adminPage.Locator("[data-testid='approvals-requisition-row']").CountAsync() > 0; step++)
         {
-            await adminPage.ClickByTestIdWhenEnabledAsync("approvals-requisition-approve");
-            await adminPage.WaitForTestIdAsync("confirm-dialog", 10000);
-            await adminPage.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+            await adminPage.ApproveFromReviewAsync(
+                "approvals-requisition-row", "approvals-requisition-review", "approvals-requisition-approve");
             await adminPage.Locator(".toast-body").Filter(new()
             {
                 HasTextRegex = new Regex(
@@ -3939,9 +3932,10 @@ public class E2EFlowTests
             return;
         }
 
+        await page.Locator("[data-testid='approvals-quote-row']").First.ClickAsync();
+        await page.WaitForTestIdAsync("approvals-quote-review", 15000);
+        await page.FillByTestIdAsync("approvals-quote-note", "Approved — send to customer.");
         await page.ClickByTestIdWhenEnabledAsync("approvals-quote-approve");
-        await page.WaitForTestIdAsync("confirm-dialog", 10000);
-        await page.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
 
         var toast = page.Locator(".toast-body").Filter(new() { HasText = "approved" });
         await toast.First.WaitForAsync(new() { Timeout = 20000 });

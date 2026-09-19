@@ -202,7 +202,26 @@ public sealed class StockRequisitionService : IStockRequisitionService
         return requisition.Id;
     }
 
-    public async Task<bool> ApproveManagerAsync(Guid requisitionId, Guid approverUserId, CancellationToken ct = default)
+    public async Task UpdatePendingLineQuantityAsync(Guid lineId, decimal quantityRequested, CancellationToken ct = default)
+    {
+        if (quantityRequested <= 0)
+            throw new InvalidOperationException("Quantity must be positive.");
+
+        var line = await _dbContext.Set<StockRequisitionLine>()
+            .Include(l => l.StockRequisition)
+            .FirstOrDefaultAsync(l => l.Id == lineId, ct)
+            ?? throw new InvalidOperationException("Requisition line not found.");
+
+        var req = line.StockRequisition
+            ?? throw new InvalidOperationException("Requisition not found.");
+        if (req.Status is not (RequisitionStatus.PendingManager or RequisitionStatus.PendingExecutive))
+            throw new InvalidOperationException("Only pending requisitions can be revised.");
+
+        line.QuantityRequested = quantityRequested;
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> ApproveManagerAsync(Guid requisitionId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var req = await LoadForUpdateAsync(requisitionId, ct);
         if (req == null || req.Status != RequisitionStatus.PendingManager)
@@ -213,6 +232,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
         req.Status = RequisitionStatus.PendingExecutive;
         req.ManagerApprovedByUserId = approverUserId;
         req.ManagerApprovedAt = DateTime.UtcNow;
+        ApplyApproverNote(req, note);
         await _dbContext.SaveChangesAsync(ct);
         await LogAsync("APPROVE_MANAGER", req, ct);
 
@@ -233,7 +253,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
         return true;
     }
 
-    public async Task<bool> ApproveExecutiveAsync(Guid requisitionId, Guid approverUserId, CancellationToken ct = default)
+    public async Task<bool> ApproveExecutiveAsync(Guid requisitionId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var req = await LoadForUpdateAsync(requisitionId, ct);
         if (req == null || req.Status != RequisitionStatus.PendingExecutive)
@@ -276,6 +296,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
 
         req.ExecutiveApprovedByUserId = approverUserId;
         req.ExecutiveApprovedAt = DateTime.UtcNow;
+        ApplyApproverNote(req, note);
         await _dbContext.SaveChangesAsync(ct);
 
         var detail = anyShort
@@ -337,6 +358,7 @@ public sealed class StockRequisitionService : IStockRequisitionService
         await ReleaseReservationsAsync(req, ct);
         req.Status = RequisitionStatus.Rejected;
         req.RejectionReason = reason;
+        req.ApproverNote = reason;
         req.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
         await LogAsync("REJECT", req, req.RejectionReason, ct);
@@ -600,6 +622,15 @@ public sealed class StockRequisitionService : IStockRequisitionService
             throw new InvalidOperationException("Job not found or deleted for this requisition.");
         if (!job.IsOpenForOperations())
             throw JobClosedException.ForJob(job.JobNumber);
+    }
+
+    private static void ApplyApproverNote(StockRequisition req, string? note)
+    {
+        if (string.IsNullOrWhiteSpace(note)) return;
+        var trimmed = note.Trim();
+        if (trimmed.Length > 500)
+            throw new InvalidOperationException("Approver note cannot exceed 500 characters.");
+        req.ApproverNote = trimmed;
     }
 
     private async Task LogAsync(string action, StockRequisition req, CancellationToken ct) =>

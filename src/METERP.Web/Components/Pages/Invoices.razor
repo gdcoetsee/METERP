@@ -75,19 +75,18 @@
     </div>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h1>Invoices</h1>
-    <div class="d-flex gap-2 align-items-center">
+<PageHeader Title="Invoices" Subtitle="Bill completed work. Record payments here; invoicing does not close the job." TestId="invoices-page-header">
+    <Actions>
         <ExportToolbar TestId="invoices-export" OnExportCsv="ExportInvoicesCsvAsync" OnExportExcel="ExportInvoicesExcelAsync" OnExportPdf="ExportInvoicesPdfAsync" Disabled="@_loading" />
         @if (UserCanManage)
         {
             <button class="btn btn-primary" @onclick="ShowCreateForm"
                     disabled="@InvoiceQuotaBlocked"
                     title="@(InvoiceQuotaBlocked ? TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Invoice, "Invoices") : null)"
-                    data-testid="new-invoice-button">+ New Invoice</button>
+                    data-testid="new-invoice-button">New invoice</button>
         }
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 @if (InvoiceQuotaBlocked)
 {
@@ -98,8 +97,9 @@
     </div>
 }
 
-<div class="mb-3" style="max-width: 420px;">
+<div class="meterp-filter-bar">
     <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
         <input type="search" class="form-control" data-testid="invoices-search" placeholder="Search invoice #, customer or job..."
                @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" />
         @if (!string.IsNullOrEmpty(searchTerm))
@@ -111,7 +111,7 @@
 
 @if (_loading)
 {
-    <p><em>Loading invoices...</em></p>
+    <ListSkeleton Rows="6" TestId="invoices-loading" AriaLabel="Loading invoices" />
 }
 else if (invoices == null || !invoices.Any())
 {
@@ -143,7 +143,7 @@ else
             <tbody>
                 @foreach (var inv in invoices)
                 {
-                    <tr>
+                    <tr style="cursor:pointer;" @onclick="() => ViewInvoice(inv)" title="Open invoice">
                         <td><strong>@inv.InvoiceNumber</strong></td>
                         <td>
                             @(inv.Customer?.Name ?? "—")<br />
@@ -155,7 +155,7 @@ else
                         <td class="text-end">R @inv.Total.ToString("N2")</td>
                         <td class="text-end">R @inv.BalanceDue.ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewInvoice(inv)" data-testid="view-invoice">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewInvoice(inv)" @onclick:stopPropagation="true" data-testid="view-invoice">View</button>
                             @if (UserCanManage)
                             {
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditInvoice(inv)">Edit</button>
@@ -177,58 +177,59 @@ else
 
 @if (showForm)
 {
-    <div class="card mt-4">
-        <div class="card-header">
-            <h5>@(isEditing ? "Edit Invoice" : "New Invoice")</h5>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@(isEditing ? "Edit invoice" : "New invoice")"
+               Size="md"
+               TestId="invoice-form-modal"
+               CloseOnBackdrop="false"
+               OnClose="CancelForm">
+        <ChildContent>
             <EditForm Model="currentInvoice" OnValidSubmit="SaveInvoice" FormName="InvoiceForm">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Invoice Date</label>
+                <p class="meterp-field-hint mb-3">Prefer creating from a signed-off job when you can — line items and travel copy across automatically.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label meterp-required">Invoice date</label>
                         <InputDate class="form-control" @bind-Value="currentInvoice.InvoiceDate" />
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Due Date</label>
+                    <div class="col-md-6">
+                        <label class="form-label meterp-required">Due date</label>
                         <InputDate class="form-control" @bind-Value="currentInvoice.DueDate" />
                     </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Notes</label>
-                    <InputTextArea class="form-control" @bind-Value="currentInvoice.Notes" rows="2" />
-                </div>
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Tax Rate</label>
+                    <div class="col-md-4">
+                        <label class="form-label">VAT rate</label>
                         <InputNumber class="form-control" @bind-Value="currentInvoice.TaxRate" step="0.01" />
+                        <span class="meterp-field-hint">South Africa standard is 0.15 (15%).</span>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                        <InputTextArea class="form-control" @bind-Value="currentInvoice.Notes" rows="2" />
                     </div>
                 </div>
-
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Save Invoice</button>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelForm">Cancel</button>
-                </div>
             </EditForm>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelForm">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveInvoice">Save invoice</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedInvoice != null)
 {
-    <div class="card mt-4 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@selectedInvoice.InvoiceNumber — @(selectedInvoice.Customer?.Name)</h5>
-            <div>
-                <button class="btn btn-sm btn-light me-2" @onclick="CloseInvoiceView" data-testid="close-invoice-view">Close</button>
-                @if (UserCanManage)
-                {
-                    <button class="btn btn-sm btn-success" @onclick="CreateFromJobIfPossible" data-testid="create-invoice-from-job">Create from Job (demo)</button>
-                }
-            </div>
-        </div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="@($"{selectedInvoice.InvoiceNumber} — {selectedInvoice.Customer?.Name}")"
+               Size="full"
+               TestId="invoice-detail"
+               BackdropTestId="invoice-detail-backdrop"
+               CloseOnBackdrop="false"
+               OnClose="CloseInvoiceView">
+        <HeaderActions>
+            @if (UserCanManage)
+            {
+                <button class="btn btn-sm btn-success" @onclick="CreateFromJobIfPossible" data-testid="create-invoice-from-job">Create from job</button>
+            }
+        </HeaderActions>
+        <ChildContent>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <strong>Type:</strong> @((MarkupString)GetDocumentTypeBadge(selectedInvoice.DocumentType))<br />
@@ -427,8 +428,11 @@ else
                     </div>
                 </div>
             }
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseInvoiceView" data-testid="close-invoice-view">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
@@ -461,11 +465,16 @@ else
     [SupplyParameterFromQuery(Name = "open")]
     public Guid? OpenInvoiceId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "search")]
+    public string? QuerySearch { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
         try
         {
+            if (!string.IsNullOrWhiteSpace(QuerySearch))
+                searchTerm = QuerySearch;
             if (CurrentUserService.TenantId != Guid.Empty)
             {
                 _tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);

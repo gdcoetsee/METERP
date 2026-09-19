@@ -15,13 +15,11 @@
 
 <PageTitle>Stock Requisitions</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Stock Requisitions</h1>
-        <p class="text-muted small mb-0">Manager → executive approval, reserved stock, RFQ / PO → GRV → issue to job.</p>
-    </div>
-    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="requisitions-export" OnExportCsv="ExportCsvAsync" />
-</div>
+<PageHeader Title="Stock requisitions" Subtitle="Approve, RFQ, then raise a PO. Supplier is required to create the PO." TestId="requisitions-page-header">
+    <Actions>
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="requisitions-export" OnExportCsv="ExportCsvAsync" />
+    </Actions>
+</PageHeader>
 
 <div data-testid="requisitions-ready">
 @if (_loading)
@@ -47,6 +45,7 @@ else
                     <th>Lines</th>
                     <th>PPE</th>
                     <th>PO</th>
+                    <th>Approver note</th>
                     <th></th>
                 </tr>
             </thead>
@@ -59,6 +58,7 @@ else
                         <td>@((MarkupString)GetStatusBadge(req.Status))</td>
                         <td>@req.Lines.Count</td>
                         <td>@(req.IsPpe ? "Yes" : "—")</td>
+                        <td class="small">@(string.IsNullOrWhiteSpace(req.ApproverNote) ? "—" : req.ApproverNote)</td>
                         <td>
                             @if (req.PurchaseOrderId.HasValue)
                             {
@@ -103,15 +103,16 @@ else
                TestId="requisition-po-modal"
                OnClose="ClosePoModal">
         <div class="mb-3">
-            <label class="form-label">Supplier *</label>
-            <select class="form-select" @bind="_selectedSupplierId" data-testid="requisition-po-supplier">
-                <option value="">— Select supplier —</option>
-                @foreach (var s in _suppliers)
-                {
-                    <option value="@s.Id">@s.Name</option>
-                }
-            </select>
-            <p class="text-muted small mt-2 mb-0">Creates a draft PO for shortfall quantities not already reserved in stock. Prefer RFQ when comparing multiple suppliers.</p>
+            <label class="form-label meterp-required">Supplier</label>
+            <EntityPicker TestId="requisition-po-supplier"
+                          Value="_selectedSupplierId"
+                          ValueChanged="OnReqSupplierPicked"
+                          Options="ReqSupplierOptions"
+                          SelectedLabel="@SelectedReqSupplierName"
+                          Placeholder="Type a supplier name"
+                          Required="true"
+                          OnSearch="SearchReqSuppliersAsync" />
+            <p class="meterp-field-hint mb-0">Creates a draft PO for shortfall not already reserved. Use RFQ when comparing suppliers.</p>
         </div>
         <div class="d-flex gap-2 justify-content-end">
             <button type="button" class="btn btn-secondary" @onclick="ClosePoModal">Cancel</button>
@@ -296,13 +297,30 @@ else
 
     [Inject] private ConfirmService Confirm { get; set; } = default!;
 
+    private IReadOnlyList<EntityPickerOption> ReqSupplierOptions =>
+        _suppliers.Select(s => new EntityPickerOption { Id = s.Id, Label = s.Name }).ToList();
+    private string? SelectedReqSupplierName =>
+        _suppliers.FirstOrDefault(s => s.Id == _selectedSupplierId)?.Name;
+
+    private Task OnReqSupplierPicked(Guid id)
+    {
+        _selectedSupplierId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchReqSuppliersAsync(string term)
+    {
+        _suppliers = (await SupplierService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50)).ToList();
+    }
+
     private bool CanIssue => CurrentUser.Permissions.Contains(Permissions.RequisitionsManage);
     private bool CanManage => CurrentUser.Permissions.Contains(Permissions.PurchaseOrdersManage)
         || CurrentUser.Permissions.Contains(Permissions.RequisitionsManage);
 
     protected override async Task OnInitializedAsync()
     {
-        _suppliers = (await SupplierService.GetAllAsync()).ToList();
+        _suppliers = (await SupplierService.GetAllAsync(pageSize: 50)).ToList();
         await LoadAsync();
     }
 

@@ -152,7 +152,29 @@ public sealed class LeaveService : ILeaveService
         return request.Id;
     }
 
-    public async Task<bool> ApproveManagerAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default)
+    public async Task UpdatePendingAsync(LeaveRequest request, CancellationToken ct = default)
+    {
+        var existing = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == request.Id, ct)
+            ?? throw new InvalidOperationException("Leave request not found.");
+        if (existing.Status is LeaveRequestStatus.Approved or LeaveRequestStatus.Rejected or LeaveRequestStatus.Cancelled)
+            throw new InvalidOperationException("Only pending leave requests can be revised.");
+
+        var start = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+        var end = DateTime.SpecifyKind(request.EndDate.Date, DateTimeKind.Utc);
+        if (end < start)
+            throw new InvalidOperationException("Leave end date cannot be before the start date.");
+
+        existing.StartDate = start;
+        existing.EndDate = end;
+        existing.DaysRequested = request.DaysRequested > 0
+            ? request.DaysRequested
+            : (decimal)(end - start).TotalDays + 1;
+        existing.Reason = request.Reason;
+        existing.IsPaid = request.IsPaid;
+        await _dbContext.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> ApproveManagerAsync(Guid requestId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status != LeaveRequestStatus.PendingManager)
@@ -164,6 +186,7 @@ public sealed class LeaveService : ILeaveService
         request.Status = LeaveRequestStatus.PendingExecutive;
         request.ManagerApprovedByUserId = approverUserId;
         request.ManagerApprovedAt = DateTime.UtcNow;
+        ApplyApproverNote(request, note);
         await _dbContext.SaveChangesAsync(ct);
 
         if (_notifications != null)
@@ -183,7 +206,7 @@ public sealed class LeaveService : ILeaveService
         return true;
     }
 
-    public async Task<bool> ApproveExecutiveAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default)
+    public async Task<bool> ApproveExecutiveAsync(Guid requestId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var request = await _dbContext.Set<LeaveRequest>().FirstOrDefaultAsync(r => r.Id == requestId, ct);
         if (request == null || request.Status != LeaveRequestStatus.PendingExecutive)
@@ -194,6 +217,7 @@ public sealed class LeaveService : ILeaveService
         request.Status = LeaveRequestStatus.PendingHr;
         request.ExecutiveApprovedByUserId = approverUserId;
         request.ExecutiveApprovedAt = DateTime.UtcNow;
+        ApplyApproverNote(request, note);
         await _dbContext.SaveChangesAsync(ct);
 
         if (_notifications != null)
@@ -213,7 +237,7 @@ public sealed class LeaveService : ILeaveService
         return true;
     }
 
-    public async Task<bool> ApproveHrAsync(Guid requestId, Guid approverUserId, CancellationToken ct = default)
+    public async Task<bool> ApproveHrAsync(Guid requestId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var request = await _dbContext.Set<LeaveRequest>()
             .FirstOrDefaultAsync(r => r.Id == requestId, ct);
@@ -236,6 +260,7 @@ public sealed class LeaveService : ILeaveService
         request.Status = LeaveRequestStatus.Approved;
         request.HrApprovedByUserId = approverUserId;
         request.HrApprovedAt = DateTime.UtcNow;
+        ApplyApproverNote(request, note);
 
         await _dbContext.SaveChangesAsync(ct);
 
@@ -301,6 +326,7 @@ public sealed class LeaveService : ILeaveService
 
         request.Status = LeaveRequestStatus.Rejected;
         request.RejectionReason = reason;
+        request.ApproverNote = reason;
         request.LastModifiedBy = approverUserId.ToString();
         await _dbContext.SaveChangesAsync(ct);
 
@@ -397,5 +423,14 @@ public sealed class LeaveService : ILeaveService
             : emp.Notes + $"\n[Leave adj {DateTime.UtcNow:yyyy-MM-dd}] {reason} (was {previous:N1})";
 
         await _dbContext.SaveChangesAsync(ct);
+    }
+
+    private static void ApplyApproverNote(LeaveRequest request, string? note)
+    {
+        if (string.IsNullOrWhiteSpace(note)) return;
+        var trimmed = note.Trim();
+        if (trimmed.Length > 500)
+            throw new InvalidOperationException("Approver note cannot exceed 500 characters.");
+        request.ApproverNote = trimmed;
     }
 }

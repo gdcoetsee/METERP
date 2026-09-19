@@ -89,7 +89,8 @@ public class OpportunityService : IOpportunityService
         }
 
         return await query
-            .OrderByDescending(o => o.ExpectedClose)
+            .OrderBy(o => o.BoardOrder)
+            .ThenBy(o => o.ExpectedClose)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
@@ -140,6 +141,9 @@ public class OpportunityService : IOpportunityService
             if (opportunity.CustomerName.Length > 200)
                 throw new InvalidOperationException("Customer name cannot exceed 200 characters.");
         }
+
+        if (opportunity.BoardOrder <= 0)
+            opportunity.BoardOrder = await NextBoardOrderAsync(opportunity.Stage, ct);
 
         _dbContext.Set<Opportunity>().Add(opportunity);
         await _dbContext.SaveChangesAsync(ct);
@@ -325,6 +329,94 @@ public class OpportunityService : IOpportunityService
                 $"Advanced to {opp.Stage}",
                 ct);
         }
+    }
+
+    public Task SetStageAsync(Guid id, OpportunityStage stage, CancellationToken ct = default)
+        => MoveOnBoardAsync(id, stage, null, ct);
+
+    public async Task MoveOnBoardAsync(Guid id, OpportunityStage stage, Guid? insertBeforeId = null, CancellationToken ct = default)
+    {
+        var opp = await _dbContext.Set<Opportunity>().FirstOrDefaultAsync(o => o.Id == id, ct)
+            ?? throw new InvalidOperationException("Opportunity not found.");
+
+        if (opp.Stage is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost
+            && stage != opp.Stage)
+        {
+            throw new InvalidOperationException(
+                $"Closed opportunities cannot change stage from {opp.Stage}.");
+        }
+
+        if (stage == OpportunityStage.ClosedWon && opp.Stage != OpportunityStage.ClosedWon)
+        {
+            var hasCustomer = (opp.CustomerId is { } cid && cid != Guid.Empty)
+                || !string.IsNullOrWhiteSpace(opp.CustomerName);
+            if (!hasCustomer)
+                throw new InvalidOperationException("Customer is required to mark an opportunity Closed Won.");
+            if (opp.Value <= 0)
+                throw new InvalidOperationException("Opportunity value must be greater than zero to mark Closed Won.");
+        }
+
+        var previousStage = opp.Stage;
+
+        var siblings = await _dbContext.Set<Opportunity>()
+            .Where(o => o.Stage == stage && o.Id != id)
+            .OrderBy(o => o.BoardOrder)
+            .ThenBy(o => o.ExpectedClose)
+            .ToListAsync(ct);
+
+        opp.Stage = stage;
+
+        var insertAt = insertBeforeId is { } beforeId && beforeId != Guid.Empty
+            ? siblings.FindIndex(o => o.Id == beforeId)
+            : -1;
+
+        if (insertAt < 0)
+        {
+            opp.BoardOrder = siblings.Count == 0 ? 10 : siblings.Max(o => o.BoardOrder) + 10;
+        }
+        else
+        {
+            siblings.Insert(insertAt, opp);
+            for (var i = 0; i < siblings.Count; i++)
+                siblings[i].BoardOrder = (i + 1) * 10;
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+
+        if (stage == OpportunityStage.ClosedWon && previousStage != OpportunityStage.ClosedWon
+            && opp.QuoteId == null && _notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = opp.TenantId,
+                Title = $"Won opportunity needs a quote: {opp.Title}",
+                Message = $"{opp.CustomerName ?? "Customer"} — R {opp.Value:N0}. Convert it to a quote from Home so work can start.",
+                Category = "sales",
+                TargetRoles = "Admin,Executive",
+                RelatedEntityId = opp.Id,
+                RelatedEntityType = nameof(Opportunity)
+            }, ct);
+        }
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "UPDATE",
+                "Opportunity",
+                opp.Title,
+                $"Moved to {opp.Stage}",
+                ct);
+        }
+    }
+
+    private async Task<int> NextBoardOrderAsync(OpportunityStage stage, CancellationToken ct)
+    {
+        var max = await _dbContext.Set<Opportunity>()
+            .Where(o => o.Stage == stage)
+            .Select(o => (int?)o.BoardOrder)
+            .MaxAsync(ct);
+        return (max ?? 0) + 10;
     }
 
     public string BuildAiScopeText(Opportunity opportunity)

@@ -17,6 +17,9 @@ public class Opportunity : BaseEntity
 
     public OpportunityStage Stage { get; set; } = OpportunityStage.Lead;
 
+    /// <summary>Position within the pipeline lane (lower = higher on the board).</summary>
+    public int BoardOrder { get; set; }
+
     public DateTime ExpectedClose { get; set; } = DateTime.UtcNow.AddDays(30);
 
     public string? Notes { get; set; }

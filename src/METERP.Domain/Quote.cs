@@ -32,6 +32,9 @@ public class Quote : BaseEntity
 
     public string? ExecutiveRejectionReason { get; set; }
 
+    /// <summary>Note from the executive on approve or reject, shown back to the estimator.</summary>
+    public string? ExecutiveDecisionNote { get; set; }
+
     public string? Notes { get; set; }
 
     /// <summary>

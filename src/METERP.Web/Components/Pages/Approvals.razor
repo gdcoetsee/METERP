@@ -18,13 +18,11 @@
 
 <PageTitle>Approvals</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Approvals Hub</h1>
-        <p class="text-muted small mb-0">One queue for quotes, requisitions, leave, field reports, and sign-offs — no more chasing paper.</p>
-    </div>
-    <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="approvals-export" OnExportCsv="ExportOverdueCsvAsync" />
-</div>
+<PageHeader Title="Approvals" Subtitle="Quotes, requisitions, leave, field reports, and sign-offs in one queue." TestId="approvals-page-header">
+    <Actions>
+        <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="approvals-export" OnExportCsv="ExportOverdueCsvAsync" />
+    </Actions>
+</PageHeader>
 
 @if (_overdueApprovals.Count > 0)
 {
@@ -84,7 +82,8 @@
         <div class="list-group @(HasMoreAfterQuotes ? "mb-3" : "")" data-testid="approvals-quotes-list">
             @foreach (var quote in _pendingQuotes)
             {
-                <div class="list-group-item" data-testid="approvals-quote-row">
+                <div class="list-group-item list-group-item-action" style="cursor:pointer;"
+                     data-testid="approvals-quote-row" @onclick="() => OpenQuoteReviewAsync(quote)">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <span class="badge bg-light text-dark me-1">Quote</span>
@@ -93,13 +92,10 @@
                         </div>
                         @if (CanApproveQuotes)
                         {
-                            <div class="d-flex gap-2">
-                                <a href="/quotes" class="btn btn-sm btn-outline-secondary">Open quotes</a>
-                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-quote-approve"
-                                        @onclick="() => ApproveQuoteAsync(quote)">Approve</button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-quote-reject"
-                                        @onclick="() => RejectQuoteAsync(quote)">Reject</button>
-                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => OpenQuoteReviewAsync(quote)" @onclick:stopPropagation="true">
+                                Review
+                            </button>
                         }
                     </div>
                 </div>
@@ -165,6 +161,288 @@
     }
 </div>
 
+@if (_reviewQuote != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"{_reviewQuote.QuoteNumber} — {_reviewQuote.Customer?.Name}")"
+               Size="full"
+               TestId="approvals-quote-review"
+               CloseOnBackdrop="false"
+               OnClose="CloseQuoteReview">
+        <ChildContent>
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Quote</div>
+                        <p class="mb-1"><strong>Customer:</strong> @(_reviewQuote.Customer?.Name ?? "—")</p>
+                        <p class="mb-1"><strong>Date:</strong> @_reviewQuote.QuoteDate.ToString("yyyy-MM-dd") · Valid @_reviewQuote.ValidUntil.ToString("yyyy-MM-dd")</p>
+                        @if (!string.IsNullOrWhiteSpace(_reviewQuote.Notes))
+                        {
+                            <p class="mb-0"><strong>Estimator notes:</strong> @_reviewQuote.Notes</p>
+                        }
+                    </div>
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Lines</div>
+                        <p class="small text-muted">Revise quantities or prices before you approve. The estimator sees the updated quote.</p>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th>Type</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Price</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in _reviewQuote.Lines.Where(l => !l.IsDeleted))
+                                {
+                                    <tr>
+                                        <td>@line.Description</td>
+                                        <td>@line.LineType</td>
+                                        <td style="width:6rem;">
+                                            <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end"
+                                                   data-testid="approvals-quote-line-qty"
+                                                   @bind="line.Quantity" @bind:after="RecalcReviewQuote"
+                                                   disabled="@(!CanApproveQuotes)" />
+                                        </td>
+                                        <td style="width:8rem;">
+                                            <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end"
+                                                   data-testid="approvals-quote-line-price"
+                                                   @bind="line.UnitPrice" @bind:after="RecalcReviewQuote"
+                                                   disabled="@(!CanApproveQuotes)" />
+                                        </td>
+                                        <td class="text-end">R @line.LineTotal.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="meterp-totals mb-3">
+                        <div class="meterp-totals-row"><span>Subtotal</span><strong>R @_reviewQuote.Subtotal.ToString("N2")</strong></div>
+                        <div class="meterp-totals-row"><span>VAT</span><span>R @_reviewQuote.Tax.ToString("N2")</span></div>
+                        <div class="meterp-totals-row meterp-totals-total"><span>Total</span><span>R @_reviewQuote.Total.ToString("N2")</span></div>
+                    </div>
+                    <label class="form-label">Note to the estimator</label>
+                    <textarea class="form-control" rows="4" data-testid="approvals-quote-note"
+                              @bind="_reviewNote" placeholder="Optional on approve. Required if you reject."></textarea>
+                    <span class="meterp-field-hint">They see this on the quote after you decide.</span>
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseQuoteReview">Close</button>
+            @if (CanApproveQuotes)
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="SaveReviewQuoteLinesAsync">Save changes</button>
+                <button type="button" class="btn btn-outline-danger" data-testid="approvals-quote-reject"
+                        @onclick="RejectReviewedQuoteAsync">Reject</button>
+                <button type="button" class="btn btn-success" data-testid="approvals-quote-approve"
+                        @onclick="ApproveReviewedQuoteAsync">Approve</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
+@if (_reviewReq != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"{_reviewReq.RequisitionNumber} — {_reviewReq.Job?.JobNumber}")"
+               Size="lg"
+               TestId="approvals-requisition-review"
+               CloseOnBackdrop="false"
+               OnClose="CloseRequisitionReview">
+        <ChildContent>
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Stock request</div>
+                        <p class="mb-1"><strong>Job:</strong> @(_reviewReq.Job?.JobNumber ?? "—") @(_reviewReq.Job?.Title)</p>
+                        <p class="mb-1"><strong>Status:</strong> @GetRequisitionStatusLabel(_reviewReq.Status)</p>
+                        @if (_reviewReq.IsPpe)
+                        {
+                            <p class="mb-1"><span class="badge bg-warning text-dark">PPE</span></p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_reviewReq.Notes))
+                        {
+                            <p class="mb-0"><strong>Requester notes:</strong> @_reviewReq.Notes</p>
+                        }
+                    </div>
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Lines</div>
+                        <p class="small text-muted">Change quantities before you approve. The requester sees your note.</p>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="text-end">Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in _reviewReq.Lines.Where(l => !l.IsDeleted))
+                                {
+                                    <tr>
+                                        <td>@(line.InventoryItem?.Name ?? line.DisplayDescription)</td>
+                                        <td style="width:7rem;">
+                                            <input type="number" step="0.01" min="0.01" class="form-control form-control-sm text-end"
+                                                   data-testid="approvals-requisition-line-qty"
+                                                   @bind="line.QuantityRequested"
+                                                   disabled="@(!CanApproveRequisitions)" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <label class="form-label">Note to the requester</label>
+                    <textarea class="form-control" rows="4" data-testid="approvals-requisition-note"
+                              @bind="_reviewNote" placeholder="Optional on approve. Required if you reject."></textarea>
+                    <span class="meterp-field-hint">They see this on the requisition after you decide.</span>
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseRequisitionReview">Close</button>
+            @if (CanApproveRequisitions)
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="SaveReviewRequisitionLinesAsync">Save changes</button>
+                <button type="button" class="btn btn-outline-danger" data-testid="approvals-requisition-reject"
+                        @onclick="RejectReviewedRequisitionAsync">Reject</button>
+                <button type="button" class="btn btn-success" data-testid="approvals-requisition-approve"
+                        @onclick="ApproveReviewedRequisitionAsync">Approve</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
+@if (_reviewLeave != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"Leave — {LeaveEmployeeName(_reviewLeave)}")"
+               Size="lg"
+               TestId="approvals-leave-review"
+               CloseOnBackdrop="false"
+               OnClose="CloseLeaveReview">
+        <ChildContent>
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Leave request</div>
+                        <p class="mb-1"><strong>Employee:</strong> @LeaveEmployeeName(_reviewLeave)</p>
+                        <p class="mb-3"><strong>Stage:</strong> @GetLeaveStatusLabel(_reviewLeave.Status)</p>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Start</label>
+                                <input type="date" class="form-control" data-testid="approvals-leave-start"
+                                       @bind="_reviewLeave.StartDate" @bind:after="RecalcLeaveDays"
+                                       disabled="@(!CanApproveLeave)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">End</label>
+                                <input type="date" class="form-control" data-testid="approvals-leave-end"
+                                       @bind="_reviewLeave.EndDate" @bind:after="RecalcLeaveDays"
+                                       disabled="@(!CanApproveLeave)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Days</label>
+                                <input type="number" step="0.5" min="0.5" class="form-control"
+                                       @bind="_reviewLeave.DaysRequested" disabled="@(!CanApproveLeave)" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Reason</label>
+                                <textarea class="form-control" rows="2" @bind="_reviewLeave.Reason" disabled="@(!CanApproveLeave)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <label class="form-label">Note to the requester</label>
+                    <textarea class="form-control" rows="4" data-testid="approvals-leave-note"
+                              @bind="_reviewNote" placeholder="Optional on approve. Required if you reject."></textarea>
+                    <span class="meterp-field-hint">They see this on the leave request after you decide.</span>
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseLeaveReview">Close</button>
+            @if (CanApproveLeave && CanActOnLeave(_reviewLeave))
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="SaveReviewLeaveAsync">Save changes</button>
+                <button type="button" class="btn btn-outline-danger" data-testid="approvals-leave-reject"
+                        @onclick="RejectReviewedLeaveAsync">Reject</button>
+                <button type="button" class="btn btn-success" data-testid="approvals-leave-approve"
+                        @onclick="ApproveReviewedLeaveAsync">Approve</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
+@if (_reviewField != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"Field report — {_reviewField.Job?.JobNumber}")"
+               Size="lg"
+               TestId="approvals-field-review"
+               CloseOnBackdrop="false"
+               OnClose="CloseFieldReview">
+        <ChildContent>
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Field report</div>
+                        <p class="mb-1"><strong>Job:</strong> @(_reviewField.Job?.JobNumber ?? "—") @(_reviewField.Job?.Title)</p>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-4">
+                                <label class="form-label">Work date</label>
+                                <input type="date" class="form-control" @bind="_reviewField.WorkDate" disabled="@(!CanApproveFieldReports)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Hours</label>
+                                <input type="number" step="0.5" min="0" class="form-control" data-testid="approvals-field-hours"
+                                       @bind="_reviewField.HoursWorked" disabled="@(!CanApproveFieldReports)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Travel (R)</label>
+                                <input type="number" step="0.01" min="0" class="form-control" data-testid="approvals-field-travel"
+                                       @bind="_reviewField.TravelCost" disabled="@(!CanApproveFieldReports)" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Materials used</label>
+                                <textarea class="form-control" rows="2" @bind="_reviewField.MaterialsUsed" disabled="@(!CanApproveFieldReports)"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Technician comments</label>
+                                <textarea class="form-control" rows="2" @bind="_reviewField.Comments" disabled="@(!CanApproveFieldReports)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <label class="form-label">Note to the requester</label>
+                    <textarea class="form-control" rows="4" data-testid="approvals-field-note"
+                              @bind="_reviewNote" placeholder="Optional on approve. Required if you reject."></textarea>
+                    <span class="meterp-field-hint">They see this on the field report after you decide.</span>
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseFieldReview">Close</button>
+            @if (CanApproveFieldReports)
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="SaveReviewFieldAsync">Save changes</button>
+                <button type="button" class="btn btn-outline-danger" data-testid="approvals-field-reject"
+                        @onclick="RejectReviewedFieldAsync">Reject</button>
+                <button type="button" class="btn btn-success" data-testid="approvals-field-approve"
+                        @onclick="ApproveReviewedFieldAsync">Approve &amp; post costs</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
 @if (_rejectOpen)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)" data-testid="approvals-reject-modal" role="dialog" aria-modal="true">
@@ -221,8 +499,6 @@
         new("field", "Field reports", 0),
         new("signoff", "Job sign-off", 0)
     ];
-
-    [Inject] private ConfirmService Confirm { get; set; } = default!;
 
     private bool CanApproveQuotes => CurrentUser.Permissions.Contains(Permissions.QuotesApprove);
     private bool CanApproveLeave => CurrentUser.Permissions.Contains(Permissions.LeaveApprove);
@@ -300,7 +576,8 @@
             {
                 var lineSummary = string.Join(", ", req.Lines.Select(l =>
                     $"{l.InventoryItem?.Name ?? "Item"} x{l.QuantityRequested:N0}"));
-                <div class="list-group-item" data-testid="approvals-requisition-row">
+                <div class="list-group-item list-group-item-action" style="cursor:pointer;"
+                     data-testid="approvals-requisition-row" @onclick="() => OpenRequisitionReviewAsync(req)">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <span class="badge bg-light text-dark me-1">Stock</span>
@@ -314,12 +591,8 @@
                         </div>
                         @if (CanApproveRequisitions)
                         {
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-requisition-approve"
-                                        @onclick="() => ApproveRequisitionAsync(req)">Approve</button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-requisition-reject"
-                                        @onclick="() => RejectRequisitionAsync(req)">Reject</button>
-                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => OpenRequisitionReviewAsync(req)" @onclick:stopPropagation="true">Review</button>
                         }
                     </div>
                 </div>
@@ -339,7 +612,8 @@
         <div class="list-group mb-3" data-testid="approvals-field-list">
             @foreach (var report in _pendingFieldReports)
             {
-                <div class="list-group-item" data-testid="approvals-field-row">
+                <div class="list-group-item list-group-item-action" style="cursor:pointer;"
+                     data-testid="approvals-field-row" @onclick="() => OpenFieldReviewAsync(report)">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <span class="badge bg-light text-dark me-1">Field</span>
@@ -354,12 +628,8 @@
                         </div>
                         @if (CanApproveFieldReports)
                         {
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-field-approve"
-                                        @onclick="() => ApproveFieldReportAsync(report)">Approve & post costs</button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-field-reject"
-                                        @onclick="() => RejectFieldReportAsync(report)">Reject</button>
-                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => OpenFieldReviewAsync(report)" @onclick:stopPropagation="true">Review</button>
                         }
                     </div>
                 </div>
@@ -375,7 +645,8 @@
                 var employeeName = request.Employee != null
                     ? $"{request.Employee.FirstName} {request.Employee.LastName}"
                     : "Employee";
-                <div class="list-group-item" data-testid="approvals-leave-row">
+                <div class="list-group-item list-group-item-action" style="cursor:pointer;"
+                     data-testid="approvals-leave-row" @onclick="() => OpenLeaveReviewAsync(request)">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <span class="badge bg-light text-dark me-1">Leave</span>
@@ -391,12 +662,8 @@
                         </div>
                         @if (CanApproveLeave && CanActOnLeave(request))
                         {
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-sm btn-success" data-testid="approvals-leave-approve"
-                                        @onclick="() => ApproveLeaveAsync(request)">Approve</button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="approvals-leave-reject"
-                                        @onclick="() => RejectLeaveAsync(request)">Reject</button>
-                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => OpenLeaveReviewAsync(request)" @onclick:stopPropagation="true">Review</button>
                         }
                     </div>
                 </div>
@@ -437,21 +704,62 @@
         }
     }
 
-    private async Task ApproveQuoteAsync(Quote quote)
+    private Quote? _reviewQuote;
+    private StockRequisition? _reviewReq;
+    private LeaveRequest? _reviewLeave;
+    private FieldReport? _reviewField;
+    private string _reviewNote = "";
+
+    private async Task OpenQuoteReviewAsync(Quote quote)
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        CloseAllReviews();
+        _reviewQuote = QuoteUiHelper.DetachForUi(await QuoteService.GetByIdAsync(quote.Id) ?? quote);
+        _reviewNote = "";
+    }
 
-        var ok = await Confirm.ConfirmAsync(
-            $"Approve {quote.QuoteNumber} for client send?",
-            "Executive quote approval",
-            confirmLabel: "Approve",
-            confirmVariant: "success");
-        if (!ok) return;
+    private void CloseQuoteReview()
+    {
+        _reviewQuote = null;
+        _reviewNote = "";
+    }
 
+    private void CloseAllReviews()
+    {
+        _reviewQuote = null;
+        _reviewReq = null;
+        _reviewLeave = null;
+        _reviewField = null;
+        _reviewNote = "";
+    }
+
+    private void RecalcReviewQuote() => _reviewQuote?.RecalculateTotals();
+
+    private async Task SaveReviewQuoteLinesAsync()
+    {
+        if (_reviewQuote == null) return;
         try
         {
-            await QuoteService.ExecutiveApproveAsync(quote.Id, userId);
-            Toast.ShowSuccess($"{quote.QuoteNumber} approved — can now be marked Sent.");
+            foreach (var line in _reviewQuote.Lines.Where(l => !l.IsDeleted))
+                await QuoteService.ExecutiveReviseLineAsync(line);
+            _reviewQuote = QuoteUiHelper.DetachForUi(await QuoteService.GetByIdAsync(_reviewQuote.Id));
+            Toast.ShowSuccess("Quote lines updated.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveReviewedQuoteAsync()
+    {
+        if (_reviewQuote == null || CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            foreach (var line in _reviewQuote.Lines.Where(l => !l.IsDeleted))
+                await QuoteService.ExecutiveReviseLineAsync(line);
+            await QuoteService.ExecutiveApproveAsync(_reviewQuote.Id, userId, _reviewNote);
+            Toast.ShowSuccess($"{_reviewQuote.QuoteNumber} approved — the estimator will see your note.");
+            CloseQuoteReview();
             await LoadAsync();
         }
         catch (Exception ex)
@@ -460,51 +768,27 @@
         }
     }
 
-    private Task RejectQuoteAsync(Quote quote)
+    private Task RejectReviewedQuoteAsync()
     {
-        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        if (_reviewQuote == null || CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        var quote = _reviewQuote;
+        var note = _reviewNote;
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            Toast.ShowError("Add a note so the estimator knows why it was rejected.");
+            return Task.CompletedTask;
+        }
 
-        OpenRejectModal(
-            "Reject quote",
-            $"Reject {quote.QuoteNumber} and return it to the estimator.",
-            async reason =>
-            {
-                await QuoteService.ExecutiveRejectAsync(quote.Id, userId, reason);
-                Toast.ShowInfo($"{quote.QuoteNumber} rejected.");
-                await LoadAsync();
-            });
-        return Task.CompletedTask;
+        return RejectQuoteCoreAsync(quote, userId, note);
     }
 
-    private async Task ApproveLeaveAsync(LeaveRequest request)
+    private async Task RejectQuoteCoreAsync(Quote quote, Guid userId, string reason)
     {
-        if (CurrentUser.UserId is not { } userId) return;
-
-        var ok = await Confirm.ConfirmAsync(
-            $"Approve leave for {request.StartDate:dd MMM} – {request.EndDate:dd MMM}?",
-            "Leave approval",
-            confirmLabel: "Approve",
-            confirmVariant: "success");
-        if (!ok) return;
-
         try
         {
-            var approved = request.Status switch
-            {
-                LeaveRequestStatus.PendingManager => await LeaveService.ApproveManagerAsync(request.Id, userId),
-                LeaveRequestStatus.PendingExecutive => await LeaveService.ApproveExecutiveAsync(request.Id, userId),
-                LeaveRequestStatus.PendingHr => await LeaveService.ApproveHrAsync(request.Id, userId),
-                _ => false
-            };
-
-            if (!approved)
-            {
-                Toast.ShowError("Leave request is no longer pending at this approval stage.");
-                await LoadAsync();
-                return;
-            }
-
-            Toast.ShowSuccess("Leave request advanced in the approval chain.");
+            await QuoteService.ExecutiveRejectAsync(quote.Id, userId, reason);
+            Toast.ShowInfo($"{quote.QuoteNumber} rejected.");
+            CloseQuoteReview();
             await LoadAsync();
         }
         catch (Exception ex)
@@ -513,59 +797,62 @@
         }
     }
 
-    private Task RejectLeaveAsync(LeaveRequest request)
+    private async Task OpenRequisitionReviewAsync(StockRequisition req)
     {
-        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
-
-        OpenRejectModal(
-            "Reject leave",
-            "Provide a reason for rejecting this leave request.",
-            async reason =>
-            {
-                if (!await LeaveService.RejectAsync(request.Id, userId, reason))
-                {
-                    Toast.ShowError("Leave request could not be rejected.");
-                    return;
-                }
-
-                Toast.ShowInfo("Leave request rejected.");
-                await LoadAsync();
-            });
-        return Task.CompletedTask;
+        CloseAllReviews();
+        _reviewReq = await RequisitionService.GetByIdAsync(req.Id) ?? req;
+        _reviewNote = "";
     }
 
-    private async Task ApproveRequisitionAsync(StockRequisition req)
+    private void CloseRequisitionReview()
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        _reviewReq = null;
+        _reviewNote = "";
+    }
 
-        var stage = req.Status == RequisitionStatus.PendingManager ? "manager" : "executive";
-        var ok = await Confirm.ConfirmAsync(
-            $"Approve {req.RequisitionNumber} at {stage} level?",
-            "Stock requisition approval",
-            confirmLabel: "Approve",
-            confirmVariant: "success");
-        if (!ok) return;
-
+    private async Task SaveReviewRequisitionLinesAsync()
+    {
+        if (_reviewReq == null) return;
         try
         {
-            var wasManager = req.Status == RequisitionStatus.PendingManager;
-            var approved = req.Status switch
+            foreach (var line in _reviewReq.Lines.Where(l => !l.IsDeleted))
+                await RequisitionService.UpdatePendingLineQuantityAsync(line.Id, line.QuantityRequested);
+            Toast.ShowSuccess("Quantities updated.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveReviewedRequisitionAsync()
+    {
+        if (_reviewReq == null || CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            foreach (var line in _reviewReq.Lines.Where(l => !l.IsDeleted))
+                await RequisitionService.UpdatePendingLineQuantityAsync(line.Id, line.QuantityRequested);
+
+            var wasManager = _reviewReq.Status == RequisitionStatus.PendingManager;
+            var approved = _reviewReq.Status switch
             {
-                RequisitionStatus.PendingManager => await RequisitionService.ApproveManagerAsync(req.Id, userId),
-                RequisitionStatus.PendingExecutive => await RequisitionService.ApproveExecutiveAsync(req.Id, userId),
+                RequisitionStatus.PendingManager => await RequisitionService.ApproveManagerAsync(_reviewReq.Id, userId, _reviewNote),
+                RequisitionStatus.PendingExecutive => await RequisitionService.ApproveExecutiveAsync(_reviewReq.Id, userId, _reviewNote),
                 _ => false
             };
 
             if (!approved)
             {
                 Toast.ShowError("Requisition is no longer pending at this approval stage.");
+                CloseRequisitionReview();
                 await LoadAsync();
                 return;
             }
 
             Toast.ShowSuccess(wasManager
-                ? $"{req.RequisitionNumber} advanced to executive approval."
-                : $"{req.RequisitionNumber} approved — stock reserved for issue.");
+                ? $"{_reviewReq.RequisitionNumber} advanced to executive approval."
+                : $"{_reviewReq.RequisitionNumber} approved — stock reserved for issue.");
+            CloseRequisitionReview();
             await LoadAsync();
         }
         catch (Exception ex)
@@ -574,48 +861,159 @@
         }
     }
 
-    private Task RejectRequisitionAsync(StockRequisition req)
+    private Task RejectReviewedRequisitionAsync()
     {
-        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        if (_reviewReq == null || CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        var note = _reviewNote;
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            Toast.ShowError("Add a note so the requester knows why it was rejected.");
+            return Task.CompletedTask;
+        }
 
-        OpenRejectModal(
-            "Reject requisition",
-            $"Reject {req.RequisitionNumber} and return to the requester.",
-            async reason =>
-            {
-                if (!await RequisitionService.RejectAsync(req.Id, userId, reason))
-                {
-                    Toast.ShowError("Requisition could not be rejected.");
-                    return;
-                }
+        var req = _reviewReq;
+        return RejectCoreAsync(
+            () => RequisitionService.RejectAsync(req.Id, userId, note),
+            $"{req.RequisitionNumber} rejected.",
+            CloseRequisitionReview);
+    }
 
-                Toast.ShowInfo($"{req.RequisitionNumber} rejected.");
-                await LoadAsync();
-            });
+    private Task OpenLeaveReviewAsync(LeaveRequest request)
+    {
+        CloseAllReviews();
+        _reviewLeave = request;
+        _reviewNote = "";
         return Task.CompletedTask;
     }
 
-    private async Task ApproveFieldReportAsync(FieldReport report)
+    private void CloseLeaveReview()
     {
-        if (CurrentUser.UserId is not { } userId) return;
+        _reviewLeave = null;
+        _reviewNote = "";
+    }
 
-        var ok = await Confirm.ConfirmAsync(
-            $"Approve field report for {report.Job?.JobNumber}? Hours and travel will post to job costing.",
-            "Approve field report",
-            confirmLabel: "Approve",
-            confirmVariant: "success");
-        if (!ok) return;
+    private static string LeaveEmployeeName(LeaveRequest request) =>
+        request.Employee != null
+            ? $"{request.Employee.FirstName} {request.Employee.LastName}"
+            : "Employee";
 
+    private void RecalcLeaveDays()
+    {
+        if (_reviewLeave == null) return;
+        var days = (_reviewLeave.EndDate.Date - _reviewLeave.StartDate.Date).TotalDays + 1;
+        _reviewLeave.DaysRequested = days < 0.5 ? 0.5m : (decimal)days;
+    }
+
+    private async Task SaveReviewLeaveAsync()
+    {
+        if (_reviewLeave == null) return;
         try
         {
-            if (!await FieldReportService.ApproveAsync(report.Id, userId))
+            RecalcLeaveDays();
+            await LeaveService.UpdatePendingAsync(_reviewLeave);
+            Toast.ShowSuccess("Leave request updated.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveReviewedLeaveAsync()
+    {
+        if (_reviewLeave == null || CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            RecalcLeaveDays();
+            await LeaveService.UpdatePendingAsync(_reviewLeave);
+
+            var approved = _reviewLeave.Status switch
+            {
+                LeaveRequestStatus.PendingManager => await LeaveService.ApproveManagerAsync(_reviewLeave.Id, userId, _reviewNote),
+                LeaveRequestStatus.PendingExecutive => await LeaveService.ApproveExecutiveAsync(_reviewLeave.Id, userId, _reviewNote),
+                LeaveRequestStatus.PendingHr => await LeaveService.ApproveHrAsync(_reviewLeave.Id, userId, _reviewNote),
+                _ => false
+            };
+
+            if (!approved)
+            {
+                Toast.ShowError("Leave request is no longer pending at this approval stage.");
+                CloseLeaveReview();
+                await LoadAsync();
+                return;
+            }
+
+            Toast.ShowSuccess("Leave request advanced in the approval chain.");
+            CloseLeaveReview();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private Task RejectReviewedLeaveAsync()
+    {
+        if (_reviewLeave == null || CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        var note = _reviewNote;
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            Toast.ShowError("Add a note so the requester knows why it was rejected.");
+            return Task.CompletedTask;
+        }
+
+        var request = _reviewLeave;
+        return RejectCoreAsync(
+            () => LeaveService.RejectAsync(request.Id, userId, note),
+            "Leave request rejected.",
+            CloseLeaveReview);
+    }
+
+    private Task OpenFieldReviewAsync(FieldReport report)
+    {
+        CloseAllReviews();
+        _reviewField = report;
+        _reviewNote = "";
+        return Task.CompletedTask;
+    }
+
+    private void CloseFieldReview()
+    {
+        _reviewField = null;
+        _reviewNote = "";
+    }
+
+    private async Task SaveReviewFieldAsync()
+    {
+        if (_reviewField == null) return;
+        try
+        {
+            await FieldReportService.UpdatePendingAsync(_reviewField);
+            Toast.ShowSuccess("Field report updated.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ApproveReviewedFieldAsync()
+    {
+        if (_reviewField == null || CurrentUser.UserId is not { } userId) return;
+        try
+        {
+            await FieldReportService.UpdatePendingAsync(_reviewField);
+            if (!await FieldReportService.ApproveAsync(_reviewField.Id, userId, _reviewNote))
             {
                 Toast.ShowError("Field report is no longer pending.");
+                CloseFieldReview();
                 await LoadAsync();
                 return;
             }
 
             Toast.ShowSuccess("Field report approved — labor and travel posted to job.");
+            CloseFieldReview();
             await LoadAsync();
         }
         catch (Exception ex)
@@ -624,25 +1022,41 @@
         }
     }
 
-    private Task RejectFieldReportAsync(FieldReport report)
+    private Task RejectReviewedFieldAsync()
     {
-        if (CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        if (_reviewField == null || CurrentUser.UserId is not { } userId) return Task.CompletedTask;
+        var note = _reviewNote;
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            Toast.ShowError("Add a note so the requester knows why it was rejected.");
+            return Task.CompletedTask;
+        }
 
-        OpenRejectModal(
-            "Reject field report",
-            $"Reject field report for {report.Job?.JobNumber ?? "job"} — technician will need to resubmit.",
-            async reason =>
+        var report = _reviewField;
+        return RejectCoreAsync(
+            () => FieldReportService.RejectAsync(report.Id, userId, note),
+            "Field report rejected.",
+            CloseFieldReview);
+    }
+
+    private async Task RejectCoreAsync(Func<Task<bool>> action, string successMessage, Action close)
+    {
+        try
+        {
+            if (!await action())
             {
-                if (!await FieldReportService.RejectAsync(report.Id, userId, reason))
-                {
-                    Toast.ShowError("Field report could not be rejected.");
-                    return;
-                }
+                Toast.ShowError("This request could not be rejected.");
+                return;
+            }
 
-                Toast.ShowInfo("Field report rejected.");
-                await LoadAsync();
-            });
-        return Task.CompletedTask;
+            Toast.ShowInfo(successMessage);
+            close();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
     }
 
     private void OpenRejectModal(string title, string message, Func<string, Task> action)

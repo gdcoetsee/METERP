@@ -15,21 +15,15 @@
 
 <PageTitle>PPE Register</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">PPE Register</h1>
-        <p class="text-muted small mb-0">
-            PPE is stock issued to <strong>employees</strong>. Job link is optional site context only.
-        </p>
-    </div>
-    <div class="d-flex gap-2">
+<PageHeader Title="PPE register" Subtitle="Issue PPE stock to an employee. Job is optional site context only." TestId="ppe-page-header">
+    <Actions>
         @if (CanIssue)
         {
             <button type="button" class="btn btn-primary" data-testid="ppe-issue-btn" @onclick="OpenIssueModal">Issue PPE</button>
         }
         <ExportToolbar ShowPdf="false" ShowExcel="false" TestId="ppe-history-export" OnExportCsv="ExportCsvAsync" />
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 <div class="mb-3" style="max-width: 360px;" data-testid="ppe-filter">
     <label class="form-label small text-muted">Filter by employee</label>
@@ -116,39 +110,40 @@ else
 {
     <FormModal IsOpen="true" Title="Issue PPE to employee" TestId="ppe-issue-modal" OnClose="CloseIssueModal">
         <div class="mb-3">
-            <label class="form-label">Employee *</label>
-            <select class="form-select" @bind="_issueEmployeeId" data-testid="ppe-issue-employee">
-                <option value="@Guid.Empty">— Select —</option>
-                @foreach (var e in _employees)
-                {
-                    <option value="@e.Id">@e.EmployeeNumber — @e.FirstName @e.LastName</option>
-                }
-            </select>
+            <label class="form-label meterp-required">Employee</label>
+            <EntityPicker TestId="ppe-issue-employee"
+                          Value="_issueEmployeeId"
+                          ValueChanged="OnIssueEmployeePicked"
+                          Options="PpeEmployeeOptions"
+                          SelectedLabel="@IssueEmployeeName"
+                          Placeholder="Type an employee name"
+                          Required="true"
+                          OnSearch="SearchPpeEmployeesAsync" />
         </div>
         <div class="mb-3">
-            <label class="form-label">Stock item *</label>
-            <input class="form-control mb-1" placeholder="Search SKU or name…" value="@_itemSearch"
-                   @oninput="OnItemSearch" data-testid="ppe-issue-item-search" />
-            <select class="form-select" @bind="_issueItemId" data-testid="ppe-issue-item">
-                @foreach (var item in _items)
-                {
-                    <option value="@item.Id">@item.Sku — @item.Name (on hand: @item.QuantityOnHand.ToString("N0"))</option>
-                }
-            </select>
+            <label class="form-label meterp-required">Stock item</label>
+            <EntityPicker TestId="ppe-issue-item"
+                          Value="_issueItemId"
+                          ValueChanged="OnIssueItemPicked"
+                          Options="PpeItemOptions"
+                          SelectedLabel="@IssueItemName"
+                          Placeholder="Type SKU or name"
+                          Required="true"
+                          OnSearch="SearchPpeItemsAsync" />
         </div>
         <div class="mb-3">
             <label class="form-label">Quantity *</label>
             <input type="number" min="0.01" step="0.01" class="form-control" @bind="_issueQty" data-testid="ppe-issue-qty" />
         </div>
         <div class="mb-3">
-            <label class="form-label">Job (optional)</label>
-            <select class="form-select" @bind="_issueJobId" data-testid="ppe-issue-job">
-                <option value="@Guid.Empty">— None (register only) —</option>
-                @foreach (var j in _jobs)
-                {
-                    <option value="@j.Id">@j.JobNumber — @j.Title</option>
-                }
-            </select>
+            <label class="form-label">Job <span class="text-muted fw-normal">(optional)</span></label>
+            <EntityPicker TestId="ppe-issue-job"
+                          Value="_issueJobId"
+                          ValueChanged="OnIssueJobPicked"
+                          Options="PpeJobOptions"
+                          SelectedLabel="@IssueJobName"
+                          Placeholder="Type a job number, or leave blank"
+                          OnSearch="SearchPpeJobsAsync" />
         </div>
         <div class="mb-3">
             <label class="form-label">Notes</label>
@@ -210,6 +205,80 @@ else
     private bool CanIssue =>
         CurrentUser.Permissions.Contains(Permissions.InventoryManage)
         || CurrentUser.Permissions.Contains(Permissions.RequisitionsManage);
+
+    private IReadOnlyList<EntityPickerOption> PpeItemOptions =>
+        _items.Select(i => new EntityPickerOption
+        {
+            Id = i.Id,
+            Label = $"{i.Sku} — {i.Name}",
+            SubLabel = $"On hand {i.QuantityOnHand:N0}"
+        }).ToList();
+    private string? IssueItemName
+    {
+        get
+        {
+            var i = _items.FirstOrDefault(x => x.Id == _issueItemId);
+            return i == null ? null : $"{i.Sku} — {i.Name}";
+        }
+    }
+
+    private Task OnIssueItemPicked(Guid id)
+    {
+        _issueItemId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchPpeItemsAsync(string term)
+    {
+        _itemSearch = term ?? "";
+        await LoadItemsAsync();
+    }
+
+    private IReadOnlyList<EntityPickerOption> PpeEmployeeOptions =>
+        _employees.Select(e => new EntityPickerOption { Id = e.Id, Label = $"{e.EmployeeNumber} — {e.FirstName} {e.LastName}" }).ToList();
+    private string? IssueEmployeeName
+    {
+        get
+        {
+            var e = _employees.FirstOrDefault(x => x.Id == _issueEmployeeId);
+            return e == null ? null : $"{e.EmployeeNumber} — {e.FirstName} {e.LastName}";
+        }
+    }
+    private IReadOnlyList<EntityPickerOption> PpeJobOptions =>
+        _jobs.Select(j => new EntityPickerOption { Id = j.Id, Label = $"{j.JobNumber} — {j.Title}" }).ToList();
+    private string? IssueJobName
+    {
+        get
+        {
+            var j = _jobs.FirstOrDefault(x => x.Id == _issueJobId);
+            return j == null ? null : $"{j.JobNumber} — {j.Title}";
+        }
+    }
+
+    private Task OnIssueEmployeePicked(Guid id)
+    {
+        _issueEmployeeId = id;
+        return Task.CompletedTask;
+    }
+
+    private Task OnIssueJobPicked(Guid id)
+    {
+        _issueJobId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchPpeEmployeesAsync(string term)
+    {
+        _employees = (await EmployeeService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50)).ToList();
+    }
+
+    private async Task SearchPpeJobsAsync(string term)
+    {
+        _jobs = (await JobService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .Where(j => j.IsOpenForOperations()).ToList();
+    }
 
     protected override async Task OnInitializedAsync()
     {

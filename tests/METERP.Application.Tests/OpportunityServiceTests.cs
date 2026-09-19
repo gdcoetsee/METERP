@@ -856,4 +856,41 @@ public class OpportunityServiceTests
         var createEntry = entries.First(e => e.Action == "CREATE" && e.EntityType == "Opportunity");
         Assert.Equal("Audited create", createEntry.EntityReference);
     }
+
+    [Fact]
+    public async Task MoveOnBoardAsync_ChangesStageAndOrder()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var leadA = await service.CreateAsync(new Opportunity
+        {
+            Title = "Lead A",
+            CustomerName = "A Co",
+            Value = 1000m,
+            Stage = OpportunityStage.Lead
+        });
+        var leadB = await service.CreateAsync(new Opportunity
+        {
+            Title = "Lead B",
+            CustomerName = "B Co",
+            Value = 2000m,
+            Stage = OpportunityStage.Lead
+        });
+
+        await service.MoveOnBoardAsync(leadB, OpportunityStage.Qualified);
+        var moved = await service.GetByIdAsync(leadB);
+        Assert.Equal(OpportunityStage.Qualified, moved!.Stage);
+
+        await service.MoveOnBoardAsync(leadA, OpportunityStage.Lead, leadB);
+        var list = await service.GetAllAsync(stage: OpportunityStage.Lead);
+        // leadB is now Qualified — Lead lane should be empty or only reordered leftovers.
+        await service.MoveOnBoardAsync(leadB, OpportunityStage.Lead, leadA);
+        var leads = (await service.GetAllAsync(stage: OpportunityStage.Lead)).ToList();
+        Assert.Equal(2, leads.Count);
+        Assert.Equal(leadB, leads[0].Id);
+        Assert.Equal(leadA, leads[1].Id);
+        Assert.True(leads[0].BoardOrder < leads[1].BoardOrder);
+    }
 }

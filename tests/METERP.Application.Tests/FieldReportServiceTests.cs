@@ -833,4 +833,47 @@ public class FieldReportServiceTests
                 It.IsAny<CancellationToken>()), Times.Once);
         }
     }
+
+    [Fact]
+    public async Task UpdatePending_AndApprove_StoresNote()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, jobs) = CreateServices(tenantId);
+        using (db)
+        {
+            var customerId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Acme" });
+            await db.SaveChangesAsync();
+            var jobId = await jobs.CreateAsync(new Job
+            {
+                CustomerId = customerId,
+                Title = "Install",
+                QuotedTotal = 5000m
+            });
+
+            var reportId = await service.SubmitAsync(new FieldReport
+            {
+                JobId = jobId,
+                SubmittedByUserId = TestUserId,
+                HoursWorked = 4m,
+                TravelCost = 100m
+            });
+
+            await service.UpdatePendingAsync(new FieldReport
+            {
+                Id = reportId,
+                HoursWorked = 5m,
+                TravelCost = 120m,
+                Comments = "Site overtime",
+                WorkDate = DateTime.UtcNow.Date
+            });
+
+            Assert.True(await service.ApproveAsync(reportId, TestUserId, "Posted as 5h."));
+            var saved = await db.Set<FieldReport>().FirstAsync(r => r.Id == reportId);
+            Assert.Equal(5m, saved.HoursWorked);
+            Assert.Equal(120m, saved.TravelCost);
+            Assert.Equal("Posted as 5h.", saved.ApproverNote);
+            Assert.Equal(FieldReportStatus.Approved, saved.Status);
+        }
+    }
 }

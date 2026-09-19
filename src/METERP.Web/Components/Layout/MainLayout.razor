@@ -7,7 +7,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Load dark mode preference from localStorage for UX
         try
         {
             var saved = await JS.InvokeAsync<string>("localStorage.getItem", "darkMode");
@@ -41,14 +40,28 @@
     </div>
 
     <main>
-        <div class="top-row px-4 d-flex justify-content-between align-items-center">
-            <a href="https://github.com/gdcoetsee/METERP" target="_blank">About METERP</a>
-            <div class="d-flex align-items-center gap-2">
-                <button class="btn btn-sm btn-outline-secondary py-0 px-2" @onclick="ToggleDarkMode" title="Toggle dark mode">🌓</button>
+        <div class="top-row px-3 meterp-topbar d-flex justify-content-between align-items-center">
+            <div class="meterp-topbar-search">
                 <AuthorizeView>
                     <Authorized>
-                        <div class="d-flex align-items-center gap-2 small">
-                            <span class="text-muted">Signed in as <strong>@context.User.Identity?.Name</strong></span>
+                        <GlobalSearch />
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <AuthorizeView>
+                    <Authorized>
+                        <NotificationBell />
+                    </Authorized>
+                </AuthorizeView>
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2" @onclick="ToggleDarkMode" title="Toggle dark mode" data-testid="topbar-dark-mode">
+                    <i class="bi @(isDarkMode ? "bi-sun" : "bi-moon")" aria-hidden="true"></i>
+                </button>
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="meterp-user-chip">
+                            <span class="d-none d-md-inline">@context.User.Identity?.Name</span>
+                            <a href="/account" class="btn btn-sm btn-outline-secondary py-0 px-2">Account</a>
                             <a href="/logout" class="btn btn-sm btn-outline-secondary py-0 px-2">Logout</a>
                         </div>
                     </Authorized>
@@ -59,7 +72,7 @@
             </div>
         </div>
 
-        <article class="content px-4">
+        <article class="content">
             @Body
         </article>
     </main>

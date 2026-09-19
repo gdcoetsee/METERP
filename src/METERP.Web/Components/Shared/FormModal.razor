@@ -1,11 +1,14 @@
 @if (IsOpen)
 {
-    <div class="meterp-modal-backdrop" data-testid="@BackdropTestId" @onclick="HandleBackdropClick">
-        <div class="meterp-modal @(SizeClass)" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
-             data-testid="@TestId" @onclick:stopPropagation="true">
+    <div class="meterp-modal-backdrop @(LayerClass)" data-testid="@BackdropTestId" @onclick="HandleBackdropClick">
+        <div class="meterp-modal @(SizeClass) @(LayerClass)" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
+             data-testid="@TestId" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="HandleKeyDown">
             <div class="meterp-modal-header">
-                <h5 class="meterp-modal-title" id="@TitleId">@Title</h5>
-                <button type="button" class="btn-close" aria-label="Close" @onclick="CloseAsync" disabled="@CloseDisabled"></button>
+                <h5 class="meterp-modal-title" id="@TitleId" data-testid="@($"{TestId}-title")">@Title</h5>
+                <div class="meterp-modal-header-actions">
+                    @HeaderActions
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseAsync" disabled="@CloseDisabled"></button>
+                </div>
             </div>
             <div class="meterp-modal-body">
                 @ChildContent
@@ -25,16 +28,21 @@
     [Parameter] public string Title { get; set; } = "";
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public bool CloseOnBackdrop { get; set; } = true;
     [Parameter] public bool CloseDisabled { get; set; }
     [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public int Layer { get; set; } = 1;
     [Parameter] public string TestId { get; set; } = "form-modal";
     [Parameter] public string BackdropTestId { get; set; } = "form-modal-backdrop";
 
     private string TitleId => $"{TestId}-title";
+    private string LayerClass => Layer >= 2 ? "layer-2" : "";
     private string SizeClass => Size switch
     {
+        "full" => "meterp-modal-full",
+        "xl" => "meterp-modal-xl",
         "lg" => "meterp-modal-lg",
         "sm" => "meterp-modal-sm",
         _ => ""
@@ -45,6 +53,12 @@
     private async Task HandleBackdropClick()
     {
         if (CloseOnBackdrop)
+            await CloseAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && !CloseDisabled)
             await CloseAsync();
     }
 }

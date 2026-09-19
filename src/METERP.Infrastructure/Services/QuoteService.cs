@@ -299,6 +299,7 @@ public class QuoteService : IQuoteService
         quote.SubmittedForApprovalByUserId = submittedByUserId;
         quote.SubmittedForApprovalAt = DateTime.UtcNow;
         quote.ExecutiveRejectionReason = null;
+        quote.ExecutiveDecisionNote = null;
 
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
@@ -328,7 +329,7 @@ public class QuoteService : IQuoteService
         }
     }
 
-    public async Task ExecutiveApproveAsync(Guid quoteId, Guid approverUserId, CancellationToken ct = default)
+    public async Task ExecutiveApproveAsync(Guid quoteId, Guid approverUserId, string? note = null, CancellationToken ct = default)
     {
         var quote = await _dbContext.Set<Quote>().FirstOrDefaultAsync(q => q.Id == quoteId, ct)
             ?? throw new InvalidOperationException("Quote not found.");
@@ -339,10 +340,15 @@ public class QuoteService : IQuoteService
         // Customer may have been soft-deleted after submit — fail before marking approved.
         await EnsureQuoteCustomerPresentAsync(quote, ct);
 
+        var decisionNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (decisionNote != null && decisionNote.Length > 500)
+            throw new InvalidOperationException("Approval note cannot exceed 500 characters.");
+
         quote.ApprovalStatus = QuoteApprovalStatus.ExecutiveApproved;
         quote.ExecutiveApprovedByUserId = approverUserId;
         quote.ExecutiveApprovedAt = DateTime.UtcNow;
         quote.ExecutiveRejectionReason = null;
+        quote.ExecutiveDecisionNote = decisionNote;
 
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
@@ -353,17 +359,20 @@ public class QuoteService : IQuoteService
                 "APPROVE",
                 "Quote",
                 quote.QuoteNumber,
-                "Executive approved for client send",
+                string.IsNullOrWhiteSpace(decisionNote)
+                    ? "Executive approved for client send"
+                    : $"Executive approved: {decisionNote}",
                 ct);
         }
 
         if (_notifications != null)
         {
+            var noteBit = string.IsNullOrWhiteSpace(decisionNote) ? "" : $" Note: {decisionNote}";
             await _notifications.CreateAsync(new TenantNotification
             {
                 TenantId = quote.TenantId,
                 Title = $"Quote {quote.QuoteNumber} approved — send to customer",
-                Message = $"{quote.QuoteNumber} is approved. Send it to the customer to start the cash cycle.",
+                Message = $"{quote.QuoteNumber} is approved. Send it to the customer to start the cash cycle.{noteBit}",
                 Category = "sales",
                 TargetRoles = "Admin,Executive",
                 RelatedEntityId = quote.Id,
@@ -390,6 +399,7 @@ public class QuoteService : IQuoteService
 
         quote.ApprovalStatus = QuoteApprovalStatus.Rejected;
         quote.ExecutiveRejectionReason = reason;
+        quote.ExecutiveDecisionNote = reason;
         quote.ExecutiveApprovedByUserId = approverUserId;
         quote.ExecutiveApprovedAt = DateTime.UtcNow;
 
@@ -609,7 +619,13 @@ public class QuoteService : IQuoteService
         return line.Id;
     }
 
+    public Task ExecutiveReviseLineAsync(QuoteLine line, CancellationToken ct = default)
+        => UpdateLineCoreAsync(line, allowPending: true, ct);
+
     public async Task UpdateLineAsync(QuoteLine line, CancellationToken ct = default)
+        => await UpdateLineCoreAsync(line, allowPending: false, ct);
+
+    private async Task UpdateLineCoreAsync(QuoteLine line, bool allowPending, CancellationToken ct)
     {
         var existing = await _dbContext.Set<QuoteLine>().FirstOrDefaultAsync(l => l.Id == line.Id, ct);
         if (existing == null) return;
@@ -619,7 +635,7 @@ public class QuoteService : IQuoteService
             .FirstOrDefaultAsync(q => q.Id == existing.QuoteId, ct)
             ?? throw new InvalidOperationException("Quote not found.");
 
-        EnsureQuoteLinesEditable(quote);
+        EnsureQuoteLinesEditable(quote, allowPending);
 
         ValidateLine(line);
 
@@ -661,13 +677,13 @@ public class QuoteService : IQuoteService
         await InvalidateListCachesAsync(ct);
     }
 
-    private static void EnsureQuoteLinesEditable(Quote quote)
+    private static void EnsureQuoteLinesEditable(Quote quote, bool allowPending = false)
     {
         if (quote.Status != QuoteStatus.Draft)
             throw new InvalidOperationException(
                 $"Lines can only be changed on draft quotes (current status: {quote.Status}).");
 
-        if (quote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
+        if (!allowPending && quote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
             throw new InvalidOperationException(
                 "Quote is pending executive approval — withdraw approval before editing lines.");
     }

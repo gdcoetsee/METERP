@@ -7,14 +7,11 @@
 
 <PageTitle>GRV register</PageTitle>
 
-<div class="mb-3">
-    <h1 class="h4 mb-1">Goods received vouchers</h1>
-    <p class="text-muted small mb-0">Recent GRVs — delivery notes and quantities received into stores or for non-catalog PO lines.</p>
-</div>
+<PageHeader Title="Goods received" Subtitle="Delivery notes and quantities received into stores from sent POs." TestId="grv-page-header" />
 
 @if (_loading)
 {
-    <p data-testid="grv-loading"><em>Loading GRVs…</em></p>
+    <ListSkeleton Rows="5" TestId="grv-loading" AriaLabel="Loading GRVs" />
 }
 else if (_grvs.Count == 0)
 {

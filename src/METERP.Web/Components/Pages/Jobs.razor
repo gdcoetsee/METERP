@@ -20,12 +20,8 @@
 
 <PageTitle>Jobs</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1>Jobs</h1>
-        <p class="text-muted mb-0">Operations hub: open a job command center for P&amp;L, requisitions, invoicing (while open), costs, labor, and executive close.</p>
-    </div>
-    <div class="d-flex gap-2 align-items-center">
+<PageHeader Title="Jobs" Subtitle="Open a job for P&amp;L, requisitions, labour, and invoicing. View stays on this list; the command center is the workspace." TestId="jobs-page-header">
+    <Actions>
         <ExportToolbar TestId="jobs-export" OnExportCsv="ExportJobsCsvAsync" OnExportExcel="ExportJobsExcelAsync" OnExportPdf="ExportJobsPdfAsync" />
         @if (UserCanManage)
         {
@@ -33,11 +29,11 @@
                     @onclick="OpenEmergencyModal"
                     disabled="@JobQuotaBlocked"
                     title="@(JobQuotaBlocked ? TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Job, "Jobs") : null)">
-                + Emergency job
+                Emergency job
             </button>
         }
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 @if (JobQuotaBlocked)
 {
@@ -48,8 +44,9 @@
     </div>
 }
 
-<div class="mb-3" style="max-width: 420px;">
+<div class="meterp-filter-bar">
     <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
         <input type="search" class="form-control" placeholder="Search job #, customer, or notes..."
                @bind="searchTerm" @bind:event="oninput" @bind:after="OnSearchChangedAsync" data-testid="jobs-search" />
         @if (!string.IsNullOrEmpty(searchTerm))
@@ -67,7 +64,7 @@
 <h6>Recent / Live Jobs (powered by services)</h6>
 @if (!_initialLoadComplete)
 {
-    <p data-testid="jobs-loading"><em>Loading jobs...</em></p>
+    <ListSkeleton Rows="6" TestId="jobs-loading" AriaLabel="Loading jobs" />
 }
 else
 {
@@ -103,17 +100,19 @@ else
     <FormModal IsOpen="true" Title="Emergency / callout job" TestId="jobs-emergency-modal" OnClose="CloseEmergencyModal">
         <p class="small text-muted">Create a job without a quote (job-first). Use for callouts and urgent work — bill deposit from the Command Center.</p>
         <div class="mb-3">
-            <label class="form-label">Customer *</label>
-            <select class="form-select" @bind="_emergencyCustomerId" data-testid="jobs-emergency-customer">
-                <option value="@Guid.Empty">— Select —</option>
-                @foreach (var c in _customers)
-                {
-                    <option value="@c.Id">@c.Name</option>
-                }
-            </select>
+            <label class="form-label meterp-required">Customer</label>
+            <EntityPicker TestId="jobs-emergency-customer"
+                          Value="_emergencyCustomerId"
+                          ValueChanged="OnEmergencyCustomerPicked"
+                          Options="EmergencyCustomerOptions"
+                          SelectedLabel="@EmergencyCustomerName"
+                          Placeholder="Type a company name"
+                          Required="true"
+                          OnSearch="SearchEmergencyCustomersAsync" />
+            <span class="meterp-field-hint">Required. Type to find the company — not just the first names in the list.</span>
         </div>
         <div class="mb-3">
-            <label class="form-label">Title *</label>
+            <label class="form-label meterp-required">Title</label>
             <input class="form-control" @bind="_emergencyTitle" data-testid="jobs-emergency-title" placeholder="e.g. After-hours cable fault" />
         </div>
         <div class="mb-3">
@@ -176,8 +175,14 @@ else
     [SupplyParameterFromQuery(Name = "panel")]
     public Guid? PanelJobId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "search")]
+    public string? QuerySearch { get; set; }
+
     protected override Task OnInitializedAsync() => _dataGate.RunAsync(async () =>
     {
+        if (!string.IsNullOrWhiteSpace(QuerySearch))
+            searchTerm = QuerySearch;
+
         if (CurrentUserService.TenantId != Guid.Empty)
         {
             _tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
@@ -197,6 +202,31 @@ else
         if (OpenJobId is { } jobId && jobId != Guid.Empty)
             Nav.NavigateTo($"/jobs/{jobId}");
     });
+
+    private IReadOnlyList<EntityPickerOption> EmergencyCustomerOptions =>
+        _customers.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
+
+    private string? EmergencyCustomerName =>
+        _customers.FirstOrDefault(c => c.Id == _emergencyCustomerId)?.Name;
+
+    private Task OnEmergencyCustomerPicked(Guid id)
+    {
+        _emergencyCustomerId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchEmergencyCustomersAsync(string term)
+    {
+        _customers = (await CustomerService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .ToList();
+        if (_emergencyCustomerId != Guid.Empty && _customers.All(c => c.Id != _emergencyCustomerId))
+        {
+            var extra = await CustomerService.GetByIdAsync(_emergencyCustomerId);
+            if (extra != null)
+                _customers.Insert(0, extra);
+        }
+    }
 
     private void OpenEmergencyModal()
     {

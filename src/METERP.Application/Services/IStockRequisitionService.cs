@@ -14,9 +14,11 @@ public interface IStockRequisitionService
 
     Task<Guid> SubmitAsync(StockRequisition requisition, CancellationToken ct = default);
 
-    Task<bool> ApproveManagerAsync(Guid requisitionId, Guid approverUserId, CancellationToken ct = default);
+    Task<bool> ApproveManagerAsync(Guid requisitionId, Guid approverUserId, string? note = null, CancellationToken ct = default);
 
-    Task<bool> ApproveExecutiveAsync(Guid requisitionId, Guid approverUserId, CancellationToken ct = default);
+    Task<bool> ApproveExecutiveAsync(Guid requisitionId, Guid approverUserId, string? note = null, CancellationToken ct = default);
+
+    Task UpdatePendingLineQuantityAsync(Guid lineId, decimal quantityRequested, CancellationToken ct = default);
 
     Task<bool> RejectAsync(Guid requisitionId, Guid approverUserId, string reason, CancellationToken ct = default);
 

@@ -22,6 +22,13 @@ public interface IOpportunityService
 
     Task AdvanceStageAsync(Guid id, CancellationToken ct = default);
 
+    Task SetStageAsync(Guid id, OpportunityStage stage, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a deal to a pipeline lane and optional position (insert before another card, or append).
+    /// </summary>
+    Task MoveOnBoardAsync(Guid id, OpportunityStage stage, Guid? insertBeforeId = null, CancellationToken ct = default);
+
     /// <summary>Builds AI Copilot scope text for quote conversion handoff.</summary>
     string BuildAiScopeText(Opportunity opportunity);
 

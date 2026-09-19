@@ -28,23 +28,19 @@
     <span data-testid="quotes-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h1>Quotes</h1>
-        <p class="text-muted mb-0">Create estimates with labor, materials, explicit travel. 15% SA VAT.</p>
-    </div>
-    <div class="d-flex gap-2 align-items-center">
+<PageHeader Title="Quotes" Subtitle="Estimates with labour, materials, and explicit travel. VAT 15%." TestId="quotes-page-header">
+    <Actions>
         <ExportToolbar TestId="quotes-export" OnExportCsv="ExportQuotesCsv" OnExportExcel="ExportQuotesExcelAsync" OnExportPdf="ExportQuotesPdfAsync" Disabled="@_pageBusy" />
         @if (UserCanManage)
         {
             <button type="button" class="btn btn-primary" @onclick="ShowCreateEditor"
                     disabled="@(_pageBusy || QuoteQuotaBlocked)"
                     title="@(QuoteQuotaBlocked ? TenantQuotaDefaults.GetQuotaTooltip(_tenant!, QuotaType.Quote, "Quotes") : null)"
-                    data-testid="new-quote-button">+ New Quote</button>
+                    data-testid="new-quote-button">New quote</button>
         }
         <a href="/ai-copilot" class="btn btn-outline-success" data-testid="create-with-ai-copilot">Create with AI</a>
-    </div>
-</div>
+    </Actions>
+</PageHeader>
 
 @if (QuoteQuotaBlocked)
 {
@@ -55,8 +51,9 @@
     </div>
 }
 
-<div class="mb-3" style="max-width: 480px;">
+<div class="meterp-filter-bar">
     <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
         <input type="search" class="form-control" data-testid="quotes-search" placeholder="Search quote #, customer or notes..."
                value="@searchTerm" @oninput="OnSearchInput" disabled="@_pageBusy" />
         @if (!string.IsNullOrEmpty(searchTerm))
@@ -68,7 +65,7 @@
 
 @if (_loading)
 {
-    <p data-testid="quotes-loading"><em>Loading quotes...</em></p>
+    <ListSkeleton Rows="6" TestId="quotes-loading" AriaLabel="Loading quotes" />
 }
 else
 {
@@ -82,286 +79,344 @@ else
         OnEdit="EditQuote"
         OnDelete="DeleteQuote"
         OnPrevious="PreviousPage"
-        OnNext="NextPage" />
+        OnNext="NextPage"
+        OnCreate="ShowCreateEditor" />
 }
 
 @if (editorQuote != null)
 {
-    <div class="card mt-4 border-primary" data-testid="quote-editor">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0" data-testid="quote-editor-title">
-                @(editorIsNew ? "New Quote" : $"{editorQuote.QuoteNumber} — {editorQuote.Customer?.Name ?? "—"}")
-                @if (editorReadOnly) { <span class="badge bg-light text-dark ms-2">View</span> }
-            </h5>
-            <div>
-                @if (_pageBusy || _lineSaving) { <span class="spinner-border spinner-border-sm text-light me-2" role="status"></span> }
-                <button type="button" class="btn btn-sm btn-light me-2" @onclick="CloseEditor" disabled="@_pageBusy">Close</button>
-                @if (UserCanManage && !editorIsNew && editorQuote.Status is QuoteStatus.Draft or QuoteStatus.Sent)
-                {
-                    <button type="button" class="btn btn-sm btn-success" @onclick="ConvertToJob" disabled="@_pageBusy" data-testid="convert-to-job">Convert to Job</button>
-                }
-            </div>
-        </div>
-        <div class="card-body">
-            @if (!editorReadOnly)
-            {
-                <EditForm Model="editorQuote" FormName="QuoteEditorForm">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Customer *</label>
-                            <InputSelect class="form-select" @bind-Value="editorQuote.CustomerId" data-testid="quote-customer-select">
-                                <option value="@Guid.Empty">-- Select customer --</option>
-                                @foreach (var c in availableCustomers)
-                                {
-                                    <option value="@c.Id">@c.Name</option>
-                                }
-                            </InputSelect>
-                            <button type="button" class="btn btn-link btn-sm p-0 mt-1" @onclick="ToggleNewCustomer" data-testid="quote-new-customer-toggle">
-                                @(showNewCustomer ? "Hide new customer" : "+ Create new customer")
-                            </button>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Quote Date</label>
-                            <InputDate class="form-control" @bind-Value="editorQuote.QuoteDate" />
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Valid Until</label>
-                            <InputDate class="form-control" @bind-Value="editorQuote.ValidUntil" />
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" @bind="editorQuote.Status">
-                                @foreach (QuoteStatus s in Enum.GetValues<QuoteStatus>())
-                                {
-                                    <option value="@s">@s</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Tax Rate</label>
-                            <InputNumber class="form-control" @bind-Value="editorQuote.TaxRate" step="0.01" />
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Notes</label>
-                        <InputTextArea class="form-control" @bind-Value="editorQuote.Notes" rows="2" />
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
-                        <button type="button" class="btn btn-success" disabled="@_pageBusy" data-testid="quote-save-button" @onclick="SaveQuoteHeader">
-                            @(editorIsNew ? "Save Quote" : "Save Header")
-                        </button>
-                        @if (!editorIsNew && editorQuote.Status == QuoteStatus.Draft && LineCount > 0
-                             && editorQuote.ApprovalStatus is QuoteApprovalStatus.None or QuoteApprovalStatus.Rejected)
-                        {
-                            <button type="button" class="btn btn-outline-primary" disabled="@_pageBusy"
-                                    data-testid="quote-submit-approval" @onclick="SubmitForExecutiveApproval">
-                                Submit for executive approval
-                            </button>
-                        }
-                        @if (!editorIsNew && editorQuote.Status == QuoteStatus.Draft
-                             && editorQuote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
-                        {
-                            <button type="button" class="btn btn-outline-secondary" disabled="@_pageBusy"
-                                    data-testid="quote-withdraw-approval" @onclick="WithdrawFromApproval">
-                                Withdraw for edits
-                            </button>
-                        }
-                        @if (!editorIsNew)
-                        {
-                            <span>@((MarkupString)GetApprovalBadge(editorQuote.ApprovalStatus))</span>
-                        }
-                    </div>
-                    @if (!editorIsNew && editorQuote.ApprovalStatus != QuoteApprovalStatus.ExecutiveApproved)
+<FormModal IsOpen="true"
+           Title="@QuoteEditorTitle"
+           Size="full"
+           TestId="quote-editor"
+           BackdropTestId="quote-editor-backdrop"
+           CloseOnBackdrop="false"
+           CloseDisabled="@_pageBusy"
+           OnClose="CloseEditor">
+    <HeaderActions>
+        @if (editorReadOnly)
+        {
+            <span class="badge bg-secondary">View</span>
+        }
+        @if (_pageBusy || _lineSaving)
+        {
+            <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+        }
+        @if (CanConvertToJob)
+        {
+            <button type="button" class="btn btn-sm btn-success" @onclick="ConvertToJob" disabled="@_pageBusy" data-testid="convert-to-job">Convert to job</button>
+        }
+    </HeaderActions>
+    <ChildContent>
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    @if (!string.IsNullOrWhiteSpace(editorQuote.ExecutiveDecisionNote) || !string.IsNullOrWhiteSpace(editorQuote.ExecutiveRejectionReason))
                     {
-                        <p class="small text-muted mb-3">Marking status as <strong>Sent</strong> requires executive approval first.</p>
-                    }
-                </EditForm>
-
-                @if (showNewCustomer)
-                {
-                    <div class="p-3 border rounded bg-light mb-3" data-testid="quote-new-customer-form">
-                        <h6 class="mb-2">New Customer</h6>
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <input class="form-control form-control-sm" @bind="newCustomerName" @bind:event="oninput" placeholder="Company name *" data-testid="quote-new-customer-name" />
-                            </div>
-                            <div class="col-md-3">
-                                <input class="form-control form-control-sm" @bind="newCustomerEmail" placeholder="Email" />
-                            </div>
-                            <div class="col-md-2">
-                                <input class="form-control form-control-sm" @bind="newCustomerPhone" placeholder="Phone" />
-                            </div>
-                            <div class="col-md-2">
-                                <input class="form-control form-control-sm" @bind="newCustomerCity" placeholder="City" />
-                            </div>
-                            <div class="col-md-1">
-                                <button type="button" class="btn btn-sm btn-primary w-100" @onclick="SaveNewCustomer" disabled="@_pageBusy" data-testid="quote-new-customer-save">Add</button>
-                            </div>
+                        <div class="alert @(editorQuote.ApprovalStatus == QuoteApprovalStatus.Rejected ? "alert-warning" : "alert-success") small" data-testid="quote-executive-note">
+                            <strong>@(editorQuote.ApprovalStatus == QuoteApprovalStatus.Rejected ? "Executive rejected" : "Executive note")</strong>
+                            <div>@(editorQuote.ExecutiveDecisionNote ?? editorQuote.ExecutiveRejectionReason)</div>
                         </div>
-                    </div>
-                }
-            }
-            else
-            {
-                <div class="row mb-3">
-                    <div class="col-md-8">
-                        <strong>Customer:</strong> @(editorQuote.Customer?.Name ?? "—")<br />
-                        <strong>Status:</strong> @((MarkupString)GetStatusBadge(editorQuote.Status))<br />
-                        <strong>Quote Date:</strong> @editorQuote.QuoteDate.ToString("yyyy-MM-dd")
-                    </div>
-                    <div class="col-md-4 text-md-end">
-                        @if (UserCanManage)
-                        {
-                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="SwitchToEditMode" disabled="@_pageBusy" data-testid="quote-edit-button">Edit Quote</button>
-                        }
-                    </div>
-                </div>
-            }
-
-            <div class="row mb-2">
-                <div class="col-md-6"><h6 class="mb-0">Line Items (@LineCount)</h6></div>
-                <div class="col-md-6 text-md-end">
-                    <div>Subtotal: <strong>R @DisplaySubtotal.ToString("N2")</strong></div>
-                    @if (ShowGpSummary)
-                    {
-                        <div class="text-success">Est. Gross Profit: R @DisplayGrossProfit.ToString("N2")</div>
-                        <div class="text-success">Blended GP: @DisplayBlendedGp.ToString("0.0")%</div>
                     }
-                    <div>VAT (@((editorQuote.TaxRate * 100).ToString("0"))%): R @DisplayTax.ToString("N2")</div>
-                    <div class="fs-5">Total: <strong>R @DisplayTotal.ToString("N2")</strong></div>
-                </div>
-            </div>
+                    @if (!editorReadOnly)
+                    {
+                        <EditForm Model="editorQuote" FormName="QuoteEditorForm">
+                            <div class="meterp-section">
+                                <div class="meterp-section-title">Who is this for</div>
+                                <label class="form-label meterp-required" for="quote-customer">Customer</label>
+                                <EntityPicker TestId="quote-customer-select"
+                                              Value="editorQuote.CustomerId"
+                                              ValueChanged="OnCustomerPickedAsync"
+                                              Options="CustomerPickerOptions"
+                                              SelectedLabel="@SelectedCustomerName"
+                                              Placeholder="Type a company name to find them"
+                                              Required="true"
+                                              ShowRequiredError="_customerError"
+                                              RequiredMessage="Select a customer, or create one if they are new."
+                                              AllowCreate="true"
+                                              CreateLabel="+ Create new customer"
+                                              CreateTestId="quote-new-customer-toggle"
+                                              OnCreate="ToggleNewCustomer"
+                                              OnSearch="SearchCustomersAsync" />
+                                <span class="meterp-field-hint">Required. Type to search the full customer list — it is not limited to the first few names.</span>
+                            </div>
 
-            @if (LineCount > 0)
-            {
-                <table class="table table-sm" data-testid="quote-lines-table">
-                    <thead>
-                        <tr>
-                            <th>Description</th>
-                            <th>Type</th>
-                            <th class="text-end">Qty</th>
-                            <th class="text-end">Unit Cost</th>
-                            <th class="text-end">GP %</th>
-                            <th class="text-end">Unit Price</th>
-                            <th class="text-end">Line Total</th>
-                            @if (CanEditLines) { <th></th> }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (editorIsNew)
-                        {
-                            @foreach (var line in draftLines)
-                            {
-                                <tr data-testid="quote-line-row">
-                                    <td>@line.Description</td>
-                                    <td><span class="badge bg-light text-dark">@line.LineType</span></td>
-                                    <td class="text-end">@line.Quantity</td>
-                                    <td class="text-end">@(line.UnitCost > 0 ? $"R {line.UnitCost:N2}" : "—")</td>
-                                    <td class="text-end">@((line.GrossProfitPercent * 100).ToString("0"))%</td>
-                                    <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
-                                    <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
-                                    @if (CanEditLines)
+                            <div class="meterp-section">
+                                <div class="meterp-section-title">Quote details</div>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label meterp-required">Quote date</label>
+                                        <InputDate class="form-control" @bind-Value="editorQuote.QuoteDate" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label meterp-required">Valid until</label>
+                                        <InputDate class="form-control" @bind-Value="editorQuote.ValidUntil" />
+                                        <span class="meterp-field-hint">Defaults to 30 days.</span>
+                                    </div>
+                                    @if (!editorIsNew)
                                     {
-                                        <td>
-                                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" @onclick="() => EditDraftLine(line)" disabled="@_lineSaving" data-testid="quote-line-edit-button">Edit</button>
-                                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" @onclick="() => DeleteDraftLine(line)" disabled="@_lineSaving">Del</button>
-                                        </td>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Status</label>
+                                            <select class="form-select" @bind="editorQuote.Status">
+                                                @foreach (QuoteStatus s in Enum.GetValues<QuoteStatus>())
+                                                {
+                                                    <option value="@s">@s</option>
+                                                }
+                                            </select>
+                                            @if (editorQuote.ApprovalStatus != QuoteApprovalStatus.ExecutiveApproved)
+                                            {
+                                                <span class="meterp-field-hint">Sent requires executive approval first.</span>
+                                            }
+                                        </div>
                                     }
-                                </tr>
+                                    <div class="col-md-4">
+                                        <label class="form-label">VAT rate</label>
+                                        <InputNumber class="form-control" @bind-Value="editorQuote.TaxRate" step="0.01" />
+                                        <span class="meterp-field-hint">South Africa standard is 0.15 (15%).</span>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                                        <InputTextArea class="form-control" @bind-Value="editorQuote.Notes" rows="2" placeholder="Scope, site, or terms the customer should see" />
+                                    </div>
+                                </div>
+                            </div>
+                        </EditForm>
+                    }
+                    else
+                    {
+                        <div class="meterp-section">
+                            <div class="meterp-section-title">Customer</div>
+                            <p class="mb-1"><strong>@(editorQuote.Customer?.Name ?? SelectedCustomerName ?? "—")</strong></p>
+                            <p class="mb-0 text-muted small">
+                                @((MarkupString)GetStatusBadge(editorQuote.Status))
+                                <span class="ms-2">@editorQuote.QuoteDate.ToString("yyyy-MM-dd")</span>
+                            </p>
+                        </div>
+                    }
+
+                    <div class="meterp-section">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="meterp-section-title mb-0 border-0 pb-0">Line items (@LineCount)</div>
+                            @if (CanEditLines && !showLineForm)
+                            {
+                                <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ShowAddLineForm" data-testid="quote-add-line-button">Add line</button>
                             }
+                        </div>
+                        <p class="meterp-field-hint mb-2">Add labour, materials, and travel as separate lines. Description and sell price are required for each line.</p>
+
+                        @if (LineCount > 0)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm" data-testid="quote-lines-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Description</th>
+                                            <th>Type</th>
+                                            <th class="text-end">Qty</th>
+                                            <th class="text-end">Unit cost</th>
+                                            <th class="text-end">GP %</th>
+                                            <th class="text-end">Unit price</th>
+                                            <th class="text-end">Line total</th>
+                                            @if (CanEditLines) { <th></th> }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (editorIsNew)
+                                        {
+                                            @foreach (var line in draftLines)
+                                            {
+                                                <tr data-testid="quote-line-row">
+                                                    <td>@line.Description</td>
+                                                    <td><span class="badge bg-light text-dark">@line.LineType</span></td>
+                                                    <td class="text-end">@line.Quantity</td>
+                                                    <td class="text-end">@(line.UnitCost > 0 ? $"R {line.UnitCost:N2}" : "—")</td>
+                                                    <td class="text-end">@((line.GrossProfitPercent * 100).ToString("0"))%</td>
+                                                    <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
+                                                    <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
+                                                    @if (CanEditLines)
+                                                    {
+                                                        <td>
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" @onclick="() => EditDraftLine(line)" disabled="@_lineSaving" data-testid="quote-line-edit-button">Edit</button>
+                                                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" @onclick="() => DeleteDraftLine(line)" disabled="@_lineSaving">Del</button>
+                                                        </td>
+                                                    }
+                                                </tr>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @foreach (var line in editorQuote.Lines.Where(l => !l.IsDeleted))
+                                            {
+                                                <tr data-testid="quote-line-row">
+                                                    <td>@line.Description</td>
+                                                    <td><span class="badge bg-light text-dark">@line.LineType</span></td>
+                                                    <td class="text-end">@line.Quantity</td>
+                                                    <td class="text-end">@(line.UnitCost > 0 ? $"R {line.UnitCost:N2}" : "—")</td>
+                                                    <td class="text-end">@((line.GrossProfitPercent * 100).ToString("0"))%</td>
+                                                    <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
+                                                    <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
+                                                    @if (CanEditLines)
+                                                    {
+                                                        <td>
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" @onclick="() => EditSavedLine(line)" disabled="@_lineSaving" data-testid="quote-line-edit-button">Edit</button>
+                                                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" @onclick="() => DeleteSavedLine(line)" disabled="@_lineSaving">Del</button>
+                                                        </td>
+                                                    }
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
                         }
                         else
                         {
-                            @foreach (var line in editorQuote.Lines.Where(l => !l.IsDeleted))
-                            {
-                                <tr data-testid="quote-line-row">
-                                    <td>@line.Description</td>
-                                    <td><span class="badge bg-light text-dark">@line.LineType</span></td>
-                                    <td class="text-end">@line.Quantity</td>
-                                    <td class="text-end">@(line.UnitCost > 0 ? $"R {line.UnitCost:N2}" : "—")</td>
-                                    <td class="text-end">@((line.GrossProfitPercent * 100).ToString("0"))%</td>
-                                    <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
-                                    <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
-                                    @if (CanEditLines)
-                                    {
-                                        <td>
-                                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" @onclick="() => EditSavedLine(line)" disabled="@_lineSaving" data-testid="quote-line-edit-button">Edit</button>
-                                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" @onclick="() => DeleteSavedLine(line)" disabled="@_lineSaving">Del</button>
-                                        </td>
-                                    }
-                                </tr>
-                            }
+                            <p class="text-muted mb-2">No lines yet. Add labour, materials, or travel.</p>
                         }
-                    </tbody>
-                </table>
-            }
-            else
-            {
-                <p class="text-muted">No lines yet. Add labor, materials, or travel below.</p>
-            }
 
-            @if (CanEditLines)
-            {
-                <button type="button" class="btn btn-outline-success btn-sm" @onclick="ShowAddLineForm" data-testid="quote-add-line-button">+ Add Line</button>
-            }
-
-            @if (showLineForm)
-            {
-                <div class="mt-2 p-3 border rounded bg-light" @key="lineFormKey" data-testid="quote-line-form">
-                    <h6>@(editingLineIsNew ? "Add Line" : "Edit Line")</h6>
-                    <div class="row g-2 align-items-end">
-                        <div class="col-md-3">
-                            <label class="form-label small mb-0">Description *</label>
-                            <input class="form-control form-control-sm"
-                                   value="@lineDescription"
-                                   @oninput="OnLineDescriptionChanged"
-                                   data-testid="quote-line-description" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label small mb-0">Type</label>
-                            <select class="form-select form-select-sm" @bind="lineType">
-                                <option value="Material">Material</option>
-                                <option value="Labour">Labour</option>
-                                <option value="Travel">Travel</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label small mb-0">Qty</label>
-                            <input type="text" inputmode="decimal" class="form-control form-control-sm"
-                                   value="@lineQuantityText" @oninput="OnLineQuantityChanged" />
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label small mb-0">Unit</label>
-                            <input class="form-control form-control-sm" value="@lineUnit" @oninput="OnLineUnitChanged" placeholder="ea" />
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label small mb-0">Unit Cost</label>
-                            <input type="text" inputmode="decimal" class="form-control form-control-sm"
-                                   value="@lineUnitCostText" @oninput="OnLineUnitCostChanged" data-testid="quote-line-unit-cost" />
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label small mb-0">GP %</label>
-                            <input type="number" class="form-control form-control-sm" step="1" min="0" max="99"
-                                   value="@LineGrossProfitPercentDisplay" @oninput="OnLineGrossProfitChanged" data-testid="quote-line-gross-profit-percent" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label small mb-0">Unit Price (sell)</label>
-                            <input type="text" inputmode="decimal" class="form-control form-control-sm"
-                                   value="@lineUnitPriceText" @oninput="OnLineUnitPriceChanged" data-testid="quote-line-unit-price" />
-                        </div>
-                    </div>
-                    <div class="mt-2">
-                        <button type="button" class="btn btn-sm btn-success" @onclick="() => SaveLine(false)" disabled="@_lineSaving" data-testid="quote-line-save-button">Save Line</button>
-                        <button type="button" class="btn btn-sm btn-outline-success ms-1" @onclick="() => SaveLine(true)" disabled="@_lineSaving" data-testid="quote-line-save-add-another-button">Save &amp; Add Another</button>
-                        <button type="button" class="btn btn-sm btn-secondary ms-1" @onclick="CancelLineForm" disabled="@_lineSaving">Cancel</button>
+                        @if (showLineForm)
+                        {
+                            <div class="mt-2 p-3 border rounded bg-light" @key="lineFormKey" data-testid="quote-line-form">
+                                <h6>@(editingLineIsNew ? "Add line" : "Edit line")</h6>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-0 meterp-required">Description</label>
+                                        <input class="form-control form-control-sm"
+                                               value="@lineDescription"
+                                               @oninput="OnLineDescriptionChanged"
+                                               data-testid="quote-line-description" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-0">Type</label>
+                                        <select class="form-select form-select-sm" @bind="lineType">
+                                            <option value="Material">Material</option>
+                                            <option value="Labour">Labour</option>
+                                            <option value="Travel">Travel</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label small mb-0">Qty</label>
+                                        <input type="text" inputmode="decimal" class="form-control form-control-sm"
+                                               value="@lineQuantityText" @oninput="OnLineQuantityChanged" />
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label small mb-0">Unit</label>
+                                        <input class="form-control form-control-sm" value="@lineUnit" @oninput="OnLineUnitChanged" placeholder="ea" />
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label small mb-0">Unit cost</label>
+                                        <input type="text" inputmode="decimal" class="form-control form-control-sm"
+                                               value="@lineUnitCostText" @oninput="OnLineUnitCostChanged" data-testid="quote-line-unit-cost" />
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label small mb-0">GP %</label>
+                                        <input type="number" class="form-control form-control-sm" step="1" min="0" max="99"
+                                               value="@LineGrossProfitPercentDisplay" @oninput="OnLineGrossProfitChanged" data-testid="quote-line-gross-profit-percent" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-0 meterp-required">Unit price (sell)</label>
+                                        <input type="text" inputmode="decimal" class="form-control form-control-sm"
+                                               value="@lineUnitPriceText" @oninput="OnLineUnitPriceChanged" data-testid="quote-line-unit-price" />
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <button type="button" class="btn btn-sm btn-success" @onclick="() => SaveLine(false)" disabled="@_lineSaving" data-testid="quote-line-save-button">Save line</button>
+                                    <button type="button" class="btn btn-sm btn-outline-success ms-1" @onclick="() => SaveLine(true)" disabled="@_lineSaving" data-testid="quote-line-save-add-another-button">Save &amp; add another</button>
+                                    <button type="button" class="btn btn-sm btn-secondary ms-1" @onclick="CancelLineForm" disabled="@_lineSaving">Cancel</button>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
+                <div class="col-lg-4">
+                    <div class="meterp-totals">
+                        <div class="meterp-section-title">Totals</div>
+                        <div class="meterp-totals-row"><span>Subtotal</span><strong>R @DisplaySubtotal.ToString("N2")</strong></div>
+                        @if (ShowGpSummary)
+                        {
+                            <div class="meterp-totals-row text-success"><span>Est. gross profit</span><span>R @DisplayGrossProfit.ToString("N2")</span></div>
+                            <div class="meterp-totals-row text-success"><span>Blended GP</span><span>@DisplayBlendedGp.ToString("0.0")%</span></div>
+                        }
+                        <div class="meterp-totals-row"><span>VAT (@((editorQuote.TaxRate * 100).ToString("0"))%)</span><span>R @DisplayTax.ToString("N2")</span></div>
+                        <div class="meterp-totals-row meterp-totals-total"><span>Total</span><span>R @DisplayTotal.ToString("N2")</span></div>
+                    </div>
+                </div>
+            </div>
+    </ChildContent>
+    <Footer>
+        @if (editorReadOnly)
+        {
+            @if (UserCanManage)
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="SwitchToEditMode" disabled="@_pageBusy" data-testid="quote-edit-button">Edit quote</button>
             }
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseEditor" disabled="@_pageBusy">Close</button>
+        }
+        else
+        {
+            @if (!editorIsNew)
+            {
+                <span class="me-auto">@((MarkupString)GetApprovalBadge(editorQuote.ApprovalStatus))</span>
+            }
+            @if (CanSubmitApproval)
+            {
+                <button type="button" class="btn btn-outline-primary" disabled="@_pageBusy"
+                        data-testid="quote-submit-approval" @onclick="SubmitForExecutiveApproval">
+                    Submit for executive approval
+                </button>
+            }
+            @if (CanWithdrawApproval)
+            {
+                <button type="button" class="btn btn-outline-secondary" disabled="@_pageBusy"
+                        data-testid="quote-withdraw-approval" @onclick="WithdrawFromApproval">
+                    Withdraw for edits
+                </button>
+            }
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseEditor" disabled="@_pageBusy">Cancel</button>
+            <button type="button" class="btn btn-primary" disabled="@_pageBusy" data-testid="quote-save-button" @onclick="SaveQuoteHeader">
+                @(editorIsNew ? "Save quote" : "Save header")
+            </button>
+        }
+    </Footer>
+</FormModal>
+}
+
+@if (showNewCustomer && editorQuote != null)
+{
+<FormModal IsOpen="true"
+           Title="New customer"
+           Size="md"
+           Layer="2"
+           TestId="quote-new-customer-modal"
+           OnClose="CloseNewCustomer">
+    <ChildContent>
+        <div data-testid="quote-new-customer-form">
+            <p class="meterp-field-hint mb-3">Company name is required. Email and phone help later quoting and invoicing.</p>
+            <div class="mb-2">
+                <label class="form-label meterp-required">Company name</label>
+                <input class="form-control" @bind="newCustomerName" @bind:event="oninput" placeholder="e.g. Acme Mining" data-testid="quote-new-customer-name" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Email <span class="text-muted fw-normal">(optional)</span></label>
+                <input class="form-control" @bind="newCustomerEmail" placeholder="accounts@company.co.za" />
+            </div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label">Phone <span class="text-muted fw-normal">(optional)</span></label>
+                    <input class="form-control" @bind="newCustomerPhone" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">City <span class="text-muted fw-normal">(optional)</span></label>
+                    <input class="form-control" @bind="newCustomerCity" />
+                </div>
+            </div>
         </div>
-    </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseNewCustomer">Cancel</button>
+        <button type="button" class="btn btn-primary" @onclick="SaveNewCustomer" disabled="@_pageBusy" data-testid="quote-new-customer-save">Add customer</button>
+    </Footer>
+</FormModal>
 }
 
 @code {
@@ -371,6 +426,7 @@ else
     private bool QuoteQuotaBlocked =>
         _tenant != null && TenantQuotaDefaults.IsAtOrOverLimit(_tenant, QuotaType.Quote);
     private List<Customer> availableCustomers = new();
+    private bool _customerError;
     private Quote? editorQuote;
     private bool editorIsNew;
     private bool editorReadOnly;
@@ -411,6 +467,15 @@ else
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
     private bool CanEditLines => UserCanManage && !editorReadOnly && editorQuote?.Status == QuoteStatus.Draft;
+    private bool CanConvertToJob =>
+        editorQuote != null && UserCanManage && !editorIsNew
+        && (editorQuote.Status == QuoteStatus.Draft || editorQuote.Status == QuoteStatus.Sent);
+    private bool CanSubmitApproval =>
+        editorQuote != null && !editorIsNew && editorQuote.Status == QuoteStatus.Draft && LineCount > 0
+        && (editorQuote.ApprovalStatus == QuoteApprovalStatus.None || editorQuote.ApprovalStatus == QuoteApprovalStatus.Rejected);
+    private bool CanWithdrawApproval =>
+        editorQuote != null && !editorIsNew && editorQuote.Status == QuoteStatus.Draft
+        && editorQuote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive;
 
     private int LineGrossProfitPercentDisplay => (int)Math.Round(lineGrossProfitPercent * 100);
 
@@ -435,6 +500,19 @@ else
     private decimal DisplayTax => Math.Round(DisplaySubtotal * (editorQuote?.TaxRate ?? 0.15m), 2);
     private decimal DisplayTotal => DisplaySubtotal + DisplayTax;
 
+    private IReadOnlyList<EntityPickerOption> CustomerPickerOptions =>
+        availableCustomers.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
+
+    private string? SelectedCustomerName =>
+        availableCustomers.FirstOrDefault(c => c.Id == editorQuote?.CustomerId)?.Name
+        ?? editorQuote?.Customer?.Name;
+
+    private string QuoteEditorTitle => editorQuote == null
+        ? "Quote"
+        : editorIsNew
+            ? "New quote"
+            : $"{editorQuote.QuoteNumber} — {editorQuote.Customer?.Name ?? SelectedCustomerName ?? "—"}";
+
     protected override async Task OnInitializedAsync() => await _dataGate.RunAsync(async () =>
     {
         _loading = true;
@@ -447,9 +525,11 @@ else
                 _branding = TenantBranding.From(_tenant);
             }
 
+            ApplyListSearchQuery();
             await LoadCustomers();
             await LoadQuotes();
             HandleCreateQuery();
+            await EnsureSelectedCustomerInListAsync();
             await HandleOpenQueryAsync();
         }
         finally
@@ -580,12 +660,42 @@ else
         CancelLineForm();
     }
 
-    private async Task LoadCustomers()
+    private void ApplyListSearchQuery()
+    {
+        var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (query.TryGetValue("search", out var s) && !string.IsNullOrWhiteSpace(s))
+            searchTerm = s.ToString();
+    }
+
+    private async Task LoadCustomers() => await SearchCustomersAsync("");
+
+    private async Task SearchCustomersAsync(string term)
     {
         // Strip Contacts navigation — Customer→Contacts→Customer cycles break Blazor Server circuits.
-        availableCustomers = (await CustomerService.GetAllAsync())
+        availableCustomers = (await CustomerService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
             .Select(c => new Customer { Id = c.Id, Name = c.Name })
             .ToList();
+        await EnsureSelectedCustomerInListAsync();
+    }
+
+    private async Task EnsureSelectedCustomerInListAsync()
+    {
+        if (editorQuote == null || editorQuote.CustomerId == Guid.Empty)
+            return;
+        if (availableCustomers.Any(c => c.Id == editorQuote.CustomerId))
+            return;
+        var extra = await CustomerService.GetByIdAsync(editorQuote.CustomerId);
+        if (extra != null)
+            availableCustomers.Insert(0, new Customer { Id = extra.Id, Name = extra.Name });
+    }
+
+    private Task OnCustomerPickedAsync(Guid id)
+    {
+        if (editorQuote != null)
+            editorQuote.CustomerId = id;
+        _customerError = id == Guid.Empty;
+        return Task.CompletedTask;
     }
 
     private async Task LoadQuotes()
@@ -641,6 +751,7 @@ else
         };
         editorIsNew = true;
         editorReadOnly = false;
+        _customerError = false;
         draftLines = new();
         // Ensure InteractiveServer paints the editor after button click / create query.
         CancelLineForm();
@@ -649,12 +760,6 @@ else
 
     private void SetEditorQuote(Quote? quote) =>
         editorQuote = QuoteUiHelper.DetachForUi(quote);
-
-    private void OnCustomerChanged(ChangeEventArgs e)
-    {
-        if (editorQuote == null) return;
-        editorQuote.CustomerId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : Guid.Empty;
-    }
 
     private async Task OpenEditor(Quote q, bool readOnly)
     {
@@ -695,9 +800,11 @@ else
 
     private async Task ToggleNewCustomer()
     {
-        showNewCustomer = !showNewCustomer;
+        showNewCustomer = true;
         await InvokeAsync(StateHasChanged);
     }
+
+    private void CloseNewCustomer() => showNewCustomer = false;
 
     private Task SaveNewCustomer()
     {
@@ -739,8 +846,9 @@ else
             try
             {
                 await QuoteService.SubmitForExecutiveApprovalAsync(editorQuote.Id, userId);
-                SetEditorQuote(await QuoteService.GetByIdAsync(editorQuote.Id));
-                ToastService.ShowSuccess("Submitted for executive approval — check Approvals hub.");
+                ToastService.ShowSuccess("Submitted for executive approval — it is now in Approvals.");
+                CloseEditor();
+                await LoadQuotes();
             }
             catch (Exception ex)
             {
@@ -772,9 +880,10 @@ else
     private Task SaveQuoteHeader()
     {
         if (editorQuote == null) return Task.CompletedTask;
-        if (editorQuote.CustomerId == Guid.Empty)
+        _customerError = editorQuote.CustomerId == Guid.Empty;
+        if (_customerError)
         {
-            ToastService.ShowError("Please select or create a customer.");
+            ToastService.ShowError("Select a customer, or create one if they are new.");
             return Task.CompletedTask;
         }
 

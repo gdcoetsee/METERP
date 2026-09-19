@@ -29,4 +29,6 @@ public class LeaveRequest : BaseEntity
     public DateTime? HrApprovedAt { get; set; }
 
     public string? RejectionReason { get; set; }
+
+    public string? ApproverNote { get; set; }
 }

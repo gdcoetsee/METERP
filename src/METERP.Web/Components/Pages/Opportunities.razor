@@ -13,6 +13,7 @@
 @inject IJSRuntime JS
 @attribute [Authorize(Policy = "Opportunities.View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
 
 <PageTitle>Opportunities (CRM)</PageTitle>
 
@@ -21,57 +22,117 @@
     <span data-testid="opportunities-ready" class="visually-hidden">ready</span>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h1>Opportunities <span class="badge bg-info">CRM Pipeline</span></h1>
-        <p class="text-muted mb-0">Track leads, convert to AI-powered quotes. Full tenant-isolated CRM.</p>
-    </div>
-    @if (CanManage)
-    {
-        <button type="button" class="btn btn-primary" data-testid="opportunity-create-button" @onclick="ShowCreate">+ New Opportunity</button>
-    }
-</div>
+<PageHeader Title="Opportunities" Subtitle="Pipeline from lead to quote. Click a card to act — do not scroll for a form." TestId="opportunities-page-header">
+    <Actions>
+        @if (CanManage)
+        {
+            <button type="button" class="btn btn-primary" data-testid="opportunity-create-button" @onclick="ShowCreate">New opportunity</button>
+        }
+    </Actions>
+</PageHeader>
 
-<div class="mb-3" style="max-width: 420px;">
-    <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search opportunity..."
+<div class="meterp-board-toolbar" data-testid="opportunity-filters">
+    <div class="input-group meterp-board-search">
+        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+        <input type="search" class="form-control" placeholder="Search deals..."
                data-testid="opportunity-search" value="@searchTerm" @oninput="OnSearch" />
+    </div>
+    <select class="form-select form-select-sm" data-testid="opportunity-filter-close" @bind="_closeFilter" @bind:after="Filter">
+        <option value="all">Close date</option>
+        <option value="overdue">Overdue</option>
+        <option value="month">This month</option>
+        <option value="next30">Next 30 days</option>
+    </select>
+    <select class="form-select form-select-sm" data-testid="opportunity-filter-amount" @bind="_amountFilter" @bind:after="Filter">
+        <option value="all">Amount</option>
+        <option value="10k">R 10k+</option>
+        <option value="50k">R 50k+</option>
+        <option value="100k">R 100k+</option>
+    </select>
+    <select class="form-select form-select-sm" data-testid="opportunity-filter-quote" @bind="_quoteFilter" @bind:after="Filter">
+        <option value="all">Association</option>
+        <option value="quoted">Has quote</option>
+        <option value="unquoted">No quote</option>
+    </select>
+    <select class="form-select form-select-sm meterp-board-toolbar-sort" data-testid="opportunity-sort" @bind="_sort" @bind:after="Filter">
+        <option value="board">Board order</option>
+        <option value="close">Close date</option>
+        <option value="amount-desc">Amount high–low</option>
+        <option value="amount-asc">Amount low–high</option>
+        <option value="title">Deal name</option>
+        <option value="newest">Recently created</option>
+    </select>
+</div>
+@if (HasActiveFilters)
+{
+    <div class="meterp-filter-chips">
         @if (!string.IsNullOrEmpty(searchTerm))
         {
-            <button class="btn btn-outline-secondary" @onclick="ClearSearch">Clear</button>
+            <span class="badge text-bg-light">Search: @searchTerm</span>
         }
+        @if (_closeFilter != "all")
+        {
+            <span class="badge text-bg-light">@_closeFilter</span>
+        }
+        @if (_amountFilter != "all")
+        {
+            <span class="badge text-bg-light">@_amountFilter</span>
+        }
+        @if (_quoteFilter != "all")
+        {
+            <span class="badge text-bg-light">@_quoteFilter</span>
+        }
+        <button type="button" class="btn btn-link btn-sm p-0" @onclick="ResetFilters">Clear filters</button>
     </div>
-</div>
+}
 
 @if (_loading)
 {
-    <p data-testid="opportunities-loading"><em>Loading opportunities...</em></p>
+    <ListSkeleton Rows="4" TestId="opportunities-loading" AriaLabel="Loading opportunities" />
 }
 else
 {
-<div class="row g-3 mb-4" data-testid="opportunities-pipeline">
+<div class="meterp-kanban mb-4" data-testid="opportunities-pipeline">
     @foreach (var stage in stages)
     {
-        <div class="col-md-4 col-lg-2">
-            <div class="card h-100">
-                <div class="card-header bg-light py-2">
-                    <strong class="small">@StageLabel(stage)</strong>
-                    <span class="badge bg-secondary">@GetCount(stage)</span>
-                </div>
-                <div class="card-body p-2">
-                    @foreach (var opp in GetByStage(stage))
-                    {
-                        <div class="card mb-2 shadow-sm" style="cursor:pointer;"
-                             data-testid="@(opp.CustomerId.HasValue && opp.CustomerId != Guid.Empty ? "opportunity-card-with-customer" : "opportunity-card")"
-                             @onclick="() => ViewOpp(opp)">
-                            <div class="card-body p-2 small">
-                                <strong>@opp.Title</strong><br />
-                                <span class="text-muted">@DisplayCustomer(opp)</span><br />
-                                <span class="text-success">R @opp.Value.ToString("N0")</span>
+        <div class="meterp-kanban-col">
+            <div class="meterp-kanban-col-head">
+                <strong class="small">@StageLabel(stage)</strong>
+                <span class="badge bg-secondary ms-1">@GetCount(stage)</span>
+                <div class="small text-success">R @GetValue(stage).ToString("N0")</div>
+            </div>
+            <div class="meterp-kanban-lane"
+                 data-lane="@stage.ToString()"
+                 data-testid="@($"opportunity-lane-{stage}")">
+                @foreach (var opp in GetByStage(stage))
+                {
+                    <div class="meterp-kanban-card"
+                         draggable="@(CanManage ? "true" : "false")"
+                         data-deal-id="@opp.Id"
+                         data-testid="@(opp.CustomerId.HasValue && opp.CustomerId != Guid.Empty ? "opportunity-card-with-customer" : "opportunity-card")"
+                         @onclick="() => OnCardClick(opp)">
+                        <div class="p-2 small">
+                            <div class="d-flex align-items-start gap-1">
+                                @if (CanManage)
+                                {
+                                    <i class="bi bi-grip-vertical meterp-kanban-grip" aria-hidden="true"></i>
+                                }
+                                <strong>@opp.Title</strong>
                             </div>
+                            <span class="text-muted">@DisplayCustomer(opp)</span><br />
+                            <span class="text-success">R @opp.Value.ToString("N0")</span>
+                            <div class="text-muted">Close @opp.ExpectedClose.ToString("dd MMM") · @DaysToClose(opp)</div>
+                            @if (opp.QuoteId is { } qid && qid != Guid.Empty)
+                            {
+                                <span class="badge bg-success-subtle text-success">Quote</span>
+                            }
                         </div>
-                    }
-                </div>
+                    </div>
+                }
+                @if (!GetByStage(stage).Any())
+                {
+                    <div class="small text-muted px-1 py-3">@(CanManage ? "Drop deals here" : "No deals")</div>
+                }
             </div>
         </div>
     }
@@ -80,29 +141,34 @@ else
 
 @if (showCreate && CanManage)
 {
-    <div class="card mb-4 border-primary" data-testid="opportunity-create-form">
-        <div class="card-header bg-primary text-white">New Opportunity</div>
-        <div class="card-body">
+    <FormModal IsOpen="true"
+               Title="New opportunity"
+               Size="lg"
+               TestId="opportunity-create-form"
+               CloseOnBackdrop="false"
+               OnClose="CancelCreate">
+        <ChildContent>
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label">Title</label>
-                    <input class="form-control" data-testid="opportunity-title" @bind="newOpp.Title" />
+                    <label class="form-label meterp-required">Title</label>
+                    <input class="form-control" data-testid="opportunity-title" @bind="newOpp.Title" placeholder="e.g. Substation upgrade" />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Customer</label>
-                    <select class="form-select" @bind="selectedCustomerId">
-                        <option value="">— New / unlinked —</option>
-                        @foreach (var c in customers)
-                        {
-                            <option value="@c.Id">@c.Name</option>
-                        }
-                    </select>
+                    <EntityPicker TestId="opportunity-customer-select"
+                                  Value="selectedCustomerId"
+                                  ValueChanged="OnOpportunityCustomerPicked"
+                                  Options="CustomerPickerOptions"
+                                  SelectedLabel="@SelectedOpportunityCustomerName"
+                                  Placeholder="Type a company name, or leave blank"
+                                  OnSearch="SearchCustomersAsync" />
+                    <span class="meterp-field-hint">Optional. Link an existing company, or type a name below if they are not in the list yet.</span>
                 </div>
                 @if (selectedCustomerId == Guid.Empty)
                 {
                     <div class="col-md-6">
                         <label class="form-label">Customer name (if not linked)</label>
-                        <input class="form-control" @bind="newOpp.CustomerName" />
+                        <input class="form-control" @bind="newOpp.CustomerName" placeholder="Company name for this lead" />
                     </div>
                 }
                 <div class="col-md-4">
@@ -116,43 +182,115 @@ else
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Expected Close</label>
+                    <label class="form-label">Expected close</label>
                     <input type="date" class="form-control" @bind="newOpp.ExpectedClose" />
                 </div>
             </div>
-            <div class="mt-3">
-                <button class="btn btn-success" data-testid="opportunity-save" @onclick="CreateOpp">Create</button>
-                <button class="btn btn-secondary ms-2" @onclick="CancelCreate">Cancel</button>
-            </div>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CancelCreate">Cancel</button>
+            <button class="btn btn-primary" data-testid="opportunity-save" @onclick="CreateOpp">Create</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (selectedOpp != null)
 {
-    <div class="card mt-4 border-primary" data-testid="opportunity-detail">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <h5 class="mb-0">@selectedOpp.Title</h5>
-            <button class="btn btn-sm btn-light" @onclick="CloseView">Close</button>
-        </div>
-        <div class="card-body">
-            <p><strong>Customer:</strong> @DisplayCustomer(selectedOpp)</p>
-            <p><strong>Value:</strong> R @selectedOpp.Value.ToString("N0")</p>
-            <p data-testid="opportunity-stage"><strong>Stage:</strong> @StageLabel(selectedOpp.Stage)</p>
-            <p><strong>Expected Close:</strong> @selectedOpp.ExpectedClose.ToString("yyyy-MM-dd")</p>
-            <div class="mt-3">
-                <button class="btn btn-primary btn-sm me-2" data-testid="opportunity-convert-manual"
-                        @onclick="ConvertToManualQuote">Create Manual Quote</button>
-                <button class="btn btn-outline-success btn-sm me-2" data-testid="opportunity-convert-ai"
-                        @onclick="ConvertToQuote">Create with AI Copilot</button>
-                @if (CanManage)
-                {
-                    <button class="btn btn-outline-secondary btn-sm" data-testid="opportunity-advance-stage"
-                            @onclick="UpdateStage">Advance Stage</button>
-                }
+    <FormModal IsOpen="true"
+               Title="@selectedOpp.Title"
+               Size="xl"
+               TestId="opportunity-detail"
+               CloseOnBackdrop="false"
+               OnClose="CloseView">
+        <ChildContent>
+            <div class="row g-4">
+                <div class="col-lg-7">
+                    <div class="meterp-section">
+                        <div class="meterp-section-title">Deal</div>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label meterp-required">Title</label>
+                                <input class="form-control" @bind="selectedOpp.Title" disabled="@(!CanManage)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Amount (R)</label>
+                                <input type="number" class="form-control" @bind="selectedOpp.Value" disabled="@(!CanManage)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Stage</label>
+                                <select class="form-select" @bind="selectedOpp.Stage" disabled="@(!CanManage)">
+                                    @foreach (var s in stages) { <option value="@s">@StageLabel(s)</option> }
+                                </select>
+                                <span class="visually-hidden" data-testid="opportunity-stage">@StageLabel(selectedOpp.Stage)</span>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Expected close</label>
+                                <input type="date" class="form-control" @bind="selectedOpp.ExpectedClose" disabled="@(!CanManage)" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Company</label>
+                                @if (CanManage)
+                                {
+                                    <EntityPicker TestId="opportunity-detail-customer"
+                                                  Value="selectedOpp.CustomerId ?? Guid.Empty"
+                                                  ValueChanged="OnDetailCustomerPicked"
+                                                  Options="CustomerPickerOptions"
+                                                  SelectedLabel="@DisplayCustomer(selectedOpp)"
+                                                  Placeholder="Link a company"
+                                                  OnSearch="SearchCustomersAsync" />
+                                }
+                                else
+                                {
+                                    <p class="mb-0">@DisplayCustomer(selectedOpp)</p>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="meterp-section mb-0">
+                        <div class="meterp-section-title">Next step / notes</div>
+                        <textarea class="form-control" rows="5" @bind="selectedOpp.Notes" disabled="@(!CanManage)"
+                                  placeholder="Next step, site visit, who you spoke to…"></textarea>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="meterp-totals mb-3">
+                        <div class="meterp-section-title">Associated</div>
+                        @if (selectedOpp.QuoteId is { } qid && qid != Guid.Empty)
+                        {
+                            <p class="mb-2">Linked quote is on file.</p>
+                            <a class="btn btn-sm btn-outline-primary" href="/quotes">Open quotes</a>
+                        }
+                        else
+                        {
+                            <p class="mb-2 text-muted">No quote yet. Convert this deal when the scope is clear.</p>
+                        }
+                        <p class="small text-muted mb-0 mt-2">Created @selectedOpp.CreatedDate.ToString("dd MMM yyyy") · @DaysToClose(selectedOpp)</p>
+                    </div>
+                    @if (CanManage && selectedOpp.Stage is not OpportunityStage.ClosedWon and not OpportunityStage.ClosedLost)
+                    {
+                        <div class="d-flex gap-2 mb-3">
+                            <button type="button" class="btn btn-sm btn-success" data-testid="opportunity-mark-won" @onclick="MarkWonAsync">Mark won</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-testid="opportunity-mark-lost" @onclick="MarkLostAsync">Mark lost</button>
+                        </div>
+                    }
+                    <p class="meterp-field-hint">Drag cards between lanes, or save properties here. Create a quote when the scope is clear.</p>
+                </div>
             </div>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" @onclick="CloseView">Close</button>
+            @if (CanManage)
+            {
+                <button class="btn btn-outline-secondary" data-testid="opportunity-advance-stage"
+                        @onclick="UpdateStage">Advance stage</button>
+                <button class="btn btn-outline-primary" @onclick="SaveOppAsync">Save</button>
+            }
+            <button class="btn btn-outline-success" data-testid="opportunity-convert-ai"
+                    @onclick="ConvertToQuote">Create with AI</button>
+            <button class="btn btn-primary" data-testid="opportunity-convert-manual"
+                    @onclick="ConvertToManualQuote">Create quote</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
@@ -160,10 +298,15 @@ else
     private List<Opportunity> filtered = new();
     private List<Customer> customers = new();
     private string searchTerm = "";
+    private string _closeFilter = "all";
+    private string _amountFilter = "all";
+    private string _quoteFilter = "all";
+    private string _sort = "board";
     private Opportunity? selectedOpp;
     private bool showCreate;
     private Opportunity newOpp = new();
     private Guid selectedCustomerId = Guid.Empty;
+    private bool _suppressClick;
 
     private bool _ready;
     private bool _loading = true;
@@ -216,10 +359,48 @@ else
     private string DisplayCustomer(Opportunity opp) =>
         opp.Customer?.Name ?? opp.CustomerName ?? "—";
 
-    private int GetCount(OpportunityStage stage) => opportunities.Count(o => o.Stage == stage);
+    private int GetCount(OpportunityStage stage) => filtered.Count(o => o.Stage == stage);
+    private decimal GetValue(OpportunityStage stage) => filtered.Where(o => o.Stage == stage).Sum(o => o.Value);
 
-    private List<Opportunity> GetByStage(OpportunityStage stage) =>
-        filtered.Where(o => o.Stage == stage).ToList();
+    private static string DaysToClose(Opportunity opp)
+    {
+        var days = (opp.ExpectedClose.Date - DateTime.UtcNow.Date).Days;
+        if (days < 0) return $"{-days}d overdue";
+        if (days == 0) return "closes today";
+        return $"{days}d";
+    }
+
+    private async Task SaveOppAsync()
+    {
+        if (selectedOpp == null || !CanManage) return;
+        try
+        {
+            selectedOpp.Customer = null;
+            selectedOpp.Quote = null;
+            await OpportunityService.UpdateAsync(selectedOpp);
+            opportunities = (await OpportunityService.GetAllAsync()).ToList();
+            Filter();
+            ToastService.ShowSuccess("Deal updated.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private List<Opportunity> GetByStage(OpportunityStage stage)
+    {
+        var list = filtered.Where(o => o.Stage == stage);
+        return _sort switch
+        {
+            "amount-desc" => list.OrderByDescending(o => o.Value).ToList(),
+            "amount-asc" => list.OrderBy(o => o.Value).ToList(),
+            "title" => list.OrderBy(o => o.Title).ToList(),
+            "newest" => list.OrderByDescending(o => o.CreatedDate).ToList(),
+            "close" => list.OrderBy(o => o.ExpectedClose).ToList(),
+            _ => list.OrderBy(o => o.BoardOrder).ThenBy(o => o.ExpectedClose).ToList()
+        };
+    }
 
     private void OnSearch(ChangeEventArgs e)
     {
@@ -235,15 +416,159 @@ else
 
     private void Filter()
     {
-        if (string.IsNullOrWhiteSpace(searchTerm))
-            filtered = opportunities;
-        else
+        IEnumerable<Opportunity> q = opportunities;
+        if (!string.IsNullOrWhiteSpace(searchTerm))
         {
             var t = searchTerm.ToLower();
-            filtered = opportunities.Where(o =>
+            q = q.Where(o =>
                 o.Title.ToLower().Contains(t) ||
                 (o.CustomerName != null && o.CustomerName.ToLower().Contains(t)) ||
-                (o.Customer != null && o.Customer.Name.ToLower().Contains(t))).ToList();
+                (o.Customer != null && o.Customer.Name.ToLower().Contains(t)));
+        }
+
+        var today = DateTime.UtcNow.Date;
+        q = _closeFilter switch
+        {
+            "overdue" => q.Where(o => o.ExpectedClose.Date < today
+                && o.Stage is not OpportunityStage.ClosedWon and not OpportunityStage.ClosedLost),
+            "month" => q.Where(o => o.ExpectedClose.Year == today.Year && o.ExpectedClose.Month == today.Month),
+            "next30" => q.Where(o => o.ExpectedClose.Date >= today && o.ExpectedClose.Date <= today.AddDays(30)),
+            _ => q
+        };
+
+        q = _amountFilter switch
+        {
+            "10k" => q.Where(o => o.Value >= 10_000m),
+            "50k" => q.Where(o => o.Value >= 50_000m),
+            "100k" => q.Where(o => o.Value >= 100_000m),
+            _ => q
+        };
+
+        q = _quoteFilter switch
+        {
+            "quoted" => q.Where(o => o.QuoteId is { } id && id != Guid.Empty),
+            "unquoted" => q.Where(o => o.QuoteId == null || o.QuoteId == Guid.Empty),
+            _ => q
+        };
+
+        filtered = q.ToList();
+    }
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrEmpty(searchTerm)
+        || _closeFilter != "all"
+        || _amountFilter != "all"
+        || _quoteFilter != "all";
+
+    private void ResetFilters()
+    {
+        searchTerm = "";
+        _closeFilter = "all";
+        _amountFilter = "all";
+        _quoteFilter = "all";
+        Filter();
+    }
+
+    private DotNetObjectReference<Opportunities>? _kanbanRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading || !CanManage) return;
+        _kanbanRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.bindKanban", "[data-testid='opportunities-pipeline']", _kanbanRef);
+        }
+        catch
+        {
+            /* JS not ready */
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnKanbanDrop(string id, string stage, string? beforeId)
+    {
+        if (!CanManage) return;
+        if (!Guid.TryParse(id, out var dealId)) return;
+        if (!Enum.TryParse<OpportunityStage>(stage, true, out var st)) return;
+        Guid? before = Guid.TryParse(beforeId, out var b) ? b : null;
+        _suppressClick = true;
+        await InvokeAsync(() => MoveDealAsync(dealId, st, before));
+    }
+
+    public void Dispose() => _kanbanRef?.Dispose();
+
+    private void OnCardClick(Opportunity opp)
+    {
+        if (_suppressClick)
+        {
+            _suppressClick = false;
+            return;
+        }
+        ViewOpp(opp);
+    }
+
+    private async Task MoveDealAsync(Guid id, OpportunityStage stage, Guid? insertBeforeId)
+    {
+        try
+        {
+            await OpportunityService.MoveOnBoardAsync(id, stage, insertBeforeId);
+            opportunities = (await OpportunityService.GetAllAsync()).ToList();
+            Filter();
+            if (selectedOpp?.Id == id)
+                selectedOpp = await OpportunityService.GetByIdAsync(id);
+            ToastService.ShowSuccess($"Moved to {StageLabel(stage)}.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private Task OnDetailCustomerPicked(Guid id)
+    {
+        if (selectedOpp == null) return Task.CompletedTask;
+        selectedOpp.CustomerId = id == Guid.Empty ? null : id;
+        selectedOpp.CustomerName = customers.FirstOrDefault(c => c.Id == id)?.Name ?? selectedOpp.CustomerName;
+        return Task.CompletedTask;
+    }
+
+    private async Task MarkWonAsync()
+    {
+        if (selectedOpp == null) return;
+        selectedOpp.Stage = OpportunityStage.ClosedWon;
+        await SaveOppAsync();
+    }
+
+    private async Task MarkLostAsync()
+    {
+        if (selectedOpp == null) return;
+        selectedOpp.Stage = OpportunityStage.ClosedLost;
+        await SaveOppAsync();
+    }
+
+    private IReadOnlyList<EntityPickerOption> CustomerPickerOptions =>
+        customers.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
+
+    private string? SelectedOpportunityCustomerName =>
+        customers.FirstOrDefault(c => c.Id == selectedCustomerId)?.Name;
+
+    private Task OnOpportunityCustomerPicked(Guid id)
+    {
+        selectedCustomerId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchCustomersAsync(string term)
+    {
+        customers = (await CustomerService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .ToList();
+        if (selectedCustomerId != Guid.Empty && customers.All(c => c.Id != selectedCustomerId))
+        {
+            var extra = await CustomerService.GetByIdAsync(selectedCustomerId);
+            if (extra != null)
+                customers.Insert(0, extra);
         }
     }
 

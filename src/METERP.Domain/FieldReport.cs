@@ -29,4 +29,6 @@ public class FieldReport : BaseEntity
     public DateTime? ApprovedAt { get; set; }
 
     public string? RejectionReason { get; set; }
+
+    public string? ApproverNote { get; set; }
 }

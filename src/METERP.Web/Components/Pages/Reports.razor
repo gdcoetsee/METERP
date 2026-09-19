@@ -26,21 +26,20 @@
 
 <PageTitle>Reports & Insights</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2" data-testid="reports-shell">
-    <div>
-        <h1 class="mb-0">Reports &amp; Insights</h1>
-        <p class="text-muted mb-0">High-level operational summary for the current tenant.</p>
-    </div>
-    <ExportToolbar TestId="reports-export" OnExportCsv="ExportSummaryCsvAsync" OnExportPdf="ExportSummaryPdfAsync" ShowExcel="false" Disabled="@_loading" />
-</div>
+<PageHeader Title="Reports" Subtitle="Executive packs: job performance, queues, divisions, cash, and workforce — plus the live snapshot below." TestId="reports-shell">
+    <Actions>
+        <ExportToolbar TestId="reports-export" OnExportCsv="ExportSummaryCsvAsync" OnExportPdf="ExportSummaryPdfAsync" ShowExcel="false" Disabled="@_loading" />
+    </Actions>
+</PageHeader>
 
 @if (_loading)
 {
-    <p data-testid="reports-loading">Loading insights...</p>
+    <ListSkeleton Rows="4" TestId="reports-loading" AriaLabel="Loading reports" />
 }
 else
 {
     <div data-testid="reports-ready">
+    <ReportLibrary />
     <div class="row g-3">
         <div class="col-md-4">
             <div class="card">

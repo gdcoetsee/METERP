@@ -1,0 +1,64 @@
+@inject NavigationManager Nav
+
+<div class="meterp-global-search" @onfocusin="() => _open = true" @onfocusout="OnFocusOut">
+    <i class="bi bi-search" aria-hidden="true"></i>
+    <input type="search"
+           class="meterp-global-search-input"
+           placeholder="Search quotes, jobs, customers…"
+           aria-label="Search quotes, jobs, customers"
+           data-testid="global-search"
+           value="@_term"
+           @oninput="OnInput"
+           @onkeydown="OnKey"
+           @onfocus="() => _open = true" />
+    @if (_open)
+    {
+        <div class="meterp-global-search-menu" data-testid="global-search-menu">
+            <button type="button" @onclick='() => Go("/quotes")'>Quotes@(Suffix)</button>
+            <button type="button" @onclick='() => Go("/jobs")'>Jobs@(Suffix)</button>
+            <button type="button" @onclick='() => Go("/customers")'>Customers@(Suffix)</button>
+            <button type="button" @onclick='() => Go("/invoices")'>Invoices@(Suffix)</button>
+        </div>
+    }
+</div>
+
+@code {
+    private string _term = "";
+    private bool _open;
+
+    private string Suffix => string.IsNullOrWhiteSpace(_term) ? "" : $" matching “{_term.Trim()}”";
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _term = e.Value?.ToString() ?? "";
+        _open = true;
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _open = false;
+            return;
+        }
+
+        if (e.Key == "Enter")
+            Go("/quotes");
+    }
+
+    private void Go(string path)
+    {
+        var term = _term.Trim();
+        _open = false;
+        Nav.NavigateTo(string.IsNullOrEmpty(term)
+            ? path
+            : $"{path}?search={Uri.EscapeDataString(term)}");
+    }
+
+    private async Task OnFocusOut()
+    {
+        await Task.Delay(160);
+        _open = false;
+        await InvokeAsync(StateHasChanged);
+    }
+}

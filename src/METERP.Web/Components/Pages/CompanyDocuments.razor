@@ -9,17 +9,15 @@
 
 <PageTitle>Company Documents</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        <h1 class="h4 mb-1">Company Documents</h1>
-        <p class="text-muted small mb-0">COID, tax clearance, insurance — expiry tracked with alerts to HR and Executive.</p>
-    </div>
-    <AuthorizeView Policy="CompanyDocs.Manage">
-        <Authorized>
-            <button type="button" class="btn btn-primary btn-sm" data-testid="company-docs-upload-btn" @onclick="OpenUpload">Upload document</button>
-        </Authorized>
-    </AuthorizeView>
-</div>
+<PageHeader Title="Company documents" Subtitle="COID, tax clearance, insurance — expiry tracked with alerts." TestId="company-docs-page-header">
+    <Actions>
+        <AuthorizeView Policy="CompanyDocs.Manage">
+            <Authorized>
+                <button type="button" class="btn btn-primary" data-testid="company-docs-upload-btn" @onclick="OpenUpload">Upload document</button>
+            </Authorized>
+        </AuthorizeView>
+    </Actions>
+</PageHeader>
 
 @if (_loading)
 {

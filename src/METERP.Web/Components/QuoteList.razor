@@ -7,7 +7,12 @@
 
 @if (Quotes == null || !Quotes.Any())
 {
-    <div class="alert alert-info">No quotes to display. Create one manually or use AI Copilot for assistance.</div>
+    <EmptyState Title="No quotes yet"
+                Description="Create an estimate with labour, materials, and travel as separate lines."
+                Icon="📄"
+                CtaText="@(CanManage ? "New quote" : null)"
+                TestId="quotes-empty"
+                OnCta="OnCreate" />
 }
 else
 {
@@ -27,7 +32,7 @@ else
             <tbody>
                 @foreach (var q in Quotes)
                 {
-                    <tr data-testid="@GetQuoteRowTestId(q)">
+                    <tr data-testid="@GetQuoteRowTestId(q)" style="cursor:pointer;" @onclick="() => OnView.InvokeAsync(q)" title="Open quote">
                         <td><strong>@q.QuoteNumber</strong></td>
                         <td>@(q.Customer?.Name ?? "-")</td>
                         <td>@q.QuoteDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Valid @q.ValidUntil.ToString("yyyy-MM-dd")</small></td>
@@ -74,6 +79,7 @@ else
     [Parameter] public EventCallback<Quote> OnDelete { get; set; }
     [Parameter] public EventCallback OnPrevious { get; set; }
     [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnCreate { get; set; }
 
     private static string GetQuoteRowTestId(Quote q)
     {

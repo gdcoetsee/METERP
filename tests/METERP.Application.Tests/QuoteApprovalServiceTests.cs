@@ -611,6 +611,62 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveApproveAsync_StoresDecisionNoteForEstimator()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-NOTE",
+                Status = QuoteStatus.Draft,
+                ApprovalStatus = QuoteApprovalStatus.PendingExecutive,
+                Lines = { new QuoteLine { Description = "Scope", Quantity = 1, UnitPrice = 100 } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+
+            await service.ExecutiveApproveAsync(quote.Id, Guid.NewGuid(), "Good GP — send today.");
+            var saved = await db.Set<Quote>().FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(QuoteApprovalStatus.ExecutiveApproved, saved.ApprovalStatus);
+            Assert.Equal("Good GP — send today.", saved.ExecutiveDecisionNote);
+        }
+    }
+
+    [Fact]
+    public async Task ExecutiveReviseLineAsync_UpdatesPendingQuoteAndTotals()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-REV",
+                Status = QuoteStatus.Draft,
+                Lines = { new QuoteLine { TenantId = tenantId, Description = "Scope", Quantity = 1, UnitPrice = 100 } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+            await service.SubmitForExecutiveApprovalAsync(quote.Id, Guid.NewGuid());
+
+            var line = await db.Set<QuoteLine>().FirstAsync(l => l.QuoteId == quote.Id);
+            line.Quantity = 2;
+            line.UnitPrice = 150;
+            await service.ExecutiveReviseLineAsync(line);
+
+            var saved = await db.Set<Quote>().Include(q => q.Lines).FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(2m, saved.Lines.First().Quantity);
+            Assert.Equal(150m, saved.Lines.First().UnitPrice);
+            Assert.Equal(300m, saved.Subtotal);
+            Assert.Equal(QuoteApprovalStatus.PendingExecutive, saved.ApprovalStatus);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveReject_NotifiesWithReason()
     {
         var (service, db, tenantId, customer, notifications) = CreateWithNotifications();

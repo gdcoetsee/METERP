@@ -19,19 +19,15 @@
 
 <PageTitle>Scheduling</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2" data-testid="scheduling-shell">
-    <div>
-        <h1 class="mb-0">Job Scheduling</h1>
-        <p class="text-muted mb-0">Calendar and crew assignments for upcoming work.</p>
-    </div>
-    <ExportToolbar TestId="scheduling-export" ShowPdf="false" ShowExcel="false" OnExportCsv="ExportScheduleCsvAsync" Disabled="@_loading" />
-</div>
-<div class="mb-3">
-    <button class="btn btn-primary btn-sm" data-testid="scheduling-ai-suggest" @onclick="SuggestAssignmentsWithAI">✨ AI Suggest Best Assignments</button>
-    <button class="btn btn-outline-primary btn-sm ms-2" data-testid="scheduling-ai-risk" @onclick="RunLowStockRiskForScheduled">🔮 AI: Low-stock + travel risk</button>
-    <button class="btn btn-outline-secondary btn-sm ms-2" @onclick="PreviousWeek">← Prev week</button>
-    <button class="btn btn-outline-secondary btn-sm ms-1" @onclick="NextWeek">Next week →</button>
-</div>
+<PageHeader Title="Scheduling" Subtitle="Assign a crew and plant to a job without leaving the week view." TestId="scheduling-shell">
+    <Actions>
+        <ExportToolbar TestId="scheduling-export" ShowPdf="false" ShowExcel="false" OnExportCsv="ExportScheduleCsvAsync" Disabled="@_loading" />
+        <button class="btn btn-outline-secondary" @onclick="PreviousWeek">← Prev week</button>
+        <button class="btn btn-outline-secondary" @onclick="NextWeek">Next week →</button>
+        <button class="btn btn-outline-primary" data-testid="scheduling-ai-risk" @onclick="RunLowStockRiskForScheduled">Low-stock risk</button>
+        <button class="btn btn-primary" data-testid="scheduling-ai-suggest" @onclick="SuggestAssignmentsWithAI">AI suggest assignments</button>
+    </Actions>
+</PageHeader>
 
 @if (!_loading)
 {
@@ -70,54 +66,52 @@
 
 @if (_showRecurringModal)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)" data-testid="scheduling-recurring-modal" role="dialog" aria-modal="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">New recurring job schedule</h5>
-                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseCreateRecurring"></button>
+    <FormModal IsOpen="true"
+               Title="New recurring job schedule"
+               Size="md"
+               TestId="scheduling-recurring-modal"
+               CloseOnBackdrop="false"
+               OnClose="CloseCreateRecurring">
+        <ChildContent>
+            <div class="mb-2">
+                <label class="form-label meterp-required" for="recurring-title">Title</label>
+                <input id="recurring-title" class="form-control" data-testid="scheduling-recurring-title" @bind="_newRecurringTitle" @bind:event="oninput" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label meterp-required" for="recurring-customer">Customer</label>
+                <EntityPicker TestId="scheduling-recurring-customer"
+                              Value="_newRecurringCustomerId"
+                              ValueChanged="OnRecurringCustomerPicked"
+                              Options="RecurringCustomerOptions"
+                              SelectedLabel="@RecurringCustomerName"
+                              Placeholder="Type a company name"
+                              Required="true"
+                              OnSearch="SearchRecurringCustomersAsync" />
+            </div>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label" for="recurring-interval">Interval (days)</label>
+                    <input id="recurring-interval" type="number" min="1" class="form-control"
+                           data-testid="scheduling-recurring-interval" @bind="_newRecurringInterval" />
                 </div>
-                <div class="modal-body">
-                    <div class="mb-2">
-                        <label class="form-label" for="recurring-title">Title</label>
-                        <input id="recurring-title" class="form-control" data-testid="scheduling-recurring-title" @bind="_newRecurringTitle" @bind:event="oninput" />
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label" for="recurring-customer">Customer</label>
-                        <select id="recurring-customer" class="form-select" data-testid="scheduling-recurring-customer" @bind="_newRecurringCustomerId">
-                            <option value="@Guid.Empty">— Select —</option>
-                            @foreach (var c in _customers)
-                            {
-                                <option value="@c.Id">@c.Name</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-md-4">
-                            <label class="form-label" for="recurring-interval">Interval (days)</label>
-                            <input id="recurring-interval" type="number" min="1" class="form-control"
-                                   data-testid="scheduling-recurring-interval" @bind="_newRecurringInterval" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="recurring-next">Next run</label>
-                            <input id="recurring-next" type="date" class="form-control"
-                                   data-testid="scheduling-recurring-next" @bind="_newRecurringNext" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="recurring-quote">Quoted total (R)</label>
-                            <input id="recurring-quote" type="number" min="0" step="0.01" class="form-control"
-                                   data-testid="scheduling-recurring-quoted" @bind="_newRecurringQuoted" />
-                        </div>
-                    </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="recurring-next">Next run</label>
+                    <input id="recurring-next" type="date" class="form-control"
+                           data-testid="scheduling-recurring-next" @bind="_newRecurringNext" />
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseCreateRecurring">Cancel</button>
-                    <button type="button" class="btn btn-primary" data-testid="scheduling-recurring-save"
-                            disabled="@_recurringBusy" @onclick="SaveRecurringAsync">Save schedule</button>
+                <div class="col-md-4">
+                    <label class="form-label" for="recurring-quote">Quoted total (R)</label>
+                    <input id="recurring-quote" type="number" min="0" step="0.01" class="form-control"
+                           data-testid="scheduling-recurring-quoted" @bind="_newRecurringQuoted" />
                 </div>
             </div>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseCreateRecurring">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="scheduling-recurring-save"
+                    disabled="@_recurringBusy" @onclick="SaveRecurringAsync">Save schedule</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (!_loading)
@@ -157,7 +151,7 @@
 
 @if (_loading)
 {
-    <p data-testid="scheduling-loading"><em>Loading schedule...</em></p>
+    <ListSkeleton Rows="6" TestId="scheduling-loading" AriaLabel="Loading schedule" />
 }
 else if (jobs == null || !jobs.Any())
 {
@@ -208,29 +202,33 @@ else
 
 @if (selectedJob != null)
 {
-    <div class="card mt-3" data-testid="scheduling-assign-panel">
-        <div class="card-header">Assign for @selectedJob.JobNumber</div>
-        <div class="card-body">
-            <div class="row">
+    <FormModal IsOpen="true"
+               Title="@($"Assign — {selectedJob.JobNumber}")"
+               Size="xl"
+               TestId="scheduling-assign-panel"
+               CloseOnBackdrop="false"
+               OnClose="CloseAssign">
+        <ChildContent>
+            <div class="row g-3">
                 <div class="col-md-6">
-                    <label>Assign Asset</label>
-                    <select class="form-select" data-testid="scheduling-asset-select" @bind="assignAssetId">
-                        <option value="">-- None --</option>
-                        @foreach (var a in availableAssets)
-                        {
-                            <option value="@a.Id">@a.Name</option>
-                        }
-                    </select>
+                    <label class="form-label">Plant / asset <span class="text-muted fw-normal">(optional)</span></label>
+                    <EntityPicker TestId="scheduling-asset-select"
+                                  Value="@(assignAssetId ?? Guid.Empty)"
+                                  ValueChanged="OnAssignAsset"
+                                  Options="AssetPickerOptions"
+                                  SelectedLabel="@AssignedAssetName"
+                                  Placeholder="Type an asset name"
+                                  OnSearch="SearchAssetsAsync" />
                 </div>
                 <div class="col-md-6">
-                    <label>Lead Employee</label>
-                    <select class="form-select" data-testid="scheduling-employee-select" @bind="assignEmployeeId">
-                        <option value="">-- None --</option>
-                        @foreach (var e in availableEmployees)
-                        {
-                            <option value="@e.Id">@e.FirstName @e.LastName</option>
-                        }
-                    </select>
+                    <label class="form-label">Lead employee <span class="text-muted fw-normal">(optional)</span></label>
+                    <EntityPicker TestId="scheduling-employee-select"
+                                  Value="@(assignEmployeeId ?? Guid.Empty)"
+                                  ValueChanged="OnAssignEmployee"
+                                  Options="EmployeePickerOptions"
+                                  SelectedLabel="@AssignedEmployeeName"
+                                  Placeholder="Type a name"
+                                  OnSearch="SearchEmployeesAsync" />
                 </div>
             </div>
             <div class="mt-3" data-testid="scheduling-crew-panel">
@@ -256,9 +254,6 @@ else
                     <input type="date" class="form-control" data-testid="scheduling-date-input" @bind="assignScheduledDate" />
                 </div>
             </div>
-            <button class="btn btn-success mt-2" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save Assignments</button>
-            <button class="btn btn-secondary mt-2 ms-1" data-testid="scheduling-close-assign" @onclick="CloseAssign">Close</button>
-
             <hr class="my-3" />
             <div data-testid="scheduling-quick-labor-panel">
                 <h6 class="mb-2">Quick-add labor (assigned crew)</h6>
@@ -298,8 +293,12 @@ else
                     <p class="text-muted small mb-0">Save crew assignments above to enable one-click JobLabor entry (links to payroll &amp; utilization).</p>
                 }
             </div>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary" data-testid="scheduling-close-assign" @onclick="CloseAssign">Close</button>
+            <button class="btn btn-primary" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save assignments</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
@@ -318,7 +317,73 @@ else
     private List<Job> _calendarJobs = new();
     private List<RecurringJobSchedule> _recurringSchedules = new();
     private List<Customer> _customers = new();
+    private List<Customer> _customerPickerSource = new();
+    private List<Asset> _assetPickerSource = new();
+    private List<Employee> _employeePickerSource = new();
     private DateTime? assignScheduledDate;
+
+    private IReadOnlyList<EntityPickerOption> RecurringCustomerOptions =>
+        _customerPickerSource.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
+    private string? RecurringCustomerName =>
+        _customerPickerSource.FirstOrDefault(c => c.Id == _newRecurringCustomerId)?.Name
+        ?? _customers.FirstOrDefault(c => c.Id == _newRecurringCustomerId)?.Name;
+
+    private IReadOnlyList<EntityPickerOption> AssetPickerOptions =>
+        _assetPickerSource.Select(a => new EntityPickerOption { Id = a.Id, Label = a.Name }).ToList();
+    private string? AssignedAssetName =>
+        availableAssets.FirstOrDefault(a => a.Id == assignAssetId)?.Name;
+
+    private IReadOnlyList<EntityPickerOption> EmployeePickerOptions =>
+        _employeePickerSource.Select(e => new EntityPickerOption { Id = e.Id, Label = $"{e.FirstName} {e.LastName}" }).ToList();
+    private string? AssignedEmployeeName
+    {
+        get
+        {
+            var e = availableEmployees.FirstOrDefault(x => x.Id == assignEmployeeId);
+            return e == null ? null : $"{e.FirstName} {e.LastName}";
+        }
+    }
+
+    private Task OnRecurringCustomerPicked(Guid id)
+    {
+        _newRecurringCustomerId = id;
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchRecurringCustomersAsync(string term)
+    {
+        _customerPickerSource = (await CustomerService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50)).ToList();
+    }
+
+    private Task OnAssignAsset(Guid id)
+    {
+        assignAssetId = id == Guid.Empty ? null : id;
+        return Task.CompletedTask;
+    }
+
+    private Task OnAssignEmployee(Guid id)
+    {
+        assignEmployeeId = id == Guid.Empty ? null : id;
+        return Task.CompletedTask;
+    }
+
+    private Task SearchAssetsAsync(string term)
+    {
+        _assetPickerSource = string.IsNullOrWhiteSpace(term)
+            ? availableAssets
+            : availableAssets.Where(a => a.Name.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+        return Task.CompletedTask;
+    }
+
+    private Task SearchEmployeesAsync(string term)
+    {
+        _employeePickerSource = string.IsNullOrWhiteSpace(term)
+            ? availableEmployees
+            : availableEmployees.Where(e =>
+                    $"{e.FirstName} {e.LastName}".Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+        return Task.CompletedTask;
+    }
 
     private bool _showRecurringModal;
     private bool _recurringBusy;
@@ -364,6 +429,9 @@ else
             _calendarJobs = (await SchedulingService.GetCalendarJobsAsync(_weekStart)).ToList();
             _recurringSchedules = (await RecurringJobService.GetAllAsync()).ToList();
             _customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
+            _customerPickerSource = _customers;
+            _assetPickerSource = availableAssets;
+            _employeePickerSource = availableEmployees;
         }
         catch (TimeoutException)
         {
