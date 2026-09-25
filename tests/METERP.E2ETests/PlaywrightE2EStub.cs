@@ -731,6 +731,85 @@ public class E2EFlowTests
     }
 
     [Fact]
+    public async Task Opportunity_Board_Keeps_Headers_In_Viewport()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: false);
+        await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
+
+        var fitsViewport = await page.EvaluateAsync<bool>(@"() => {
+            const board = document.querySelector('[data-testid=""opportunities-pipeline""]');
+            const head = document.querySelector('.meterp-kanban-col-head');
+            if (!board || !head) return false;
+            const br = board.getBoundingClientRect();
+            const hr = head.getBoundingClientRect();
+            return hr.top >= 0
+                && hr.bottom <= window.innerHeight
+                && br.bottom <= window.innerHeight + 8
+                && document.documentElement.scrollHeight <= window.innerHeight + 24;
+        }");
+
+        Assert.True(fitsViewport, "Lane headers and the horizontal scroller should stay in the viewport.");
+        await page.CloseSessionAsync();
+    }
+
+    [Fact]
+    public async Task Opportunity_DragDrop_Moves_Card_Without_Reload()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: true);
+        await page.WaitForInteractivePageAsync("/opportunities", "opportunities-ready", "opportunities-pipeline", 60000);
+
+        var uniqueTitle = $"E2E Drag {DateTime.UtcNow.Ticks}";
+        await page.ClickByTestIdWhenReadyAsync("opportunity-create-button");
+        await page.WaitForTestIdAsync("opportunity-create-form", 15000);
+        await page.FillByTestIdAsync("opportunity-title", uniqueTitle);
+        await page.ClickByTestIdAsync("opportunity-save");
+        await page.Locator(".toast-body")
+            .Filter(new() { HasText = "Opportunity created" })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        await page.Locator("[data-testid='opportunity-lane-Lead'] [data-deal-id]")
+            .Filter(new() { HasText = uniqueTitle })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        await page.EvaluateAsync(@"title => {
+            const card = [...document.querySelectorAll('[data-deal-id]')].find(el => el.innerText.includes(title));
+            const lane = document.querySelector('[data-testid=""opportunity-lane-Qualified""]');
+            if (!card || !lane) throw new Error('card or lane missing');
+            const dt = new DataTransfer();
+            card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            lane.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            card.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+        }", uniqueTitle);
+
+        await page.Locator("[data-testid='opportunity-lane-Qualified'] [data-deal-id]")
+            .Filter(new() { HasText = uniqueTitle })
+            .First
+            .WaitForAsync(new() { Timeout = 15000 });
+
+        Assert.DoesNotContain("login", page.Url, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("opportunities", page.Url, StringComparison.OrdinalIgnoreCase);
+        await page.CloseSessionAsync();
+    }
+
+    [Fact]
+    public async Task Reports_Library_Opens_Weighted_Pipeline()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: false);
+        await page.WaitForInteractivePageAsync("/reports", "reports-ready", "reports-library", 60000);
+        await page.ClickByTestIdAsync("reports-lib-crm-weighted");
+        await page.Locator("[data-testid='reports-runner-table'], .meterp-report-main")
+            .First
+            .WaitForAsync(new() { Timeout = 20000 });
+        await page.CloseSessionAsync();
+    }
+
+    [Fact]
     public async Task Opportunity_Ai_Quote_To_Job_Preserves_Travel()
     {
         await E2EHelpers.EnsureAppReadyAsync();

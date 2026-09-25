@@ -45,7 +45,70 @@ public class OperationalReportServiceTests
         Assert.Contains("jobs-awaiting-invoice", keys);
         Assert.Contains("quotes-awaiting-order", keys);
         Assert.Contains("division-performance", keys);
+        Assert.Contains("crm-weighted", keys);
+        Assert.Contains("crm-followups", keys);
+        Assert.Contains("jobs-travel", keys);
+        Assert.Contains("ppe-outstanding", keys);
         Assert.True(service.GetCatalog().Count >= 20);
+    }
+
+    [Fact]
+    public async Task CrmWeighted_SumsOpenPipelineByStage()
+    {
+        var (db, service, tenantId) = Create();
+        await using (db)
+        {
+            db.Set<Opportunity>().AddRange(
+                new Opportunity
+                {
+                    TenantId = tenantId,
+                    Title = "Open",
+                    CustomerName = "Acme",
+                    Value = 100000m,
+                    ProbabilityPercent = 50,
+                    Stage = OpportunityStage.Proposal
+                },
+                new Opportunity
+                {
+                    TenantId = tenantId,
+                    Title = "Won",
+                    CustomerName = "Acme",
+                    Value = 200000m,
+                    ProbabilityPercent = 100,
+                    Stage = OpportunityStage.ClosedWon
+                });
+            await db.SaveChangesAsync();
+
+            var table = await service.RunAsync("crm-weighted");
+            Assert.Contains("weighted", table.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Single(table.Rows);
+            Assert.Equal("Proposal", table.Rows[0][0]);
+            Assert.Equal(50000m.ToString("N2"), table.Rows[0][3]);
+        }
+    }
+
+    [Fact]
+    public async Task CrmFollowUps_ListsOverdueOpenDeals()
+    {
+        var (db, service, tenantId) = Create();
+        await using (db)
+        {
+            db.Set<Opportunity>().Add(new Opportunity
+            {
+                TenantId = tenantId,
+                Title = "Chase me",
+                CustomerName = "Acme",
+                Value = 9000m,
+                Stage = OpportunityStage.Qualified,
+                NextFollowUp = DateTime.UtcNow.Date.AddDays(-2)
+            });
+            await db.SaveChangesAsync();
+
+            var table = await service.RunAsync("crm-followups");
+            Assert.Single(table.Rows);
+            Assert.Equal("Chase me", table.Rows[0][0]);
+            Assert.Equal("Overdue", table.Rows[0][4]);
+        }
     }
 
     [Fact]

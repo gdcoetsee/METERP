@@ -41,6 +41,7 @@ public class OpportunityService : IOpportunityService
     {
         return await _dbContext.Set<Opportunity>()
             .Include(o => o.Customer)
+            .Include(o => o.OwnerEmployee)
             .FirstOrDefaultAsync(o => o.Id == id, ct);
     }
 
@@ -73,6 +74,7 @@ public class OpportunityService : IOpportunityService
         var query = _dbContext.Set<Opportunity>()
             .AsNoTracking()
             .Include(o => o.Customer)
+            .Include(o => o.OwnerEmployee)
             .AsQueryable();
 
         if (stage.HasValue)
@@ -85,6 +87,10 @@ public class OpportunityService : IOpportunityService
                 o.Title.ToLower().Contains(term) ||
                 (o.CustomerName != null && o.CustomerName.ToLower().Contains(term)) ||
                 (o.Customer != null && o.Customer.Name.ToLower().Contains(term)) ||
+                (o.ContactName != null && o.ContactName.ToLower().Contains(term)) ||
+                (o.OwnerEmployee != null && (
+                    o.OwnerEmployee.FirstName.ToLower().Contains(term)
+                    || o.OwnerEmployee.LastName.ToLower().Contains(term))) ||
                 (o.Notes != null && o.Notes.ToLower().Contains(term)));
         }
 
@@ -141,6 +147,8 @@ public class OpportunityService : IOpportunityService
             if (opportunity.CustomerName.Length > 200)
                 throw new InvalidOperationException("Customer name cannot exceed 200 characters.");
         }
+
+        await NormalizeDealFieldsAsync(opportunity, isCreate: true, existing: null, ct);
 
         if (opportunity.BoardOrder <= 0)
             opportunity.BoardOrder = await NextBoardOrderAsync(opportunity.Stage, ct);
@@ -244,6 +252,11 @@ public class OpportunityService : IOpportunityService
 
         var becomingWon = opportunity.Stage == OpportunityStage.ClosedWon
             && existing.Stage != OpportunityStage.ClosedWon;
+
+        if (opportunity.Stage != existing.Stage)
+            OpportunityPipeline.AlignProbabilityWithStage(opportunity, existing.Stage);
+
+        await NormalizeDealFieldsAsync(opportunity, isCreate: false, existing, ct);
 
         _dbContext.Set<Opportunity>().Update(opportunity);
         await _dbContext.SaveChangesAsync(ct);
@@ -358,6 +371,10 @@ public class OpportunityService : IOpportunityService
 
         var previousStage = opp.Stage;
 
+        if (stage == OpportunityStage.ClosedLost && string.IsNullOrWhiteSpace(opp.LossReason))
+            throw new InvalidOperationException(
+                "Enter a loss reason on the deal before marking Closed Lost.");
+
         var siblings = await _dbContext.Set<Opportunity>()
             .Where(o => o.Stage == stage && o.Id != id)
             .OrderBy(o => o.BoardOrder)
@@ -365,6 +382,8 @@ public class OpportunityService : IOpportunityService
             .ToListAsync(ct);
 
         opp.Stage = stage;
+        OpportunityPipeline.AlignProbabilityWithStage(opp, previousStage);
+        opp.LastActivityAt = DateTime.UtcNow;
 
         var insertAt = insertBeforeId is { } beforeId && beforeId != Guid.Empty
             ? siblings.FindIndex(o => o.Id == beforeId)
@@ -408,6 +427,63 @@ public class OpportunityService : IOpportunityService
                 $"Moved to {opp.Stage}",
                 ct);
         }
+    }
+
+    private async Task NormalizeDealFieldsAsync(
+        Opportunity opportunity,
+        bool isCreate,
+        Opportunity? existing,
+        CancellationToken ct)
+    {
+        opportunity.Customer = null;
+        opportunity.Quote = null;
+        opportunity.OwnerEmployee = null;
+
+        if (opportunity.OwnerEmployeeId == Guid.Empty)
+            opportunity.OwnerEmployeeId = null;
+
+        if (opportunity.OwnerEmployeeId is { } ownerId)
+        {
+            var owner = await _dbContext.Set<Employee>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == ownerId, ct);
+            if (owner == null || owner.IsDeleted)
+                throw new InvalidOperationException("Deal owner not found or deleted.");
+        }
+
+        if (opportunity.ProbabilityPercent < 0 || opportunity.ProbabilityPercent > 100)
+            throw new InvalidOperationException("Probability must be between 0 and 100.");
+
+        if (isCreate && opportunity.ProbabilityPercent == 0)
+            opportunity.ProbabilityPercent = OpportunityPipeline.DefaultProbability(opportunity.Stage);
+
+        opportunity.ContactName = LimitOptional(opportunity.ContactName, 200, "Contact name");
+        opportunity.ContactPhone = LimitOptional(opportunity.ContactPhone, 50, "Contact phone");
+        opportunity.ContactEmail = LimitOptional(opportunity.ContactEmail, 200, "Contact email");
+        opportunity.LossReason = LimitOptional(opportunity.LossReason, 500, "Loss reason");
+
+        if (opportunity.Stage == OpportunityStage.ClosedLost
+            && string.IsNullOrWhiteSpace(opportunity.LossReason)
+            && (isCreate || existing?.Stage != OpportunityStage.ClosedLost))
+        {
+            throw new InvalidOperationException("Loss reason is required when marking Closed Lost.");
+        }
+
+        if (opportunity.NextFollowUp.HasValue)
+            opportunity.NextFollowUp = opportunity.NextFollowUp.Value.Date;
+
+        opportunity.LastActivityAt = DateTime.UtcNow;
+    }
+
+    private static string? LimitOptional(string? value, int max, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        if (trimmed.Length > max)
+            throw new InvalidOperationException($"{name} cannot exceed {max} characters.");
+        return trimmed;
     }
 
     private async Task<int> NextBoardOrderAsync(OpportunityStage stage, CancellationToken ct)

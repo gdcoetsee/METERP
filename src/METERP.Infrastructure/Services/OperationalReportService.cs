@@ -18,6 +18,8 @@ public sealed class OperationalReportService : IOperationalReportService
         new("jobs-ready-invoice", "Jobs", "Ready to invoice", "Dual sign-off complete, job still open.", true, "reports-lib-jobs-ready-invoice"),
         new("jobs-closed", "Jobs", "Closed jobs", "Locked jobs after billing.", true, "reports-lib-jobs-closed"),
         new("jobs-emergency", "Jobs", "Emergency / call-out", "Jobs raised without a quote.", true, "reports-lib-jobs-emergency"),
+        new("jobs-variance", "Jobs", "Jobs over budget", "Actual cost above quoted.", true, "reports-lib-jobs-variance"),
+        new("jobs-travel", "Jobs", "Travel by job", "Posted travel costs per job.", true, "reports-lib-jobs-travel"),
         new("division-performance", "Jobs", "Division performance", "Quoted, actual, margin by division.", true, "reports-lib-division"),
         new("quotes", "Sales", "All quotes", "Full quote book.", false, "reports-lib-quotes"),
         new("quotes-draft", "Sales", "Draft quotes", "Not yet sent to the customer.", false, "reports-lib-quotes-draft"),
@@ -27,6 +29,10 @@ public sealed class OperationalReportService : IOperationalReportService
         new("quotes-accepted", "Sales", "Accepted quotes", "Won quotes.", false, "reports-lib-quotes-accepted"),
         new("sales-orders", "Sales", "Open sales orders", "Confirmed or in progress.", false, "reports-lib-so"),
         new("crm", "Sales", "Opportunity pipeline", "CRM deals by stage.", false, "reports-lib-crm"),
+        new("crm-weighted", "Sales", "Weighted pipeline", "Deal value × win probability.", false, "reports-lib-crm-weighted"),
+        new("crm-followups", "Sales", "Follow-ups due", "Overdue and upcoming CRM follow-ups.", false, "reports-lib-crm-followups"),
+        new("crm-winloss", "Sales", "Won vs lost", "Closed deals this year.", false, "reports-lib-crm-winloss"),
+        new("crm-owners", "Sales", "Pipeline by owner", "Open deals grouped by owner.", false, "reports-lib-crm-owners"),
         new("invoices", "Finance", "Outstanding invoices", "Not paid or cancelled.", false, "reports-lib-invoices"),
         new("invoices-overdue", "Finance", "Overdue invoices", "Past due date and unpaid.", false, "reports-lib-invoices-overdue"),
         new("invoices-paid", "Finance", "Paid invoices", "Collected invoices.", false, "reports-lib-invoices-paid"),
@@ -34,6 +40,7 @@ public sealed class OperationalReportService : IOperationalReportService
         new("stock", "Supply", "Low stock", "At or below reorder level.", false, "reports-lib-stock"),
         new("requisitions-pending", "Supply", "Stock awaiting approval", "Pending manager or executive.", false, "reports-lib-req"),
         new("pos", "Supply", "Open purchase orders", "Not received or cancelled.", false, "reports-lib-pos"),
+        new("ppe-outstanding", "Supply", "Outstanding PPE", "Issued PPE not yet returned.", false, "reports-lib-ppe"),
         new("workforce", "People", "Technician utilization", "Hours vs 160h monthly capacity.", false, "reports-lib-workforce"),
         new("leave-pending", "People", "Leave awaiting approval", "Manager, executive, or HR queue.", false, "reports-lib-leave"),
         new("assets", "Assets", "Asset register", "Customer plant and status.", false, "reports-lib-assets")
@@ -70,6 +77,8 @@ public sealed class OperationalReportService : IOperationalReportService
             "jobs-completed" => await JobPerformanceAsync(div, JobStatus.Completed, ct),
             "jobs-closed" => await JobPerformanceAsync(div, JobStatus.Closed, ct),
             "jobs-emergency" => await JobPerformanceAsync(div, null, ct, emergencyOnly: true),
+            "jobs-variance" => await JobsVarianceAsync(div, ct),
+            "jobs-travel" => await JobsTravelAsync(div, ct),
             "jobs-awaiting-invoice" => await JobsAwaitingInvoiceAsync(div, ct),
             "jobs-ready-invoice" => await JobsReadyToInvoiceAsync(div, ct),
             "division-performance" => await DivisionPerformanceAsync(div, ct),
@@ -81,6 +90,10 @@ public sealed class OperationalReportService : IOperationalReportService
             "quotes-accepted" => await QuotesAsync(QuoteStatus.Accepted, null, null, ct),
             "sales-orders" => await SalesOrdersAsync(ct),
             "crm" => await CrmAsync(ct),
+            "crm-weighted" => await CrmWeightedAsync(ct),
+            "crm-followups" => await CrmFollowUpsAsync(ct),
+            "crm-winloss" => await CrmWinLossAsync(ct),
+            "crm-owners" => await CrmOwnersAsync(ct),
             "invoices" => await InvoicesAsync(outstandingOnly: true, overdueOnly: false, paidOnly: false, ct),
             "invoices-overdue" => await InvoicesAsync(true, true, false, ct),
             "invoices-paid" => await InvoicesAsync(false, false, true, ct),
@@ -88,6 +101,7 @@ public sealed class OperationalReportService : IOperationalReportService
             "stock" => await StockAsync(ct),
             "requisitions-pending" => await RequisitionsAsync(ct),
             "pos" => await PurchaseOrdersAsync(ct),
+            "ppe-outstanding" => await PpeOutstandingAsync(ct),
             "workforce" => await WorkforceAsync(ct),
             "leave-pending" => await LeaveAsync(ct),
             "assets" => await AssetsAsync(ct),
@@ -281,21 +295,197 @@ public sealed class OperationalReportService : IOperationalReportService
 
     private async Task<ReportTable> CrmAsync(CancellationToken ct)
     {
-        var list = await _db.Set<Opportunity>().AsNoTracking().Include(o => o.Customer)
-            .OrderBy(o => o.Stage).ThenBy(o => o.BoardOrder)
-            .Take(500)
-            .ToListAsync(ct);
+        var list = await LoadDealsAsync(ct);
         var rows = list.Select(o => new[]
         {
             o.Title,
             o.Customer?.Name ?? o.CustomerName ?? "—",
             o.Stage.ToString(),
+            OwnerLabel(o),
+            o.Priority.ToString(),
+            $"{o.ProbabilityPercent}%",
             Money(o.Value),
+            Money(o.WeightedValue),
             Date(o.ExpectedClose),
+            Date(o.NextFollowUp),
             o.QuoteId.HasValue && o.QuoteId != Guid.Empty ? "Yes" : "No"
         }).ToList();
-        return new ReportTable("Opportunity pipeline", ["Deal", "Company", "Stage", "Value", "Close", "Has quote"], rows,
-            $"{list.Count} deal(s) · R {list.Sum(o => o.Value):N0}.");
+        return new ReportTable("Opportunity pipeline",
+            ["Deal", "Company", "Stage", "Owner", "Priority", "Prob", "Value", "Weighted", "Close", "Follow-up", "Has quote"],
+            rows,
+            $"{list.Count} deal(s) · R {list.Sum(o => o.Value):N0} · weighted R {list.Sum(o => o.WeightedValue):N0}.");
+    }
+
+    private async Task<ReportTable> CrmWeightedAsync(CancellationToken ct)
+    {
+        var list = await LoadDealsAsync(ct);
+        var open = list.Where(o => o.Stage is not OpportunityStage.ClosedWon and not OpportunityStage.ClosedLost).ToList();
+        var groups = open.GroupBy(o => o.Stage).OrderBy(g => g.Key);
+        var rows = groups.Select(g => new[]
+        {
+            g.Key.ToString(),
+            g.Count().ToString(),
+            Money(g.Sum(o => o.Value)),
+            Money(g.Sum(o => o.WeightedValue))
+        }).ToList();
+        return new ReportTable("Weighted pipeline",
+            ["Stage", "Deals", "Value", "Weighted"],
+            rows,
+            $"Open R {open.Sum(o => o.Value):N0} · weighted R {open.Sum(o => o.WeightedValue):N0}.");
+    }
+
+    private async Task<ReportTable> CrmFollowUpsAsync(CancellationToken ct)
+    {
+        var today = DateTime.UtcNow.Date;
+        var list = (await LoadDealsAsync(ct))
+            .Where(o => o.Stage is not OpportunityStage.ClosedWon and not OpportunityStage.ClosedLost)
+            .Where(o => o.NextFollowUp.HasValue)
+            .OrderBy(o => o.NextFollowUp)
+            .ToList();
+        var rows = list.Select(o => new[]
+        {
+            o.Title,
+            o.Customer?.Name ?? o.CustomerName ?? "—",
+            OwnerLabel(o),
+            Date(o.NextFollowUp),
+            o.NextFollowUp!.Value.Date < today ? "Overdue" : "Upcoming",
+            Money(o.Value)
+        }).ToList();
+        var overdue = list.Count(o => o.NextFollowUp!.Value.Date < today);
+        return new ReportTable("Follow-ups due",
+            ["Deal", "Company", "Owner", "Follow-up", "Status", "Value"],
+            rows,
+            $"{overdue} overdue · {list.Count - overdue} upcoming.");
+    }
+
+    private async Task<ReportTable> CrmWinLossAsync(CancellationToken ct)
+    {
+        var yearStart = new DateTime(DateTime.UtcNow.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var list = (await LoadDealsAsync(ct))
+            .Where(o => o.Stage is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost)
+            .Where(o => (o.LastActivityAt ?? o.LastModifiedDate ?? o.CreatedDate) >= yearStart)
+            .ToList();
+        var won = list.Where(o => o.Stage == OpportunityStage.ClosedWon).ToList();
+        var lost = list.Where(o => o.Stage == OpportunityStage.ClosedLost).ToList();
+        var rows = list
+            .OrderByDescending(o => o.LastActivityAt ?? o.CreatedDate)
+            .Select(o => new[]
+            {
+                o.Title,
+                o.Customer?.Name ?? o.CustomerName ?? "—",
+                o.Stage == OpportunityStage.ClosedWon ? "Won" : "Lost",
+                Money(o.Value),
+                o.LossReason ?? "—",
+                Date(o.LastActivityAt ?? o.CreatedDate)
+            }).ToList();
+        var winRate = list.Count == 0 ? 0 : Math.Round(100m * won.Count / list.Count, 1);
+        return new ReportTable("Won vs lost",
+            ["Deal", "Company", "Result", "Value", "Loss reason", "Closed"],
+            rows,
+            $"{won.Count} won R {won.Sum(o => o.Value):N0} · {lost.Count} lost R {lost.Sum(o => o.Value):N0} · win rate {winRate}%.");
+    }
+
+    private async Task<ReportTable> CrmOwnersAsync(CancellationToken ct)
+    {
+        var open = (await LoadDealsAsync(ct))
+            .Where(o => o.Stage is not OpportunityStage.ClosedWon and not OpportunityStage.ClosedLost)
+            .ToList();
+        var rows = open
+            .GroupBy(o => OwnerLabel(o))
+            .OrderByDescending(g => g.Sum(o => o.WeightedValue))
+            .Select(g => new[]
+            {
+                g.Key,
+                g.Count().ToString(),
+                Money(g.Sum(o => o.Value)),
+                Money(g.Sum(o => o.WeightedValue)),
+                g.Count(o => o.NextFollowUp.HasValue && o.NextFollowUp.Value.Date < DateTime.UtcNow.Date).ToString()
+            }).ToList();
+        return new ReportTable("Pipeline by owner",
+            ["Owner", "Deals", "Value", "Weighted", "Overdue follow-ups"],
+            rows,
+            $"{open.Count} open deal(s).");
+    }
+
+    private async Task<List<Opportunity>> LoadDealsAsync(CancellationToken ct) =>
+        await _db.Set<Opportunity>().AsNoTracking()
+            .Include(o => o.Customer)
+            .Include(o => o.OwnerEmployee)
+            .OrderBy(o => o.Stage).ThenBy(o => o.BoardOrder)
+            .Take(500)
+            .ToListAsync(ct);
+
+    private static string OwnerLabel(Opportunity o) =>
+        o.OwnerEmployee == null
+            ? "Unassigned"
+            : $"{o.OwnerEmployee.FirstName} {o.OwnerEmployee.LastName}".Trim();
+
+    private async Task<ReportTable> JobsVarianceAsync(Guid? divisionId, CancellationToken ct)
+    {
+        var jobs = await JobsQuery()
+            .Where(j => !divisionId.HasValue || j.DivisionId == divisionId)
+            .Take(500)
+            .ToListAsync(ct);
+        var over = jobs.Where(j =>
+        {
+            var (_, _, _, _, actual) = CostSplit(j);
+            return actual > j.QuotedTotal && j.QuotedTotal > 0;
+        }).ToList();
+        var rows = over.Select(ToJobRow).ToList();
+        return new ReportTable("Jobs over budget", JobHeaders, rows, $"{over.Count} job(s) over quoted.",
+            over.Select(j => j.Id).ToList());
+    }
+
+    private async Task<ReportTable> JobsTravelAsync(Guid? divisionId, CancellationToken ct)
+    {
+        var jobs = await JobsQuery()
+            .Where(j => !divisionId.HasValue || j.DivisionId == divisionId)
+            .Take(500)
+            .ToListAsync(ct);
+        var withTravel = jobs.Select(j =>
+        {
+            var (_, travel, _, _, _) = CostSplit(j);
+            return (Job: j, Travel: travel);
+        }).Where(x => x.Travel > 0).OrderByDescending(x => x.Travel).ToList();
+        var rows = withTravel.Select(x => new[]
+        {
+            x.Job.JobNumber,
+            x.Job.Customer?.Name ?? "—",
+            x.Job.Status.ToString(),
+            Money(x.Job.QuotedTotal),
+            Money(x.Travel),
+            Date(x.Job.ScheduledStart)
+        }).ToList();
+        return new ReportTable("Travel by job",
+            ["Job", "Customer", "Status", "Quoted", "Travel", "Scheduled"],
+            rows,
+            $"R {withTravel.Sum(x => x.Travel):N2} travel across {withTravel.Count} job(s).",
+            withTravel.Select(x => x.Job.Id).ToList());
+    }
+
+    private async Task<ReportTable> PpeOutstandingAsync(CancellationToken ct)
+    {
+        var list = await _db.Set<EmployeePpeIssue>().AsNoTracking()
+            .Include(p => p.Employee)
+            .Include(p => p.InventoryItem)
+            .Include(p => p.Job)
+            .Where(p => p.Quantity > p.QuantityReturned)
+            .OrderBy(p => p.IssuedAt)
+            .Take(500)
+            .ToListAsync(ct);
+        var rows = list.Select(p => new[]
+        {
+            p.Employee == null ? "—" : $"{p.Employee.FirstName} {p.Employee.LastName}".Trim(),
+            p.InventoryItem?.Sku ?? "—",
+            p.InventoryItem?.Name ?? "—",
+            p.QuantityOutstanding.ToString("N1"),
+            p.Job?.JobNumber ?? "—",
+            Date(p.IssuedAt)
+        }).ToList();
+        return new ReportTable("Outstanding PPE",
+            ["Employee", "SKU", "Item", "Outstanding", "Job", "Issued"],
+            rows,
+            $"{list.Count} issue(s) still out.");
     }
 
     private async Task<ReportTable> InvoicesAsync(bool outstandingOnly, bool overdueOnly, bool paidOnly, CancellationToken ct)

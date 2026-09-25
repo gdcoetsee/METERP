@@ -1354,6 +1354,11 @@ public class DatabaseSeeder : IHostedService
                     Value = 185000m,
                     Stage = OpportunityStage.Proposal,
                     ExpectedClose = DateTime.UtcNow.AddDays(21),
+                    Priority = OpportunityPriority.High,
+                    Source = OpportunitySource.ExistingCustomer,
+                    DealType = OpportunityDealType.Repeat,
+                    ContactName = "Facilities Manager",
+                    NextFollowUp = DateTime.UtcNow.Date.AddDays(3),
                     Notes = "Follow-on from successful ward retrofit. Include travel to Sandton campus."
                 }, cancellationToken);
             }
@@ -1368,6 +1373,10 @@ public class DatabaseSeeder : IHostedService
                     Value = 92000m,
                     Stage = OpportunityStage.Qualified,
                     ExpectedClose = DateTime.UtcNow.AddDays(45),
+                    Priority = OpportunityPriority.Medium,
+                    Source = OpportunitySource.Tender,
+                    DealType = OpportunityDealType.Maintenance,
+                    NextFollowUp = DateTime.UtcNow.Date.AddDays(-1),
                     Notes = "Annual maintenance + emergency call-out SLA."
                 }, cancellationToken);
             }
@@ -1379,8 +1388,24 @@ public class DatabaseSeeder : IHostedService
                 Value = 210000m,
                 Stage = OpportunityStage.Lead,
                 ExpectedClose = DateTime.UtcNow.AddDays(60),
+                Priority = OpportunityPriority.High,
+                Source = OpportunitySource.Referral,
+                DealType = OpportunityDealType.NewWork,
+                ContactName = "Procurement",
+                NextFollowUp = DateTime.UtcNow.Date.AddDays(7),
                 Notes = "Greenfield install — AI quote recommended for travel + materials."
             }, cancellationToken);
+        }
+
+        foreach (var existing in await opportunityService.GetAllAsync(pageSize: 200, ct: cancellationToken))
+        {
+            if (existing.ProbabilityPercent != 0) continue;
+            if (existing.Stage == OpportunityStage.ClosedLost) continue;
+            existing.ProbabilityPercent = OpportunityPipeline.DefaultProbability(existing.Stage);
+            existing.Customer = null;
+            existing.Quote = null;
+            existing.OwnerEmployee = null;
+            await opportunityService.UpdateAsync(existing, cancellationToken);
         }
 
         // 5. Seed demo quotes + one converted job to demonstrate the full Quote -> Job workflow (Module 2)

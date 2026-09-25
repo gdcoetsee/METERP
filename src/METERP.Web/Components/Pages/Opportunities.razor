@@ -7,6 +7,7 @@
 @using METERP.Application.Interfaces
 @inject IOpportunityService OpportunityService
 @inject ICustomerService CustomerService
+@inject IEmployeeService EmployeeService
 @inject ICurrentUserService CurrentUserService
 @inject ToastService ToastService
 @inject NavigationManager Nav
@@ -17,6 +18,7 @@
 
 <PageTitle>Opportunities (CRM)</PageTitle>
 
+<div class="meterp-board-page">
 @if (_ready)
 {
     <span data-testid="opportunities-ready" class="visually-hidden">ready</span>
@@ -54,11 +56,25 @@
         <option value="quoted">Has quote</option>
         <option value="unquoted">No quote</option>
     </select>
+    <select class="form-select form-select-sm" data-testid="opportunity-filter-priority" @bind="_priorityFilter" @bind:after="Filter">
+        <option value="all">Priority</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+    </select>
+    <select class="form-select form-select-sm" data-testid="opportunity-filter-followup" @bind="_followUpFilter" @bind:after="Filter">
+        <option value="all">Follow-up</option>
+        <option value="overdue">Overdue</option>
+        <option value="week">This week</option>
+        <option value="none">No follow-up</option>
+    </select>
     <select class="form-select form-select-sm meterp-board-toolbar-sort" data-testid="opportunity-sort" @bind="_sort" @bind:after="Filter">
         <option value="board">Board order</option>
         <option value="close">Close date</option>
+        <option value="followup">Follow-up date</option>
         <option value="amount-desc">Amount high–low</option>
         <option value="amount-asc">Amount low–high</option>
+        <option value="weighted">Weighted high–low</option>
         <option value="title">Deal name</option>
         <option value="newest">Recently created</option>
     </select>
@@ -82,6 +98,14 @@
         {
             <span class="badge text-bg-light">@_quoteFilter</span>
         }
+        @if (_priorityFilter != "all")
+        {
+            <span class="badge text-bg-light">@_priorityFilter</span>
+        }
+        @if (_followUpFilter != "all")
+        {
+            <span class="badge text-bg-light">@_followUpFilter</span>
+        }
         <button type="button" class="btn btn-link btn-sm p-0" @onclick="ResetFilters">Clear filters</button>
     </div>
 }
@@ -92,7 +116,7 @@
 }
 else
 {
-<div class="meterp-kanban mb-4" data-testid="opportunities-pipeline">
+<div class="meterp-kanban" data-testid="opportunities-pipeline">
     @foreach (var stage in stages)
     {
         <div class="meterp-kanban-col">
@@ -100,13 +124,15 @@ else
                 <strong class="small">@StageLabel(stage)</strong>
                 <span class="badge bg-secondary ms-1">@GetCount(stage)</span>
                 <div class="small text-success">R @GetValue(stage).ToString("N0")</div>
+                <div class="meterp-kanban-weighted">Weighted R @GetWeighted(stage).ToString("N0")</div>
             </div>
             <div class="meterp-kanban-lane"
                  data-lane="@stage.ToString()"
                  data-testid="@($"opportunity-lane-{stage}")">
                 @foreach (var opp in GetByStage(stage))
                 {
-                    <div class="meterp-kanban-card"
+                    <div @key="opp.Id"
+                         class="meterp-kanban-card"
                          draggable="@(CanManage ? "true" : "false")"
                          data-deal-id="@opp.Id"
                          data-testid="@(opp.CustomerId.HasValue && opp.CustomerId != Guid.Empty ? "opportunity-card-with-customer" : "opportunity-card")"
@@ -121,11 +147,27 @@ else
                             </div>
                             <span class="text-muted">@DisplayCustomer(opp)</span><br />
                             <span class="text-success">R @opp.Value.ToString("N0")</span>
+                            <span class="text-muted"> · @opp.ProbabilityPercent%</span>
                             <div class="text-muted">Close @opp.ExpectedClose.ToString("dd MMM") · @DaysToClose(opp)</div>
-                            @if (opp.QuoteId is { } qid && qid != Guid.Empty)
-                            {
-                                <span class="badge bg-success-subtle text-success">Quote</span>
-                            }
+                            <div class="meterp-kanban-meta">
+                                <span class="badge @PriorityBadgeClass(opp.Priority)">@opp.Priority</span>
+                                @if (!string.IsNullOrWhiteSpace(OwnerName(opp)))
+                                {
+                                    <span class="badge bg-light text-dark">@OwnerName(opp)</span>
+                                }
+                                @if (FollowUpOverdue(opp))
+                                {
+                                    <span class="badge bg-danger-subtle text-danger">Follow-up overdue</span>
+                                }
+                                else if (opp.NextFollowUp is { } follow)
+                                {
+                                    <span class="badge bg-info-subtle text-info">Follow @follow.ToString("dd MMM")</span>
+                                }
+                                @if (opp.QuoteId is { } qid && qid != Guid.Empty)
+                                {
+                                    <span class="badge bg-success-subtle text-success">Quote</span>
+                                }
+                            </div>
                         </div>
                     </div>
                 }
@@ -138,6 +180,7 @@ else
     }
 </div>
 }
+</div>
 
 @if (showCreate && CanManage)
 {
@@ -185,6 +228,36 @@ else
                     <label class="form-label">Expected close</label>
                     <input type="date" class="form-control" @bind="newOpp.ExpectedClose" />
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label">Priority</label>
+                    <select class="form-select" @bind="newOpp.Priority">
+                        @foreach (var p in priorities) { <option value="@p">@p</option> }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Source</label>
+                    <select class="form-select" @bind="newOpp.Source">
+                        @foreach (var s in sources) { <option value="@s">@SourceLabel(s)</option> }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Next follow-up</label>
+                    <input type="date" class="form-control" @bind="newOpp.NextFollowUp" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Contact name</label>
+                    <input class="form-control" @bind="newOpp.ContactName" placeholder="Site manager / buyer" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Owner</label>
+                    <EntityPicker TestId="opportunity-owner-select"
+                                  Value="newOpp.OwnerEmployeeId ?? Guid.Empty"
+                                  ValueChanged="OnCreateOwnerPicked"
+                                  Options="EmployeePickerOptions"
+                                  SelectedLabel="@CreateOwnerLabel"
+                                  Placeholder="Who owns this deal"
+                                  OnSearch="SearchEmployeesAsync" />
+                </div>
             </div>
         </ChildContent>
         <Footer>
@@ -227,6 +300,67 @@ else
                                 <label class="form-label">Expected close</label>
                                 <input type="date" class="form-control" @bind="selectedOpp.ExpectedClose" disabled="@(!CanManage)" />
                             </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Priority</label>
+                                <select class="form-select" @bind="selectedOpp.Priority" disabled="@(!CanManage)">
+                                    @foreach (var p in priorities) { <option value="@p">@p</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Source</label>
+                                <select class="form-select" @bind="selectedOpp.Source" disabled="@(!CanManage)">
+                                    @foreach (var s in sources) { <option value="@s">@SourceLabel(s)</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Type</label>
+                                <select class="form-select" @bind="selectedOpp.DealType" disabled="@(!CanManage)">
+                                    @foreach (var t in dealTypes) { <option value="@t">@DealTypeLabel(t)</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Win probability %</label>
+                                <input type="number" class="form-control" min="0" max="100" @bind="selectedOpp.ProbabilityPercent" disabled="@(!CanManage)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Next follow-up</label>
+                                <input type="date" class="form-control" @bind="selectedOpp.NextFollowUp" disabled="@(!CanManage)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Weighted</label>
+                                <p class="mb-0 pt-2">R @selectedOpp.WeightedValue.ToString("N0")</p>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Contact</label>
+                                <input class="form-control mb-2" @bind="selectedOpp.ContactName" placeholder="Name" disabled="@(!CanManage)" />
+                                <input class="form-control mb-2" @bind="selectedOpp.ContactPhone" placeholder="Phone" disabled="@(!CanManage)" />
+                                <input class="form-control" @bind="selectedOpp.ContactEmail" placeholder="Email" disabled="@(!CanManage)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Owner</label>
+                                @if (CanManage)
+                                {
+                                    <EntityPicker TestId="opportunity-detail-owner"
+                                                  Value="selectedOpp.OwnerEmployeeId ?? Guid.Empty"
+                                                  ValueChanged="OnDetailOwnerPicked"
+                                                  Options="EmployeePickerOptions"
+                                                  SelectedLabel="@OwnerName(selectedOpp)"
+                                                  Placeholder="Assign an owner"
+                                                  OnSearch="SearchEmployeesAsync" />
+                                }
+                                else
+                                {
+                                    <p class="mb-0">@(OwnerName(selectedOpp) ?? "—")</p>
+                                }
+                            </div>
+                            @if (ShowLossReason)
+                            {
+                                <div class="col-12">
+                                    <label class="form-label meterp-required">Loss reason</label>
+                                    <textarea class="form-control" rows="2" @bind="selectedOpp.LossReason" disabled="@(!CanManage)"
+                                              placeholder="Price, timing, competitor, scope…"></textarea>
+                                </div>
+                            }
                             <div class="col-12">
                                 <label class="form-label">Company</label>
                                 @if (CanManage)
@@ -253,6 +387,12 @@ else
                     </div>
                 </div>
                 <div class="col-lg-5">
+                    <div class="meterp-totals mb-3">
+                        <div class="meterp-section-title">Forecast</div>
+                        <p class="mb-1">Amount <strong>R @selectedOpp.Value.ToString("N0")</strong></p>
+                        <p class="mb-1">Probability <strong>@selectedOpp.ProbabilityPercent%</strong></p>
+                        <p class="mb-0">Weighted <strong>R @selectedOpp.WeightedValue.ToString("N0")</strong></p>
+                    </div>
                     <div class="meterp-totals mb-3">
                         <div class="meterp-section-title">Associated</div>
                         @if (selectedOpp.QuoteId is { } qid && qid != Guid.Empty)
@@ -301,12 +441,15 @@ else
     private string _closeFilter = "all";
     private string _amountFilter = "all";
     private string _quoteFilter = "all";
+    private string _priorityFilter = "all";
+    private string _followUpFilter = "all";
     private string _sort = "board";
     private Opportunity? selectedOpp;
     private bool showCreate;
     private Opportunity newOpp = new();
     private Guid selectedCustomerId = Guid.Empty;
     private bool _suppressClick;
+    private List<Employee> employees = new();
 
     private bool _ready;
     private bool _loading = true;
@@ -326,6 +469,17 @@ else
         OpportunityStage.ClosedLost
     };
 
+    private static readonly OpportunityPriority[] priorities =
+    {
+        OpportunityPriority.High, OpportunityPriority.Medium, OpportunityPriority.Low
+    };
+
+    private static readonly OpportunitySource[] sources = Enum.GetValues<OpportunitySource>();
+    private static readonly OpportunityDealType[] dealTypes = Enum.GetValues<OpportunityDealType>();
+
+    private bool ShowLossReason =>
+        selectedOpp != null && selectedOpp.Stage == OpportunityStage.ClosedLost;
+
     protected override async Task OnInitializedAsync() => await _dataGate.RunAsync(async () =>
     {
         _loading = true;
@@ -333,6 +487,7 @@ else
         {
             opportunities = (await OpportunityService.GetAllAsync()).ToList();
             customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
+            employees = (await EmployeeService.GetAllAsync(pageSize: 100)).ToList();
             filtered = opportunities;
             if (OpenOpportunityId is { } openId && openId != Guid.Empty)
                 selectedOpp = opportunities.FirstOrDefault(o => o.Id == openId)
@@ -359,8 +514,45 @@ else
     private string DisplayCustomer(Opportunity opp) =>
         opp.Customer?.Name ?? opp.CustomerName ?? "—";
 
+    private static string? OwnerName(Opportunity opp)
+    {
+        if (opp.OwnerEmployee == null) return null;
+        var name = $"{opp.OwnerEmployee.FirstName} {opp.OwnerEmployee.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
+    private static string SourceLabel(OpportunitySource source) => source switch
+    {
+        OpportunitySource.ExistingCustomer => "Existing customer",
+        OpportunitySource.WalkIn => "Walk-in",
+        OpportunitySource.Repeat => "Repeat work",
+        _ => source.ToString()
+    };
+
+    private static string DealTypeLabel(OpportunityDealType type) => type switch
+    {
+        OpportunityDealType.NewWork => "New work",
+        OpportunityDealType.CallOut => "Call-out",
+        _ => type.ToString()
+    };
+
+    private static string PriorityBadgeClass(OpportunityPriority priority) => priority switch
+    {
+        OpportunityPriority.High => "bg-danger-subtle text-danger",
+        OpportunityPriority.Low => "bg-secondary-subtle text-secondary",
+        _ => "bg-warning-subtle text-dark"
+    };
+
+    private static bool FollowUpOverdue(Opportunity opp)
+    {
+        if (opp.NextFollowUp is not { } d) return false;
+        if (opp.Stage is OpportunityStage.ClosedWon or OpportunityStage.ClosedLost) return false;
+        return d.Date < DateTime.UtcNow.Date;
+    }
+
     private int GetCount(OpportunityStage stage) => filtered.Count(o => o.Stage == stage);
     private decimal GetValue(OpportunityStage stage) => filtered.Where(o => o.Stage == stage).Sum(o => o.Value);
+    private decimal GetWeighted(OpportunityStage stage) => filtered.Where(o => o.Stage == stage).Sum(o => o.WeightedValue);
 
     private static string DaysToClose(Opportunity opp)
     {
@@ -377,6 +569,7 @@ else
         {
             selectedOpp.Customer = null;
             selectedOpp.Quote = null;
+            selectedOpp.OwnerEmployee = null;
             await OpportunityService.UpdateAsync(selectedOpp);
             opportunities = (await OpportunityService.GetAllAsync()).ToList();
             Filter();
@@ -398,6 +591,8 @@ else
             "title" => list.OrderBy(o => o.Title).ToList(),
             "newest" => list.OrderByDescending(o => o.CreatedDate).ToList(),
             "close" => list.OrderBy(o => o.ExpectedClose).ToList(),
+            "followup" => list.OrderBy(o => o.NextFollowUp ?? DateTime.MaxValue).ToList(),
+            "weighted" => list.OrderByDescending(o => o.WeightedValue).ToList(),
             _ => list.OrderBy(o => o.BoardOrder).ThenBy(o => o.ExpectedClose).ToList()
         };
     }
@@ -451,6 +646,22 @@ else
             _ => q
         };
 
+        if (_priorityFilter != "all" && Enum.TryParse<OpportunityPriority>(_priorityFilter, out var pri))
+            q = q.Where(o => o.Priority == pri);
+
+        var followToday = DateTime.UtcNow.Date;
+        q = _followUpFilter switch
+        {
+            "overdue" => q.Where(o => o.NextFollowUp.HasValue
+                && o.NextFollowUp.Value.Date < followToday
+                && o.Stage is not OpportunityStage.ClosedWon and not OpportunityStage.ClosedLost),
+            "week" => q.Where(o => o.NextFollowUp.HasValue
+                && o.NextFollowUp.Value.Date >= followToday
+                && o.NextFollowUp.Value.Date <= followToday.AddDays(7)),
+            "none" => q.Where(o => o.NextFollowUp == null),
+            _ => q
+        };
+
         filtered = q.ToList();
     }
 
@@ -458,7 +669,9 @@ else
         !string.IsNullOrEmpty(searchTerm)
         || _closeFilter != "all"
         || _amountFilter != "all"
-        || _quoteFilter != "all";
+        || _quoteFilter != "all"
+        || _priorityFilter != "all"
+        || _followUpFilter != "all";
 
     private void ResetFilters()
     {
@@ -466,6 +679,8 @@ else
         _closeFilter = "all";
         _amountFilter = "all";
         _quoteFilter = "all";
+        _priorityFilter = "all";
+        _followUpFilter = "all";
         Filter();
     }
 
@@ -494,6 +709,7 @@ else
         Guid? before = Guid.TryParse(beforeId, out var b) ? b : null;
         _suppressClick = true;
         await InvokeAsync(() => MoveDealAsync(dealId, st, before));
+        await InvokeAsync(StateHasChanged);
     }
 
     public void Dispose() => _kanbanRef?.Dispose();
@@ -510,19 +726,61 @@ else
 
     private async Task MoveDealAsync(Guid id, OpportunityStage stage, Guid? insertBeforeId)
     {
+        var deal = opportunities.FirstOrDefault(o => o.Id == id);
+        var previousStage = deal?.Stage;
+        var previousOrder = deal?.BoardOrder ?? 0;
+        if (deal != null)
+        {
+            deal.Stage = stage;
+            ApplyLocalBoardOrder(deal, stage, insertBeforeId);
+            OpportunityPipeline.AlignProbabilityWithStage(deal, previousStage ?? stage);
+            Filter();
+        }
+
         try
         {
             await OpportunityService.MoveOnBoardAsync(id, stage, insertBeforeId);
-            opportunities = (await OpportunityService.GetAllAsync()).ToList();
+            var fresh = await OpportunityService.GetByIdAsync(id);
+            if (fresh != null)
+            {
+                var idx = opportunities.FindIndex(o => o.Id == id);
+                if (idx >= 0) opportunities[idx] = fresh;
+                else opportunities.Add(fresh);
+                if (selectedOpp?.Id == id)
+                    selectedOpp = fresh;
+            }
             Filter();
-            if (selectedOpp?.Id == id)
-                selectedOpp = await OpportunityService.GetByIdAsync(id);
             ToastService.ShowSuccess($"Moved to {StageLabel(stage)}.");
         }
         catch (Exception ex)
         {
+            if (deal != null && previousStage is { } revert)
+            {
+                deal.Stage = revert;
+                deal.BoardOrder = previousOrder;
+                Filter();
+            }
             ToastService.ShowError(ex.Message);
         }
+    }
+
+    private void ApplyLocalBoardOrder(Opportunity deal, OpportunityStage stage, Guid? insertBeforeId)
+    {
+        var siblings = opportunities.Where(o => o.Stage == stage && o.Id != deal.Id)
+            .OrderBy(o => o.BoardOrder)
+            .ToList();
+        if (insertBeforeId is { } before && before != Guid.Empty)
+        {
+            var at = siblings.FindIndex(o => o.Id == before);
+            if (at >= 0)
+            {
+                siblings.Insert(at, deal);
+                for (var i = 0; i < siblings.Count; i++)
+                    siblings[i].BoardOrder = (i + 1) * 10;
+                return;
+            }
+        }
+        deal.BoardOrder = siblings.Count == 0 ? 10 : siblings.Max(o => o.BoardOrder) + 10;
     }
 
     private Task OnDetailCustomerPicked(Guid id)
@@ -543,6 +801,12 @@ else
     private async Task MarkLostAsync()
     {
         if (selectedOpp == null) return;
+        if (string.IsNullOrWhiteSpace(selectedOpp.LossReason))
+        {
+            selectedOpp.Stage = OpportunityStage.ClosedLost;
+            ToastService.ShowError("Enter a loss reason before marking lost.");
+            return;
+        }
         selectedOpp.Stage = OpportunityStage.ClosedLost;
         await SaveOppAsync();
     }
@@ -572,9 +836,53 @@ else
         }
     }
 
+    private IReadOnlyList<EntityPickerOption> EmployeePickerOptions =>
+        employees.Select(e => new EntityPickerOption
+        {
+            Id = e.Id,
+            Label = $"{e.FirstName} {e.LastName}".Trim(),
+            SubLabel = e.JobTitle
+        }).ToList();
+
+    private string? CreateOwnerLabel
+    {
+        get
+        {
+            var emp = employees.FirstOrDefault(e => e.Id == newOpp.OwnerEmployeeId);
+            return emp == null ? null : $"{emp.FirstName} {emp.LastName}".Trim();
+        }
+    }
+
+    private Task OnCreateOwnerPicked(Guid id)
+    {
+        newOpp.OwnerEmployeeId = id == Guid.Empty ? null : id;
+        return Task.CompletedTask;
+    }
+
+    private Task OnDetailOwnerPicked(Guid id)
+    {
+        if (selectedOpp == null) return Task.CompletedTask;
+        selectedOpp.OwnerEmployeeId = id == Guid.Empty ? null : id;
+        selectedOpp.OwnerEmployee = employees.FirstOrDefault(e => e.Id == id);
+        return Task.CompletedTask;
+    }
+
+    private async Task SearchEmployeesAsync(string term)
+    {
+        employees = (await EmployeeService.GetAllAsync(
+                string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
+            .ToList();
+    }
+
     private void ShowCreate()
     {
-        newOpp = new Opportunity { Stage = OpportunityStage.Lead, ExpectedClose = DateTime.UtcNow.AddDays(30) };
+        newOpp = new Opportunity
+        {
+            Stage = OpportunityStage.Lead,
+            ExpectedClose = DateTime.UtcNow.AddDays(30),
+            ProbabilityPercent = OpportunityPipeline.DefaultProbability(OpportunityStage.Lead),
+            NextFollowUp = DateTime.UtcNow.Date.AddDays(7)
+        };
         selectedCustomerId = Guid.Empty;
         showCreate = true;
         selectedOpp = null;

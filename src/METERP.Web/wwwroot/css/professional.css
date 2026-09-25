@@ -716,31 +716,76 @@ h1 {
   align-items: center;
   margin-bottom: 0.85rem;
 }
+.page:has(.meterp-board-page) {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+.page:has(.meterp-board-page) main {
+  min-height: 0;
+  overflow: hidden;
+}
+.content:has(.meterp-board-page) {
+  max-width: none;
+  padding-bottom: 1rem;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.meterp-board-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.meterp-board-page > .meterp-page-header,
+.meterp-board-page > .meterp-board-toolbar,
+.meterp-board-page > .meterp-filter-chips {
+  flex-shrink: 0;
+}
 .meterp-kanban {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(15.5rem, 1fr));
+  display: flex;
   gap: 0.75rem;
+  flex: 1;
+  min-height: 18rem;
   overflow-x: auto;
-  padding-bottom: 0.35rem;
-  align-items: start;
+  overflow-y: hidden;
+  padding-bottom: 0.55rem;
+  align-items: stretch;
+  scrollbar-gutter: stable;
 }
 .meterp-kanban-col {
-  min-width: 15.5rem;
+  flex: 1 0 16.5rem;
+  width: 16.5rem;
+  min-width: 16.5rem;
+  max-width: 22rem;
   background: #f8fafc;
   border: 1px solid var(--meterp-border, #e3e8ee);
   border-radius: 0.75rem;
   display: flex;
   flex-direction: column;
-  min-height: 18rem;
+  min-height: 0;
+  max-height: 100%;
 }
 .meterp-kanban-col-head {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   padding: 0.65rem 0.75rem 0.4rem;
   border-bottom: 1px solid var(--meterp-border, #e3e8ee);
+  background: #f8fafc;
+  border-radius: 0.75rem 0.75rem 0 0;
 }
 .meterp-kanban-lane {
   flex: 1;
-  min-height: 12rem;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.55rem;
+  overscroll-behavior: contain;
 }
 .meterp-kanban-lane.is-drop-target {
   background: rgba(37, 99, 235, 0.08);
@@ -762,6 +807,16 @@ h1 {
   color: #94a3b8;
   font-size: 0.85rem;
   margin-right: 0.25rem;
+}
+.meterp-kanban-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+.meterp-kanban-weighted {
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 .meterp-notify-wrap { position: relative; }
@@ -882,7 +937,7 @@ h1 {
 }
 @media (max-width: 900px) {
   .meterp-report-shell { grid-template-columns: 1fr; }
-  .meterp-kanban { grid-template-columns: repeat(6, minmax(15rem, 1fr)); }
+  .meterp-kanban-col { max-width: none; }
 }
 
 .dark .meterp-picker-menu,
@@ -902,6 +957,10 @@ h1 {
 .dark .meterp-global-search-input {
   background: #1e293b;
   color: var(--meterp-text);
+}
+.dark .meterp-kanban-col,
+.dark .meterp-kanban-col-head {
+  background: #1e293b;
 }
 
 /* === Print-friendly exports === */

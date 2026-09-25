@@ -24,7 +24,33 @@ public class Opportunity : BaseEntity
 
     public string? Notes { get; set; }
 
+    /// <summary>Sales owner — the person chasing this deal.</summary>
+    public Guid? OwnerEmployeeId { get; set; }
+    public Employee? OwnerEmployee { get; set; }
+
+    /// <summary>Win likelihood 0–100. Defaults from <see cref="OpportunityPipeline.DefaultProbability"/>.</summary>
+    public int ProbabilityPercent { get; set; }
+
+    public OpportunityPriority Priority { get; set; } = OpportunityPriority.Medium;
+
+    public OpportunitySource Source { get; set; } = OpportunitySource.Other;
+
+    public OpportunityDealType DealType { get; set; } = OpportunityDealType.NewWork;
+
+    public string? ContactName { get; set; }
+    public string? ContactPhone { get; set; }
+    public string? ContactEmail { get; set; }
+
+    public DateTime? NextFollowUp { get; set; }
+
+    /// <summary>Required when stage is Closed Lost.</summary>
+    public string? LossReason { get; set; }
+
+    public DateTime? LastActivityAt { get; set; }
+
     /// <summary>Set when converted to a quote via AI Copilot or manual flow.</summary>
     public Guid? QuoteId { get; set; }
     public Quote? Quote { get; set; }
+
+    public decimal WeightedValue => OpportunityPipeline.WeightedValue(Value, ProbabilityPercent);
 }

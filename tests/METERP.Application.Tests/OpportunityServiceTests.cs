@@ -118,7 +118,8 @@ public class OpportunityServiceTests
         {
             Title = "Lost deal",
             Stage = OpportunityStage.ClosedLost,
-            Value = 1000m
+            Value = 1000m,
+            LossReason = "Budget cut"
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -405,7 +406,8 @@ public class OpportunityServiceTests
             Title = "Lost deal",
             CustomerName = "Test",
             Value = 500m,
-            Stage = OpportunityStage.ClosedLost
+            Stage = OpportunityStage.ClosedLost,
+            LossReason = "Lost to competitor"
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.AdvanceStageAsync(id));
@@ -892,5 +894,121 @@ public class OpportunityServiceTests
         Assert.Equal(leadB, leads[0].Id);
         Assert.Equal(leadA, leads[1].Id);
         Assert.True(leads[0].BoardOrder < leads[1].BoardOrder);
+    }
+
+    [Fact]
+    public async Task CreateAsync_SetsDefaultProbabilityForStage()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Prob deal",
+            CustomerName = "Acme",
+            Value = 40000m,
+            Stage = OpportunityStage.Proposal
+        });
+
+        var loaded = await service.GetByIdAsync(id);
+        Assert.Equal(50, loaded!.ProbabilityPercent);
+        Assert.Equal(20000m, loaded.WeightedValue);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ClosedLost_RequiresLossReason()
+    {
+        using var db = CreateContext(Guid.NewGuid());
+        var service = new OpportunityService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new Opportunity
+            {
+                Title = "No reason",
+                Value = 1000m,
+                Stage = OpportunityStage.ClosedLost
+            }));
+        Assert.Contains("Loss reason", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MoveOnBoardAsync_ClosedLost_RequiresLossReason()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Open deal",
+            CustomerName = "Acme",
+            Value = 5000m,
+            Stage = OpportunityStage.Negotiation
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MoveOnBoardAsync(id, OpportunityStage.ClosedLost));
+        Assert.Contains("loss reason", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MoveOnBoardAsync_ToProposal_InheritsDefaultProbability()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Lead deal",
+            CustomerName = "Acme",
+            Value = 80000m,
+            Stage = OpportunityStage.Lead
+        });
+
+        await service.MoveOnBoardAsync(id, OpportunityStage.Proposal);
+        var loaded = await service.GetByIdAsync(id);
+        Assert.Equal(OpportunityStage.Proposal, loaded!.Stage);
+        Assert.Equal(50, loaded.ProbabilityPercent);
+        Assert.Equal(40000m, loaded.WeightedValue);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PersistsOwnerAndFollowUp()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var empId = Guid.NewGuid();
+        db.Set<Employee>().Add(new Employee
+        {
+            Id = empId,
+            TenantId = tenantId,
+            FirstName = "Sam",
+            LastName = "Estimator",
+            EmployeeNumber = "E-1"
+        });
+        await db.SaveChangesAsync();
+
+        var follow = DateTime.UtcNow.Date.AddDays(5);
+        var id = await service.CreateAsync(new Opportunity
+        {
+            Title = "Owned deal",
+            CustomerName = "Mine Co",
+            Value = 12000m,
+            OwnerEmployeeId = empId,
+            Priority = OpportunityPriority.High,
+            Source = OpportunitySource.Referral,
+            DealType = OpportunityDealType.Tender,
+            ContactName = "Thabo",
+            NextFollowUp = follow
+        });
+
+        var loaded = await service.GetByIdAsync(id);
+        Assert.Equal(empId, loaded!.OwnerEmployeeId);
+        Assert.Equal("Sam", loaded.OwnerEmployee!.FirstName);
+        Assert.Equal(OpportunityPriority.High, loaded.Priority);
+        Assert.Equal(OpportunitySource.Referral, loaded.Source);
+        Assert.Equal("Thabo", loaded.ContactName);
+        Assert.Equal(follow.Date, loaded.NextFollowUp!.Value.Date);
     }
 }

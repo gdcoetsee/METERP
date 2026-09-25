@@ -1947,8 +1947,23 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<int>("BoardOrder")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ContactEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DealType")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("LastModifiedBy")
                         .HasColumnType("text");
@@ -1956,8 +1971,23 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<DateTime?>("LastModifiedDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("LossReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("NextFollowUp")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("OwnerEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProbabilityPercent")
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("QuoteId")
                         .HasColumnType("uuid");
@@ -1966,6 +1996,9 @@ namespace METERP.Infrastructure.Migrations
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("bytea");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Stage")
                         .HasColumnType("integer");
@@ -1983,6 +2016,8 @@ namespace METERP.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("OwnerEmployeeId");
 
                     b.HasIndex("QuoteId");
 
@@ -3802,11 +3837,18 @@ namespace METERP.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CustomerId");
 
+                    b.HasOne("METERP.Domain.Employee", "OwnerEmployee")
+                        .WithMany()
+                        .HasForeignKey("OwnerEmployeeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("METERP.Domain.Quote", "Quote")
                         .WithMany()
                         .HasForeignKey("QuoteId");
 
                     b.Navigation("Customer");
+
+                    b.Navigation("OwnerEmployee");
 
                     b.Navigation("Quote");
                 });
