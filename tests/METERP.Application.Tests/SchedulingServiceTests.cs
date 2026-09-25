@@ -50,6 +50,9 @@ public class SchedulingServiceTests
 
             Assert.Single(calendar);
             Assert.Equal("J-CAL-1", calendar[0].JobNumber);
+
+            var month = await service.GetCalendarJobsAsync(weekStart, 42);
+            Assert.Equal(2, month.Count);
         }
     }
 

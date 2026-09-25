@@ -1878,6 +1878,75 @@ public class E2EFlowTests
     }
 
     [Fact]
+    public async Task Scheduling_Calendar_Switches_Week_And_Month()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForTestIdAsync("scheduling-calendar", 30000);
+        await page.WaitForTestIdAsync("scheduling-range-label", 15000);
+
+        var weekLabel = (await page.Locator("[data-testid='scheduling-range-label']").InnerTextAsync()) ?? "";
+        await page.ClickByTestIdWhenEnabledAsync("scheduling-next");
+        await Assertions.Expect(page.Locator("[data-testid='scheduling-range-label']"))
+            .Not.ToHaveTextAsync(weekLabel, new() { Timeout = 20000 });
+
+        await page.ClickByTestIdWhenEnabledAsync("scheduling-view-month");
+        await Assertions.Expect(page.Locator("[data-testid='scheduling-range-label']"))
+            .ToHaveTextAsync(new Regex("[A-Za-z]+ 20[0-9]{2}"), new() { Timeout = 15000 });
+        var monthLabel = (await page.Locator("[data-testid='scheduling-range-label']").InnerTextAsync()) ?? "";
+        await page.ClickByTestIdWhenEnabledAsync("scheduling-next");
+        await Assertions.Expect(page.Locator("[data-testid='scheduling-range-label']"))
+            .Not.ToHaveTextAsync(monthLabel, new() { Timeout = 20000 });
+
+        await page.CloseSessionAsync();
+    }
+
+    [Fact]
+    public async Task Scheduling_DragDrop_Moves_Job_To_Another_Day()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync();
+        await page.GotoRelativeAsync("/scheduling");
+        await page.WaitForTestIdAsync("scheduling-calendar", 30000);
+
+        if (await page.Locator("[data-job-id]").CountAsync() == 0)
+        {
+            await page.CloseSessionAsync();
+            return;
+        }
+
+        var dest = await page.EvaluateAsync<string?>(@"async () => {
+            const deadline = Date.now() + 8000;
+            while (Date.now() < deadline) {
+                const board = document.querySelector('[data-testid=""scheduling-calendar""]');
+                if (board && board._schedAbort) break;
+                await new Promise(r => setTimeout(r, 150));
+            }
+            const card = document.querySelector('[data-job-id]');
+            const days = [...document.querySelectorAll('[data-testid=""scheduling-day""][data-day]')];
+            if (!card || days.length < 2) return '';
+            const fromDay = card.closest('[data-day]');
+            const target = days.find(d => d.getAttribute('data-day') && d !== fromDay) || days[1];
+            const dt = new DataTransfer();
+            card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            card.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+            return target.getAttribute('data-day') || '';
+        }");
+
+        if (!string.IsNullOrWhiteSpace(dest))
+        {
+            await page.Locator($"[data-day='{dest}'] [data-job-id]")
+                .First
+                .WaitForAsync(new() { Timeout = 15000 });
+        }
+
+        await page.CloseSessionAsync();
+    }
+
+    [Fact]
     public async Task MultiTenant_Isolation_On_Reports_Page()
     {
         await E2EHelpers.EnsureAppReadyAsync();
@@ -2253,13 +2322,14 @@ public class E2EFlowTests
             "home-email-executive-report"
         };
 
-        var actionSelector = string.Join(", ", actionIds.Select(id => $"[data-testid='{id}']"));
-        await page.Locator(actionSelector).First.WaitForAsync(new() { Timeout = 20000, State = WaitForSelectorState.Visible });
+        await page.Locator("[data-testid='home-queue-row']").First.WaitForAsync(new() { Timeout = 20000, State = WaitForSelectorState.Visible });
+        await page.Locator("[data-testid='home-queue-row']").First.ClickAsync();
+        await page.WaitForTestIdAsync("home-work-review", 15000);
 
         ILocator? action = null;
         foreach (var id in actionIds)
         {
-            var candidate = page.Locator($"[data-testid='{id}']").First;
+            var candidate = page.Locator($"[data-testid='home-work-review'] [data-testid='{id}']").First;
             if (await candidate.CountAsync() == 0)
                 continue;
             if (!await candidate.IsEnabledAsync())
@@ -2268,7 +2338,7 @@ public class E2EFlowTests
             break;
         }
 
-        Assert.True(action is not null, "Expected a Home cash-desk action (button or review link) on seeded Acme.");
+        Assert.True(action is not null, "Expected a Home review overlay action on seeded Acme.");
         var actionTestId = await action!.GetAttributeAsync("data-testid");
         if (!string.IsNullOrWhiteSpace(actionTestId))
             await page.ClickByTestIdWhenEnabledAsync(actionTestId);
@@ -2361,7 +2431,20 @@ public class E2EFlowTests
 
     private static async Task<bool> TryHomeCashActionAsync(IPage page, string testId)
     {
-        var candidate = page.Locator($"[data-testid='{testId}']").First;
+        var row = page.Locator($"[data-home-action='{testId}']").First;
+        if (await row.CountAsync() == 0)
+            return false;
+        await row.ClickAsync();
+        try
+        {
+            await page.WaitForTestIdAsync("home-work-review", 15000);
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+
+        var candidate = page.Locator($"[data-testid='home-work-review'] [data-testid='{testId}']").First;
         if (await candidate.CountAsync() == 0)
             return false;
         if (!await candidate.IsVisibleAsync() || !await candidate.IsEnabledAsync())
@@ -4067,6 +4150,13 @@ public class E2EFlowTests
         await E2EHelpers.EnsureAppReadyAsync();
         var page = await Browser.LoginAsync();
         await page.WaitForApprovalsReadyAsync();
+
+        var tabColor = await page.EvaluateAsync<string>(
+            """() => getComputedStyle(document.querySelector("[data-testid='approvals-tabs'] .nav-link")).color""");
+        Assert.False(
+            string.Equals(tabColor, "rgb(255, 255, 255)", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(tabColor, "rgba(255, 255, 255, 0.78)", StringComparison.OrdinalIgnoreCase),
+            $"Approvals tab text should be readable, got {tabColor}.");
 
         await page.ClickExportAndWaitToastAsync("approvals-export-csv", "Overdue approvals exported");
 

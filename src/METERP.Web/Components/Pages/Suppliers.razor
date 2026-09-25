@@ -63,15 +63,15 @@ else
             <tbody>
                 @foreach (var s in suppliers)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" @onclick="() => ViewSupplier(s)" title="Open supplier">
                         <td><strong>@s.Name</strong></td>
                         <td>@s.ContactPerson<br /><small>@s.Phone | @s.Email</small></td>
                         <td>@s.City, @s.Province</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewSupplier(s)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewSupplier(s)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditSupplier(s)">Edit</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditSupplier(s)" @onclick:stopPropagation="true">Edit</button>
                             }
                         </td>
                     </tr>

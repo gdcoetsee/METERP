@@ -69,22 +69,22 @@ else
             <tbody>
                 @foreach (var po in pos)
                 {
-                    <tr data-testid="@GetPurchaseOrderRowTestId(po)">
+                    <tr class="meterp-row-click" data-testid="@GetPurchaseOrderRowTestId(po)" @onclick="() => ViewPO(po)" title="Open purchase order">
                         <td><strong>@po.PoNumber</strong></td>
                         <td>@(po.Supplier?.Name ?? "—")</td>
                         <td>@po.PoDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Exp: @(po.ExpectedDate?.ToString("yyyy-MM-dd") ?? "—")</small></td>
                         <td>@GetStatusBadge(po.Status)</td>
                         <td class="text-end">R @po.Total.ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="purchase-order-view" @onclick="() => ViewPO(po)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="purchase-order-view" @onclick="() => ViewPO(po)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage && po.Status == PurchaseOrderStatus.Draft)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditPO(po)">Edit</button>
-                                <button class="btn btn-sm btn-outline-info ms-1" data-testid="purchase-order-send" @onclick="() => MarkSent(po)">Mark Sent</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditPO(po)" @onclick:stopPropagation="true">Edit</button>
+                                <button class="btn btn-sm btn-outline-info ms-1" data-testid="purchase-order-send" @onclick="() => MarkSent(po)" @onclick:stopPropagation="true">Mark Sent</button>
                             }
                             @if (UserCanManage && (po.Status == PurchaseOrderStatus.Sent || po.Status == PurchaseOrderStatus.PartiallyReceived))
                             {
-                                <button class="btn btn-sm btn-success ms-1" data-testid="purchase-order-receive" @onclick="() => OpenReceiveModal(po)">Receive</button>
+                                <button class="btn btn-sm btn-success ms-1" data-testid="purchase-order-receive" @onclick="() => OpenReceiveModal(po)" @onclick:stopPropagation="true">Receive</button>
                             }
                         </td>
                     </tr>

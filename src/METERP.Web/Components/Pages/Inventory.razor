@@ -83,7 +83,7 @@ else
                 @foreach (var item in items)
                 {
                     bool isLow = item.QuantityOnHand <= item.ReorderLevel;
-                    <tr class="@(isLow ? "table-warning" : "")">
+                    <tr class="meterp-row-click @(isLow ? "table-warning" : "")" @onclick="() => ViewItem(item)" title="Open item">
                         <td><code>@item.Sku</code></td>
                         <td>
                             <strong>@item.Name</strong><br />
@@ -107,10 +107,10 @@ else
                         <td class="text-end">@item.QuantityAvailable @item.Unit</td>
                         <td class="text-end">R @item.UnitCost.ToString("N2")</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewItem(item)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewItem(item)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => QuickAdjust(item)">Adjust Stock</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => QuickAdjust(item)" @onclick:stopPropagation="true">Adjust Stock</button>
                             }
                         </td>
                     </tr>

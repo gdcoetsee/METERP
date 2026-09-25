@@ -78,7 +78,7 @@ else
             <tbody>
                 @foreach (var emp in employees)
                 {
-                    <tr data-testid="employee-row">
+                    <tr class="meterp-row-click" data-testid="employee-row" @onclick="() => View(emp)" title="Open employee">
                         <td><strong>@emp.EmployeeNumber</strong></td>
                         <td>@emp.FirstName @emp.LastName</td>
                         <td>@(emp.JobTitle ?? "—")</td>
@@ -96,11 +96,11 @@ else
                             }
                         </td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="employee-view" @onclick="() => View(emp)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" data-testid="employee-view" @onclick="() => View(emp)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" data-testid="employee-edit" @onclick="() => Edit(emp)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Delete(emp)">Delete</button>
+                                <button class="btn btn-sm btn-outline-secondary" data-testid="employee-edit" @onclick="() => Edit(emp)" @onclick:stopPropagation="true">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Delete(emp)" @onclick:stopPropagation="true">Delete</button>
                             }
                         </td>
                     </tr>

@@ -72,7 +72,7 @@ else
             <tbody>
                 @foreach (var asset in assets)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" @onclick="() => ViewAsset(asset)" title="Open asset">
                         <td><strong>@asset.AssetNumber</strong></td>
                         <td>
                             @asset.Name<br />
@@ -84,10 +84,10 @@ else
                         </td>
                         <td>@GetStatusBadge(asset.Status)</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewAsset(asset)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewAsset(asset)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditAsset(asset)">Edit</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditAsset(asset)" @onclick:stopPropagation="true">Edit</button>
                             }
                         </td>
                     </tr>

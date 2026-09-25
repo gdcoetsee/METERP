@@ -81,7 +81,7 @@ else
             <tbody>
                 @foreach (var customer in customers)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" @onclick="() => ViewCustomer(customer)" title="Open customer">
                         <td>
                             <strong>@customer.Name</strong>
                             @if (!string.IsNullOrEmpty(customer.CompanyRegistrationNumber))
@@ -98,11 +98,11 @@ else
                             <span class="badge bg-secondary">@customer.Contacts.Count</span>
                         </td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewCustomer(customer)">View</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewCustomer(customer)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditCustomer(customer)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteCustomer(customer)">Delete</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditCustomer(customer)" @onclick:stopPropagation="true">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteCustomer(customer)" @onclick:stopPropagation="true">Delete</button>
                             }
                         </td>
                     </tr>

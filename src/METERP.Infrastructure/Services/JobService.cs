@@ -408,7 +408,7 @@ public class JobService : IJobService
         await EnsureJobDocumentLinksAsync(job.QuoteId, job.SalesOrderId, job.CustomerId, ct);
 
         if (job.ScheduledStart.HasValue)
-            job.ScheduledStart = job.ScheduledStart.Value.Date;
+            job.ScheduledStart = DateTime.SpecifyKind(job.ScheduledStart.Value.Date, DateTimeKind.Utc);
 
         await SchedulingConflictGuard.EnsureAssetAvailableAsync(
             _dbContext, job.Id, job.AssetId, job.ScheduledStart, ct);
@@ -608,7 +608,7 @@ public class JobService : IJobService
                 throw new InvalidOperationException("Scheduled start cannot be more than 2 years in the future.");
             if (date < DateTime.UtcNow.Date.AddYears(-1))
                 throw new InvalidOperationException("Scheduled start cannot be more than 1 year in the past.");
-            job.ScheduledStart = date;
+            job.ScheduledStart = DateTime.SpecifyKind(date, DateTimeKind.Utc);
         }
 
         var existingCrewIds = await _dbContext.Set<JobCrewAssignment>()
@@ -634,9 +634,39 @@ public class JobService : IJobService
         job.ClosedByUserId = existing.ClosedByUserId;
         job.CloseNotes = existing.CloseNotes;
 
-        _dbContext.Set<Job>().Update(job);
+        AttachJobScalars(job);
         await _dbContext.SaveChangesAsync(ct);
         await InvalidateListCachesAsync(ct);
+    }
+
+    /// <summary>
+    /// Persist job scalars without marking included Customer/Crew/Quote graphs as modified.
+    /// Calling Update() on a GetById graph makes PostgreSQL reject the save.
+    /// </summary>
+    private void AttachJobScalars(Job job)
+    {
+        var tracked = _dbContext.Set<Job>().Local.FirstOrDefault(j => j.Id == job.Id);
+        if (tracked != null)
+        {
+            if (!ReferenceEquals(tracked, job))
+                _dbContext.Entry(tracked).CurrentValues.SetValues(job);
+            _dbContext.Entry(tracked).Property(j => j.ScheduledStart).IsModified = true;
+            return;
+        }
+
+        job.Customer = null;
+        job.Asset = null;
+        job.AssignedEmployee = null;
+        job.Quote = null;
+        job.SalesOrder = null;
+        job.Division = null;
+        job.CrewAssignments = new List<JobCrewAssignment>();
+        job.Labors = new List<JobLabor>();
+        job.ActualCosts = new List<JobCost>();
+        job.Milestones = new List<JobMilestone>();
+        job.SnagItems = new List<JobSnagItem>();
+        job.SafetyIncidents = new List<JobSafetyIncident>();
+        _dbContext.Set<Job>().Update(job);
     }
 
     public async Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)

@@ -182,8 +182,14 @@
                         }
                     </div>
                     <div class="meterp-section">
-                        <div class="meterp-section-title">Lines</div>
-                        <p class="small text-muted">Revise quantities or prices before you approve. The estimator sees the updated quote.</p>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="meterp-section-title mb-0 border-0 pb-0">Lines</div>
+                            @if (CanApproveQuotes && !_showReviewAddLine)
+                            {
+                                <button type="button" class="btn btn-outline-primary btn-sm" data-testid="approvals-quote-add-line" @onclick="ShowReviewAddLine">Add line</button>
+                            }
+                        </div>
+                        <p class="small text-muted">Add, remove, or change lines before you approve. The estimator sees the updated quote.</p>
                         <table class="table table-sm">
                             <thead>
                                 <tr>
@@ -192,14 +198,26 @@
                                     <th class="text-end">Qty</th>
                                     <th class="text-end">Price</th>
                                     <th class="text-end">Total</th>
+                                    @if (CanApproveQuotes) { <th></th> }
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var line in _reviewQuote.Lines.Where(l => !l.IsDeleted))
                                 {
-                                    <tr>
-                                        <td>@line.Description</td>
-                                        <td>@line.LineType</td>
+                                    <tr data-testid="approvals-quote-line-row">
+                                        <td>
+                                            <input class="form-control form-control-sm" data-testid="approvals-quote-line-description"
+                                                   @bind="line.Description" @bind:after="RecalcReviewQuote"
+                                                   disabled="@(!CanApproveQuotes)" />
+                                        </td>
+                                        <td style="width:8rem;">
+                                            <select class="form-select form-select-sm" @bind="line.LineType" disabled="@(!CanApproveQuotes)">
+                                                <option value="Material">Material</option>
+                                                <option value="Labour">Labour</option>
+                                                <option value="Travel">Travel</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </td>
                                         <td style="width:6rem;">
                                             <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end"
                                                    data-testid="approvals-quote-line-qty"
@@ -213,10 +231,55 @@
                                                    disabled="@(!CanApproveQuotes)" />
                                         </td>
                                         <td class="text-end">R @line.LineTotal.ToString("N2")</td>
+                                        @if (CanApproveQuotes)
+                                        {
+                                            <td class="text-end">
+                                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                                        data-testid="approvals-quote-line-delete"
+                                                        @onclick="() => DeleteReviewLineAsync(line)">Remove</button>
+                                            </td>
+                                        }
                                     </tr>
                                 }
                             </tbody>
                         </table>
+                        @if (_showReviewAddLine && CanApproveQuotes)
+                        {
+                            <div class="mt-2 p-3 border rounded bg-light" data-testid="approvals-quote-line-form">
+                                <h6>Add line</h6>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label small mb-0">Description</label>
+                                        <input class="form-control form-control-sm" data-testid="approvals-quote-new-description"
+                                               value="@_reviewLineDescription"
+                                               @oninput="e => _reviewLineDescription = e.Value?.ToString() ?? string.Empty" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-0">Type</label>
+                                        <select class="form-select form-select-sm" @bind="_reviewLineType">
+                                            <option value="Material">Material</option>
+                                            <option value="Labour">Labour</option>
+                                            <option value="Travel">Travel</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-0">Qty</label>
+                                        <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" @bind="_reviewLineQty" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-0">Unit price</label>
+                                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-testid="approvals-quote-new-price"
+                                               value="@_reviewLinePrice.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                               @oninput="OnReviewLinePriceChanged" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="button" class="btn btn-sm btn-success" data-testid="approvals-quote-save-line" @onclick="SaveReviewAddLineAsync">Save line</button>
+                                        <button type="button" class="btn btn-sm btn-secondary ms-1" @onclick="CancelReviewAddLine">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
                 <div class="col-lg-4">
@@ -709,18 +772,25 @@
     private LeaveRequest? _reviewLeave;
     private FieldReport? _reviewField;
     private string _reviewNote = "";
+    private bool _showReviewAddLine;
+    private string _reviewLineDescription = "";
+    private string _reviewLineType = "Material";
+    private decimal _reviewLineQty = 1;
+    private decimal _reviewLinePrice;
 
     private async Task OpenQuoteReviewAsync(Quote quote)
     {
         CloseAllReviews();
         _reviewQuote = QuoteUiHelper.DetachForUi(await QuoteService.GetByIdAsync(quote.Id) ?? quote);
         _reviewNote = "";
+        CancelReviewAddLine();
     }
 
     private void CloseQuoteReview()
     {
         _reviewQuote = null;
         _reviewNote = "";
+        CancelReviewAddLine();
     }
 
     private void CloseAllReviews()
@@ -733,6 +803,85 @@
     }
 
     private void RecalcReviewQuote() => _reviewQuote?.RecalculateTotals();
+
+    private void OnReviewLinePriceChanged(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var price))
+            _reviewLinePrice = price;
+    }
+
+    private void ShowReviewAddLine()
+    {
+        _showReviewAddLine = true;
+        _reviewLineDescription = "";
+        _reviewLineType = "Material";
+        _reviewLineQty = 1;
+        _reviewLinePrice = 0;
+    }
+
+    private void CancelReviewAddLine()
+    {
+        _showReviewAddLine = false;
+        _reviewLineDescription = "";
+        _reviewLineType = "Material";
+        _reviewLineQty = 1;
+        _reviewLinePrice = 0;
+    }
+
+    private async Task SaveReviewAddLineAsync()
+    {
+        if (_reviewQuote == null) return;
+        if (string.IsNullOrWhiteSpace(_reviewLineDescription))
+        {
+            Toast.ShowError("Line description is required.");
+            return;
+        }
+        if (_reviewLineQty <= 0)
+        {
+            Toast.ShowError("Quantity must be greater than zero.");
+            return;
+        }
+
+        try
+        {
+            await QuoteService.ExecutiveAddLineAsync(new QuoteLine
+            {
+                QuoteId = _reviewQuote.Id,
+                Description = _reviewLineDescription.Trim(),
+                LineType = _reviewLineType,
+                Quantity = _reviewLineQty,
+                UnitPrice = _reviewLinePrice
+            });
+            _reviewQuote = QuoteUiHelper.DetachForUi(await QuoteService.GetByIdAsync(_reviewQuote.Id));
+            CancelReviewAddLine();
+            Toast.ShowSuccess("Line added.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task DeleteReviewLineAsync(QuoteLine line)
+    {
+        if (_reviewQuote == null) return;
+        if (_reviewQuote.Lines.Count(l => !l.IsDeleted) <= 1)
+        {
+            Toast.ShowError("A quote needs at least one line. Change this line instead of removing it.");
+            return;
+        }
+
+        try
+        {
+            await QuoteService.ExecutiveDeleteLineAsync(line.Id);
+            _reviewQuote = QuoteUiHelper.DetachForUi(await QuoteService.GetByIdAsync(_reviewQuote.Id));
+            Toast.ShowSuccess("Line removed.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
 
     private async Task SaveReviewQuoteLinesAsync()
     {

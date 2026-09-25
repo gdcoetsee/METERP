@@ -143,5 +143,56 @@ window.meterpUi = {
       e.preventDefault();
       board.scrollLeft += e.deltaY;
     }, { signal: signal, passive: false });
+  },
+  bindSchedule: function (selector, dotnet) {
+    var board = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    if (!board || !dotnet) return;
+    if (board._schedDotnet === dotnet && board._schedAbort) return;
+    if (board._schedAbort) board._schedAbort.abort();
+    var ac = new AbortController();
+    board._schedAbort = ac;
+    board._schedDotnet = dotnet;
+    var signal = ac.signal;
+    var dragId = null;
+
+    board.addEventListener('dragstart', function (e) {
+      var card = e.target.closest('[data-job-id]');
+      if (!card || !board.contains(card)) return;
+      dragId = card.getAttribute('data-job-id');
+      try { e.dataTransfer.setData('text/plain', dragId); } catch (ex) { }
+      try { e.dataTransfer.effectAllowed = 'move'; } catch (ex) { }
+      card.classList.add('is-dragging');
+    }, { signal: signal });
+
+    board.addEventListener('dragend', function () {
+      dragId = null;
+      board.querySelectorAll('.is-dragging').forEach(function (el) { el.classList.remove('is-dragging'); });
+      board.querySelectorAll('.is-drop-target').forEach(function (el) { el.classList.remove('is-drop-target'); });
+    }, { signal: signal });
+
+    board.addEventListener('dragover', function (e) {
+      var day = e.target.closest('[data-day]');
+      if (!day || !board.contains(day)) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch (ex) { }
+      board.querySelectorAll('.is-drop-target').forEach(function (el) {
+        if (el !== day) el.classList.remove('is-drop-target');
+      });
+      day.classList.add('is-drop-target');
+    }, { signal: signal });
+
+    board.addEventListener('drop', function (e) {
+      var day = e.target.closest('[data-day]');
+      if (!day || !board.contains(day)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      day.classList.remove('is-drop-target');
+      var id = '';
+      try { id = e.dataTransfer.getData('text/plain'); } catch (ex) { }
+      if (!id) id = dragId || '';
+      if (!id) return;
+      var date = day.getAttribute('data-day') || '';
+      dotnet.invokeMethodAsync('OnScheduleDrop', id, date);
+    }, { signal: signal });
   }
 };

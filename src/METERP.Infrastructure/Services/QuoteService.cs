@@ -597,14 +597,20 @@ public class QuoteService : IQuoteService
             await _auditService.LogAsync("DELETE", "Quote", quote.QuoteNumber, "Soft deleted", ct);
     }
 
-    public async Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default)
+    public Task<Guid> AddLineAsync(QuoteLine line, CancellationToken ct = default)
+        => AddLineCoreAsync(line, allowPending: false, ct);
+
+    public Task<Guid> ExecutiveAddLineAsync(QuoteLine line, CancellationToken ct = default)
+        => AddLineCoreAsync(line, allowPending: true, ct);
+
+    private async Task<Guid> AddLineCoreAsync(QuoteLine line, bool allowPending, CancellationToken ct)
     {
         var quote = await _dbContext.Set<Quote>()
             .Include(q => q.Lines)
             .FirstOrDefaultAsync(q => q.Id == line.QuoteId, ct)
             ?? throw new InvalidOperationException("Quote not found.");
 
-        EnsureQuoteLinesEditable(quote);
+        EnsureQuoteLinesEditable(quote, allowPending);
 
         ValidateLine(line);
 
@@ -655,7 +661,13 @@ public class QuoteService : IQuoteService
         await InvalidateListCachesAsync(ct);
     }
 
-    public async Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
+    public Task DeleteLineAsync(Guid lineId, CancellationToken ct = default)
+        => DeleteLineCoreAsync(lineId, allowPending: false, ct);
+
+    public Task ExecutiveDeleteLineAsync(Guid lineId, CancellationToken ct = default)
+        => DeleteLineCoreAsync(lineId, allowPending: true, ct);
+
+    private async Task DeleteLineCoreAsync(Guid lineId, bool allowPending, CancellationToken ct)
     {
         var line = await _dbContext.Set<QuoteLine>().FirstOrDefaultAsync(l => l.Id == lineId, ct);
         if (line == null) return;
@@ -666,7 +678,7 @@ public class QuoteService : IQuoteService
             .FirstOrDefaultAsync(q => q.Id == quoteId, ct);
         if (quote == null) return;
 
-        EnsureQuoteLinesEditable(quote);
+        EnsureQuoteLinesEditable(quote, allowPending);
 
         line.IsDeleted = true;
         await _dbContext.SaveChangesAsync(ct);

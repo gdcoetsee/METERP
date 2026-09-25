@@ -170,6 +170,7 @@
                 </div>
             </div>
             <p class="small text-muted mb-0 mt-2">
+                Click a row to review the work, then approve, send, convert, or invoice from the overlay.
                 Queues: @_executive.PendingQuotes quotes · @_executive.PendingRequisitions stock · @_executive.PendingLeave leave · @_executive.PendingFieldReports field reports
                 @if (_executive.LowStockItems > 0)
                 {
@@ -195,32 +196,16 @@
                                 <th>Waiting</th>
                                 <th>On</th>
                                 <th>Detail</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.ApprovalQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-approve-item"
+                                    @onclick="() => OpenApproval(row)">
                                     <td>@row.Kind</td>
                                     <td>@row.Number</td>
                                     <td>@row.Subject</td>
-                                    <td class="text-end">
-                                        @if (CanApprove(row))
-                                        {
-                                            <button type="button" class="btn btn-sm btn-warning"
-                                                    data-testid="home-approve-item"
-                                                    disabled="@(_approvingKey == ApprovalKey(row))"
-                                                    @onclick="() => ApproveFromHomeAsync(row)">
-                                                Approve
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-warning" href="@row.Href"
-                                               data-testid="home-approve-item">Review</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -236,32 +221,16 @@
                                 <th>Approved quote</th>
                                 <th>Customer</th>
                                 <th class="text-end">Value</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.UnsentQuoteQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-send-quote"
+                                    @onclick="() => OpenSendQuote(row)">
                                     <td>@row.Number</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (CanSendQuotes)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-info"
-                                                    data-testid="home-send-quote"
-                                                    disabled="@(_sendingQuoteId == row.Id)"
-                                                    @onclick="() => SendQuoteAsync(row)">
-                                                Send
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
-                                               data-testid="home-send-quote">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -277,32 +246,16 @@
                                 <th>Draft sales order</th>
                                 <th>Customer</th>
                                 <th class="text-end">Value</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.UnconfirmedSalesOrderQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-confirm-so"
+                                    @onclick="() => OpenConfirmSalesOrder(row)">
                                     <td>@row.Number</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (CanConfirmSalesOrders)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-info"
-                                                    data-testid="home-confirm-so"
-                                                    disabled="@(_confirmingSoId == row.Id)"
-                                                    @onclick="() => ConfirmSalesOrderAsync(row)">
-                                                Confirm
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
-                                               data-testid="home-confirm-so">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -318,32 +271,16 @@
                                 <th>Won work</th>
                                 <th>Customer</th>
                                 <th class="text-end">Value</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.ConvertToJobQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-convert-job"
+                                    @onclick="() => OpenConvert(row)">
                                     <td>@row.Kind @row.Number</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (row.CanConvertDirectly)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-success"
-                                                    data-testid="home-convert-job"
-                                                    disabled="@(_convertingId == row.Id)"
-                                                    @onclick="() => ConvertWonWorkAsync(row)">
-                                                Convert
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-success" href="@row.Href"
-                                               data-testid="home-convert-job">Quote</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -359,32 +296,16 @@
                                 <th>Draft invoice</th>
                                 <th>Customer</th>
                                 <th class="text-end">Value</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.UnsentInvoiceQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-send-invoice"
+                                    @onclick="() => OpenSendInvoice(row)">
                                     <td>@row.Number</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (CanChaseInvoices)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-info"
-                                                    data-testid="home-send-invoice"
-                                                    disabled="@(_sendingInvoiceId == row.Id)"
-                                                    @onclick="() => SendInvoiceAsync(row)">
-                                                Send
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
-                                               data-testid="home-send-invoice">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -401,39 +322,17 @@
                                 <th>Customer</th>
                                 <th class="text-end">Days</th>
                                 <th class="text-end">Balance</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.OverdueInvoiceQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-chase-invoice"
+                                    @onclick="() => OpenOverdueInvoice(row)">
                                     <td>@row.InvoiceNumber</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">@row.DaysOverdue</td>
                                     <td class="text-end">R @row.BalanceDue.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (CanChaseInvoices)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-outline-danger me-1"
-                                                    data-testid="home-chase-invoice"
-                                                    disabled="@(_actingInvoiceId == row.InvoiceId)"
-                                                    @onclick="() => ChaseOverdueInvoiceAsync(row.InvoiceId)">
-                                                Chase
-                                            </button>
-                                            <button type="button" class="btn btn-sm btn-success"
-                                                    data-testid="home-record-payment"
-                                                    disabled="@(_actingInvoiceId == row.InvoiceId)"
-                                                    @onclick="() => RecordOverduePaymentAsync(row)">
-                                                Received
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-danger" href="@($"/invoices?open={row.InvoiceId:D}")"
-                                               data-testid="home-chase-invoice">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -449,32 +348,16 @@
                                 <th>Unsent PO</th>
                                 <th>Supplier</th>
                                 <th class="text-end">Value</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.UnsentPurchaseOrderQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-send-po"
+                                    @onclick="() => OpenSendPo(row)">
                                     <td>@row.Number</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (CanSendPurchaseOrders)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-info"
-                                                    data-testid="home-send-po"
-                                                    disabled="@(_sendingPoId == row.Id)"
-                                                    @onclick="() => SendPurchaseOrderAsync(row)">
-                                                Send
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-info" href="@row.Href"
-                                               data-testid="home-send-po">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -490,32 +373,16 @@
                                 <th>Late PO</th>
                                 <th>Supplier</th>
                                 <th class="text-end">Value</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.OverduePurchaseOrderQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-overdue-po"
+                                    @onclick="() => OpenReceivePo(row)">
                                     <td>@row.Number</td>
                                     <td>@row.CustomerName</td>
                                     <td class="text-end">R @row.Total.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (CanSendPurchaseOrders)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-warning"
-                                                    data-testid="home-overdue-po"
-                                                    disabled="@(_receivingPoId == row.Id)"
-                                                    @onclick="() => ReceiveOverduePurchaseOrderAsync(row)">
-                                                Receive
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-warning" href="@row.Href"
-                                               data-testid="home-overdue-po">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -531,32 +398,16 @@
                                 <th>Outstanding PPE</th>
                                 <th>Employee</th>
                                 <th class="text-end">Qty</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.OutstandingPpeQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-return-ppe"
+                                    @onclick="() => OpenPpe(row)">
                                     <td>@row.ItemName</td>
                                     <td>@row.EmployeeName</td>
                                     <td class="text-end">@row.Outstanding.ToString("N2")</td>
-                                    <td class="text-end">
-                                        @if (CanReturnPpe)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    data-testid="home-return-ppe"
-                                                    disabled="@(_returningPpeId == row.Id)"
-                                                    @onclick="() => ReturnOutstandingPpeAsync(row)">
-                                                Return
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-secondary" href="@row.Href"
-                                               data-testid="home-return-ppe">Open</a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -572,20 +423,16 @@
                                 <th>Low stock</th>
                                 <th class="text-end">On hand</th>
                                 <th class="text-end">Reorder</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.LowStockQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-low-stock-item"
+                                    @onclick="() => OpenLowStock(row)">
                                     <td>@row.Sku @row.Name</td>
                                     <td class="text-end">@row.OnHand.ToString("N2")</td>
                                     <td class="text-end">@row.ReorderLevel.ToString("N2")</td>
-                                    <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-warning" href="@row.Href"
-                                           data-testid="home-low-stock-item">Reorder</a>
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -601,20 +448,16 @@
                                 <th>Company document</th>
                                 <th>Type</th>
                                 <th class="text-end">Days</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.ExpiringCompanyDocumentQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-expiring-doc"
+                                    @onclick="() => OpenExpiringDoc(row)">
                                     <td>@row.Title</td>
                                     <td>@row.DocumentType</td>
                                     <td class="text-end">@row.DaysRemaining</td>
-                                    <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-danger" href="@row.Href"
-                                           data-testid="home-expiring-doc">Renew</a>
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -630,20 +473,16 @@
                                 <th>Ticket</th>
                                 <th>Employee</th>
                                 <th class="text-end">Days</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _executive.ExpiringCertificationQueue)
                             {
-                                <tr>
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="home-expiring-cert"
+                                    @onclick="() => OpenExpiringCert(row)">
                                     <td>@row.CertificationType</td>
                                     <td>@row.EmployeeName</td>
                                     <td class="text-end">@row.DaysRemaining</td>
-                                    <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-danger" href="@row.Href"
-                                           data-testid="home-expiring-cert">Renew</a>
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -660,45 +499,21 @@
                                 <th>Customer</th>
                                 <th>Why</th>
                                 <th class="text-end">Amount</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in cashQueue)
                             {
                                 var isDeposit = string.Equals(row.Reason, "Deposit", StringComparison.OrdinalIgnoreCase);
-                                var isSignOff = string.Equals(row.Reason, "Sign-off", StringComparison.OrdinalIgnoreCase);
-                                var href = isSignOff
-                                    ? $"/jobs/{row.JobId:D}?signoff=1"
-                                    : $"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}";
-                                var label = isDeposit ? "Deposit" : isSignOff ? "Sign off" : "Invoice";
-                                var testId = isDeposit ? "home-deposit-invoice" : isSignOff ? "home-signoff-invoice" : "home-ready-invoice";
-                                var canAct = isSignOff ? CanManageJobs : CanChaseInvoices;
-                                <tr>
+                                var testId = isDeposit ? "home-deposit-invoice"
+                                    : string.Equals(row.Reason, "Sign-off", StringComparison.OrdinalIgnoreCase) ? "home-signoff-invoice"
+                                    : "home-ready-invoice";
+                                <tr class="meterp-row-click" data-testid="home-queue-row" data-home-action="@testId"
+                                    @onclick="() => OpenCashJob(row)">
                                     <td>@row.JobNumber — @row.Title</td>
                                     <td>@row.CustomerName</td>
                                     <td>@row.Reason</td>
                                     <td class="text-end">R @row.UnbilledResidual.ToString("N0")</td>
-                                    <td class="text-end">
-                                        @if (canAct)
-                                        {
-                                            <button type="button"
-                                                    class="btn btn-sm @(isSignOff ? "btn-warning" : "btn-success")"
-                                                    data-testid="@testId"
-                                                    disabled="@(_actingJobId == row.JobId)"
-                                                    @onclick="() => ActOnCashQueueAsync(row)">
-                                                @label
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm @(isSignOff ? "btn-outline-warning" : "btn-success")"
-                                               href="@href"
-                                               data-testid="@testId">
-                                                Open
-                                            </a>
-                                        }
-                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -729,20 +544,16 @@
                             <th>Customer</th>
                             <th>Status</th>
                             <th>When</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var job in _todaysJobs)
                         {
-                            <tr data-testid="home-todays-job-row">
+                            <tr class="meterp-row-click" data-testid="home-todays-job-row" @onclick="() => OpenTodaysJob(job)">
                                 <td>@job.JobNumber — @job.Title</td>
                                 <td>@(job.Customer?.Name ?? "—")</td>
                                 <td>@job.Status</td>
                                 <td>@(job.ScheduledStart?.ToString("dd MMM") ?? "Now")</td>
-                                <td class="text-end">
-                                    <a class="btn btn-sm btn-outline-primary" href="@($"/jobs/{job.Id:D}")">Open</a>
-                                </td>
                             </tr>
                         }
                     </tbody>
@@ -853,6 +664,58 @@
     </div>
 }
 
+@if (_work != null)
+{
+    <FormModal IsOpen="true"
+               Title="@_work.Title"
+               Size="lg"
+               TestId="home-work-review"
+               CloseOnBackdrop="true"
+               OnClose="CloseWork">
+        <ChildContent>
+            <p class="small text-muted mb-2">@_work.Eyebrow</p>
+            @if (!string.IsNullOrWhiteSpace(_work.Customer))
+            {
+                <p class="mb-1"><strong>@_work.Customer</strong></p>
+            }
+            @if (_work.Amount is { } amount)
+            {
+                <p class="mb-2 fs-5 text-success">R @amount.ToString("N0")</p>
+            }
+            <p class="mb-0">@_work.Body</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseWork">Close</button>
+            @if (!string.IsNullOrWhiteSpace(_work.Href))
+            {
+                <a class="btn btn-outline-primary" href="@_work.Href">Open full record</a>
+            }
+            @if (_work.SecondaryAct != null && !string.IsNullOrWhiteSpace(_work.SecondaryTestId))
+            {
+                <button type="button" class="btn @_work.SecondaryClass"
+                        data-testid="@_work.SecondaryTestId"
+                        disabled="@_work.Busy"
+                        @onclick="RunSecondaryAsync">
+                    @_work.SecondaryLabel
+                </button>
+            }
+            @if (_work.CanAct && _work.Act != null)
+            {
+                <button type="button" class="btn @_work.ActionClass"
+                        data-testid="@_work.ActionTestId"
+                        disabled="@_work.Busy"
+                        @onclick="RunPrimaryAsync">
+                    @_work.ActionLabel
+                </button>
+            }
+            else if (!string.IsNullOrWhiteSpace(_work.Href))
+            {
+                <a class="btn @_work.ActionClass" href="@_work.Href" data-testid="@_work.ActionTestId">@_work.ActionLabel</a>
+            }
+        </Footer>
+    </FormModal>
+}
+
 @code {
     private int lowStockCount;
     private int _readyToInvoiceCount;
@@ -862,6 +725,27 @@
     private List<UserActivityRow> _userActivity = new();
     private List<OverdueApprovalRow> _overdueApprovals = new();
     private List<Job> _todaysJobs = new();
+    private HomeWorkItem? _work;
+
+    private sealed class HomeWorkItem
+    {
+        public string Title { get; init; } = "";
+        public string Eyebrow { get; init; } = "";
+        public string Customer { get; init; } = "";
+        public string Body { get; init; } = "";
+        public decimal? Amount { get; init; }
+        public string ActionLabel { get; init; } = "Continue";
+        public string ActionTestId { get; init; } = "";
+        public string ActionClass { get; init; } = "btn-primary";
+        public bool CanAct { get; init; }
+        public string? Href { get; init; }
+        public Func<Task>? Act { get; init; }
+        public string? SecondaryLabel { get; init; }
+        public string? SecondaryTestId { get; init; }
+        public string SecondaryClass { get; init; } = "btn-outline-danger";
+        public Func<Task>? SecondaryAct { get; init; }
+        public bool Busy { get; set; }
+    }
     private bool _showExecutiveView;
     private bool _showRoleDashboard;
     private bool _isTechnician;
@@ -892,6 +776,221 @@
         || CurrentUserService.Permissions.Contains(Permissions.RequisitionsManage);
 
     private static string ApprovalKey(ApprovalQueueRow row) => $"{row.Kind}:{row.Id:D}";
+
+    private void CloseWork() => _work = null;
+
+    private async Task RunPrimaryAsync()
+    {
+        if (_work?.Act == null) return;
+        _work.Busy = true;
+        try
+        {
+            await _work.Act.Invoke();
+            CloseWork();
+        }
+        catch
+        {
+            if (_work != null) _work.Busy = false;
+            throw;
+        }
+    }
+
+    private async Task RunSecondaryAsync()
+    {
+        if (_work?.SecondaryAct == null) return;
+        _work.Busy = true;
+        try
+        {
+            await _work.SecondaryAct.Invoke();
+            CloseWork();
+        }
+        catch
+        {
+            if (_work != null) _work.Busy = false;
+            throw;
+        }
+    }
+
+    private void OpenApproval(ApprovalQueueRow row)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = $"{row.Kind} {row.Number}",
+            Eyebrow = $"Waiting since {row.WaitingSince?.ToString("dd MMM") ?? "—"} · {row.Stage}",
+            Customer = row.Subject,
+            Body = "Review this request, then approve or open the full record.",
+            ActionLabel = CanApprove(row) ? "Approve" : "Open",
+            ActionTestId = "home-approve-item",
+            ActionClass = "btn-warning",
+            CanAct = CanApprove(row),
+            Href = row.Href,
+            Act = CanApprove(row) ? () => ApproveFromHomeAsync(row) : null
+        };
+    }
+
+    private void OpenSendQuote(ConvertibleDocumentRow row) =>
+        OpenDoc(row, "Approved quote ready to send to the customer.", "Send", "home-send-quote", "btn-info", CanSendQuotes, () => SendQuoteAsync(row));
+
+    private void OpenConfirmSalesOrder(ConvertibleDocumentRow row) =>
+        OpenDoc(row, "Confirm this draft sales order so it can convert to a job.", "Confirm", "home-confirm-so", "btn-info", CanConfirmSalesOrders, () => ConfirmSalesOrderAsync(row));
+
+    private void OpenConvert(ConvertibleDocumentRow row) =>
+        OpenDoc(row, "Won work with no job yet. Convert it so the site can start.",
+            row.CanConvertDirectly ? "Convert to job" : "Create quote",
+            "home-convert-job", "btn-success", row.CanConvertDirectly, () => ConvertWonWorkAsync(row));
+
+    private void OpenSendInvoice(ConvertibleDocumentRow row) =>
+        OpenDoc(row, "Draft invoice — send it to the customer.", "Send", "home-send-invoice", "btn-info", CanChaseInvoices, () => SendInvoiceAsync(row));
+
+    private void OpenSendPo(ConvertibleDocumentRow row) =>
+        OpenDoc(row, "Draft purchase order — send it to the supplier.", "Send", "home-send-po", "btn-info", CanSendPurchaseOrders, () => SendPurchaseOrderAsync(row));
+
+    private void OpenReceivePo(ConvertibleDocumentRow row) =>
+        OpenDoc(row, "This PO is late. Receive the goods to close the delivery.", "Receive", "home-overdue-po", "btn-warning", CanSendPurchaseOrders, () => ReceiveOverduePurchaseOrderAsync(row));
+
+    private void OpenDoc(ConvertibleDocumentRow row, string body, string label, string testId, string css, bool canAct, Func<Task> act)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = $"{row.Kind} {row.Number}".Trim(),
+            Eyebrow = "Needs you",
+            Customer = row.CustomerName,
+            Amount = row.Total,
+            Body = body,
+            ActionLabel = canAct ? label : "Open",
+            ActionTestId = testId,
+            ActionClass = css,
+            CanAct = canAct,
+            Href = row.Href,
+            Act = canAct ? act : null
+        };
+    }
+
+    private void OpenOverdueInvoice(AgedDebtorRow row)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = row.InvoiceNumber,
+            Eyebrow = $"{row.DaysOverdue} days overdue · {row.AgingBucket}",
+            Customer = row.CustomerName,
+            Amount = row.BalanceDue,
+            Body = $"Total R {row.Total:N0}. Paid R {row.AmountPaid:N0}. Due {row.DueDate:dd MMM}. Chase the customer or record a payment.",
+            ActionLabel = CanChaseInvoices ? "Received" : "Open",
+            ActionTestId = "home-record-payment",
+            ActionClass = "btn-success",
+            CanAct = CanChaseInvoices,
+            Href = $"/invoices?open={row.InvoiceId:D}",
+            Act = CanChaseInvoices ? () => RecordOverduePaymentAsync(row) : null,
+            SecondaryLabel = "Chase",
+            SecondaryTestId = "home-chase-invoice",
+            SecondaryAct = CanChaseInvoices ? () => ChaseOverdueInvoiceAsync(row.InvoiceId) : null
+        };
+    }
+
+    private void OpenPpe(PpeOutstandingRow row)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = row.ItemName,
+            Eyebrow = $"Issued {row.IssuedAt:dd MMM}",
+            Customer = row.EmployeeName,
+            Body = $"{row.Outstanding:N1} still outstanding. Return it to restock PPE.",
+            ActionLabel = CanReturnPpe ? "Return" : "Open register",
+            ActionTestId = "home-return-ppe",
+            ActionClass = "btn-outline-secondary",
+            CanAct = CanReturnPpe,
+            Href = row.Href,
+            Act = CanReturnPpe ? () => ReturnOutstandingPpeAsync(row) : null
+        };
+    }
+
+    private void OpenLowStock(LowStockRow row)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = $"{row.Sku} {row.Name}",
+            Eyebrow = "Below reorder level",
+            Body = $"On hand {row.OnHand:N1} · reorder at {row.ReorderLevel:N1}. Open inventory to raise a PO.",
+            ActionLabel = "Reorder",
+            ActionTestId = "home-low-stock-item",
+            ActionClass = "btn-warning",
+            CanAct = false,
+            Href = row.Href
+        };
+    }
+
+    private void OpenExpiringDoc(CompanyDocumentExpiryRow row)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = row.Title,
+            Eyebrow = row.DocumentType,
+            Body = $"Expires {row.ExpiryDate:dd MMM} ({row.DaysRemaining} days). Renew the company document.",
+            ActionLabel = "Renew",
+            ActionTestId = "home-expiring-doc",
+            ActionClass = "btn-danger",
+            CanAct = false,
+            Href = row.Href
+        };
+    }
+
+    private void OpenExpiringCert(CertificationExpiryRow row)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = row.CertificationType,
+            Eyebrow = row.EmployeeName,
+            Body = $"Expires {row.ExpiryDate:dd MMM} ({row.DaysRemaining} days). Renew this ticket before site work.",
+            ActionLabel = "Renew",
+            ActionTestId = "home-expiring-cert",
+            ActionClass = "btn-danger",
+            CanAct = false,
+            Href = row.Href
+        };
+    }
+
+    private void OpenCashJob(ReadyToInvoiceJobRow row)
+    {
+        var isDeposit = string.Equals(row.Reason, "Deposit", StringComparison.OrdinalIgnoreCase);
+        var isSignOff = string.Equals(row.Reason, "Sign-off", StringComparison.OrdinalIgnoreCase);
+        var href = isSignOff
+            ? $"/jobs/{row.JobId:D}?signoff=1"
+            : $"/jobs/{row.JobId:D}?invoice={(isDeposit ? "deposit" : "1")}";
+        var label = isDeposit ? "Raise deposit" : isSignOff ? "Sign off" : "Invoice";
+        var testId = isDeposit ? "home-deposit-invoice" : isSignOff ? "home-signoff-invoice" : "home-ready-invoice";
+        var canAct = isSignOff ? CanManageJobs : CanChaseInvoices;
+        _work = new HomeWorkItem
+        {
+            Title = $"{row.JobNumber} — {row.Title}",
+            Eyebrow = row.Reason,
+            Customer = row.CustomerName,
+            Amount = row.UnbilledResidual,
+            Body = $"Quoted R {row.QuotedTotal:N0} · billed R {row.BilledToDate:N0}. {row.Reason} is waiting.",
+            ActionLabel = canAct ? label : "Open job",
+            ActionTestId = testId,
+            ActionClass = isSignOff ? "btn-warning" : "btn-success",
+            CanAct = canAct,
+            Href = href,
+            Act = canAct ? () => ActOnCashQueueAsync(row) : null
+        };
+    }
+
+    private void OpenTodaysJob(Job job)
+    {
+        _work = new HomeWorkItem
+        {
+            Title = $"{job.JobNumber} — {job.Title}",
+            Eyebrow = job.Status.ToString(),
+            Customer = job.Customer?.Name ?? "—",
+            Amount = job.QuotedTotal,
+            Body = $"Scheduled {(job.ScheduledStart?.ToString("dd MMM") ?? "unscheduled")}. Assigned {(job.AssignedEmployee == null ? "—" : $"{job.AssignedEmployee.FirstName} {job.AssignedEmployee.LastName}")}.",
+            ActionLabel = "Open command center",
+            ActionTestId = "home-todays-job-open",
+            ActionClass = "btn-primary",
+            CanAct = false,
+            Href = $"/jobs/{job.Id:D}"
+        };
+    }
 
     private bool CanApprove(ApprovalQueueRow row) => row.Kind switch
     {

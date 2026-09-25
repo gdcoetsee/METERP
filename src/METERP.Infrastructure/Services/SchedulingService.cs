@@ -178,7 +178,7 @@ public class SchedulingService : ISchedulingService
 
         if (scheduledStart.HasValue)
         {
-            var date = scheduledStart.Value.Date;
+            var date = DateTime.SpecifyKind(scheduledStart.Value.Date, DateTimeKind.Utc);
             if (date > DateTime.UtcNow.Date.AddYears(2))
                 throw new InvalidOperationException("Scheduled start cannot be more than 2 years in the future.");
             if (date < DateTime.UtcNow.Date.AddYears(-1))
@@ -202,6 +202,8 @@ public class SchedulingService : ISchedulingService
             .AsNoTracking()
             .Include(j => j.Customer)
             .Include(j => j.AssignedEmployee)
+            .Include(j => j.CrewAssignments)
+                .ThenInclude(c => c.Employee)
             .Where(j => j.ScheduledStart.HasValue && j.Status != JobStatus.Closed && j.Status != JobStatus.Cancelled)
             .ToListAsync(ct);
 

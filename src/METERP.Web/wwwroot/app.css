@@ -45,11 +45,11 @@ main {
     padding-bottom: 1.5rem;
 }
 
-.nav-link {
+.sidebar .nav-link {
     color: rgba(255, 255, 255, 0.78);
 }
 
-.nav-link.active {
+.sidebar .nav-link.active {
     color: #fff;
     background-color: rgba(255, 255, 255, 0.1);
 }

@@ -667,6 +667,104 @@ public class QuoteApprovalServiceTests
     }
 
     [Fact]
+    public async Task ExecutiveAddLineAsync_AddsToPendingQuoteAndTotals()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-ADD",
+                Status = QuoteStatus.Draft,
+                TaxRate = 0m,
+                Lines = { new QuoteLine { TenantId = tenantId, Description = "Scope", Quantity = 1, UnitPrice = 100 } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+            await service.SubmitForExecutiveApprovalAsync(quote.Id, Guid.NewGuid());
+
+            await service.ExecutiveAddLineAsync(new QuoteLine
+            {
+                QuoteId = quote.Id,
+                Description = "Travel to site",
+                LineType = "Travel",
+                Quantity = 1,
+                UnitPrice = 50
+            });
+
+            var saved = await db.Set<Quote>().Include(q => q.Lines).FirstAsync(q => q.Id == quote.Id);
+            Assert.Equal(2, saved.Lines.Count(l => !l.IsDeleted));
+            Assert.Equal(150m, saved.Subtotal);
+            Assert.Equal(QuoteApprovalStatus.PendingExecutive, saved.ApprovalStatus);
+        }
+    }
+
+    [Fact]
+    public async Task ExecutiveDeleteLineAsync_RemovesPendingLineAndTotals()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var extra = new QuoteLine { TenantId = tenantId, Description = "Travel", Quantity = 1, UnitPrice = 40, LineType = "Travel" };
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-DEL",
+                Status = QuoteStatus.Draft,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new QuoteLine { TenantId = tenantId, Description = "Scope", Quantity = 1, UnitPrice = 100 },
+                    extra
+                }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+            await service.SubmitForExecutiveApprovalAsync(quote.Id, Guid.NewGuid());
+
+            await service.ExecutiveDeleteLineAsync(extra.Id);
+
+            var saved = await db.Set<Quote>().Include(q => q.Lines).FirstAsync(q => q.Id == quote.Id);
+            Assert.Single(saved.Lines, l => !l.IsDeleted);
+            Assert.Equal(100m, saved.Subtotal);
+            Assert.Equal(QuoteApprovalStatus.PendingExecutive, saved.ApprovalStatus);
+        }
+    }
+
+    [Fact]
+    public async Task AddLineAsync_ThrowsWhenPendingExecutive()
+    {
+        var (service, db, tenantId, customer) = Create();
+        await using (db)
+        {
+            var quote = new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-PEND",
+                Status = QuoteStatus.Draft,
+                Lines = { new QuoteLine { TenantId = tenantId, Description = "Scope", Quantity = 1, UnitPrice = 100 } }
+            };
+            db.Set<Quote>().Add(quote);
+            await db.SaveChangesAsync();
+            await service.SubmitForExecutiveApprovalAsync(quote.Id, Guid.NewGuid());
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.AddLineAsync(new QuoteLine
+                {
+                    QuoteId = quote.Id,
+                    Description = "Extra",
+                    Quantity = 1,
+                    UnitPrice = 10
+                }));
+            Assert.Contains("pending executive approval", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task ExecutiveReject_NotifiesWithReason()
     {
         var (service, db, tenantId, customer, notifications) = CreateWithNotifications();

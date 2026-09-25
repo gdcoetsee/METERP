@@ -466,7 +466,10 @@ else
     private string newCustomerCity = "";
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
-    private bool CanEditLines => UserCanManage && !editorReadOnly && editorQuote?.Status == QuoteStatus.Draft;
+    private bool UserCanApprove => CurrentUserService.Permissions.Contains(Permissions.QuotesApprove);
+    private bool IsPendingExecutive => editorQuote?.ApprovalStatus == QuoteApprovalStatus.PendingExecutive;
+    private bool CanEditLines => UserCanManage && !editorReadOnly && editorQuote?.Status == QuoteStatus.Draft
+        && (!IsPendingExecutive || UserCanApprove);
     private bool CanConvertToJob =>
         editorQuote != null && UserCanManage && !editorIsNew
         && (editorQuote.Status == QuoteStatus.Draft || editorQuote.Status == QuoteStatus.Sent);
@@ -1047,34 +1050,31 @@ else
         {
             try
             {
+                var payload = new QuoteLine
+                {
+                    QuoteId = editorQuote.Id,
+                    Description = lineDescription.Trim(),
+                    LineType = lineType,
+                    Quantity = lineQuantity > 0 ? lineQuantity : 1,
+                    Unit = lineUnit,
+                    UnitCost = lineUnitCost,
+                    GrossProfitPercent = lineGrossProfitPercent,
+                    UnitPrice = lineUnitPrice
+                };
                 if (editingLineIsNew || !editingSavedLineId.HasValue)
                 {
-                    await QuoteService.AddLineAsync(new QuoteLine
-                    {
-                        QuoteId = editorQuote.Id,
-                        Description = lineDescription.Trim(),
-                        LineType = lineType,
-                        Quantity = lineQuantity > 0 ? lineQuantity : 1,
-                        Unit = lineUnit,
-                        UnitCost = lineUnitCost,
-                        GrossProfitPercent = lineGrossProfitPercent,
-                        UnitPrice = lineUnitPrice
-                    });
+                    if (IsPendingExecutive)
+                        await QuoteService.ExecutiveAddLineAsync(payload);
+                    else
+                        await QuoteService.AddLineAsync(payload);
                 }
                 else
                 {
-                    await QuoteService.UpdateLineAsync(new QuoteLine
-                    {
-                        Id = editingSavedLineId.Value,
-                        QuoteId = editorQuote.Id,
-                        Description = lineDescription.Trim(),
-                        LineType = lineType,
-                        Quantity = lineQuantity > 0 ? lineQuantity : 1,
-                        Unit = lineUnit,
-                        UnitCost = lineUnitCost,
-                        GrossProfitPercent = lineGrossProfitPercent,
-                        UnitPrice = lineUnitPrice
-                    });
+                    payload.Id = editingSavedLineId.Value;
+                    if (IsPendingExecutive)
+                        await QuoteService.ExecutiveReviseLineAsync(payload);
+                    else
+                        await QuoteService.UpdateLineAsync(payload);
                 }
                 SetEditorQuote(await QuoteService.GetByIdAsync(editorQuote.Id));
 
@@ -1111,7 +1111,10 @@ else
         if (!await Confirm("Delete this line?")) return;
         try
         {
-            await QuoteService.DeleteLineAsync(line.Id);
+            if (IsPendingExecutive)
+                await QuoteService.ExecutiveDeleteLineAsync(line.Id);
+            else
+                await QuoteService.DeleteLineAsync(line.Id);
             if (editorQuote != null)
                 SetEditorQuote(await QuoteService.GetByIdAsync(editorQuote.Id));
             ToastService.ShowSuccess("Line removed.");

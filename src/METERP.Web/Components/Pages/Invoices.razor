@@ -51,7 +51,7 @@
                     <tbody>
                         @foreach (var row in _agedDebtors.Where(d => d.DaysOverdue > 0).Take(8))
                         {
-                            <tr>
+                            <tr class="meterp-row-click" @onclick="() => OpenAgedInvoice(row)" title="Open invoice">
                                 <td>@row.InvoiceNumber</td>
                                 <td>@row.CustomerName</td>
                                 <td>@row.DueDate.ToString("yyyy-MM-dd")</td>
@@ -63,7 +63,8 @@
                                         <button type="button" class="btn btn-sm btn-outline-danger"
                                                 data-testid="invoice-chase"
                                                 disabled="@_chasing"
-                                                @onclick="() => ChaseOverdueAsync(row.InvoiceId)">Chase</button>
+                                                @onclick="() => ChaseOverdueAsync(row.InvoiceId)"
+                                                @onclick:stopPropagation="true">Chase</button>
                                     }
                                 </td>
                             </tr>
@@ -600,6 +601,13 @@ else
     {
         showForm = false;
         currentInvoice = new();
+    }
+
+    private async Task OpenAgedInvoice(AgedDebtorRow row)
+    {
+        var inv = await InvoiceService.GetByIdAsync(row.InvoiceId);
+        if (inv != null)
+            await ViewInvoice(inv);
     }
 
     private async Task ViewInvoice(Invoice inv)

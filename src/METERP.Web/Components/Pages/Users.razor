@@ -63,7 +63,7 @@ else
             <tbody>
                 @foreach (var user in users)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" @onclick="() => ViewUser(user)" title="Open user">
                         <td>
                             <strong>@user.Email</strong><br />
                             <small class="text-muted">@user.UserName</small>
@@ -82,10 +82,10 @@ else
                             }
                         </td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewUser(user)">View / Edit</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewUser(user)" @onclick:stopPropagation="true">View / Edit</button>
                             @if (UserCanManage && user.Email != "admin@acme.demo")
                             {
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteUser(user)">Delete</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteUser(user)" @onclick:stopPropagation="true">Delete</button>
                             }
                         </td>
                     </tr>

@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.JSInterop
 @inject IJSRuntime JS
 @attribute [Authorize(Policy = "Jobs.Manage")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
@@ -16,14 +17,13 @@
 @inject IAiAssistantService AiAssistantService
 @inject NavigationManager Nav
 @inject ToastService ToastService
+@implements IDisposable
 
 <PageTitle>Scheduling</PageTitle>
 
-<PageHeader Title="Scheduling" Subtitle="Assign a crew and plant to a job without leaving the week view." TestId="scheduling-shell">
+<PageHeader Title="Scheduling" Subtitle="Plan the week or month. Click a job to assign crew, or drag it to another day." TestId="scheduling-shell">
     <Actions>
         <ExportToolbar TestId="scheduling-export" ShowPdf="false" ShowExcel="false" OnExportCsv="ExportScheduleCsvAsync" Disabled="@_loading" />
-        <button class="btn btn-outline-secondary" @onclick="PreviousWeek">← Prev week</button>
-        <button class="btn btn-outline-secondary" @onclick="NextWeek">Next week →</button>
         <button class="btn btn-outline-primary" data-testid="scheduling-ai-risk" @onclick="RunLowStockRiskForScheduled">Low-stock risk</button>
         <button class="btn btn-primary" data-testid="scheduling-ai-suggest" @onclick="SuggestAssignmentsWithAI">AI suggest assignments</button>
     </Actions>
@@ -114,40 +114,91 @@
     </FormModal>
 }
 
-@if (!_loading)
-{
-    <div class="card mb-3" data-testid="scheduling-calendar">
-        <div class="card-header py-2">Week of @_weekStart.ToString("yyyy-MM-dd")</div>
-        <div class="card-body p-2">
-            <div class="row g-2">
-                @for (var day = 0; day < 7; day++)
+<div class="meterp-cal-shell" data-testid="scheduling-calendar">
+    <div class="meterp-cal-toolbar">
+        <div class="btn-group" role="group" aria-label="Calendar range">
+            <button type="button" class="btn btn-sm @(_view == CalendarView.Day ? "btn-primary" : "btn-outline-secondary")"
+                    data-testid="scheduling-view-day" @onclick="() => SetViewAsync(CalendarView.Day)">Day</button>
+            <button type="button" class="btn btn-sm @(_view == CalendarView.Week ? "btn-primary" : "btn-outline-secondary")"
+                    data-testid="scheduling-view-week" @onclick="() => SetViewAsync(CalendarView.Week)">Week</button>
+            <button type="button" class="btn btn-sm @(_view == CalendarView.Month ? "btn-primary" : "btn-outline-secondary")"
+                    data-testid="scheduling-view-month" @onclick="() => SetViewAsync(CalendarView.Month)">Month</button>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="scheduling-prev" @onclick="PreviousRangeAsync">←</button>
+        <span class="meterp-cal-range" data-testid="scheduling-range-label">@RangeLabel</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="scheduling-next" @onclick="NextRangeAsync">→</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-testid="scheduling-today" @onclick="GoTodayAsync">Today</button>
+        @if (_calendarBusy)
+        {
+            <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+        }
+        <span class="small ms-auto"><span class="meterp-cal-job needs-crew d-inline-block px-2 py-0 mb-0">Needs crew</span></span>
+    </div>
+
+    <div class="small text-muted mb-1">Unscheduled — drag onto a day</div>
+    <div class="meterp-cal-unscheduled" data-day="" data-testid="scheduling-unscheduled">
+        @foreach (var job in UnscheduledJobs)
+        {
+            <div @key="job.Id"
+                 class="meterp-cal-job @(NeedsCrew(job) ? "needs-crew" : "")"
+                 draggable="true"
+                 data-job-id="@job.Id"
+                 data-testid="scheduling-view-assign"
+                 @onclick="() => OnJobCardClick(job)">
+                <strong>@job.JobNumber</strong>
+                <div>@job.Title</div>
+                <div class="text-muted">@(job.Customer?.Name ?? "—")</div>
+                @if (NeedsCrew(job))
                 {
-                    var date = _weekStart.AddDays(day);
-                    var dayJobs = _calendarJobs.Where(j => j.ScheduledStart?.Date == date.Date).ToList();
-                    <div class="col">
-                        <div class="border rounded p-2 h-100 bg-light">
-                            <div class="small fw-bold">@date.ToString("ddd dd")</div>
-                            @if (!dayJobs.Any())
-                            {
-                                <div class="small text-muted">—</div>
-                            }
-                            else
-                            {
-                                @foreach (var cj in dayJobs)
-                                {
-                                    <div class="small mt-1">
-                                        <button class="btn btn-link btn-sm p-0 text-start" @onclick="() => ViewJob(cj)">@cj.JobNumber</button>
-                                        <div class="text-muted">@cj.Title</div>
-                                    </div>
-                                }
-                            }
-                        </div>
+                    <div class="meterp-cal-job-flag">Needs crew</div>
+                }
+            </div>
+        }
+        @if (!UnscheduledJobs.Any())
+        {
+            <span class="small text-muted">All open jobs have a date</span>
+        }
+    </div>
+
+    @if (_view != CalendarView.Day)
+    {
+        <div class="meterp-cal-weekdays">
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+    }
+
+    <div class="meterp-cal @(_view == CalendarView.Month ? "is-month" : _view == CalendarView.Day ? "is-day" : "is-week")">
+        @foreach (var date in CalendarDays)
+        {
+            var dayJobs = _calendarJobs.Where(j => j.ScheduledStart?.Date == date.Date).ToList();
+            var outside = _view == CalendarView.Month && date.Month != _anchor.Month;
+            var today = date.Date == DateTime.UtcNow.Date;
+            <div @key="date"
+                 class="meterp-cal-day @(today ? "is-today" : "") @(outside ? "is-outside" : "")"
+                 data-day="@date.ToString("yyyy-MM-dd")"
+                 data-testid="scheduling-day">
+                <div class="small fw-bold mb-1">@(_view == CalendarView.Month ? date.ToString("d") : date.ToString("ddd d MMM"))</div>
+                @foreach (var cj in dayJobs)
+                {
+                    <div @key="cj.Id"
+                         class="meterp-cal-job @(NeedsCrew(cj) ? "needs-crew" : "")"
+                         draggable="true"
+                         data-job-id="@cj.Id"
+                         data-testid="scheduling-view-assign"
+                         @onclick="() => OnJobCardClick(cj)">
+                        <strong>@cj.JobNumber</strong>
+                        <div>@cj.Title</div>
+                        <div class="text-muted">@JobCardMeta(cj)</div>
+                        @if (NeedsCrew(cj))
+                        {
+                            <div class="meterp-cal-job-flag">Needs crew</div>
+                        }
                     </div>
                 }
             </div>
-        </div>
+        }
     </div>
-}
+</div>
 
 @if (_loading)
 {
@@ -160,7 +211,7 @@ else if (jobs == null || !jobs.Any())
 else
 {
     <div class="table-responsive" data-testid="scheduling-ready">
-        <table class="table" data-testid="scheduling-table">
+        <table class="table table-hover" data-testid="scheduling-table">
             <thead>
                 <tr>
                     <th>Job #</th>
@@ -168,20 +219,27 @@ else
                     <th>Scheduled</th>
                     <th>Status</th>
                     <th>Assigned</th>
-                    <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var job in jobs.OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue))
+                @foreach (var job in VisibleJobs)
                 {
-                    <tr data-testid="scheduling-row">
+                    <tr @key="job.Id"
+                        class="meterp-row-click @(_movedJobId == job.Id ? "table-success" : "")"
+                        data-testid="scheduling-row"
+                        title="Open job"
+                        @onclick="() => ViewJobAsync(job)">
                         <td>@job.JobNumber</td>
                         <td>@job.Title<br /><small>@(job.Customer?.Name)</small></td>
-                        <td>@(job.ScheduledStart?.ToString("yyyy-MM-dd") ?? "TBD")</td>
-                        <td>@((MarkupString)GetStatusBadge(job.Status))</td>
+                        <td data-testid="scheduling-row-date">@(job.ScheduledStart?.ToString("dd MMM yyyy") ?? "TBD")</td>
+                        <td data-testid="scheduling-row-status">@((MarkupString)GetStatusBadge(job))</td>
                         <td data-testid="scheduling-assigned-cell">
                             @if (job.Asset != null) { <span class="badge bg-info" data-testid="scheduling-assigned-asset">@job.Asset.Name</span><br /> }
-                            @if (job.AssignedEmployee != null)
+                            @if (NeedsCrew(job))
+                            {
+                                <span class="badge bg-warning text-dark" data-testid="scheduling-needs-crew">Needs crew</span>
+                            }
+                            else if (job.AssignedEmployee != null)
                             {
                                 <span class="badge bg-success" data-testid="scheduling-assigned-employee">@job.AssignedEmployee.FirstName @job.AssignedEmployee.LastName (lead)</span>
                             }
@@ -189,9 +247,6 @@ else
                             {
                                 <br /><span class="badge bg-secondary" data-testid="scheduling-crew-badge">@crew.FirstName @crew.LastName</span>
                             }
-                        </td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-testid="scheduling-view-assign" @onclick="() => ViewJobAsync(job)">View/Assign</button>
                         </td>
                     </tr>
                 }
@@ -203,7 +258,7 @@ else
 @if (selectedJob != null)
 {
     <FormModal IsOpen="true"
-               Title="@($"Assign — {selectedJob.JobNumber}")"
+               Title="@($"{selectedJob.JobNumber} — {selectedJob.Title}")"
                Size="xl"
                TestId="scheduling-assign-panel"
                CloseOnBackdrop="false"
@@ -295,6 +350,7 @@ else
             </div>
         </ChildContent>
         <Footer>
+            <a class="btn btn-outline-primary me-auto" href="@($"/jobs/{selectedJob.Id:D}")">Command center</a>
             <button class="btn btn-outline-secondary" data-testid="scheduling-close-assign" @onclick="CloseAssign">Close</button>
             <button class="btn btn-primary" data-testid="scheduling-save-assignments" @onclick="AssignResources">Save assignments</button>
         </Footer>
@@ -313,8 +369,74 @@ else
     private DateTime laborWorkDate = DateTime.UtcNow.Date;
     private HashSet<Guid> laborCrewEmployeeIds = new();
     private bool _loading = true;
+    private bool _calendarBusy;
+    private bool _suppressClick;
+    private Guid? _movedJobId;
     private DateTime _weekStart;
+    private DateTime _anchor;
+    private CalendarView _view = CalendarView.Week;
     private List<Job> _calendarJobs = new();
+    private DotNetObjectReference<Scheduling>? _schedRef;
+
+    private enum CalendarView { Day, Week, Month }
+
+    private DateTime RangeStart => _view switch
+    {
+        CalendarView.Day => _anchor.Date,
+        CalendarView.Week => StartOfWeek(_anchor),
+        _ => StartOfWeek(new DateTime(_anchor.Year, _anchor.Month, 1, 0, 0, 0, DateTimeKind.Utc))
+    };
+
+    private int RangeDays => _view switch
+    {
+        CalendarView.Day => 1,
+        CalendarView.Week => 7,
+        _ => 42
+    };
+
+    private string RangeLabel => _view switch
+    {
+        CalendarView.Day => _anchor.ToString("dddd d MMM yyyy"),
+        CalendarView.Week => $"{RangeStart:d MMM} – {RangeStart.AddDays(6):d MMM yyyy}",
+        _ => _anchor.ToString("MMMM yyyy")
+    };
+
+    private List<DateTime> CalendarDays
+    {
+        get
+        {
+            var list = new List<DateTime>(RangeDays);
+            var start = RangeStart;
+            for (var i = 0; i < RangeDays; i++)
+                list.Add(start.AddDays(i));
+            return list;
+        }
+    }
+
+    private IEnumerable<Job> UnscheduledJobs =>
+        jobs.Where(j => !j.ScheduledStart.HasValue
+                        && j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold);
+
+    private IEnumerable<Job> VisibleJobs =>
+        jobs.Where(j =>
+                !j.ScheduledStart.HasValue
+                || (j.ScheduledStart.Value.Date >= RangeStart
+                    && j.ScheduledStart.Value.Date < RangeStart.AddDays(RangeDays)))
+            .OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue);
+
+    private static bool NeedsCrew(Job job) =>
+        (job.AssignedEmployeeId == null || job.AssignedEmployeeId == Guid.Empty)
+        && !job.GetCrewEmployees().Any();
+
+    private static string JobCardMeta(Job job)
+    {
+        if (NeedsCrew(job))
+            return job.Customer?.Name ?? "—";
+        if (job.AssignedEmployee != null)
+            return $"{job.AssignedEmployee.FirstName} {job.AssignedEmployee.LastName}";
+        var crew = job.GetCrewEmployees().FirstOrDefault();
+        return crew == null ? (job.Customer?.Name ?? "—") : $"{crew.FirstName} {crew.LastName}";
+    }
     private List<RecurringJobSchedule> _recurringSchedules = new();
     private List<Customer> _customers = new();
     private List<Customer> _customerPickerSource = new();
@@ -395,7 +517,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _weekStart = StartOfWeek(DateTime.UtcNow.Date);
+        _anchor = DateTime.UtcNow.Date;
+        _weekStart = RangeStart;
         await LoadBoardAsync();
         TryOpenAssignFromQuery();
     }
@@ -426,7 +549,8 @@ else
             jobs = board.Jobs.ToList();
             availableAssets = board.Assets.ToList();
             availableEmployees = board.Employees.ToList();
-            _calendarJobs = (await SchedulingService.GetCalendarJobsAsync(_weekStart)).ToList();
+            _weekStart = RangeStart;
+            _calendarJobs = (await SchedulingService.GetCalendarJobsAsync(RangeStart, RangeDays)).ToList();
             _recurringSchedules = (await RecurringJobService.GetAllAsync()).ToList();
             _customers = (await CustomerService.GetAllAsync(pageSize: 200)).ToList();
             _customerPickerSource = _customers;
@@ -503,16 +627,168 @@ else
         }
     }
 
-    private async Task PreviousWeek()
+    private async Task LoadCalendarAsync()
     {
-        _weekStart = _weekStart.AddDays(-7);
-        await LoadBoardAsync();
+        _calendarBusy = true;
+        try
+        {
+            _weekStart = RangeStart;
+            _calendarJobs = (await SchedulingService.GetCalendarJobsAsync(RangeStart, RangeDays)).ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _calendarBusy = false;
+        }
     }
 
-    private async Task NextWeek()
+    private async Task SetViewAsync(CalendarView view)
     {
-        _weekStart = _weekStart.AddDays(7);
-        await LoadBoardAsync();
+        _view = view;
+        _weekStart = RangeStart;
+        await LoadCalendarAsync();
+    }
+
+    private async Task PreviousRangeAsync()
+    {
+        _anchor = _view switch
+        {
+            CalendarView.Day => _anchor.AddDays(-1),
+            CalendarView.Week => _anchor.AddDays(-7),
+            _ => _anchor.AddMonths(-1)
+        };
+        _weekStart = RangeStart;
+        await LoadCalendarAsync();
+    }
+
+    private async Task NextRangeAsync()
+    {
+        _anchor = _view switch
+        {
+            CalendarView.Day => _anchor.AddDays(1),
+            CalendarView.Week => _anchor.AddDays(7),
+            _ => _anchor.AddMonths(1)
+        };
+        _weekStart = RangeStart;
+        await LoadCalendarAsync();
+    }
+
+    private async Task GoTodayAsync()
+    {
+        _anchor = DateTime.UtcNow.Date;
+        _weekStart = RangeStart;
+        await LoadCalendarAsync();
+    }
+
+    private void OnJobCardClick(Job job)
+    {
+        if (_suppressClick)
+        {
+            _suppressClick = false;
+            return;
+        }
+        ViewJob(job);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading) return;
+        _schedRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.bindSchedule", "[data-testid='scheduling-calendar']", _schedRef);
+        }
+        catch
+        {
+            /* JS not ready */
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnScheduleDrop(string id, string date)
+    {
+        if (!Guid.TryParse(id, out var jobId)) return;
+        DateTime? start = DateTime.TryParse(date, out var parsed)
+            ? DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc)
+            : null;
+        _suppressClick = true;
+        await MoveJobAsync(jobId, start);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task MoveJobAsync(Guid jobId, DateTime? start)
+    {
+        var job = jobs.FirstOrDefault(j => j.Id == jobId)
+                  ?? _calendarJobs.FirstOrDefault(j => j.Id == jobId);
+        var previous = job?.ScheduledStart;
+        ApplyLocalSchedule(jobId, start);
+        _movedJobId = jobId;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await SchedulingService.UpdateScheduledStartAsync(jobId, start);
+            await LoadCalendarAsync();
+            await RefreshJobsQuietAsync();
+            ApplyLocalSchedule(jobId, start);
+            ToastService.ShowSuccess(start.HasValue
+                ? $"Moved to {start.Value:dd MMM yyyy}."
+                : "Job unscheduled.");
+        }
+        catch (Exception ex)
+        {
+            ApplyLocalSchedule(jobId, previous);
+            _movedJobId = null;
+            ToastService.ShowError(InnermostMessage(ex));
+            await LoadCalendarAsync();
+            await RefreshJobsQuietAsync();
+        }
+    }
+
+    private async Task RefreshJobsQuietAsync()
+    {
+        try
+        {
+            var board = await SchedulingService.GetBoardAsync();
+            jobs = board.Jobs.ToList();
+            availableAssets = board.Assets.ToList();
+            availableEmployees = board.Employees.ToList();
+        }
+        catch
+        {
+            /* keep the optimistic list if the board refresh lags */
+        }
+    }
+
+    private void ApplyLocalSchedule(Guid jobId, DateTime? start)
+    {
+        Job? instance = jobs.FirstOrDefault(j => j.Id == jobId)
+                        ?? _calendarJobs.FirstOrDefault(j => j.Id == jobId);
+        if (instance == null)
+            return;
+
+        instance.ScheduledStart = start;
+        foreach (var j in jobs.Where(j => j.Id == jobId))
+            j.ScheduledStart = start;
+
+        if (jobs.All(j => j.Id != jobId))
+            jobs.Add(instance);
+
+        _calendarJobs.RemoveAll(j => j.Id == jobId);
+        if (start.HasValue)
+            _calendarJobs.Add(instance);
+    }
+
+    public void Dispose() => _schedRef?.Dispose();
+
+    private static string InnermostMessage(Exception ex)
+    {
+        while (ex.InnerException != null)
+            ex = ex.InnerException;
+        return ex.Message;
     }
 
     private void ViewJob(Job job)
@@ -632,12 +908,23 @@ else
         }
     }
 
-    private static string GetStatusBadge(JobStatus status) => status switch
+    private static string GetStatusBadge(Job job)
     {
-        JobStatus.Scheduled => "<span class=\"badge bg-secondary\">Scheduled</span>",
-        JobStatus.InProgress => "<span class=\"badge bg-primary\">In Progress</span>",
-        _ => $"<span class=\"badge bg-light\">{status}</span>"
-    };
+        if (!job.ScheduledStart.HasValue && job.Status == JobStatus.Scheduled)
+            return "<span class=\"badge bg-warning text-dark\">Unscheduled</span>";
+
+        return job.Status switch
+        {
+            JobStatus.Scheduled => "<span class=\"badge bg-secondary\">Scheduled</span>",
+            JobStatus.InProgress => "<span class=\"badge bg-primary\">In Progress</span>",
+            JobStatus.OnHold => "<span class=\"badge bg-warning text-dark\">On Hold</span>",
+            JobStatus.Completed => "<span class=\"badge bg-success\">Completed</span>",
+            JobStatus.Invoiced => "<span class=\"badge bg-info text-dark\">Invoiced</span>",
+            JobStatus.Closed => "<span class=\"badge bg-dark\">Closed</span>",
+            JobStatus.Cancelled => "<span class=\"badge bg-danger\">Cancelled</span>",
+            _ => $"<span class=\"badge bg-secondary\">{job.Status}</span>"
+        };
+    }
 
     private async Task SuggestAssignmentsWithAI()
     {

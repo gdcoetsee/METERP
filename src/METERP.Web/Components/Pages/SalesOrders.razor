@@ -61,7 +61,7 @@ else
             <tbody>
                 @foreach (var so in sos)
                 {
-                    <tr data-testid="@GetSalesOrderRowTestId(so)">
+                    <tr class="meterp-row-click" data-testid="@GetSalesOrderRowTestId(so)" @onclick="() => ViewSO(so)" title="Open sales order">
                         <td><strong>@so.SoNumber</strong></td>
                         <td>@(so.Customer?.Name ?? "—")<br /><small>@(so.Quote?.QuoteNumber ?? "")</small></td>
                         <td>@so.SoDate.ToString("yyyy-MM-dd")</td>
@@ -71,10 +71,10 @@ else
                             <button type="button" class="btn btn-sm btn-outline-primary me-1"
                                     data-testid="sales-order-view"
                                     data-so-id="@so.Id"
-                                    @onclick="() => ViewSO(so)">View</button>
+                                    @onclick="() => ViewSO(so)" @onclick:stopPropagation="true">View</button>
                             @if (UserCanManage && so.Status == SalesOrderStatus.Draft)
                             {
-                                <button class="btn btn-sm btn-success" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(so)">Convert to Job</button>
+                                <button class="btn btn-sm btn-success" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(so)" @onclick:stopPropagation="true">Convert to Job</button>
                             }
                         </td>
                     </tr>
