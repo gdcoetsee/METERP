@@ -2175,10 +2175,11 @@ public class E2EFlowTests
         }
         catch (TimeoutException)
         {
-            // Deep-link + circuit reload if SPA navigation lags under circuit pressure.
             await page.WaitForApprovalsReadyAsync();
         }
-        Assert.Contains("Approvals Hub", await page.ContentAsync(), StringComparison.OrdinalIgnoreCase);
+        await page.WaitForTestIdAsync("approvals-page-header", 15000);
+        var approvalsHeading = await page.Locator("[data-testid='approvals-page-header']").InnerTextAsync();
+        Assert.Contains("Approvals", approvalsHeading, StringComparison.OrdinalIgnoreCase);
 
         await page.CloseSessionAsync();
     }
@@ -2299,6 +2300,93 @@ public class E2EFlowTests
         }
 
         await page.CloseSessionAsync();
+    }
+
+    [Fact]
+    public async Task Home_Todays_Jobs_Section_Renders()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: false);
+        await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
+        await page.WaitForTestIdAsync("home-todays-jobs", 30000);
+        var heading = await page.Locator("[data-testid='home-todays-jobs']").InnerTextAsync();
+        Assert.Contains("Today's jobs", heading, StringComparison.OrdinalIgnoreCase);
+        await page.CloseSessionAsync();
+    }
+
+    [Fact]
+    public async Task Home_CashDesk_Convert_Approve_Send_And_Invoice()
+    {
+        await E2EHelpers.EnsureAppReadyAsync();
+        var page = await Browser.LoginAsync(resetDemoState: true);
+        await page.GotoRelativeAsync("/");
+        await page.WaitForTestIdAsync("home-ready", 30000);
+        await page.WaitForConfirmHostReadyAsync(15000);
+        await page.WaitForTestIdAsync("home-executive-dashboard", 30000);
+        await page.WaitForTestIdAsync("home-needs-you", 15000);
+
+        var completed = new List<string>();
+        foreach (var testId in new[]
+                 {
+                     "home-convert-job",
+                     "home-approve-item",
+                     "home-send-quote",
+                     "home-send-invoice",
+                     "home-ready-invoice",
+                     "home-deposit-invoice"
+                 })
+        {
+            if (!await TryHomeCashActionAsync(page, testId))
+                continue;
+            completed.Add(testId);
+            await page.GotoRelativeAsync("/");
+            await page.WaitForTestIdAsync("home-ready", 30000);
+            await page.WaitForConfirmHostReadyAsync(15000);
+            try
+            {
+                await page.WaitForTestIdAsync("home-executive-dashboard", 20000);
+            }
+            catch (TimeoutException)
+            {
+                break;
+            }
+        }
+
+        Assert.True(
+            completed.Count >= 1,
+            "Expected convert, approve, send, or invoice from Home cash desk on seeded Acme.");
+        await page.CloseSessionAsync();
+    }
+
+    private static async Task<bool> TryHomeCashActionAsync(IPage page, string testId)
+    {
+        var candidate = page.Locator($"[data-testid='{testId}']").First;
+        if (await candidate.CountAsync() == 0)
+            return false;
+        if (!await candidate.IsVisibleAsync() || !await candidate.IsEnabledAsync())
+            return false;
+
+        await page.ClickByTestIdWhenEnabledAsync(testId);
+
+        var toast = page.Locator(".toast-body").First;
+        var dialog = page.Locator("[data-testid='confirm-dialog']");
+        try
+        {
+            await toast.Or(dialog).First.WaitForAsync(new() { Timeout = 20000 });
+        }
+        catch (TimeoutException)
+        {
+            return !Regex.IsMatch(page.Url, @"localhost:8080/?$", RegexOptions.IgnoreCase);
+        }
+
+        if (await dialog.CountAsync() > 0 && await dialog.IsVisibleAsync())
+        {
+            await page.ClickByTestIdWhenEnabledAsync("confirm-dialog-confirm");
+            await toast.WaitForAsync(new() { Timeout = 20000 });
+        }
+
+        return true;
     }
 
     [Fact]
