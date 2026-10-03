@@ -1,0 +1,63 @@
+@using METERP.Application.Models
+@using METERP.Domain
+
+@if (IsOpen && Job?.Quote != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"{Job.Quote.QuoteNumber} — {Job.Quote.Status}")"
+               Size="xl"
+               Layer="2"
+               TestId="requisition-quote-view"
+               CloseOnBackdrop="false"
+               OnClose="OnClose">
+        <ChildContent>
+            <p class="mb-1">Customer: <strong>@(Job.Customer?.Name ?? "—")</strong></p>
+            <p class="mb-1">Job: @Job.JobNumber @Job.Title</p>
+            <p class="mb-1">Quote date: @Job.Quote.QuoteDate.ToString("yyyy-MM-dd") · Valid until @Job.Quote.ValidUntil.ToString("yyyy-MM-dd")</p>
+            <p class="mb-1">Status: @Job.Quote.Status · Approval: @Job.Quote.ApprovalStatus</p>
+            @if (!string.IsNullOrWhiteSpace(Job.Quote.Notes))
+            {
+                <p class="mb-3">Notes: @Job.Quote.Notes</p>
+            }
+            <div class="table-responsive">
+                <table class="table table-sm" data-testid="requisition-quote-view-lines">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Price</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in RequisitionQuoteMatcher.ActiveQuoteLines(Job))
+                        {
+                            <tr>
+                                <td>@line.Description</td>
+                                <td>@line.LineType</td>
+                                <td class="text-end">@line.Quantity.ToString("N2")</td>
+                                <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
+                                <td class="text-end">R @line.LineTotal.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="meterp-totals">
+                <div class="meterp-totals-row"><span>Subtotal</span><strong>R @Job.Quote.Subtotal.ToString("N2")</strong></div>
+                <div class="meterp-totals-row"><span>VAT</span><span>R @Job.Quote.Tax.ToString("N2")</span></div>
+                <div class="meterp-totals-row meterp-totals-total"><span>Total</span><span>R @Job.Quote.Total.ToString("N2")</span></div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" data-testid="requisition-quote-view-back" @onclick="OnClose">Back to requisition</button>
+        </Footer>
+    </FormModal>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public Job? Job { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

@@ -62,4 +62,35 @@ public static class AiProviderProfiles
     public static bool IsFreeTierPreset(string provider) =>
         provider is GoogleGemini or Groq or Ollama
         || (provider == OpenRouter);
+
+    public static IReadOnlyList<string> SuggestedModels(string? provider) => provider switch
+    {
+        Grok => ["grok-4.6", "grok-4", "grok-3", "grok-3-mini"],
+        GoogleGemini => ["gemini-flash-latest", "gemini-2.5-flash"],
+        Groq => ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+        Ollama => ["llama3", "mistral"],
+        OpenRouter => ["google/gemini-2.0-flash-exp:free"],
+        OpenAi => ["gpt-4o-mini", "gpt-4o"],
+        _ => []
+    };
+
+    public static string InferProvider(string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return Grok;
+
+        if (baseUrl.Contains("api.x.ai", StringComparison.OrdinalIgnoreCase))
+            return Grok;
+        if (baseUrl.Contains("generativelanguage.googleapis", StringComparison.OrdinalIgnoreCase))
+            return GoogleGemini;
+        if (baseUrl.Contains("groq.com", StringComparison.OrdinalIgnoreCase))
+            return Groq;
+        if (baseUrl.Contains("11434", StringComparison.OrdinalIgnoreCase))
+            return Ollama;
+        if (baseUrl.Contains("openrouter.ai", StringComparison.OrdinalIgnoreCase))
+            return OpenRouter;
+        if (baseUrl.Contains("api.openai.com", StringComparison.OrdinalIgnoreCase))
+            return OpenAi;
+        return Custom;
+    }
 }

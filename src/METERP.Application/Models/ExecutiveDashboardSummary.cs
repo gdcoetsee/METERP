@@ -34,6 +34,11 @@ public sealed class ExecutiveDashboardSummary
 
     public IReadOnlyList<ConvertibleDocumentRow> ConvertToJobQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
 
+    /// <summary>Proposal deals with no quote. Total waiting, not just the rows shown.</summary>
+    public int UnquotedProposalDeals { get; init; }
+
+    public IReadOnlyList<ConvertibleDocumentRow> ProposalQuoteQueue { get; init; } = Array.Empty<ConvertibleDocumentRow>();
+
     public int AwaitingSignOffJobs { get; init; }
 
     public decimal AwaitingSignOffValue { get; init; }
@@ -65,4 +70,7 @@ public sealed class ExecutiveDashboardSummary
     public IReadOnlyList<ApprovalQueueRow> ApprovalQueue { get; init; } = Array.Empty<ApprovalQueueRow>();
 
     public IReadOnlyList<AgedDebtorRow> OverdueInvoiceQueue { get; init; } = Array.Empty<AgedDebtorRow>();
+
+    /// <summary>Queue names that failed to load. The rest of the summary is still usable.</summary>
+    public IReadOnlyList<string> LoadWarnings { get; init; } = Array.Empty<string>();
 }

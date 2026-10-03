@@ -252,7 +252,11 @@ public class AiAssistantService : IAiAssistantService
         if (string.IsNullOrWhiteSpace(question))
             return null;
         if (!config.IsConfigured)
-            return BuildOfflineCopilotResponse(question, additionalContext);
+        {
+            return "AI needs an API key for a live answer. Save one at /settings/ai "
+                + "(user-secrets Ai:ApiKey, environment Ai__ApiKey, or XAI_API_KEY).\n\n"
+                + BuildOfflineCopilotResponse(question, additionalContext);
+        }
 
         if (!IsAiCallAllowed())
         {
@@ -269,12 +273,16 @@ public class AiAssistantService : IAiAssistantService
 
         try
         {
-            var system = """
-                You are an expert AI co-pilot for METERP, a South African electrical and mechanical contracting ERP.
-                You have deep knowledge of job costing (including mandatory travel costs), inventory, quoting with 15% VAT, labor utilization, asset maintenance, and multi-tenant operations.
-                Be practical, data-driven, and actionable. Always speak in Rands and reference South African contracting realities (mines, sites, travel, skills shortages, etc.).
-                If the user asks for an estimate or suggestion, be realistic and factor in buffers.
-                Return concise, professional responses. Use bullet points and clear sections when helpful.
+            const string system = """
+                You are the office AI copilot for MET Electrical, inside METERP (a multi-tenant contractor ERP).
+                Cash spine: Opportunity → Quote → Sales Order (optional) → Job → Invoice.
+                Rules you must follow:
+                - Travel is always an explicit line on quotes, jobs, and invoices. Never fold travel into labour.
+                - Creating or sending an invoice does not close the job. Job close is a separate executive step after sign-off.
+                - TRF / job numbers look like FT16010, SD393, PD0085. When the context includes a job summary for one of those, use that summary and do not invent totals that contradict it.
+                - Money is South African Rand (R). VAT on quotes is 15% unless the context says otherwise.
+                - Be practical and concise. Use short sections or bullets. If a figure is not in the context, say it is not in the snapshot.
+                - Do not mention Acme or fictional demo customers.
                 """;
 
             var user = $"Question: {question}\n\nAdditional current context from the system:\n{additionalContext ?? "(none)"}";
@@ -294,15 +302,29 @@ public class AiAssistantService : IAiAssistantService
                 .GetProperty("content")
                 .GetString();
 
+            if (string.IsNullOrWhiteSpace(responseText))
+                return "The provider returned an empty reply. Check the model and base URL on /settings/ai, then try again.";
+
             await TryIncrementAiCallCountAsync(ct);
             return responseText;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("AI Copilot timed out calling {Provider}", config.ProviderName);
+            return $"Live AI timed out contacting {config.ProviderName} ({config.Model}). "
+                + "Check the base URL and model on /settings/ai, then try again.";
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI Copilot failed — serving offline response");
-            // Prefer a usable offline answer for demos/E2E when the live provider fails or times out.
-            return BuildOfflineCopilotResponse(question, additionalContext)
-                   + $"\n\n_(Live AI unavailable: {ex.Message})_";
+            _logger.LogWarning(ex, "AI Copilot call failed for {Provider}", config.ProviderName);
+            var detail = ex.Message;
+            if (!detail.Contains("/settings/ai", StringComparison.OrdinalIgnoreCase))
+                detail += " Open /settings/ai to check the API key, base URL, and model.";
+            return "Live AI error: " + detail;
         }
     }
 
@@ -329,7 +351,7 @@ public class AiAssistantService : IAiAssistantService
                 "AI API error from {Provider} ({Status}): {Body}",
                 config.ProviderName,
                 resp.StatusCode,
-                body);
+                AiLogRedaction.Sanitize(body));
             throw new HttpRequestException(
                 TenantAiSettingsService.FormatApiError(resp.StatusCode, body, config.ProviderName));
         }
@@ -467,6 +489,7 @@ public class AiAssistantService : IAiAssistantService
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("**Offline AI Copilot** (no API key configured — demo response)");
+        sb.AppendLine("MET Electrical cash spine: Opportunity → Quote → Job → Invoice. Travel is an explicit line. An invoice does not close the job.");
         sb.AppendLine();
         if (transformer)
         {

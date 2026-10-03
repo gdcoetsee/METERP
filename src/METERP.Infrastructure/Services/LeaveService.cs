@@ -307,6 +307,7 @@ public sealed class LeaveService : ILeaveService
                 || r.Status == LeaveRequestStatus.PendingExecutive
                 || r.Status == LeaveRequestStatus.PendingHr)
             .OrderBy(r => r.StartDate)
+            .Take(200)
             .ToListAsync(ct);
     }
 

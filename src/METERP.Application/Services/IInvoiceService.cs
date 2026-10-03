@@ -9,7 +9,25 @@ namespace METERP.Application.Services;
 public interface IInvoiceService
 {
     Task<Invoice?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<IReadOnlyList<Invoice>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
+    Task<IReadOnlyList<Invoice>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default,
+        bool unlinkedOnly = false,
+        bool unlinkedCreditsOnly = false);
+
+    /// <summary>
+    /// Sets <see cref="Invoice.JobId"/> on an invoice that has no job.
+    /// Does not change invoice totals, invoice status, or the job's status.
+    /// </summary>
+    Task LinkJobAsync(Guid invoiceId, Guid jobId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets <see cref="Invoice.CreditNoteForInvoiceId"/> on an unlinked credit note.
+    /// Does not change totals. The parent must be a sales invoice for the same customer.
+    /// </summary>
+    Task LinkCreditNoteParentAsync(Guid creditNoteId, string parentInvoiceNumber, CancellationToken ct = default);
 
     Task<Guid> CreateAsync(Invoice invoice, CancellationToken ct = default);
     Task UpdateAsync(Invoice invoice, CancellationToken ct = default);

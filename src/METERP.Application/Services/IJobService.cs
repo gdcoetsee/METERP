@@ -10,8 +10,44 @@ public interface IJobService
 {
     Task<Job?> GetByIdAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Header for Job Command Center. No cost, labor, invoice, snag, or certificate rows.
+    /// </summary>
+    Task<Job?> GetCommandCenterShellAsync(Guid jobId, CancellationToken ct = default);
+
     Task<JobCommandCenterSummary?> GetCommandCenterSummaryAsync(Guid jobId, CancellationToken ct = default);
-    Task<IReadOnlyList<Job>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
+
+    Task<JobCostPage> GetCostsPageAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default);
+
+    Task<JobLaborPage> GetLaborPageAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default);
+
+    /// <summary>Invoice list for the command-center tab. Not loaded with the shell.</summary>
+    Task<JobInvoicePage> GetJobInvoicesAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default);
+
+    Task<IReadOnlyList<JobComplianceCertificate>> GetCertificatesAsync(Guid jobId, CancellationToken ct = default);
+    Task<IReadOnlyList<Job>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default,
+        bool unassignedDivisionOnly = false);
+
+    /// <summary>
+    /// Open jobs (scheduled, in progress, on hold) where the employee linked to
+    /// <paramref name="userId"/> is the lead or on the crew. Empty when the user has no employee.
+    /// Office job lists stay on <see cref="GetAllAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<Job>> GetAssignedOpenJobsForUserAsync(
+        Guid userId,
+        int take = 50,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// In-progress, scheduled, or completed-today jobs for Home. No cost or labor graphs.
+    /// </summary>
+    Task<IReadOnlyList<Job>> GetTodaysWorkAsync(DateTime utcToday, int take = 12, CancellationToken ct = default);
+
+    Task<int> CountAsync(string? search = null, CancellationToken ct = default, bool unassignedDivisionOnly = false);
 
     /// <summary>
     /// Signed-off open jobs that still need a bill (no counting invoice, or leftover quote).
@@ -19,7 +55,9 @@ public interface IJobService
     Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetReadyToInvoiceQueueAsync(int take = 20, CancellationToken ct = default);
 
     /// <summary>
-    /// Open jobs with a deposit percent that has not been received yet.
+    /// Live jobs (scheduled, in progress, on hold) whose linked invoices do not yet cover the deposit.
+    /// Completed and closed jobs are omitted. Counting deposit invoices, or billed sums at the deposit
+    /// threshold, soft-sync <c>DepositReceived</c> and stay off this queue.
     /// </summary>
     Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetDepositDueQueueAsync(int take = 20, CancellationToken ct = default);
 

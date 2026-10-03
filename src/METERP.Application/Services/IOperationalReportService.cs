@@ -6,8 +6,32 @@ public interface IOperationalReportService
 
     Task<ReportTable> RunAsync(string key, Guid? divisionId = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Tenant-wide counts for the reports snapshot. Does not load a page of documents.
+    /// </summary>
+    Task<OperationalSnapshot> GetLiveSnapshotAsync(CancellationToken ct = default);
+
     Task<JobPerformanceDetail?> GetJobPerformanceAsync(Guid jobId, CancellationToken ct = default);
 }
+
+/// <summary>Live totals for the reports page cards. Credit notes reduce outstanding value.</summary>
+public sealed record OperationalSnapshot(
+    int TotalQuotes,
+    int AcceptedQuotes,
+    int ActiveJobs,
+    decimal ActiveJobsQuoted,
+    int OutstandingInvoices,
+    decimal OutstandingInvoiceValue,
+    int TotalItems,
+    int LowStockItems,
+    int TotalAssets,
+    int OperationalAssets,
+    int TotalSuppliers,
+    int OpenPurchaseOrders,
+    decimal OpenPurchaseOrderValue,
+    int TotalSalesOrders,
+    int ConfirmedSalesOrders,
+    int ActiveEmployees);
 
 public sealed record ReportDefinition(
     string Key,

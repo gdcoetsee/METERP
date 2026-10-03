@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using METERP.Application.Interfaces;
 using METERP.Application.Models;
@@ -110,6 +111,15 @@ public class ExecutiveDashboardServiceTests
         var opportunities = new Mock<IOpportunityService>();
         opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        opportunities.Setup(s => s.GetUnquotedProposalQueueAsync(12, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProposalQuoteQueueResult
+            {
+                TotalCount = 2,
+                Items = new List<ConvertibleDocumentRow>
+                {
+                    new(Guid.NewGuid(), "Proposal", "Barberton substation", "Barberton Mines", 250000m, "/opportunities?open=1")
+                }
+            });
 
         var purchaseOrders = new Mock<IPurchaseOrderService>();
         purchaseOrders.Setup(s => s.GetOverdueQueueAsync(10, It.IsAny<CancellationToken>()))
@@ -200,6 +210,36 @@ public class ExecutiveDashboardServiceTests
         Assert.Single(summary.OverdueInvoiceQueue);
         Assert.Equal("INV-1", summary.OverdueInvoiceQueue[0].InvoiceNumber);
         Assert.Equal(1, summary.LowStockItems);
+        Assert.Equal(2, summary.UnquotedProposalDeals);
+        Assert.Equal("Barberton substation", summary.ProposalQuoteQueue[0].Number);
+        Assert.Equal(250000m, summary.ProposalQuoteQueue[0].Total);
+    }
+
+    [Fact]
+    public async Task GetSummaryAsync_LogsSignOffFailure_AndKeepsTheRestOfTheDesk()
+    {
+        var jobs = new Mock<IJobService>();
+        jobs.Setup(s => s.GetReadyToInvoiceQueueAsync(20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ReadyToInvoiceJobRow>
+            {
+                new(Guid.NewGuid(), "J-READY", "Ready", "Acme", 1000m, 0m, 1000m)
+            });
+        jobs.Setup(s => s.GetDepositDueQueueAsync(20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ReadyToInvoiceJobRow>());
+        jobs.Setup(s => s.GetAwaitingSignOffQueueAsync(20, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException(
+                "Translation of member 'TotalCost' on entity type 'JobLabor' failed. This commonly occurs when the specified member is unmapped."));
+
+        var logger = new CaptureLogger<ExecutiveDashboardService>();
+        var summary = await CreateDashboardWithRealJobs(jobs.Object, logger).GetSummaryAsync();
+
+        Assert.Equal(new[] { "sign-off" }, summary.LoadWarnings);
+        Assert.Equal(1, summary.ReadyToInvoiceJobs);
+        Assert.Empty(summary.AwaitingSignOffQueue);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Contains("TotalCost", entry.Exception!.Message, StringComparison.Ordinal);
+        Assert.Contains("sign-off", entry.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -252,7 +292,9 @@ public class ExecutiveDashboardServiceTests
         Assert.Equal(15000m, summary.ReadyToInvoiceValue);
     }
 
-    private static ExecutiveDashboardService CreateDashboardWithRealJobs(IJobService jobService)
+    private static ExecutiveDashboardService CreateDashboardWithRealJobs(
+        IJobService jobService,
+        ILogger<ExecutiveDashboardService>? logger = null)
     {
         var quotes = new Mock<IQuoteService>();
         quotes.Setup(s => s.GetPendingExecutiveApprovalAsync(It.IsAny<CancellationToken>()))
@@ -301,6 +343,8 @@ public class ExecutiveDashboardServiceTests
         var opportunities = new Mock<IOpportunityService>();
         opportunities.Setup(s => s.GetUnquotedWonAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ConvertibleDocumentRow>());
+        opportunities.Setup(s => s.GetUnquotedProposalQueueAsync(12, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProposalQuoteQueueResult());
 
         var purchaseOrders = new Mock<IPurchaseOrderService>();
         purchaseOrders.Setup(s => s.GetOverdueQueueAsync(10, It.IsAny<CancellationToken>()))
@@ -334,6 +378,32 @@ public class ExecutiveDashboardServiceTests
             purchaseOrders.Object,
             ppe.Object,
             certs.Object,
-            docs.Object);
+            docs.Object,
+            logger);
+    }
+
+    private sealed class CaptureLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = new();
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add((logLevel, formatter(state, exception), exception));
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose() { }
+        }
     }
 }

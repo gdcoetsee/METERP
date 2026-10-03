@@ -64,8 +64,8 @@ public class SalesOrderService : ISalesOrderService
         var orders = await _dbContext.Set<SalesOrder>()
             .AsNoTracking()
             .Include(s => s.Customer)
-            .Include(s => s.Lines)
-            .Where(s => s.Status == SalesOrderStatus.Confirmed)
+            .Where(s => s.Status == SalesOrderStatus.Confirmed
+                && s.Lines.Any(l => !l.IsDeleted))
             .OrderByDescending(s => s.Total)
             .Take(take * 3)
             .ToListAsync(ct);
@@ -80,7 +80,7 @@ public class SalesOrderService : ISalesOrderService
             .ToListAsync(ct)).ToHashSet();
 
         return orders
-            .Where(s => !converted.Contains(s.Id) && s.Lines.Any(l => !l.IsDeleted))
+            .Where(s => !converted.Contains(s.Id))
             .Select(s => new ConvertibleDocumentRow(
                 s.Id,
                 "Sales order",
@@ -463,6 +463,7 @@ public class SalesOrderService : ISalesOrderService
         }, ct);
 
         so.Status = SalesOrderStatus.InProgress;
+        await PostExplicitTravelCostsAsync(so, jobId, ct);
         await _dbContext.SaveChangesAsync(ct);
 
         InvalidateListCaches();
@@ -515,11 +516,37 @@ public class SalesOrderService : ISalesOrderService
             if (line.Unit.Length > 20)
                 throw new InvalidOperationException("Line unit cannot exceed 20 characters.");
         }
-        if (!string.IsNullOrWhiteSpace(line.LineType))
+        line.LineType = TravelLineRules.EnsureExplicitType(line.LineType, line.Description);
+        if (line.LineType.Length > 50)
+            throw new InvalidOperationException("Line type cannot exceed 50 characters.");
+    }
+
+    /// <summary>
+    /// Quote → SO → Job must keep travel as a Travel cost. It is not rolled into materials.
+    /// </summary>
+    private async Task PostExplicitTravelCostsAsync(SalesOrder so, Guid jobId, CancellationToken ct)
+    {
+        foreach (var line in so.Lines.Where(l => !l.IsDeleted))
         {
-            line.LineType = line.LineType.Trim();
-            if (line.LineType.Length > 50)
-                throw new InvalidOperationException("Line type cannot exceed 50 characters.");
+            var promoted = TravelLineRules.EnsureExplicitType(line.LineType, line.Description);
+            if (!string.Equals(line.LineType, promoted, StringComparison.Ordinal))
+                line.LineType = promoted;
+
+            if (!TravelLineRules.IsTravelLine(line.LineType, line.Description))
+                continue;
+
+            var costType = TravelLineRules.JobCostType(line.LineType, line.Description);
+            if (string.Equals(costType, TravelLineRules.MaterialType, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Travel cannot be folded into a materials cost.");
+
+            await _jobService.AddCostAsync(new JobCost
+            {
+                JobId = jobId,
+                Description = string.IsNullOrWhiteSpace(line.Description) ? "Travel" : line.Description,
+                Amount = line.LineTotal,
+                CostType = costType,
+                CostDate = DateTime.UtcNow
+            }, ct);
         }
     }
 

@@ -140,8 +140,12 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         modelBuilder.Entity<ApplicationUser>()
             .HasQueryFilter(u => CurrentTenantId == Guid.Empty || u.TenantId == CurrentTenantId);
 
+        // Global roles (TenantId empty) stay visible after login. Identity copies their
+        // permission claims onto the principal; hiding them drops Audit.View / Quotes.Manage.
         modelBuilder.Entity<ApplicationRole>()
-            .HasQueryFilter(r => CurrentTenantId == Guid.Empty || r.TenantId == CurrentTenantId);
+            .HasQueryFilter(r => CurrentTenantId == Guid.Empty
+                || r.TenantId == Guid.Empty
+                || r.TenantId == CurrentTenantId);
 
         // Indexes
         modelBuilder.Entity<Tenant>(entity =>
@@ -164,6 +168,37 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         modelBuilder.Entity<Division>(entity =>
         {
             entity.HasIndex(d => new { d.TenantId, d.Code }).IsUnique();
+        });
+
+        // Home cash desk: tenant filter + status/date predicates on the full MET seed.
+        modelBuilder.Entity<Job>(entity =>
+        {
+            entity.HasIndex(j => new { j.TenantId, j.IsDeleted, j.Status });
+            entity.HasIndex(j => new { j.TenantId, j.IsDeleted, j.SignOffStatus });
+            entity.HasIndex(j => new { j.TenantId, j.IsDeleted, j.CreatedDate });
+            // TRFid / JobNumber is the legacy key. Soft-deleted rows are outside the unique set.
+            entity.HasIndex(j => new { j.TenantId, j.JobNumber })
+                .IsUnique()
+                .HasDatabaseName("IX_Jobs_TenantId_JobNumber")
+                .HasFilter("\"IsDeleted\" = false");
+        });
+
+        modelBuilder.Entity<Invoice>(entity =>
+        {
+            entity.HasIndex(i => new { i.TenantId, i.IsDeleted, i.Status, i.DueDate });
+            entity.HasIndex(i => new { i.TenantId, i.IsDeleted, i.CreatedDate });
+        });
+
+        modelBuilder.Entity<Quote>(entity =>
+        {
+            entity.HasIndex(q => new { q.TenantId, q.IsDeleted, q.ApprovalStatus });
+            entity.HasIndex(q => new { q.TenantId, q.IsDeleted, q.Status });
+            entity.HasIndex(q => new { q.TenantId, q.IsDeleted, q.CreatedDate });
+        });
+
+        modelBuilder.Entity<TenantNotification>(entity =>
+        {
+            entity.HasIndex(n => new { n.TenantId, n.IsDeleted, n.IsRead });
         });
 
         modelBuilder.Entity<StockRequisition>(entity =>

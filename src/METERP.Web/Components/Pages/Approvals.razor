@@ -313,16 +313,16 @@
 {
     <FormModal IsOpen="true"
                Title="@($"{_reviewReq.RequisitionNumber} — {_reviewReq.Job?.JobNumber}")"
-               Size="lg"
+               Size="xl"
                TestId="approvals-requisition-review"
                CloseOnBackdrop="false"
                OnClose="CloseRequisitionReview">
         <ChildContent>
             <div class="row g-4">
                 <div class="col-lg-8">
+                    <RequisitionDecisionContext Job="_reviewReq.Job" OnOpenQuote="OpenLinkedQuote" />
                     <div class="meterp-section">
                         <div class="meterp-section-title">Stock request</div>
-                        <p class="mb-1"><strong>Job:</strong> @(_reviewReq.Job?.JobNumber ?? "—") @(_reviewReq.Job?.Title)</p>
                         <p class="mb-1"><strong>Status:</strong> @GetRequisitionStatusLabel(_reviewReq.Status)</p>
                         @if (_reviewReq.IsPpe)
                         {
@@ -340,6 +340,7 @@
                             <thead>
                                 <tr>
                                     <th>Item</th>
+                                    <th>Against the quote</th>
                                     <th class="text-end">Qty</th>
                                 </tr>
                             </thead>
@@ -348,6 +349,7 @@
                                 {
                                     <tr>
                                         <td>@(line.InventoryItem?.Name ?? line.DisplayDescription)</td>
+                                        <td class="small" data-testid="approvals-requisition-quote-coverage">@RequisitionQuoteMatcher.CoverageLabel(_reviewReq.Job, line)</td>
                                         <td style="width:7rem;">
                                             <input type="number" step="0.01" min="0.01" class="form-control form-control-sm text-end"
                                                    data-testid="approvals-requisition-line-qty"
@@ -380,6 +382,7 @@
             }
         </Footer>
     </FormModal>
+    <RequisitionQuoteView IsOpen="_showLinkedQuote" Job="_reviewReq.Job" OnClose="CloseLinkedQuote" />
 }
 
 @if (_reviewLeave != null)
@@ -645,6 +648,18 @@
                         <div>
                             <span class="badge bg-light text-dark me-1">Stock</span>
                             <strong>@req.RequisitionNumber</strong> — @(req.Job?.JobNumber ?? "—")
+                            @if (req.Job?.IsEmergency == true)
+                            {
+                                <span class="badge bg-danger ms-1">Emergency</span>
+                            }
+                            else if (req.Job?.Quote != null)
+                            {
+                                <span class="badge bg-success ms-1">@req.Job.Quote.QuoteNumber</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark ms-1">No quote</span>
+                            }
                             @if (req.IsPpe)
                             {
                                 <span class="badge bg-warning text-dark ms-1">PPE</span>
@@ -953,10 +968,17 @@
         _reviewNote = "";
     }
 
+    private bool _showLinkedQuote;
+
+    private void OpenLinkedQuote() => _showLinkedQuote = true;
+
+    private void CloseLinkedQuote() => _showLinkedQuote = false;
+
     private void CloseRequisitionReview()
     {
         _reviewReq = null;
         _reviewNote = "";
+        _showLinkedQuote = false;
     }
 
     private async Task SaveReviewRequisitionLinesAsync()

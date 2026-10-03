@@ -21,4 +21,19 @@ public interface ITenantService
     Task IncrementAiCallCountAsync(Guid tenantId, CancellationToken ct = default);
     Task IncrementQuoteCountAsync(Guid tenantId, CancellationToken ct = default);
     Task IncrementInvoiceCountAsync(Guid tenantId, decimal revenueAmount = 0, CancellationToken ct = default);
+    /// <summary>
+    /// Replaces stored lifetime and current-month counters with COUNT/SUM of this tenant's documents.
+    /// Returns the updated tenant (detached). AI call counters are left as stored — there is no document to recount.
+    /// </summary>
+    Task<Tenant?> RefreshUsageCountersAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Quotes, jobs, and invoices created since the current UTC month start.
+    /// AI calls are the stored period counter (there is no document row to recount).
+    /// Null when the tenant does not exist.
+    /// </summary>
+    Task<TenantPeriodUsage?> GetLivePeriodUsageAsync(Guid tenantId, CancellationToken ct = default);
 }
+
+/// <summary>Live monthly usage for the quota strip. Not the lifetime document totals.</summary>
+public sealed record TenantPeriodUsage(int Quotes, int Jobs, int Invoices, int AiCalls);

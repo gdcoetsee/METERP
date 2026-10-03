@@ -721,6 +721,9 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<Guid?>("ApprovedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ApproverNote")
+                        .HasColumnType("text");
+
                     b.Property<string>("Comments")
                         .HasColumnType("text");
 
@@ -748,10 +751,6 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<string>("MaterialsUsed")
                         .HasColumnType("text");
-
-                    b.Property<string>("ApproverNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
@@ -1052,6 +1051,10 @@ namespace METERP.Infrastructure.Migrations
 
                     b.HasIndex("JobId");
 
+                    b.HasIndex("TenantId", "IsDeleted", "CreatedDate");
+
+                    b.HasIndex("TenantId", "IsDeleted", "Status", "DueDate");
+
                     b.ToTable("Invoices");
                 });
 
@@ -1320,6 +1323,17 @@ namespace METERP.Infrastructure.Migrations
                     b.HasIndex("QuoteId");
 
                     b.HasIndex("SalesOrderId");
+
+                    b.HasIndex("TenantId", "JobNumber")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Jobs_TenantId_JobNumber")
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.HasIndex("TenantId", "IsDeleted", "CreatedDate");
+
+                    b.HasIndex("TenantId", "IsDeleted", "SignOffStatus");
+
+                    b.HasIndex("TenantId", "IsDeleted", "Status");
 
                     b.ToTable("Jobs");
                 });
@@ -1845,6 +1859,9 @@ namespace METERP.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ApproverNote")
+                        .HasColumnType("text");
+
                     b.Property<string>("CreatedBy")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1894,10 +1911,6 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<string>("Reason")
                         .HasColumnType("text");
 
-                    b.Property<string>("ApproverNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
 
@@ -1928,6 +1941,18 @@ namespace METERP.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("BoardOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContactEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text");
+
                     b.Property<string>("CreatedBy")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1941,23 +1966,11 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<string>("CustomerName")
                         .HasColumnType("text");
 
-                    b.Property<DateTime>("ExpectedClose")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("BoardOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ContactEmail")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ContactName")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ContactPhone")
-                        .HasColumnType("text");
-
                     b.Property<int>("DealType")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime>("ExpectedClose")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -2316,8 +2329,7 @@ namespace METERP.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("ExecutiveDecisionNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
 
                     b.Property<string>("ExecutiveRejectionReason")
                         .HasColumnType("text");
@@ -2379,6 +2391,12 @@ namespace METERP.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("TenantId", "IsDeleted", "ApprovalStatus");
+
+                    b.HasIndex("TenantId", "IsDeleted", "CreatedDate");
+
+                    b.HasIndex("TenantId", "IsDeleted", "Status");
 
                     b.ToTable("Quotes");
                 });
@@ -2647,6 +2665,9 @@ namespace METERP.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ApproverNote")
+                        .HasColumnType("text");
+
                     b.Property<string>("CreatedBy")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2692,10 +2713,6 @@ namespace METERP.Infrastructure.Migrations
 
                     b.Property<Guid?>("PurchaseOrderId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("ApproverNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
@@ -3284,6 +3301,8 @@ namespace METERP.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "IsDeleted", "IsRead");
+
                     b.ToTable("TenantNotifications");
                 });
 
@@ -3839,8 +3858,7 @@ namespace METERP.Infrastructure.Migrations
 
                     b.HasOne("METERP.Domain.Employee", "OwnerEmployee")
                         .WithMany()
-                        .HasForeignKey("OwnerEmployeeId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("OwnerEmployeeId");
 
                     b.HasOne("METERP.Domain.Quote", "Quote")
                         .WithMany()

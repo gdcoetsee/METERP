@@ -23,16 +23,29 @@
     </Actions>
 </PageHeader>
 
-<div class="mb-3" style="max-width: 420px;">
-    <div class="input-group">
-        <input type="search" class="form-control" placeholder="Search email or username..."
-               value="@searchTerm" @oninput="OnSearchInput" />
-        @if (!string.IsNullOrEmpty(searchTerm))
-        {
-            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
-        }
+<div class="d-flex flex-wrap gap-3 mb-3 align-items-end">
+    <div style="max-width: 420px; flex: 1;">
+        <div class="input-group">
+            <input type="search" class="form-control" placeholder="Search email or username..."
+                   value="@searchTerm" @oninput="OnSearchInput" data-testid="users-search" />
+            @if (!string.IsNullOrEmpty(searchTerm))
+            {
+                <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
+            }
+        </div>
+    </div>
+    <div class="form-check mb-1">
+        <input class="form-check-input" type="checkbox" id="users-include-inactive"
+               @bind="_includeInactive" @bind:after="OnIncludeInactiveChanged"
+               data-testid="users-include-inactive" />
+        <label class="form-check-label" for="users-include-inactive">Show inactive</label>
     </div>
 </div>
+
+@if (!_loading)
+{
+    <span data-testid="users-ready" class="visually-hidden">ready</span>
+}
 
 @if (_loading)
 {
@@ -44,6 +57,10 @@ else if (users == null || !users.Any())
     {
         <div class="alert alert-warning">No users match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
     }
+    else if (!_includeInactive)
+    {
+        <div class="alert alert-info">No active users. Locked and removed accounts stay hidden until Show inactive is on.</div>
+    }
     else
     {
         <div class="alert alert-info">No users found for this tenant besides the system ones.</div>
@@ -51,7 +68,7 @@ else if (users == null || !users.Any())
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive" data-testid="users-table">
         <table class="table table-hover">
             <thead>
                 <tr>
@@ -65,7 +82,12 @@ else
                 {
                     <tr class="meterp-row-click" @onclick="() => ViewUser(user)" title="Open user">
                         <td>
-                            <strong>@user.Email</strong><br />
+                            <strong>@user.Email</strong>
+                            @if (!user.IsActive)
+                            {
+                                <span class="badge bg-warning text-dark ms-2" data-testid="user-inactive">Inactive</span>
+                            }
+                            <br />
                             <small class="text-muted">@user.UserName</small>
                         </td>
                         <td>
@@ -83,7 +105,7 @@ else
                         </td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewUser(user)" @onclick:stopPropagation="true">View / Edit</button>
-                            @if (UserCanManage && user.Email != "admin@acme.demo")
+                            @if (UserCanManage && !IsProtectedDemoLogin(user.Email))
                             {
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteUser(user)" @onclick:stopPropagation="true">Delete</button>
                             }
@@ -179,6 +201,17 @@ else
         <ChildContent>
             <div class="mb-3">
                 <strong>Username:</strong> @selectedUser.UserName
+            </div>
+            <div class="mb-3">
+                <strong>Status:</strong>
+                @if (selectedUser.IsActive)
+                {
+                    <span class="badge bg-success">Active</span>
+                }
+                else
+                {
+                    <span class="badge bg-warning text-dark" data-testid="user-inactive">Inactive</span>
+                }
             </div>
 
             <h6>Current Roles</h6>
@@ -290,6 +323,7 @@ else
     private string searchTerm = string.Empty;
     private int currentPage = 1;
     private bool _loading = true;
+    private bool _includeInactive;
     private const int PageSize = 10;
 
     private CreateUserModel newUserModel = new();
@@ -314,6 +348,12 @@ else
     }
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.UsersManage);
+
+    private static bool IsProtectedDemoLogin(string? email) =>
+        email != null && (
+            email.Equals("admin@acme.demo", StringComparison.OrdinalIgnoreCase)
+            || email.Equals("admin@met.demo", StringComparison.OrdinalIgnoreCase)
+            || email.Equals("gregory@met.co.za", StringComparison.OrdinalIgnoreCase));
 
     private bool UserCanManagePermissions =>
         CurrentUserService.Permissions.Contains(Permissions.UsersManagePermissions);
@@ -341,7 +381,7 @@ else
     private async Task LoadUsers()
     {
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        users = (await UserService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        users = (await UserService.GetAllAsync(term, currentPage, PageSize, _includeInactive)).ToList();
 
         userRoles.Clear();
         foreach (var u in users)
@@ -361,6 +401,12 @@ else
     private async Task ClearSearch()
     {
         searchTerm = string.Empty;
+        currentPage = 1;
+        await LoadUsers();
+    }
+
+    private async Task OnIncludeInactiveChanged()
+    {
         currentPage = 1;
         await LoadUsers();
     }

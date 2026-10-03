@@ -12,6 +12,7 @@ using Serilog;
 using Serilog.Events;
 using METERP.Application.Integrations;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Options;
 using METERP.Application.Production;
 using METERP.Application.Services;
@@ -490,7 +491,11 @@ builder.Services.AddAuthorization(options =>
         policy.RequireClaim("Permission", Permissions.AuditView, Permissions.TenantsManage));
 
     options.AddPolicy("Field.View", policy =>
-        policy.RequireClaim("Permission", Permissions.FieldView, Permissions.JobsManage, Permissions.TenantsManage));
+        policy.RequireAssertion(ctx =>
+            ctx.User.IsInRole("Technician")
+            || ctx.User.HasClaim("Permission", Permissions.FieldView)
+            || ctx.User.HasClaim("Permission", Permissions.JobsManage)
+            || ctx.User.HasClaim("Permission", Permissions.TenantsManage)));
 
     options.AddPolicy("Portal.Access", policy =>
         policy.RequireClaim("Permission", Permissions.PortalAccess));
@@ -555,7 +560,32 @@ app.Use(async (context, next) =>
     headers.TryAdd("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
     await next();
 });
-app.UseStaticFiles();
+app.Use(async (context, next) =>
+{
+    // Ensure Blazor scoped CSS never serves with empty/wrong MIME (Prompt 10).
+    if (context.Request.Path.Value?.EndsWith(".css", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        context.Response.OnStarting(() =>
+        {
+            if (string.IsNullOrWhiteSpace(context.Response.ContentType)
+                || context.Response.ContentType.Contains("text/html", StringComparison.OrdinalIgnoreCase)
+                || context.Response.ContentType.Contains("octet-stream", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.ContentType = "text/css; charset=utf-8";
+            }
+            return Task.CompletedTask;
+        });
+    }
+    await next();
+});
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        if (ctx.File.Name.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+            ctx.Context.Response.ContentType = "text/css; charset=utf-8";
+    }
+});
 app.UseAntiforgery();
 app.UseRateLimiter();
 
@@ -588,6 +618,31 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 
 if (app.Environment.IsDevelopment())
 {
+    // MET FY restarts must not reinsert Hospital / Mining / E2E fixtures through these hooks.
+    // Pool clear, beta 2FA, and email capture stay available. Default (E2E unset) still serves CI.
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path;
+        var blocked = SeedProfileGates.IsMetSeedProfile(app.Configuration)
+            && HttpMethods.IsPost(context.Request.Method)
+            && path.StartsWithSegments("/e2e")
+            && !path.StartsWithSegments("/e2e/clear-connection-pool")
+            && !path.StartsWithSegments("/e2e/disable-beta-two-factor")
+            && !path.StartsWithSegments("/e2e/begin-email-capture")
+            && !path.StartsWithSegments("/e2e/clear-email-capture");
+        if (blocked)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "E2E fixture seed is disabled for the MET profile (METERP_SEED_E2E=false or Seed:Profile=MET)."
+            });
+            return;
+        }
+
+        await next();
+    });
+
     app.MapPost("/e2e/ensure-receive-demo-po", async (IServiceProvider sp, CancellationToken ct) =>
     {
         using var scope = sp.CreateScope();
@@ -901,8 +956,11 @@ app.MapGet("/external-callback", async (
     if (user == null)
         return Results.Redirect("/login?error=no-account");
 
+    if (user.LockoutEnd is { } lockedUntil && lockedUntil > DateTimeOffset.UtcNow)
+        return Results.Redirect(await PortalLoginRedirectAsync(userManager, user) ? "/portal/login" : "/login");
+
     await signInManager.SignInAsync(user, isPersistent: false);
-    return Results.Redirect(user.CustomerId.HasValue ? "/portal" : "/");
+    return Results.Redirect(await PortalLoginRedirectAsync(userManager, user) ? "/portal" : "/");
 }).AllowAnonymous().DisableRateLimiting();
 
 // HTTP redirect (not InteractiveServer) so E2E login does not leak a Blazor circuit/DbContext.
@@ -951,8 +1009,11 @@ app.MapGet("/login-complete", async (
     if (user == null)
         return Results.Redirect("/login");
 
+    if (user.LockoutEnd is { } lockedUntil && lockedUntil > DateTimeOffset.UtcNow)
+        return Results.Redirect(await PortalLoginRedirectAsync(userManager, user) ? "/portal/login" : "/login");
+
     await signInManager.SignInAsync(user, isPersistent: false);
-    return Results.Redirect(user.CustomerId.HasValue ? "/portal" : "/");
+    return Results.Redirect(await PortalLoginRedirectAsync(userManager, user) ? "/portal" : "/");
 }).AllowAnonymous().DisableRateLimiting();
 
 app.MapGet("/api/notifications/poll", async (ITenantNotificationService notifications) =>
@@ -968,6 +1029,15 @@ app.MapGet("/api/notifications/poll", async (ITenantNotificationService notifica
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+static async Task<bool> PortalLoginRedirectAsync(UserManager<ApplicationUser> userManager, ApplicationUser user)
+{
+    if (user.CustomerId is { } customerId && customerId != Guid.Empty)
+        return true;
+
+    var claims = await userManager.GetClaimsAsync(user);
+    return claims.Any(c => c.Type == "Permission" && c.Value == Permissions.PortalAccess);
+}
 
 app.Run();
 
@@ -1089,7 +1159,7 @@ public class DatabaseSeeder : IHostedService
                 demoTenant.EnabledFeatures = TenantQuotaDefaults.GetDefaultFeatures(SubscriptionTier.Professional) + ",compliance";
                 demoTenant.StripeCustomerId ??= "cus_demo_acme";
                 demoTenant.SubscriptionStatus ??= "active";
-                demoTenant.BrandDisplayName ??= "Acme Electrical";
+                demoTenant.BrandDisplayName = TenantBranding.ResolveSeedBrandDisplayName(demoTenant);
                 demoTenant.BrandColorHex ??= "#0d6efd";
                 demoTenant.NotificationEmail ??= "admin@acme.demo";
                 demoTenant.DefaultApprovalSlaHours = 48;
@@ -1116,7 +1186,8 @@ public class DatabaseSeeder : IHostedService
 
                 acme.StripeCustomerId ??= "cus_demo_acme";
                 acme.SubscriptionStatus ??= "active";
-                acme.BrandDisplayName ??= "Acme Electrical";
+                // MET Electrical (often still on subdomain acme) must not be relabelled Acme.
+                acme.BrandDisplayName = TenantBranding.ResolveSeedBrandDisplayName(acme);
                 acme.BrandColorHex ??= "#0d6efd";
                 acme.NotificationEmail ??= "admin@acme.demo";
                 if (acme.DefaultApprovalSlaHours <= 0)
@@ -1139,8 +1210,15 @@ public class DatabaseSeeder : IHostedService
                 cancellationToken);
         }
 
+        var metSeedProfile = IsMetSeedProfile(config);
+        if (metSeedProfile)
+        {
+            _logger.LogInformation(
+                "MET seed profile active. Acme/E2E demo fixtures will not be inserted on this start.");
+        }
+
         var existingCompanyDocs = await companyDocumentService.GetAllAsync(ct: cancellationToken);
-        if (!existingCompanyDocs.Any())
+        if (!metSeedProfile && !existingCompanyDocs.Any())
         {
             await using var sample = new MemoryStream("METERP demo COID certificate placeholder"u8.ToArray());
             await companyDocumentService.UploadAsync(
@@ -1173,7 +1251,7 @@ public class DatabaseSeeder : IHostedService
         }
 
         tenantProvider.SetTenantId(defaultTenantId);
-        if (!await db.Set<TenantNotification>().AnyAsync(n => n.Title.Contains("Low Stock"), cancellationToken))
+        if (!metSeedProfile && !await db.Set<TenantNotification>().AnyAsync(n => n.Title.Contains("Low Stock"), cancellationToken))
         {
             await tenantNotificationService.CreateAsync(new TenantNotification
             {
@@ -1184,7 +1262,7 @@ public class DatabaseSeeder : IHostedService
             }, cancellationToken);
         }
 
-        if (!await db.Set<TenantNotification>().AnyAsync(n => n.Title.Contains("Job Overdue"), cancellationToken))
+        if (!metSeedProfile && !await db.Set<TenantNotification>().AnyAsync(n => n.Title.Contains("Job Overdue"), cancellationToken))
         {
             await tenantNotificationService.CreateAsync(new TenantNotification
             {
@@ -1197,7 +1275,7 @@ public class DatabaseSeeder : IHostedService
 
         var demoCustomers = await customerService.GetAllAsync(ct: cancellationToken);
         const string recurringTitle = "Quarterly panel inspection (recurring)";
-        if (demoCustomers.Any()
+        if (!metSeedProfile && demoCustomers.Any()
             && !await db.Set<RecurringJobSchedule>().AnyAsync(s => s.Title == recurringTitle, cancellationToken))
         {
             await recurringJobService.CreateAsync(new RecurringJobSchedule
@@ -1211,7 +1289,7 @@ public class DatabaseSeeder : IHostedService
         }
 
         var existingDivisions = await divisionService.GetAllAsync(activeOnly: false, ct: cancellationToken);
-        if (!existingDivisions.Any())
+        if (!metSeedProfile && !existingDivisions.Any())
         {
             await divisionService.CreateAsync(new Division
             {
@@ -1252,12 +1330,17 @@ public class DatabaseSeeder : IHostedService
         }
         else
         {
-            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, existingAdmin, "Admin", cancellationToken);
+            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, tenantProvider, existingAdmin, "Admin", cancellationToken);
         }
 
-        // 4. Seed some demo customers for the tenant (if none exist)
+        // MET office logins share the MET Electrical tenant. Acme E2E users stay in place.
+        await EnsureMetOfficeAdminAsync(db, userManager, roleManager, tenantProvider, _logger, "admin@met.demo", cancellationToken);
+        await EnsureMetOfficeAdminAsync(db, userManager, roleManager, tenantProvider, _logger, "gregory@met.co.za", cancellationToken);
+
+        // 4. Seed some demo customers for the tenant (if none exist).
+        // MET profile must not recreate the Acme Johannesburg General Hospital customer.
         var existingCustomers = await customerService.GetAllAsync(ct: cancellationToken);
-        if (!existingCustomers.Any())
+        if (!metSeedProfile && !existingCustomers.Any())
         {
             var cust1 = new Customer
             {
@@ -1292,11 +1375,17 @@ public class DatabaseSeeder : IHostedService
             await customerService.CreateAsync(cust2, cancellationToken);
         }
 
-        var hospitalCustomer = (await customerService.GetAllAsync(ct: cancellationToken))
-            .FirstOrDefault(c => c.Email == "procurement@jhgh.co.za"
-                                 || c.Name.Contains("Hospital", StringComparison.OrdinalIgnoreCase));
         const string portalEmail = "procurement@jhgh.co.za";
-        if (hospitalCustomer != null)
+        // Exact Acme fixture only. Do not match any customer whose name contains "Hospital"
+        // (MET data includes Barberton Hospital and must not inherit this login).
+        Customer? acmeHospital = null;
+        if (!metSeedProfile)
+        {
+            acmeHospital = await db.Set<Customer>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Name == "Johannesburg General Hospital", cancellationToken);
+        }
+
+        if (acmeHospital != null)
         {
             var portalUser = await userManager.FindByEmailAsync(portalEmail);
             if (portalUser == null)
@@ -1307,14 +1396,15 @@ public class DatabaseSeeder : IHostedService
                     Email = portalEmail,
                     EmailConfirmed = true,
                     TenantId = defaultTenantId,
-                    CustomerId = hospitalCustomer.Id
+                    CustomerId = acmeHospital.Id
                 };
                 if (!(await userManager.CreateAsync(portalUser, "Demo123!")).Succeeded)
                     portalUser = null;
             }
-            else if (portalUser.CustomerId != hospitalCustomer.Id)
+            else if (portalUser.CustomerId != acmeHospital.Id || portalUser.LockoutEnd != null)
             {
-                portalUser.CustomerId = hospitalCustomer.Id;
+                portalUser.CustomerId = acmeHospital.Id;
+                portalUser.LockoutEnd = null;
                 await userManager.UpdateAsync(portalUser);
             }
 
@@ -1330,13 +1420,20 @@ public class DatabaseSeeder : IHostedService
 
                 await EnsureClaim("Permission", Permissions.PortalAccess);
                 await EnsureClaim("TenantId", defaultTenantId.ToString());
-                await EnsureClaim("CustomerId", hospitalCustomer.Id.ToString());
+                await EnsureClaim("CustomerId", acmeHospital.Id.ToString());
             }
         }
+        else
+        {
+            await DisableUnlinkedPortalUserAsync(db, portalEmail, _logger, cancellationToken);
+        }
+
+        if (metSeedProfile)
+            await EnsureMetDemoPortalUserAsync(db, userManager, tenantProvider, _logger, cancellationToken);
 
         // 4.5 Seed CRM opportunities (tenant-isolated pipeline)
         var existingOpportunities = await opportunityService.GetAllAsync(ct: cancellationToken);
-        if (!existingOpportunities.Any())
+        if (!metSeedProfile && !existingOpportunities.Any())
         {
             var customers = await customerService.GetAllAsync(ct: cancellationToken);
             var hospital = customers.FirstOrDefault(c => c.Name.Contains("Hospital", StringComparison.OrdinalIgnoreCase))
@@ -1397,20 +1494,23 @@ public class DatabaseSeeder : IHostedService
             }, cancellationToken);
         }
 
-        foreach (var existing in await opportunityService.GetAllAsync(pageSize: 200, ct: cancellationToken))
+        if (!metSeedProfile)
         {
-            if (existing.ProbabilityPercent != 0) continue;
-            if (existing.Stage == OpportunityStage.ClosedLost) continue;
-            existing.ProbabilityPercent = OpportunityPipeline.DefaultProbability(existing.Stage);
-            existing.Customer = null;
-            existing.Quote = null;
-            existing.OwnerEmployee = null;
-            await opportunityService.UpdateAsync(existing, cancellationToken);
+            foreach (var existing in await opportunityService.GetAllAsync(pageSize: 200, ct: cancellationToken))
+            {
+                if (existing.ProbabilityPercent != 0) continue;
+                if (existing.Stage == OpportunityStage.ClosedLost) continue;
+                existing.ProbabilityPercent = OpportunityPipeline.DefaultProbability(existing.Stage);
+                existing.Customer = null;
+                existing.Quote = null;
+                existing.OwnerEmployee = null;
+                await opportunityService.UpdateAsync(existing, cancellationToken);
+            }
         }
 
         // 5. Seed demo quotes + one converted job to demonstrate the full Quote -> Job workflow (Module 2)
         var existingQuotes = await quoteService.GetAllAsync(ct: cancellationToken);
-        if (!existingQuotes.Any())
+        if (!metSeedProfile && !existingQuotes.Any())
         {
             var customers = await customerService.GetAllAsync(ct: cancellationToken);
             var cust = customers.FirstOrDefault();
@@ -1822,19 +1922,35 @@ public class DatabaseSeeder : IHostedService
             }
         }
 
-        // Idempotent second supplier for suppliers search filter E2E.
-        tenantProvider.SetTenantId(defaultTenantId);
-        if (!(await supplierService.GetAllAsync(ct: cancellationToken)).Any(s => s.Name.Contains("Panel Supplies", StringComparison.OrdinalIgnoreCase)))
+        if (metSeedProfile)
         {
-            await supplierService.CreateAsync(new Supplier
+            _logger.LogInformation(
+                "MET seed profile: Acme/E2E Ensure* fixtures skipped (Johannesburg General Hospital, Cape Town Mining, E2E customers, demo boards, demo employees, demo chart journals). MET chart stays with MetChartOfAccountsSeeder.");
+        }
+        else
+        {
+        // Idempotent second supplier for suppliers search filter E2E.
+        // GetAll without a search term is paged (20). A name past page 1 looks missing and Create throws.
+        tenantProvider.SetTenantId(defaultTenantId);
+        try
+        {
+            var panelSupplies = await supplierService.GetAllAsync(search: "Panel Supplies", pageSize: 5, ct: cancellationToken);
+            if (!panelSupplies.Any(s => s.Name.Contains("Panel Supplies", StringComparison.OrdinalIgnoreCase)))
             {
-                Name = "Panel Supplies CC",
-                ContactPerson = "Thabo Mokoena",
-                Phone = "011 555 1122",
-                Email = "orders@panelsupplies.test",
-                City = "Pretoria",
-                Province = "Gauteng"
-            }, cancellationToken);
+                await supplierService.CreateAsync(new Supplier
+                {
+                    Name = "Panel Supplies CC",
+                    ContactPerson = "Thabo Mokoena",
+                    Phone = "011 555 1122",
+                    Email = "orders@panelsupplies.test",
+                    City = "Pretoria",
+                    Province = "Gauteng"
+                }, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Panel Supplies seed skipped.");
         }
 
         tenantProvider.SetTenantId(defaultTenantId);
@@ -1867,8 +1983,11 @@ public class DatabaseSeeder : IHostedService
         }
 
         // Backfill demo GL journal when CoA exists from older seeds but no exportable lines (Finance export E2E).
+        // MET FY keeps a zero-balance stub — do not invent a one-invoice journal on that chart.
         tenantProvider.SetTenantId(defaultTenantId);
-        if (!await db.Set<JournalEntryLine>().AnyAsync(l => !l.IsDeleted, cancellationToken))
+        var defaultTenantForJournal = await tenantService.GetByIdAsync(defaultTenantId, cancellationToken);
+        var skipDemoGlJournal = metSeedProfile || TenantBranding.IsMetOfficeTenant(defaultTenantForJournal);
+        if (!skipDemoGlJournal && !await db.Set<JournalEntryLine>().AnyAsync(l => !l.IsDeleted, cancellationToken))
         {
             var seededAccounts = await financeService.GetAccountsAsync(ct: cancellationToken);
             if (seededAccounts.Any())
@@ -2050,7 +2169,7 @@ public class DatabaseSeeder : IHostedService
             if (!await IsInGlobalRoleAsync(userManager, tenantProvider, techUser, "Technician"))
                 await AddUserToGlobalRoleAsync(userManager, tenantProvider, techUser, "Technician");
 
-            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, techUser, "Technician", cancellationToken);
+            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, tenantProvider, techUser, "Technician", cancellationToken);
 
             tenantProvider.SetTenantId(defaultTenantId);
             var johan = (await employeeService.GetAllAsync(ct: cancellationToken))
@@ -2119,7 +2238,7 @@ public class DatabaseSeeder : IHostedService
             if (!await IsInGlobalRoleAsync(userManager, tenantProvider, betaAdminUser, "Admin"))
                 await AddUserToGlobalRoleAsync(userManager, tenantProvider, betaAdminUser, "Admin");
 
-            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, betaAdminUser, "Admin", cancellationToken);
+            await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, tenantProvider, betaAdminUser, "Admin", cancellationToken);
             tenantProvider.SetTenantId(betaTenantId);
         }
 
@@ -2185,13 +2304,371 @@ public class DatabaseSeeder : IHostedService
         }
 
         tenantProvider.SetTenantId(defaultTenantId);
-
-        await PurgeStaleBillingWebhookEventsAsync(scope.ServiceProvider, config, _logger, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "E2E/demo data patch failed after core seed. The app will still start.");
         }
+        }
+
+        try
+        {
+            tenantProvider.SetTenantId(defaultTenantId);
+            await PurgeStaleBillingWebhookEventsAsync(scope.ServiceProvider, config, _logger, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Billing webhook purge skipped.");
+        }
+
+        // MET Electrical chart. Kept outside the E2E patch try so a closed-job edit failure
+        // cannot skip it. Idempotent; zero balances; no journals.
+        try
+        {
+            tenantProvider.SetTenantId(defaultTenantId);
+            var metAccountsSeeded = await MetChartOfAccountsSeeder.EnsureForMetOfficeTenantsAsync(
+                db, financeService, tenantProvider, _logger, cancellationToken);
+            if (metAccountsSeeded > 0)
+            {
+                _logger.LogInformation(
+                    "MET FY chart stub ready ({Count} accounts, zero balances). Open /finance after this start.",
+                    metAccountsSeeded);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MET chart of accounts stub was not seeded.");
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(defaultTenantId);
+        }
+
+        if (metSeedProfile)
+        {
+            try
+            {
+                var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
+                var importTenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
+                    ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
+                var importTenantId = importTenant?.Id ?? defaultTenantId;
+                tenantProvider.SetTenantId(importTenantId);
+                var importOptions = AccessImportSeeder.OptionsFrom(config, env?.ContentRootPath);
+                var importResult = await AccessImportSeeder.RunAsync(
+                    db,
+                    tenantProvider,
+                    importTenantId,
+                    importOptions,
+                    _logger,
+                    cancellationToken);
+                _logger.LogInformation("Access CSV import finished. {Summary}", importResult.Summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Access CSV import failed. Existing MET rows were not wiped.");
+            }
+            finally
+            {
+                tenantProvider.SetTenantId(defaultTenantId);
+            }
+
+            // Fill-blank customer contact/address. Independent of METERP_ACCESS_IMPORT (that path stays off).
+            try
+            {
+                var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
+                var enrichTenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
+                    ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
+                var enrichTenantId = enrichTenant?.Id ?? defaultTenantId;
+                tenantProvider.SetTenantId(enrichTenantId);
+                var enrichOptions = CustomerEnrichSeeder.OptionsFrom(config, env?.ContentRootPath);
+                var enrichResult = await CustomerEnrichSeeder.RunAsync(
+                    db,
+                    tenantProvider,
+                    enrichTenantId,
+                    enrichOptions,
+                    _logger,
+                    cancellationToken);
+                _logger.LogInformation("Customer enrich finished. {Summary}", enrichResult.Summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Customer enrich failed. Existing customers were not wiped.");
+            }
+            finally
+            {
+                tenantProvider.SetTenantId(defaultTenantId);
+            }
+
+            // Positive credit totals + parent links. Independent of METERP_ACCESS_IMPORT.
+            try
+            {
+                var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
+                var linkTenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
+                    ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
+                var linkTenantId = linkTenant?.Id ?? defaultTenantId;
+                tenantProvider.SetTenantId(linkTenantId);
+                var linkResult = await CreditNoteLinkSeeder.RunAsync(db, linkTenantId, cancellationToken);
+                _logger.LogInformation("Credit note link pass finished. {Summary}", linkResult.Summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Credit note link pass failed. Existing invoices were not wiped.");
+            }
+            finally
+            {
+                tenantProvider.SetTenantId(defaultTenantId);
+            }
+        }
+
+        // Field portal demo: a handful of InProgress TRFid jobs for tech@acme.demo.
+        // Idempotent. Does not depend on METERP_ACCESS_IMPORT and does not mass-assign.
+        try
+        {
+            tenantProvider.SetTenantId(defaultTenantId);
+            var fieldAssign = await FieldAssignmentSeeder.RunAsync(db, tenantProvider, cancellationToken);
+            _logger.LogInformation("Field assignment seed finished. {Summary}", fieldAssign.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Field assignment seed failed. Existing jobs were not wiped.");
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(defaultTenantId);
+        }
+
+        // Users left behind on a soft-deleted tenant (Beta after it was removed).
+        // Lock only — claims/roles stay. Does not touch MET or Acme office demos.
+        try
+        {
+            var orphanUsers = await SoftDeletedTenantUserLock.RunAsync(db, cancellationToken);
+            _logger.LogInformation("Soft-deleted tenant user lock finished. {Summary}", orphanUsers.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Soft-deleted tenant user lock failed. Users were not removed.");
+        }
+    }
+
+    /// <summary>
+    /// MET FY demo: <c>METERP_SEED_PROFILE=MET</c> or config <c>Seed:Profile=MET</c>,
+    /// or <c>METERP_SEED_E2E=false</c>. Acme/E2E stays the default.
+    /// </summary>
+    private static bool IsMetSeedProfile(IConfiguration config) =>
+        SeedProfileGates.IsMetSeedProfile(config);
+
+    /// <summary>
+    /// Lock the legacy JHGH portal login when its customer was wiped. Keeps the Identity row
+    /// (FKs on claims/roles) and surfaces it as inactive via LockoutEnd.
+    /// </summary>
+    private static async Task DisableUnlinkedPortalUserAsync(
+        AppDbContext db,
+        string email,
+        Microsoft.Extensions.Logging.ILogger logger,
+        CancellationToken ct)
+    {
+        // Startup tenant is often Beta (first by name). Ignore filters so the Acme/MET orphan is found.
+        var normalized = email.ToUpperInvariant();
+        var user = await db.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, ct);
+        if (user == null)
+            return;
+
+        if (user.CustomerId is { } customerId && customerId != Guid.Empty)
+        {
+            var live = await db.Set<Customer>().IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(c => c.Id == customerId && !c.IsDeleted, ct);
+            if (live)
+                return;
+
+            user.CustomerId = null;
+        }
+
+        var staleClaims = await db.UserClaims
+            .Where(c => c.UserId == user.Id && c.ClaimType == "CustomerId")
+            .ToListAsync(ct);
+        if (staleClaims.Count > 0)
+            db.UserClaims.RemoveRange(staleClaims);
+
+        user.LockoutEnabled = true;
+        var lockUntil = DateTimeOffset.UtcNow.AddYears(100);
+        if (user.LockoutEnd == null || user.LockoutEnd < DateTimeOffset.UtcNow.AddYears(50))
+            user.LockoutEnd = lockUntil;
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Disabled unlinked portal login {Email}", email);
+    }
+
+    /// <summary>
+    /// Idempotent MET office admin on the same tenant as admin@acme.demo when that tenant is MET Electrical.
+    /// Does not create these logins on a true Acme E2E tenant, and never removes Acme users.
+    /// </summary>
+    private static async Task EnsureMetOfficeAdminAsync(
+        AppDbContext db,
+        UserManager<ApplicationUser> userManager,
+        RoleManager<ApplicationRole> roleManager,
+        ITenantProvider tenantProvider,
+        Microsoft.Extensions.Logging.ILogger logger,
+        string email,
+        CancellationToken ct)
+    {
+        var anchor = await db.Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(u => u.NormalizedEmail == "ADMIN@ACME.DEMO")
+            .Select(u => u.TenantId)
+            .FirstOrDefaultAsync(ct);
+        if (anchor == Guid.Empty)
+            return;
+
+        var tenant = await db.Set<Tenant>().IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == anchor && !t.IsDeleted, ct);
+        if (tenant == null || !TenantBranding.IsMetOfficeTenant(tenant))
+            return;
+
+        var normalized = email.ToUpperInvariant();
+        var user = await db.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, ct);
+        if (user != null && user.TenantId != anchor)
+        {
+            logger.LogWarning("MET office admin {Email} already exists on another tenant; left unchanged.", email);
+            return;
+        }
+
+        if (user == null)
+        {
+            var previousTenant = tenantProvider.GetCurrentTenantId();
+            tenantProvider.SetTenantId(anchor);
+            try
+            {
+                user = new ApplicationUser
+                {
+                    UserName = email,
+                    Email = email,
+                    EmailConfirmed = true,
+                    TenantId = anchor
+                };
+                var created = await userManager.CreateAsync(user, "Demo123!");
+                if (!created.Succeeded)
+                {
+                    logger.LogWarning(
+                        "MET office admin {Email} was not created: {Errors}",
+                        email,
+                        string.Join("; ", created.Errors.Select(e => e.Description)));
+                    return;
+                }
+            }
+            finally
+            {
+                tenantProvider.SetTenantId(previousTenant);
+            }
+        }
+
+        if (user == null)
+            return;
+
+        var claims = await userManager.GetClaimsAsync(user);
+        if (!claims.Any(c => c.Type == "TenantId" && c.Value == anchor.ToString()))
+            await userManager.AddClaimAsync(user, new System.Security.Claims.Claim("TenantId", anchor.ToString()));
+
+        if (!await IsInGlobalRoleAsync(userManager, tenantProvider, user, "Admin"))
+            await AddUserToGlobalRoleAsync(userManager, tenantProvider, user, "Admin");
+
+        await SyncUserPermissionClaimsFromRoleAsync(userManager, roleManager, tenantProvider, user, "Admin", ct);
+        logger.LogInformation("MET office admin {Email} is ready on tenant {TenantId}", email, anchor);
+    }
+
+    /// <summary>
+    /// Demo-only: one portal login linked to an existing MET customer. Never creates the customer
+    /// and never recreates Johannesburg General Hospital.
+    /// </summary>
+    private static async Task EnsureMetDemoPortalUserAsync(
+        AppDbContext db,
+        UserManager<ApplicationUser> userManager,
+        ITenantProvider tenantProvider,
+        Microsoft.Extensions.Logging.ILogger logger,
+        CancellationToken ct)
+    {
+        var tenantId = await db.Set<Tenant>().IgnoreQueryFilters().AsNoTracking()
+            .Where(t => t.Subdomain == "acme" && !t.IsDeleted)
+            .Select(t => t.Id)
+            .FirstOrDefaultAsync(ct);
+        if (tenantId == Guid.Empty)
+            return;
+
+        var previousTenant = tenantProvider.GetCurrentTenantId();
+        tenantProvider.SetTenantId(tenantId);
+        try
+        {
+            await EnsureMetDemoPortalUserCoreAsync(db, userManager, tenantId, logger, ct);
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(previousTenant);
+        }
+    }
+
+    private static async Task EnsureMetDemoPortalUserCoreAsync(
+        AppDbContext db,
+        UserManager<ApplicationUser> userManager,
+        Guid tenantId,
+        Microsoft.Extensions.Logging.ILogger logger,
+        CancellationToken ct)
+    {
+        string[] preferredNames = ["BARBERTON MINES", "Barberton Mines", "Kruger Park Lodge", "KRUGER PARK LODGE"];
+        Customer? customer = null;
+        foreach (var name in preferredNames)
+        {
+            customer = await db.Set<Customer>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Name == name, ct);
+            if (customer != null)
+                break;
+        }
+
+        if (customer == null)
+        {
+            logger.LogInformation("MET portal demo user skipped — Barberton Mines / Kruger Park Lodge not in this tenant.");
+            return;
+        }
+
+        const string email = "portal@met.demo";
+        var portalUser = await userManager.FindByEmailAsync(email);
+        if (portalUser == null)
+        {
+            portalUser = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                EmailConfirmed = true,
+                TenantId = tenantId,
+                CustomerId = customer.Id
+            };
+            if (!(await userManager.CreateAsync(portalUser, "Demo123!")).Succeeded)
+            {
+                logger.LogWarning("MET portal demo user {Email} could not be created.", email);
+                return;
+            }
+        }
+        else if (portalUser.CustomerId != customer.Id || portalUser.LockoutEnd != null)
+        {
+            portalUser.CustomerId = customer.Id;
+            portalUser.LockoutEnd = null;
+            await userManager.UpdateAsync(portalUser);
+        }
+
+        var claims = await userManager.GetClaimsAsync(portalUser);
+        async Task EnsureClaim(string type, string value)
+        {
+            if (!claims.Any(c => c.Type == type && c.Value == value))
+            {
+                var claim = new System.Security.Claims.Claim(type, value);
+                await userManager.AddClaimAsync(portalUser, claim);
+                claims.Add(claim);
+            }
+        }
+
+        await EnsureClaim("Permission", Permissions.PortalAccess);
+        await EnsureClaim("TenantId", tenantId.ToString());
+        await EnsureClaim("CustomerId", customer.Id.ToString());
+        logger.LogInformation("MET portal demo user {Email} linked to {Customer}", email, customer.Name);
     }
 
     private static async Task PurgeStaleBillingWebhookEventsAsync(
@@ -2258,33 +2735,44 @@ public class DatabaseSeeder : IHostedService
     private static async Task SyncUserPermissionClaimsFromRoleAsync(
         UserManager<ApplicationUser> userManager,
         RoleManager<ApplicationRole> roleManager,
+        ITenantProvider tenantProvider,
         ApplicationUser user,
         string roleName,
         CancellationToken ct)
     {
-        var role = await roleManager.FindByNameAsync(roleName);
-        if (role == null) return;
-
-        var desired = (await roleManager.GetClaimsAsync(role))
-            .Where(c => c.Type == "Permission")
-            .Select(c => c.Value)
-            .ToHashSet(StringComparer.Ordinal);
-        // Prefer template when role claims lag behind RoleTemplates (existing DBs).
-        foreach (var p in RoleTemplates.GetPermissions(roleName))
-            desired.Add(p);
-
-        var userClaims = await userManager.GetClaimsAsync(user);
-        foreach (var claim in userClaims.Where(c => c.Type == "Permission").ToList())
+        // Global roles live at TenantId empty. A tenant-scoped filter hides them and
+        // leaves demo admins with only the two claims written at user creation.
+        var previousTenant = tenantProvider.GetCurrentTenantId();
+        tenantProvider.SetTenantId(Guid.Empty);
+        try
         {
-            if (!desired.Contains(claim.Value))
-                await userManager.RemoveClaimAsync(user, claim);
+            var role = await roleManager.FindByNameAsync(roleName);
+            if (role == null) return;
+
+            var desired = (await roleManager.GetClaimsAsync(role))
+                .Where(c => c.Type == "Permission")
+                .Select(c => c.Value)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var p in RoleTemplates.GetPermissions(roleName))
+                desired.Add(p);
+
+            var userClaims = await userManager.GetClaimsAsync(user);
+            foreach (var claim in userClaims.Where(c => c.Type == "Permission").ToList())
+            {
+                if (!desired.Contains(claim.Value))
+                    await userManager.RemoveClaimAsync(user, claim);
+            }
+
+            userClaims = await userManager.GetClaimsAsync(user);
+            foreach (var perm in desired)
+            {
+                if (!userClaims.Any(c => c.Type == "Permission" && c.Value == perm))
+                    await userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Permission", perm));
+            }
         }
-
-        userClaims = await userManager.GetClaimsAsync(user);
-        foreach (var perm in desired)
+        finally
         {
-            if (!userClaims.Any(c => c.Type == "Permission" && c.Value == perm))
-                await userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Permission", perm));
+            tenantProvider.SetTenantId(previousTenant);
         }
     }
 

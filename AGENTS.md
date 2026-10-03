@@ -91,7 +91,7 @@ dotnet run --project src/METERP.Web
 
 | Item | Value |
 |------|-------|
-| Demo login | `admin@acme.demo` / `Demo123!` |
+| Demo login | MET office: `admin@met.demo` / `Demo123!` (`METERP_SEED_E2E=false`). Automated tests: `admin@acme.demo` / `Demo123!`. Portal: `portal@met.demo` / `Demo123!`. |
 | AI features | Require `Ai:ApiKey` in config/secrets |
 | DB reset | Set `METERP_SEED_RESET=true` in web service env |
 

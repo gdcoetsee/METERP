@@ -24,8 +24,12 @@
     </section>
     <section class="auth-card">
         <h2>Sign in</h2>
-        <p class="text-muted">Use the email on your quotes. Demo: <strong>procurement@jhgh.co.za</strong> / <strong>Demo123!</strong></p>
-        @if (loginFailed)
+        <p class="text-muted" data-testid="portal-login-demo-hint">Use the email on your quotes. Demo: <strong>portal@met.demo</strong> / <strong>Demo123!</strong></p>
+        @if (!string.IsNullOrEmpty(deniedMessage))
+        {
+            <div class="alert alert-warning" role="status" data-testid="portal-unlinked">@deniedMessage</div>
+        }
+        else if (loginFailed)
         {
             <div class="alert alert-danger">We could not sign you in. Check the email and password, or ask your contractor to enable portal access.</div>
         }
@@ -42,10 +46,12 @@
     private string email = "";
     private string password = "";
     private bool loginFailed;
+    private string? deniedMessage;
 
     private async Task HandleLogin()
     {
         loginFailed = false;
+        deniedMessage = null;
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
             loginFailed = true;
@@ -62,9 +68,16 @@
             user = await UserManager.FindByEmailAsync(email);
         }
 
-        if (user == null || user.CustomerId == null || !await UserManager.CheckPasswordAsync(user, password))
+        if (user == null || !await UserManager.CheckPasswordAsync(user, password))
         {
             loginFailed = true;
+            password = "";
+            return;
+        }
+
+        if (user.LockoutEnd is { } lockedUntil && lockedUntil > DateTimeOffset.UtcNow)
+        {
+            deniedMessage = CustomerPortalMessages.Unavailable;
             password = "";
             return;
         }

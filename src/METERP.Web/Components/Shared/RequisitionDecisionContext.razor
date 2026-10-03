@@ -1,0 +1,91 @@
+@using METERP.Application.Models
+@using METERP.Domain
+
+<div data-testid="requisition-decision-context">
+@if (Job == null)
+{
+    <div class="alert alert-warning">This requisition is not linked to a job.</div>
+}
+else
+{
+    <div class="meterp-section" data-testid="requisition-job-context">
+        <div class="meterp-section-title">Job this stock is for</div>
+        <p class="mb-1">
+            <a href="@($"/jobs/{Job.Id}")" class="fw-semibold text-decoration-none">@Job.JobNumber</a>
+            @Job.Title
+            @if (Job.IsEmergency)
+            {
+                <span class="badge bg-danger ms-1" data-testid="requisition-emergency-badge">Emergency</span>
+            }
+        </p>
+        <p class="mb-1">Customer: @(Job.Customer?.Name ?? "—") · Status: @Job.Status</p>
+        @if (!string.IsNullOrWhiteSpace(Job.Description))
+        {
+            <p class="mb-1">@Job.Description</p>
+        }
+        <p class="mb-0">Job quoted total: <strong>R @Job.QuotedTotal.ToString("N2")</strong></p>
+    </div>
+
+    <div class="meterp-section" data-testid="requisition-quote-context">
+        <div class="meterp-section-title">What was quoted</div>
+        @if (Job.IsEmergency && Job.Quote == null)
+        {
+            <div class="alert alert-info mb-0" data-testid="requisition-emergency-note">
+                Emergency callout. The crew needs this stock to do the job before a quote exists. Approve it on the work itself — the quote is raised afterwards.
+            </div>
+        }
+        else if (Job.Quote == null)
+        {
+            <div class="alert alert-warning mb-0" data-testid="requisition-no-quote-note">
+                No quote is linked to this job, so this stock was not sold to the customer on a quote.
+            </div>
+        }
+        else
+        {
+            <p class="mb-2">
+                <button type="button" class="btn btn-link p-0 align-baseline fw-semibold" data-testid="requisition-quote-link" @onclick="OpenQuoteAsync">@Job.Quote.QuoteNumber</button>
+                · @Job.Quote.Status
+                · <strong>R @Job.Quote.Total.ToString("N2")</strong>
+                @if (Job.IsEmergency)
+                {
+                    <span class="badge bg-danger ms-1">Emergency</span>
+                }
+            </p>
+            @if (Job.IsEmergency)
+            {
+                <p class="small text-muted">This started as a callout. A quote is linked now — compare the request with these lines before approving more stock.</p>
+            }
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" data-testid="requisition-quote-lines">
+                    <thead>
+                        <tr>
+                            <th>Quoted line</th>
+                            <th>Type</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in RequisitionQuoteMatcher.ActiveQuoteLines(Job))
+                        {
+                            <tr>
+                                <td>@line.Description</td>
+                                <td>@line.LineType</td>
+                                <td class="text-end">@line.Quantity.ToString("N2")</td>
+                                <td class="text-end">R @line.LineTotal.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Parameter] public Job? Job { get; set; }
+    [Parameter] public EventCallback OnOpenQuote { get; set; }
+
+    private Task OpenQuoteAsync() => OnOpenQuote.InvokeAsync();
+}

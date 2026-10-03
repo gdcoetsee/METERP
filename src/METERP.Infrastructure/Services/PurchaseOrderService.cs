@@ -745,14 +745,54 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default)
     {
-        return await _dbContext.Set<GoodsReceiptVoucher>()
-            .AsNoTracking()
-            .Include(g => g.PurchaseOrder).ThenInclude(p => p!.Supplier)
-            .Include(g => g.Lines)
+        if (take < 1)
+            take = 1;
+
+        return await GrvListQuery()
             .OrderByDescending(g => g.ReceivedAt)
             .Take(take)
             .ToListAsync(ct);
     }
+
+    public Task<int> CountGrvsAsync(CancellationToken ct = default) =>
+        _dbContext.Set<GoodsReceiptVoucher>().AsNoTracking().CountAsync(ct);
+
+    public async Task<GrvPage> GetGrvsPageAsync(int page = 1, int pageSize = 25, CancellationToken ct = default)
+    {
+        if (page < 1)
+            page = 1;
+        if (pageSize <= 0)
+            pageSize = 25;
+        pageSize = Math.Min(pageSize, 50);
+
+        var total = await CountGrvsAsync(ct);
+        var pageCount = total <= 0 ? 1 : (int)Math.Ceiling(total / (double)pageSize);
+        if (page > pageCount)
+            page = pageCount;
+
+        var items = total == 0
+            ? new List<GoodsReceiptVoucher>()
+            : await GrvListQuery()
+                .OrderByDescending(g => g.ReceivedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(ct);
+
+        return new GrvPage
+        {
+            Items = items,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = total
+        };
+    }
+
+    private IQueryable<GoodsReceiptVoucher> GrvListQuery() =>
+        _dbContext.Set<GoodsReceiptVoucher>()
+            .AsNoTracking()
+            .Include(g => g.PurchaseOrder).ThenInclude(p => p!.Supplier)
+            .Include(g => g.Lines).ThenInclude(l => l.InventoryItem)
+            .Include(g => g.Lines).ThenInclude(l => l.PurchaseOrderLine);
 
     public async Task<IReadOnlyList<GoodsReceiptVoucher>> GetGrvsForPurchaseOrderAsync(Guid poId, CancellationToken ct = default)
     {

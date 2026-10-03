@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -23,12 +23,14 @@ public class CustomerPortalService : ICustomerPortalService
 
     public async Task<CustomerPortalDashboard> GetDashboardAsync(Guid customerId, CancellationToken ct = default)
     {
+        // Never 500 for orphan / unlinked portal users — friendly empty dashboard (HTTP 200).
         if (customerId == Guid.Empty)
-            throw new InvalidOperationException("Customer portal access requires a linked customer.");
+            return UnlinkedDashboard();
 
         var customer = await _db.Set<Customer>().AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == customerId, ct)
-            ?? throw new InvalidOperationException("Customer not found for this portal login.");
+            .FirstOrDefaultAsync(c => c.Id == customerId && !c.IsDeleted, ct);
+        if (customer == null)
+            return UnlinkedDashboard();
 
         var quotes = await _db.Set<Quote>()
             .AsNoTracking()
@@ -48,11 +50,26 @@ public class CustomerPortalService : ICustomerPortalService
             .ToListAsync(ct);
 
         var openQuotes = quotes.Count(q => q.Status == QuoteStatus.Sent);
-        var openInvoices = invoices.Count(i => i.BalanceDue > 0);
-        var balance = invoices.Sum(i => i.BalanceDue);
+        var openInvoices = invoices.Count(i =>
+            i.DocumentType != InvoiceDocumentType.CreditNote && i.BalanceDue > 0);
+        // Credit notes store a positive total and reduce the balance. Other documents are unchanged.
+        var balance = invoices.Sum(i =>
+            i.DocumentType == InvoiceDocumentType.CreditNote
+                ? InvoiceCreditConvention.ArSignedOpenBalance(i.DocumentType, i.Status, i.Total, i.AmountPaid)
+                : i.BalanceDue);
 
         return new CustomerPortalDashboard(customer.Name, openQuotes, openInvoices, balance, quotes, invoices);
     }
+
+    private static CustomerPortalDashboard UnlinkedDashboard() =>
+        new(
+            CustomerPortalMessages.Unlinked,
+            0,
+            0,
+            0m,
+            Array.Empty<Quote>(),
+            Array.Empty<Invoice>(),
+            IsUnlinked: true);
 
     public async Task AcceptQuoteAsync(Guid customerId, Guid quoteId, CancellationToken ct = default)
     {

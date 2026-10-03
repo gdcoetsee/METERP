@@ -4558,8 +4558,25 @@ public class E2EFlowTests
         Assert.Contains("Field Portal", hub);
         Assert.Contains("My Jobs", hub);
 
+        await page.WaitForTestIdAsync("field-home-jobs-count", 30000);
+        var countText = (await page.Locator("[data-testid='field-home-jobs-count']").InnerTextAsync()).Trim();
+        Assert.True(int.TryParse(countText, out var assignedCount) && assignedCount <= 8,
+            $"Field home should show assigned jobs only, saw '{countText}'.");
+
         await page.ClickByTestIdAsync("field-card-jobs");
         await page.WaitForTestIdAsync("field-jobs-ready", 30000);
+
+        var rows = await page.Locator("[data-testid='field-job-row']").CountAsync();
+        if (rows == 0)
+        {
+            var empty = await page.Locator("[data-testid='field-jobs-empty']").InnerTextAsync();
+            Assert.Contains("No jobs assigned to you", empty);
+        }
+        else
+        {
+            Assert.InRange(rows, 1, 8);
+            Assert.Equal(assignedCount, rows);
+        }
 
         await page.ClickByTestIdAsync("field-nav-stock");
         await page.WaitForTestIdAsync("field-stock-ready", 30000);

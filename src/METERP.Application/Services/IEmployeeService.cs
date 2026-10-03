@@ -12,7 +12,8 @@ public interface IEmployeeService
         int page = 1,
         int pageSize = 20,
         bool includeInactive = false,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool unassignedDivisionOnly = false);
 
     Task<Guid> CreateAsync(Employee emp, CancellationToken ct = default);
 

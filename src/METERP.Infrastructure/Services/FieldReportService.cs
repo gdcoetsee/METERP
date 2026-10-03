@@ -31,6 +31,7 @@ public sealed class FieldReportService : IFieldReportService
             .Include(r => r.Job).ThenInclude(j => j!.Customer)
             .Where(r => r.Status == FieldReportStatus.PendingApproval)
             .OrderByDescending(r => r.SubmittedAt)
+            .Take(200)
             .ToListAsync(ct);
     }
 

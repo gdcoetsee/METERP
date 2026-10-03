@@ -22,7 +22,7 @@ public class Invoice : BaseEntity
 
     public InvoiceDocumentType DocumentType { get; set; } = InvoiceDocumentType.Standard;
 
-    /// <summary>Source invoice when this document is a credit note.</summary>
+    /// <summary>Source invoice when this document is a credit note. Null means an unlinked credit note.</summary>
     public Guid? CreditNoteForInvoiceId { get; set; }
     public Invoice? CreditNoteForInvoice { get; set; }
 
@@ -41,6 +41,11 @@ public class Invoice : BaseEntity
 
     public decimal Tax { get; set; }
 
+    /// <summary>
+    /// Document total, stored positive for every type including credit notes.
+    /// See <see cref="InvoiceCreditConvention"/>: a credit note is identified by
+    /// <see cref="InvoiceDocumentType.CreditNote"/>, shown in parentheses, and subtracted in AR.
+    /// </summary>
     public decimal Total { get; set; }
 
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
@@ -54,6 +59,7 @@ public class Invoice : BaseEntity
     /// <summary>
     /// Recalculates Subtotal, Tax and Total from non-deleted lines.
     /// This is the source of truth for invoice pricing (moved to Domain for testability and correctness).
+    /// Credit notes keep a positive total — see <see cref="InvoiceCreditConvention"/>.
     /// </summary>
     public void RecalculateTotals()
     {
@@ -61,5 +67,11 @@ public class Invoice : BaseEntity
         Tax = Math.Round(Subtotal * TaxRate, 2);
         Total = Subtotal + Tax;
         RetentionAmount = InvoiceBillingCalculator.CalculateRetentionAmount(Subtotal, RetentionPercent);
+        if (DocumentType == InvoiceDocumentType.CreditNote && Total < 0m)
+        {
+            Subtotal = Math.Abs(Subtotal);
+            Tax = Math.Abs(Tax);
+            Total = Math.Abs(Total);
+        }
     }
 }

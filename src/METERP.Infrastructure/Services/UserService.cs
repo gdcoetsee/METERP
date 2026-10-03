@@ -35,23 +35,63 @@ public class UserService : IUserService
         _cache = cache;
     }
 
-    public async Task<IReadOnlyList<UserSummary>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IReadOnlyList<UserSummary>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        bool includeInactive = false,
+        CancellationToken ct = default)
     {
-        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        if (_cache != null && string.IsNullOrWhiteSpace(search) && !includeInactive)
         {
             return await _cache.GetOrCreateAsync(
                 TenantCacheCategories.Users,
                 $"p{page}:s{pageSize}",
-                () => LoadUsersAsync(search, page, pageSize, ct),
+                () => LoadUsersAsync(search, page, pageSize, false, ct),
                 ct: ct);
         }
 
-        return await LoadUsersAsync(search, page, pageSize, ct);
+        return await LoadUsersAsync(search, page, pageSize, includeInactive, ct);
     }
 
-    private async Task<IReadOnlyList<UserSummary>> LoadUsersAsync(string? search, int page, int pageSize, CancellationToken ct)
+    private async Task<IReadOnlyList<UserSummary>> LoadUsersAsync(
+        string? search,
+        int page,
+        int pageSize,
+        bool includeInactive,
+        CancellationToken ct)
     {
-        var query = _dbContext.Users.AsQueryable(); // Respects the global tenant query filter
+        var now = DateTimeOffset.UtcNow;
+        var currentTenant = _tenantProvider.GetCurrentTenantId();
+        // Identity's tenant filter hides these rows. The admin list opts in only when requested.
+        var deletedTenantIds = await _dbContext.Set<Tenant>().IgnoreQueryFilters()
+            .Where(t => t.IsDeleted)
+            .Select(t => t.Id)
+            .ToListAsync(ct);
+
+        var query = _dbContext.Users.IgnoreQueryFilters().AsQueryable();
+
+        if (currentTenant == Guid.Empty)
+        {
+            if (!includeInactive)
+            {
+                query = query.Where(u =>
+                    !deletedTenantIds.Contains(u.TenantId)
+                    && (u.LockoutEnd == null || u.LockoutEnd <= now));
+            }
+        }
+        else if (includeInactive)
+        {
+            query = query.Where(u =>
+                u.TenantId == currentTenant || deletedTenantIds.Contains(u.TenantId));
+        }
+        else
+        {
+            query = query.Where(u =>
+                u.TenantId == currentTenant
+                && !deletedTenantIds.Contains(u.TenantId)
+                && (u.LockoutEnd == null || u.LockoutEnd <= now));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -67,7 +107,11 @@ public class UserService : IUserService
             .Take(pageSize)
             .ToListAsync(ct);
 
-        return list.Select(u => new UserSummary(u.Id, u.Email ?? "", u.UserName)).ToList();
+        return list.Select(u => new UserSummary(u.Id, u.Email ?? "", u.UserName)
+        {
+            IsActive = (u.LockoutEnd == null || u.LockoutEnd <= now)
+                && !deletedTenantIds.Contains(u.TenantId)
+        }).ToList();
     }
 
     public async Task<(bool Succeeded, string[] Errors)> CreateUserAsync(

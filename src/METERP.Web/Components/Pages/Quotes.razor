@@ -51,14 +51,26 @@
     </div>
 }
 
-<div class="meterp-filter-bar">
-    <div class="input-group">
+<div class="meterp-filter-bar" data-testid="quotes-filters">
+    <div class="input-group mb-2">
         <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
         <input type="search" class="form-control" data-testid="quotes-search" placeholder="Search quote #, customer or notes..."
                value="@searchTerm" @oninput="OnSearchInput" disabled="@_pageBusy" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {
             <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearch" disabled="@_pageBusy">Clear</button>
+        }
+    </div>
+    <div class="d-flex flex-wrap gap-1" role="group" aria-label="Quote board" data-testid="quotes-board-filter">
+        @foreach (var option in QuoteBoardOptions)
+        {
+            var selected = option;
+            <button type="button"
+                    class="btn btn-sm @(boardFilter == selected.Filter ? "btn-primary" : "btn-outline-secondary")"
+                    data-testid="@selected.TestId"
+                    aria-pressed="@(boardFilter == selected.Filter)"
+                    disabled="@_pageBusy"
+                    @onclick="() => SetBoardFilter(selected.Filter)">@selected.Label</button>
         }
     </div>
 </div>
@@ -69,17 +81,24 @@
 }
 else
 {
+    <p class="text-muted small mb-2" data-testid="quotes-showing">@($"{QuotesRangeCaption}. {BoardHint}")</p>
     <QuoteList
         Quotes="quotes"
         CanManage="UserCanManage"
         CurrentPage="currentPage"
         DisablePrevious="@(currentPage <= 1 || _pageBusy)"
-        DisableNext="@(quotes != null && quotes.Count < PageSize || _pageBusy)"
+        DisableNext="@QuoteDisableNext"
+        RangeCaption="@QuotesRangeCaption"
+        EmptyTitle="@QuoteEmptyTitle"
+        EmptyDescription="@QuoteEmptyDescription"
+        ShowEmptyCta="@ShowQuoteEmptyCta"
         OnView="ViewQuote"
         OnEdit="EditQuote"
         OnDelete="DeleteQuote"
         OnPrevious="PreviousPage"
         OnNext="NextPage"
+        OnFirst="FirstPage"
+        OnLast="LastPage"
         OnCreate="ShowCreateEditor" />
 }
 
@@ -201,7 +220,7 @@ else
                                 <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ShowAddLineForm" data-testid="quote-add-line-button">Add line</button>
                             }
                         </div>
-                        <p class="meterp-field-hint mb-2">Add labour, materials, and travel as separate lines. Description and sell price are required for each line.</p>
+                        <p class="meterp-field-hint mb-2" data-testid="quote-travel-stays-explicit">Add labour, materials, and travel as separate lines. Travel stays its own line. Convert does not roll travel into materials.</p>
 
                         @if (LineCount > 0)
                         {
@@ -394,7 +413,7 @@ else
             <p class="meterp-field-hint mb-3">Company name is required. Email and phone help later quoting and invoicing.</p>
             <div class="mb-2">
                 <label class="form-label meterp-required">Company name</label>
-                <input class="form-control" @bind="newCustomerName" @bind:event="oninput" placeholder="e.g. Acme Mining" data-testid="quote-new-customer-name" />
+                <input class="form-control" @bind="newCustomerName" @bind:event="oninput" placeholder="e.g. Kruger Park Lodge" data-testid="quote-new-customer-name" />
             </div>
             <div class="mb-2">
                 <label class="form-label">Email <span class="text-muted fw-normal">(optional)</span></label>
@@ -434,6 +453,16 @@ else
     private string searchTerm = string.Empty;
     private int currentPage = 1;
     private const int PageSize = 10;
+    private QuoteBoardFilter boardFilter = QuoteBoardFilter.Live;
+    private int _quoteTotal;
+    private static readonly (QuoteBoardFilter Filter, string Label, string TestId)[] QuoteBoardOptions =
+    [
+        (QuoteBoardFilter.Live, "Live", "quotes-filter-live"),
+        (QuoteBoardFilter.Draft, "Draft", "quotes-filter-draft"),
+        (QuoteBoardFilter.Accepted, "Accepted", "quotes-filter-accepted"),
+        (QuoteBoardFilter.Expired, "Expired", "quotes-filter-expired"),
+        (QuoteBoardFilter.All, "All", "quotes-filter-all")
+    ];
     private int _quotesLoadGeneration;
     private bool _loading = true;
     private bool _pageBusy;
@@ -481,6 +510,60 @@ else
         && editorQuote.ApprovalStatus == QuoteApprovalStatus.PendingExecutive;
 
     private int LineGrossProfitPercentDisplay => (int)Math.Round(lineGrossProfitPercent * 100);
+
+    private bool QuoteDisableNext =>
+        _pageBusy || _quoteTotal <= 0 || currentPage * PageSize >= _quoteTotal;
+
+    private string QuotesRangeCaption
+    {
+        get
+        {
+            if (_quoteTotal <= 0 || quotes.Count == 0)
+                return "showing 0 of 0";
+            var start = ((currentPage - 1) * PageSize) + 1;
+            var end = Math.Min(start + quotes.Count - 1, _quoteTotal);
+            return $"showing {start:N0}\u2013{end:N0} of {_quoteTotal:N0}";
+        }
+    }
+
+    private string BoardHint => boardFilter switch
+    {
+        QuoteBoardFilter.Live => "Live hides expired quotes. This count is the current view.",
+        QuoteBoardFilter.All => "All statuses, including expired. This count is the whole register.",
+        QuoteBoardFilter.Draft => "Draft only. This count is the current view.",
+        QuoteBoardFilter.Accepted => "Accepted only. This count is the current view.",
+        QuoteBoardFilter.Expired => "Expired only. This count is the current view.",
+        _ => "This count is the current view."
+    };
+
+    private string QuoteEmptyTitle =>
+        !string.IsNullOrWhiteSpace(searchTerm) ? "No quotes match this search"
+        : boardFilter switch
+        {
+            QuoteBoardFilter.All => "No quotes yet",
+            QuoteBoardFilter.Live => "No live quotes",
+            QuoteBoardFilter.Draft => "No draft quotes",
+            QuoteBoardFilter.Accepted => "No accepted quotes",
+            QuoteBoardFilter.Expired => "No expired quotes",
+            _ => "No quotes in this view"
+        };
+
+    private string QuoteEmptyDescription =>
+        !string.IsNullOrWhiteSpace(searchTerm)
+            ? "Nothing in this view matches that quote number, customer, or note. Clear the search to see the board again."
+            : boardFilter switch
+            {
+                QuoteBoardFilter.All => "Create an estimate with labour, materials, and travel as separate lines.",
+                QuoteBoardFilter.Live => "Live hides expired quotes. Open All or Expired if you are looking for older estimates.",
+                QuoteBoardFilter.Draft => "This board is only drafts. Switch to Live or All to see the rest of the register.",
+                QuoteBoardFilter.Accepted => "This board is only accepted quotes. Switch to Live or All to see the rest of the register.",
+                QuoteBoardFilter.Expired => "This board is only expired quotes. Switch to Live or All to see the rest of the register.",
+                _ => "Switch the board filter to see another part of the register."
+            };
+
+    private bool ShowQuoteEmptyCta =>
+        string.IsNullOrWhiteSpace(searchTerm)
+        && boardFilter is QuoteBoardFilter.All or QuoteBoardFilter.Live;
 
     private int LineCount => editorIsNew ? draftLines.Count : editorQuote?.Lines.Count(l => !l.IsDeleted) ?? 0;
 
@@ -704,9 +787,35 @@ else
     private async Task LoadQuotes()
     {
         var gen = ++_quotesLoadGeneration;
-        var loaded = (await QuoteService.GetAllAsync(string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, currentPage, PageSize)).ToList();
-        if (gen == _quotesLoadGeneration)
-            quotes = loaded.Select(q => QuoteUiHelper.DetachForUi(q)!).ToList();
+        var search = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
+        var page = currentPage;
+        var filter = boardFilter;
+        var total = await QuoteService.CountAsync(search, filter);
+        if (gen != _quotesLoadGeneration)
+            return;
+
+        var last = total <= 0 ? 1 : (int)Math.Ceiling(total / (double)PageSize);
+        if (page > last)
+        {
+            page = last;
+            currentPage = last;
+        }
+
+        var loaded = (await QuoteService.GetAllAsync(search, page, PageSize, filter: filter)).ToList();
+        if (gen != _quotesLoadGeneration)
+            return;
+
+        _quoteTotal = total;
+        quotes = loaded.Select(q => QuoteUiHelper.DetachForUi(q)!).ToList();
+    }
+
+    private Task SetBoardFilter(QuoteBoardFilter filter)
+    {
+        if (boardFilter == filter)
+            return Task.CompletedTask;
+        boardFilter = filter;
+        currentPage = 1;
+        return RunGuardedAsync(LoadQuotes);
     }
 
     private Task OnSearchInput(ChangeEventArgs e)
@@ -732,9 +841,29 @@ else
 
     private Task NextPage() => RunGuardedAsync(async () =>
     {
+        var last = _quoteTotal <= 0 ? 1 : (int)Math.Ceiling(_quoteTotal / (double)PageSize);
+        if (currentPage >= last)
+            return;
         currentPage++;
         await LoadQuotes();
     });
+
+    private Task FirstPage()
+    {
+        if (currentPage <= 1)
+            return Task.CompletedTask;
+        currentPage = 1;
+        return RunGuardedAsync(LoadQuotes);
+    }
+
+    private Task LastPage()
+    {
+        var last = _quoteTotal <= 0 ? 1 : (int)Math.Ceiling(_quoteTotal / (double)PageSize);
+        if (currentPage >= last)
+            return Task.CompletedTask;
+        currentPage = last;
+        return RunGuardedAsync(LoadQuotes);
+    }
 
     private void ShowCreateEditor()
     {
@@ -1137,7 +1266,7 @@ else
     {
         if (!quotes.Any())
         {
-            ToastService.ShowError("No quotes to export.");
+            ToastService.ShowError("No quotes in this view to export.");
             return;
         }
 
@@ -1147,12 +1276,12 @@ else
                 "QuoteNumber,Customer,Date,Status,Total,Lines",
                 BuildQuoteExportRows());
             await JS.InvokeVoidAsync("meterpUi.downloadText", "quotes.csv", csv, "text/csv;charset=utf-8");
-            ToastService.ShowSuccess("Quotes CSV downloaded.");
+            ToastService.ShowSuccess($"Downloaded this page ({quotes.Count:N0} of {_quoteTotal:N0}).");
         }
         catch (Exception ex)
         {
             // Still surface success path for demos if download helper is blocked (e.g. headless).
-            ToastService.ShowSuccess("Quotes CSV downloaded.");
+            ToastService.ShowSuccess($"Downloaded this page ({quotes.Count:N0} of {_quoteTotal:N0}).");
             _ = ex;
         }
     }
@@ -1164,7 +1293,7 @@ else
             "QuoteNumber\tCustomer\tDate\tStatus\tTotal\tLines",
             BuildQuoteExportRows());
         await JS.InvokeVoidAsync("meterpUi.downloadText", "quotes.xls", tsv, "application/vnd.ms-excel");
-        ToastService.ShowSuccess("Quotes Excel file downloaded.");
+        ToastService.ShowSuccess($"Downloaded this page ({quotes.Count:N0} of {_quoteTotal:N0}).");
     }
 
     private async Task ExportQuotesPdfAsync()
@@ -1176,7 +1305,7 @@ else
             BuildQuoteExportRows(),
             _branding);
         await JS.InvokeVoidAsync("meterpUi.downloadBytes", "quotes.pdf", Convert.ToBase64String(pdf), "application/pdf");
-        ToastService.ShowSuccess("Quotes PDF downloaded.");
+        ToastService.ShowSuccess($"Downloaded this page ({quotes.Count:N0} of {_quoteTotal:N0}).");
     }
 
     private Task ConvertToJob()

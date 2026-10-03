@@ -73,13 +73,14 @@ All features built per suggestions. Professional UI, ready for contractors. Buil
    ```
    - App on http://localhost:8080 (or 8081)
    - Postgres data persists in volume.
-   - Login: admin@acme.demo / Demo123!
+   - MET office login: `admin@met.demo` / `Demo123!` when `METERP_SEED_E2E=false` or `Seed:Profile=MET` (see `docs/USER_GUIDE.md`). Customer portal: `portal@met.demo` / `Demo123!`.
+   - Automated tests and the default Acme seed keep `admin@acme.demo` / `Demo123!`.
    - By default safe seeding (no data loss on restart). Set `METERP_SEED_RESET=true` in the web service env if you need a full reset.
 
 2. **Local (requires local Postgres)**:
    - Set a valid connection string (or use user-secrets).
    - `dotnet run --project src/METERP.Web`
-   - First run will create DB and seed demo data (Acme tenant + full sample jobs/quotes with travel, AI disabled until key is set).
+   - First run migrates and seeds missing demo data. The default profile is the Acme sample (travel on quotes and jobs). The MET Electrical office profile is `METERP_SEED_E2E=false`. AI stays off until a key is set.
 
 See "How to Test" section above for manual flows. AI features require an `Ai:ApiKey`.
 

@@ -64,6 +64,7 @@ public static class InvoiceBillingCalculator
 
     /// <summary>
     /// Proforma, draft, cancelled, and credit notes do not count as money billed against a job.
+    /// Open credit notes still reduce customer AR — see <see cref="InvoiceCreditConvention"/>.
     /// </summary>
     public static bool CountsTowardJobBilled(InvoiceDocumentType type, InvoiceStatus status) =>
         type is not (InvoiceDocumentType.Proforma or InvoiceDocumentType.CreditNote)
@@ -71,6 +72,65 @@ public static class InvoiceBillingCalculator
 
     public static decimal CalculateUnbilledResidual(decimal quotedTotal, decimal billedToDate) =>
         Math.Max(0m, Math.Round(quotedTotal - billedToDate, 2));
+
+    /// <summary>QuotedTotal * DepositPercent / 100, rounded to cents. Zero when either input is not positive.</summary>
+    public static decimal CalculateDepositThreshold(decimal quotedTotal, decimal depositPercent)
+    {
+        if (quotedTotal <= 0m || depositPercent <= 0m)
+            return 0m;
+
+        return Math.Round(quotedTotal * depositPercent / 100m, 2);
+    }
+
+    public static bool BilledCoversDeposit(decimal quotedTotal, decimal depositPercent, decimal billedToDate)
+    {
+        var due = CalculateDepositThreshold(quotedTotal, depositPercent);
+        return due > 0m && billedToDate >= due;
+    }
+
+    /// <summary>
+    /// Catch the job flag up to linked invoices. A counting deposit document, or billed cash
+    /// that already meets the deposit threshold, is enough — no separate money column.
+    /// </summary>
+    public static bool ShouldSoftSyncDepositReceived(
+        bool depositReceived,
+        decimal quotedTotal,
+        decimal depositPercent,
+        decimal billedToDate,
+        bool hasCountingDepositInvoice)
+    {
+        if (depositReceived || depositPercent <= 0m)
+            return false;
+
+        if (hasCountingDepositInvoice)
+            return true;
+
+        return BilledCoversDeposit(quotedTotal, depositPercent, billedToDate);
+    }
+
+    /// <summary>
+    /// Job Command Center "Raise deposit" banner.
+    /// Live ops jobs only (Helm). Also hidden when billed already covers the deposit,
+    /// or when a completed/closed job has any billed amount.
+    /// </summary>
+    public static bool ShowDepositCollectionBanner(
+        JobStatus status,
+        decimal depositPercent,
+        bool depositReceived,
+        decimal quotedTotal,
+        decimal billedToDate)
+    {
+        if (depositReceived || depositPercent <= 0m)
+            return false;
+
+        if (status is JobStatus.Completed or JobStatus.Closed && billedToDate > 0m)
+            return false;
+
+        if (BilledCoversDeposit(quotedTotal, depositPercent, billedToDate))
+            return false;
+
+        return status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold;
+    }
 
     /// <summary>
     /// Leftover quote is material when it is more than 10% of quoted and at least 100.

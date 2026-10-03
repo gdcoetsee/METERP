@@ -3,15 +3,7 @@
 @using METERP.Application.Services
 @using METERP.Application.Interfaces
 @using METERP.Common
-@inject IQuoteService QuoteService
-@inject IJobService JobService
-@inject IInvoiceService InvoiceService
-@inject IInventoryService InventoryService
-@inject IAssetService AssetService
-@inject ISupplierService SupplierService
-@inject IPurchaseOrderService PurchaseOrderService
-@inject ISalesOrderService SalesOrderService
-@inject IEmployeeService EmployeeService
+@inject IOperationalReportService OperationalReports
 @inject IWorkforceReportService WorkforceReportService
 @inject IJobReportService JobReportService
 @inject ICashflowReportService CashflowReportService
@@ -307,42 +299,23 @@ else
                 _branding = TenantBranding.From(tenant);
             }
 
-            var quotes = await QuoteService.GetAllAsync();
-            _totalQuotes = quotes.Count;
-            _acceptedQuotes = quotes.Count(q => q.Status == METERP.Domain.QuoteStatus.Accepted);
-
-            var jobs = await JobService.GetAllAsync();
-            var active = jobs.Where(j => j.Status == METERP.Domain.JobStatus.InProgress || j.Status == METERP.Domain.JobStatus.Scheduled).ToList();
-            _activeJobs = active.Count;
-            _activeQuoted = active.Sum(j => j.QuotedTotal);
-
-            var invoices = await InvoiceService.GetAllAsync();
-            var outstanding = invoices.Where(i => i.Status != METERP.Domain.InvoiceStatus.Paid && i.Status != METERP.Domain.InvoiceStatus.Cancelled).ToList();
-            _outstandingInvoices = outstanding.Count;
-            _outstandingValue = outstanding.Sum(i => i.Total);
-
-            var items = await InventoryService.GetAllItemsAsync();
-            _totalItems = items.Count;
-            _lowStock = items.Count(i => i.QuantityOnHand <= i.ReorderLevel);
-
-            var assets = await AssetService.GetAllAsync();
-            _totalAssets = assets.Count;
-            _operationalAssets = assets.Count(a => a.Status == METERP.Domain.AssetStatus.Operational);
-
-            var suppliers = await SupplierService.GetAllAsync();
-            _totalSuppliers = suppliers.Count;
-
-            var pos = await PurchaseOrderService.GetAllAsync();
-            var open = pos.Where(p => p.Status != METERP.Domain.PurchaseOrderStatus.Received && p.Status != METERP.Domain.PurchaseOrderStatus.Cancelled).ToList();
-            _openPOs = open.Count;
-            _openPOValue = open.Sum(p => p.Total);
-
-            var salesOrders = await SalesOrderService.GetAllAsync();
-            _totalSOs = salesOrders.Count;
-            _confirmedSOs = salesOrders.Count(so => so.Status == METERP.Domain.SalesOrderStatus.Confirmed || so.Status == METERP.Domain.SalesOrderStatus.InProgress);
-
-            var employees = await EmployeeService.GetAllAsync(null, 1, 1000);
-            _totalEmployees = employees.Count;
+            var snapshot = await OperationalReports.GetLiveSnapshotAsync();
+            _totalQuotes = snapshot.TotalQuotes;
+            _acceptedQuotes = snapshot.AcceptedQuotes;
+            _activeJobs = snapshot.ActiveJobs;
+            _activeQuoted = snapshot.ActiveJobsQuoted;
+            _outstandingInvoices = snapshot.OutstandingInvoices;
+            _outstandingValue = snapshot.OutstandingInvoiceValue;
+            _totalItems = snapshot.TotalItems;
+            _lowStock = snapshot.LowStockItems;
+            _totalAssets = snapshot.TotalAssets;
+            _operationalAssets = snapshot.OperationalAssets;
+            _totalSuppliers = snapshot.TotalSuppliers;
+            _openPOs = snapshot.OpenPurchaseOrders;
+            _openPOValue = snapshot.OpenPurchaseOrderValue;
+            _totalSOs = snapshot.TotalSalesOrders;
+            _confirmedSOs = snapshot.ConfirmedSalesOrders;
+            _totalEmployees = snapshot.ActiveEmployees;
 
             _technicianUtilization = (await WorkforceReportService.GetTechnicianUtilizationAsync()).ToList();
             _jobProfitability = await JobReportService.GetJobProfitabilitySummaryAsync();
@@ -430,7 +403,7 @@ else
         var csv = await FinanceService.ExportGlCsvAsync();
         if (csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length <= 1)
         {
-            Toast.ShowInfo("No journal entries to export yet. Post journals from Finance or run the demo seeder.");
+            Toast.ShowInfo("No journal entries to export yet. Post a balanced journal from Finance when you are ready.");
             return;
         }
 

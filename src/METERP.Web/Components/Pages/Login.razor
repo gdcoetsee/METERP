@@ -5,7 +5,9 @@
 @using Microsoft.EntityFrameworkCore
 @using System
 @using System.ComponentModel.DataAnnotations
+@using METERP.Application.Models
 @using METERP.Application.Services
+@using METERP.Domain
 @using METERP.Infrastructure.Identity
 @using METERP.Infrastructure.Persistence
 @inject SignInManager<ApplicationUser> SignInManager
@@ -24,12 +26,14 @@
 <div class="auth-shell">
     <section class="auth-hero">
         <p class="auth-kicker">Contractor ERP</p>
+        <p class="auth-brand" data-testid="login-brand">@_brandLabel</p>
         <h1>Quotes, jobs, travel, and invoices — without the paperwork pile.</h1>
         <p>Office, field, and customers each get a door. Grok Bot sits on top when you connect your xAI, Google, or OpenAI subscription.</p>
     </section>
     <section class="auth-card">
         <h2>Staff sign in</h2>
-        <p class="text-muted">Demo: <strong>admin@acme.demo</strong> / <strong>Demo123!</strong></p>
+        <p class="text-muted mb-1" data-testid="login-demo-hint">Demo: <strong>admin@met.demo</strong> / <strong>Demo123!</strong></p>
+        <p class="small text-muted" data-testid="login-demo-e2e">Automated tests keep <strong>admin@acme.demo</strong> / <strong>Demo123!</strong>.</p>
         @if (loginFailed)
         {
             <div class="alert alert-danger mb-3">Invalid email or password. Please try again.</div>
@@ -64,6 +68,7 @@
 @code {
     private LoginModel loginModel { get; set; } = new();
     private bool loginFailed;
+    private string _brandLabel = "MET Electrical";
     private bool HasGoogle => !string.IsNullOrWhiteSpace(Config["Authentication:Google:ClientId"]);
     private bool HasMicrosoft => !string.IsNullOrWhiteSpace(Config["Authentication:Microsoft:ClientId"]);
     private bool HasX => !string.IsNullOrWhiteSpace(Config["Authentication:X:ConsumerKey"]);
@@ -125,10 +130,26 @@
         public string Password { get; set; } = string.Empty;
     }
 
-    // Ensure the model is initialized even on initial SSR render before interactivity kicks in
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         loginModel ??= new LoginModel();
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var tenants = await db.Set<Tenant>().IgnoreQueryFilters().AsNoTracking()
+                .Where(t => !t.IsDeleted)
+                .ToListAsync();
+            var met = tenants.FirstOrDefault(TenantBranding.IsMetOfficeTenant);
+            var chosen = met ?? tenants.FirstOrDefault(t =>
+                string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
+            if (chosen != null)
+                _brandLabel = TenantBranding.OfficeLabel(chosen);
+        }
+        catch
+        {
+            // Sign-in still works if the brand lookup fails.
+        }
     }
 
 }

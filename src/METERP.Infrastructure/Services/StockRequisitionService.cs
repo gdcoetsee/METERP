@@ -37,8 +37,10 @@ public sealed class StockRequisitionService : IStockRequisitionService
     public async Task<StockRequisition?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         return await _dbContext.Set<StockRequisition>()
+            .AsNoTracking()
             .Include(r => r.Lines).ThenInclude(l => l.InventoryItem)
-            .Include(r => r.Job)
+            .Include(r => r.Job).ThenInclude(j => j!.Customer)
+            .Include(r => r.Job).ThenInclude(j => j!.Quote!).ThenInclude(q => q.Lines)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
     }
 
@@ -57,7 +59,8 @@ public sealed class StockRequisitionService : IStockRequisitionService
     {
         var query = _dbContext.Set<StockRequisition>()
             .AsNoTracking()
-            .Include(r => r.Job)
+            .Include(r => r.Job).ThenInclude(j => j!.Customer)
+            .Include(r => r.Job).ThenInclude(j => j!.Quote)
             .Include(r => r.Lines).ThenInclude(l => l.InventoryItem)
             .AsQueryable();
 
@@ -81,11 +84,13 @@ public sealed class StockRequisitionService : IStockRequisitionService
     {
         return await _dbContext.Set<StockRequisition>()
             .AsNoTracking()
-            .Include(r => r.Job)
+            .Include(r => r.Job).ThenInclude(j => j!.Customer)
+            .Include(r => r.Job).ThenInclude(j => j!.Quote)
             .Include(r => r.Lines).ThenInclude(l => l.InventoryItem)
             .Where(r => r.Status == RequisitionStatus.PendingManager
                 || r.Status == RequisitionStatus.PendingExecutive)
             .OrderBy(r => r.CreatedDate)
+            .Take(200)
             .ToListAsync(ct);
     }
 

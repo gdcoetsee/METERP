@@ -15,26 +15,32 @@ public class TenantAiSettingsService : ITenantAiSettingsService
     private readonly ITenantProvider _tenantProvider;
     private readonly IDataProtector _protector;
     private readonly ILogger<TenantAiSettingsService> _logger;
+    private readonly IAiConfigurationResolver? _configResolver;
 
     public TenantAiSettingsService(
         ITenantService tenantService,
         ITenantProvider tenantProvider,
         IDataProtectionProvider dataProtectionProvider,
-        ILogger<TenantAiSettingsService> logger)
+        ILogger<TenantAiSettingsService> logger,
+        IAiConfigurationResolver? configResolver = null)
     {
         _tenantService = tenantService;
         _tenantProvider = tenantProvider;
         _protector = dataProtectionProvider.CreateProtector("METERP.TenantAiSettings");
         _logger = logger;
+        _configResolver = configResolver;
     }
 
     public async Task<TenantAiSettingsDto> GetCurrentTenantSettingsAsync(CancellationToken ct = default)
     {
         var tenant = await RequireTenantAsync(ct);
-        var preset = AiProviderProfiles.GetPreset(tenant.AiProvider ?? AiProviderProfiles.OpenAi);
+        var providerName = string.IsNullOrWhiteSpace(tenant.AiProvider)
+            ? AiProviderProfiles.Grok
+            : tenant.AiProvider;
+        var preset = AiProviderProfiles.GetPreset(providerName);
 
         return new TenantAiSettingsDto(
-            Provider: string.IsNullOrWhiteSpace(tenant.AiProvider) ? AiProviderProfiles.OpenAi : tenant.AiProvider,
+            Provider: providerName,
             BaseUrl: string.IsNullOrWhiteSpace(tenant.AiBaseUrl) ? preset.BaseUrl : tenant.AiBaseUrl,
             Model: string.IsNullOrWhiteSpace(tenant.AiModel) ? preset.Model : tenant.AiModel,
             UseTenantKey: tenant.AiUseTenantKey,
@@ -73,16 +79,44 @@ public class TenantAiSettingsService : ITenantAiSettingsService
         CancellationToken ct = default)
     {
         var tenant = await RequireTenantAsync(ct);
-        var effectiveKey = !string.IsNullOrWhiteSpace(apiKey)
-            ? apiKey.Trim()
-            : DecryptKey(tenant.AiApiKeyEncrypted);
+        var deployment = _configResolver == null
+            ? null
+            : await _configResolver.GetEffectiveAsync(ct);
+
+        string? effectiveKey;
+        string keySource;
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            effectiveKey = apiKey.Trim();
+            keySource = "the key in the form";
+        }
+        else
+        {
+            var stored = DecryptKey(tenant.AiApiKeyEncrypted);
+            if (!string.IsNullOrWhiteSpace(stored))
+            {
+                effectiveKey = stored;
+                keySource = "the saved tenant key";
+            }
+            else if (!string.IsNullOrWhiteSpace(deployment?.ApiKey))
+            {
+                effectiveKey = deployment.ApiKey;
+                keySource = "the deployment key (user-secrets or environment)";
+            }
+            else
+            {
+                effectiveKey = null;
+                keySource = "";
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(effectiveKey))
         {
             if (!string.IsNullOrWhiteSpace(tenant.AiApiKeyEncrypted))
                 return new AiConnectionTestResult(false,
                     "Stored API key could not be read (encryption keys may have changed). Re-enter your API key and click Save Settings, then test again.");
-            return new AiConnectionTestResult(false, "API key is required to test the connection.");
+            return new AiConnectionTestResult(false,
+                "API key is required. Paste a key above and Save, or set user-secrets Ai:ApiKey, environment Ai__ApiKey, or XAI_API_KEY. Then test again from /settings/ai.");
         }
 
         if (provider == AiProviderProfiles.GoogleGemini && !AiHttpAuth.LooksLikeGoogleKey(effectiveKey))
@@ -92,6 +126,10 @@ public class TenantAiSettingsService : ITenantAiSettingsService
         var preset = AiProviderProfiles.GetPreset(provider);
         var resolvedBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? preset.BaseUrl : baseUrl.TrimEnd('/');
         var resolvedModel = string.IsNullOrWhiteSpace(model) ? preset.Model : model;
+        if (string.IsNullOrWhiteSpace(resolvedBaseUrl) && !string.IsNullOrWhiteSpace(deployment?.BaseUrl))
+            resolvedBaseUrl = deployment.BaseUrl;
+        if (string.IsNullOrWhiteSpace(resolvedModel) && !string.IsNullOrWhiteSpace(deployment?.Model))
+            resolvedModel = deployment.Model;
 
         if (string.IsNullOrWhiteSpace(resolvedBaseUrl) || string.IsNullOrWhiteSpace(resolvedModel))
             return new AiConnectionTestResult(false, "Base URL and model are required.");
@@ -119,11 +157,20 @@ public class TenantAiSettingsService : ITenantAiSettingsService
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("AI test failed for provider {Provider}: {Status} {Body}", provider, response.StatusCode, body);
+                _logger.LogWarning(
+                    "AI test failed for provider {Provider}: {Status} {Body}",
+                    provider,
+                    response.StatusCode,
+                    AiLogRedaction.Sanitize(body));
                 return new AiConnectionTestResult(false, FormatApiError(response.StatusCode, body, provider));
             }
 
-            return new AiConnectionTestResult(true, $"Connected to {provider} ({resolvedModel}).");
+            return new AiConnectionTestResult(true, $"Connected to {provider} ({resolvedModel}) using {keySource}.");
+        }
+        catch (OperationCanceledException)
+        {
+            return new AiConnectionTestResult(false,
+                $"Timed out calling {provider}. Check the base URL and model on /settings/ai, then test again.");
         }
         catch (Exception ex)
         {
@@ -168,10 +215,22 @@ public class TenantAiSettingsService : ITenantAiSettingsService
     internal static string FormatApiError(System.Net.HttpStatusCode status, string body, string provider)
     {
         var detail = TryParseErrorMessage(body);
-        var hint = status == System.Net.HttpStatusCode.BadRequest
-            ? " Check that ApiKey, BaseUrl, and Model all match the selected provider."
-            : string.Empty;
-        return $"AI API {(int)status} ({status}) from {provider}: {detail}.{hint}";
+        var hint = status switch
+        {
+            System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden =>
+                " The API key was rejected. Paste a new key on /settings/ai, or set user-secrets Ai:ApiKey, environment Ai__ApiKey, or XAI_API_KEY.",
+            System.Net.HttpStatusCode.NotFound =>
+                " The model or base URL was not found. Check both on /settings/ai.",
+            System.Net.HttpStatusCode.TooManyRequests =>
+                " The provider rate-limited this call. Wait a moment and retry.",
+            System.Net.HttpStatusCode.BadRequest =>
+                " Check that the API key, base URL, and model all match the selected provider on /settings/ai.",
+            System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.GatewayTimeout =>
+                " The provider timed out. Try again, or raise Ai:TimeoutSeconds.",
+            _ => " See /settings/ai to confirm the key, base URL, and model."
+        };
+        var sentence = detail.Trim().TrimEnd('.');
+        return $"AI API {(int)status} ({status}) from {provider}: {sentence}.{hint}";
     }
 
     private static string TryParseErrorMessage(string body)
@@ -184,8 +243,18 @@ public class TenantAiSettingsService : ITenantAiSettingsService
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.TryGetProperty("error", out var err))
             {
-                if (err.TryGetProperty("message", out var msg))
-                    return msg.GetString() ?? body;
+                if (err.ValueKind == JsonValueKind.String)
+                {
+                    var text = err.GetString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                        return text;
+                }
+                else if (err.ValueKind == JsonValueKind.Object && err.TryGetProperty("message", out var msg))
+                {
+                    var text = msg.GetString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                        return text;
+                }
             }
         }
         catch { }

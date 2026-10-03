@@ -7,10 +7,10 @@
 
 @if (Quotes == null || !Quotes.Any())
 {
-    <EmptyState Title="No quotes yet"
-                Description="Create an estimate with labour, materials, and travel as separate lines."
+    <EmptyState Title="@EmptyTitle"
+                Description="@EmptyDescription"
                 Icon="📄"
-                CtaText="@(CanManage ? "New quote" : null)"
+                CtaText="@(CanManage && ShowEmptyCta ? "New quote" : null)"
                 TestId="quotes-empty"
                 OnCta="OnCreate" />
 }
@@ -32,7 +32,8 @@ else
             <tbody>
                 @foreach (var q in Quotes)
                 {
-                    <tr data-testid="@GetQuoteRowTestId(q)" style="cursor:pointer;" @onclick="() => OnView.InvokeAsync(q)" title="Open quote">
+                    <tr @key="q.Id" class="meterp-row-click" data-testid="@GetQuoteRowTestId(q)" title="Open quote"
+                        @onclick="() => OnView.InvokeAsync(q)" @onclick:stopPropagation="true">
                         <td><strong>@q.QuoteNumber</strong></td>
                         <td>@(q.Customer?.Name ?? "-")</td>
                         <td>@q.QuoteDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Valid @q.ValidUntil.ToString("yyyy-MM-dd")</small></td>
@@ -58,10 +59,16 @@ else
 
     @if (ShowPagination)
     {
-        <div class="d-flex justify-content-between align-items-center mt-2">
-            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnPrevious.InvokeAsync()" disabled="@DisablePrevious">Previous</button>
-            <span class="text-muted small">Page @CurrentPage</span>
-            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnNext.InvokeAsync()" disabled="@DisableNext">Next</button>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2" data-testid="quotes-pager">
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quotes-page-first" @onclick="() => OnFirst.InvokeAsync()" disabled="@DisablePrevious">First</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quotes-page-prev" @onclick="() => OnPrevious.InvokeAsync()" disabled="@DisablePrevious">Previous</button>
+            </div>
+            <span class="text-muted small" data-testid="quotes-range">@(string.IsNullOrWhiteSpace(RangeCaption) ? $"Page {CurrentPage}" : RangeCaption)</span>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quotes-page-next" @onclick="() => OnNext.InvokeAsync()" disabled="@DisableNext">Next</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quotes-page-last" @onclick="() => OnLast.InvokeAsync()" disabled="@DisableNext">Last</button>
+            </div>
         </div>
     }
 }
@@ -73,12 +80,18 @@ else
     [Parameter] public bool ShowPagination { get; set; } = true;
     [Parameter] public bool DisablePrevious { get; set; }
     [Parameter] public bool DisableNext { get; set; }
+    [Parameter] public string? RangeCaption { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "No quotes yet";
+    [Parameter] public string EmptyDescription { get; set; } = "Create an estimate with labour, materials, and travel as separate lines.";
+    [Parameter] public bool ShowEmptyCta { get; set; } = true;
 
     [Parameter] public EventCallback<Quote> OnView { get; set; }
     [Parameter] public EventCallback<Quote> OnEdit { get; set; }
     [Parameter] public EventCallback<Quote> OnDelete { get; set; }
     [Parameter] public EventCallback OnPrevious { get; set; }
     [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnFirst { get; set; }
+    [Parameter] public EventCallback OnLast { get; set; }
     [Parameter] public EventCallback OnCreate { get; set; }
 
     private static string GetQuoteRowTestId(Quote q)

@@ -20,9 +20,9 @@
 <div class="list-group" data-testid="notifications-list">
     @foreach (var n in notifications)
     {
-        <div class="list-group-item d-flex justify-content-between align-items-start @(n.IsRead ? "text-muted" : "")"
-             data-testid="notification-item">
-            <div style="cursor:pointer;" class="flex-grow-1" @onclick="() => OpenAsync(n)">
+        <div class="list-group-item meterp-row-click d-flex justify-content-between align-items-start @(n.IsRead ? "text-muted" : "")"
+             data-testid="notification-item" title="Open notification" @onclick="() => OpenAsync(n)">
+            <div class="flex-grow-1">
                 <strong>@n.Title</strong>
                 @if (!string.IsNullOrEmpty(n.Category))
                 {

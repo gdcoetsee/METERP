@@ -32,6 +32,7 @@
             <strong>Aged debtors:</strong>
             <span class="ms-2">@_agedDebtors.Count open invoice(s)</span>
             <span class="ms-2 text-danger">R @_agedDebtors.Sum(d => d.BalanceDue).ToString("N2") outstanding</span>
+            <span class="ms-2 small text-muted">Net of open credit notes</span>
             <span class="ms-2 small text-muted">Buckets: @string.Join(", ", _agedDebtors.GroupBy(d => d.AgingBucket).Select(g => $"{g.Key} ({g.Count()})"))</span>
         </div>
         @if (_agedDebtors.Any(d => d.DaysOverdue > 0))
@@ -108,6 +109,18 @@
             <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">Clear</button>
         }
     </div>
+    <div class="form-check ms-2 mb-0">
+        <input class="form-check-input" type="checkbox" id="invoices-unlinked-only"
+               data-testid="invoices-unlinked-only"
+               @bind="_unlinkedOnly" @bind:after="OnUnlinkedFilterChanged" />
+        <label class="form-check-label" for="invoices-unlinked-only">Unlinked</label>
+    </div>
+    <div class="form-check ms-2 mb-0">
+        <input class="form-check-input" type="checkbox" id="invoices-unlinked-credits"
+               data-testid="invoices-unlinked-credits"
+               @bind="_unlinkedCreditsOnly" @bind:after="OnUnlinkedCreditsFilterChanged" />
+        <label class="form-check-label" for="invoices-unlinked-credits">Unlinked credits</label>
+    </div>
 </div>
 
 @if (_loading)
@@ -116,9 +129,9 @@
 }
 else if (invoices == null || !invoices.Any())
 {
-    @if (!string.IsNullOrEmpty(searchTerm))
+    @if (!string.IsNullOrEmpty(searchTerm) || _unlinkedOnly || _unlinkedCreditsOnly)
     {
-        <div class="alert alert-warning">No invoices match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
+        <div class="alert alert-warning">No invoices match. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear filters</button></div>
     }
     else
     {
@@ -148,13 +161,43 @@ else
                         <td><strong>@inv.InvoiceNumber</strong></td>
                         <td>
                             @(inv.Customer?.Name ?? "—")<br />
-                            <small class="text-muted">@(inv.Job?.JobNumber ?? "")</small>
+                            @if (inv.JobId == null)
+                            {
+                                <span class="badge bg-light text-dark border" data-testid="invoice-unlinked">Unlinked</span>
+                                @if (InvoiceLegacyRef.TryReadTrfId(inv.Notes) is { } listTrf)
+                                {
+                                    <small class="text-muted ms-1">TRF @listTrf</small>
+                                }
+                            }
+                            else if (inv.Job != null)
+                            {
+                                <a href="@($"/jobs/{inv.Job.Id}")" class="small" data-testid="invoice-job-link" @onclick:stopPropagation="true">@inv.Job.JobNumber</a>
+                            }
+                            else
+                            {
+                                <small class="text-muted">Linked job unavailable</small>
+                            }
                         </td>
                         <td>@inv.InvoiceDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Due @inv.DueDate.ToString("yyyy-MM-dd")</small></td>
-                        <td>@((MarkupString)GetDocumentTypeBadge(inv.DocumentType))</td>
+                        <td data-testid="invoice-type">
+                            @((MarkupString)GetDocumentTypeBadge(inv.DocumentType))
+                            @if (inv.DocumentType == InvoiceDocumentType.CreditNote && inv.CreditNoteForInvoiceId == null)
+                            {
+                                <div><span class="badge bg-warning text-dark" data-testid="invoice-unlinked-credit">Unlinked credit note</span></div>
+                            }
+                            else if (inv.DocumentType == InvoiceDocumentType.CreditNote)
+                            {
+                                <div class="small text-muted" data-testid="invoice-credit-for">for @(inv.CreditNoteForInvoice?.InvoiceNumber ?? "parent")</div>
+                            }
+                        </td>
                         <td>@((MarkupString)GetStatusBadge(inv.Status))</td>
-                        <td class="text-end">R @inv.Total.ToString("N2")</td>
-                        <td class="text-end">R @inv.BalanceDue.ToString("N2")</td>
+                        <td class="text-end @(inv.DocumentType == InvoiceDocumentType.CreditNote ? "text-danger" : "")"
+                            data-testid="@(inv.DocumentType == InvoiceDocumentType.CreditNote ? "invoice-credit-amount" : "invoice-amount")">
+                            @InvoiceCreditConvention.FormatDocumentAmount(inv.DocumentType, inv.Total)
+                        </td>
+                        <td class="text-end @(inv.DocumentType == InvoiceDocumentType.CreditNote && inv.BalanceDue > 0 ? "text-danger" : "")">
+                            @InvoiceCreditConvention.FormatDocumentBalance(inv.DocumentType, inv.BalanceDue)
+                        </td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => ViewInvoice(inv)" @onclick:stopPropagation="true" data-testid="view-invoice">View</button>
                             @if (UserCanManage)
@@ -224,12 +267,6 @@ else
                BackdropTestId="invoice-detail-backdrop"
                CloseOnBackdrop="false"
                OnClose="CloseInvoiceView">
-        <HeaderActions>
-            @if (UserCanManage)
-            {
-                <button class="btn btn-sm btn-success" @onclick="CreateFromJobIfPossible" data-testid="create-invoice-from-job">Create from job</button>
-            }
-        </HeaderActions>
         <ChildContent>
             <div class="row mb-3">
                 <div class="col-md-6">
@@ -252,10 +289,14 @@ else
                     }
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <div>Subtotal: <strong>R @selectedInvoice.Subtotal.ToString("N2")</strong></div>
-                    <div>Tax: R @selectedInvoice.Tax.ToString("N2")</div>
-                    <div class="fs-5">Total: <strong>R @selectedInvoice.Total.ToString("N2")</strong></div>
-                    <div>Paid: R @selectedInvoice.AmountPaid.ToString("N2") · Balance: <strong>R @selectedInvoice.BalanceDue.ToString("N2")</strong></div>
+                    <div>Subtotal: <strong>@InvoiceCreditConvention.FormatDocumentAmount(selectedInvoice.DocumentType, selectedInvoice.Subtotal)</strong></div>
+                    <div>Tax: @InvoiceCreditConvention.FormatDocumentAmount(selectedInvoice.DocumentType, selectedInvoice.Tax)</div>
+                    <div class="fs-5">Total: <strong data-testid="invoice-detail-total">@InvoiceCreditConvention.FormatDocumentAmount(selectedInvoice.DocumentType, selectedInvoice.Total)</strong></div>
+                    <div>Paid: R @selectedInvoice.AmountPaid.ToString("N2") · Balance: <strong>@InvoiceCreditConvention.FormatDocumentBalance(selectedInvoice.DocumentType, selectedInvoice.BalanceDue)</strong></div>
+                    @if (selectedInvoice.DocumentType == InvoiceDocumentType.CreditNote)
+                    {
+                        <div class="small text-muted">Credit note — stored as a positive total and shown as a credit. It reduces the customer balance.</div>
+                    }
                     @if (selectedInvoice.RetentionAmount > 0)
                     {
                         <div class="small text-muted">Net collectable (excl. retention): R @selectedInvoice.NetCollectable.ToString("N2")</div>
@@ -263,9 +304,83 @@ else
                 </div>
             </div>
 
-            @if (selectedInvoice.Job != null)
+            @if (selectedInvoice.DocumentType == InvoiceDocumentType.CreditNote)
             {
-                <div class="mb-2"><strong>Linked Job:</strong> @selectedInvoice.Job.JobNumber</div>
+                <div class="mb-3 border rounded p-3" data-testid="invoice-credit-panel">
+                    @if (selectedInvoice.CreditNoteForInvoiceId is Guid && selectedInvoice.CreditNoteForInvoice != null)
+                    {
+                        <strong>Credit for</strong>
+                        <a href="@($"/invoices?open={selectedInvoice.CreditNoteForInvoice.Id}")"
+                           data-testid="invoice-credit-parent">@selectedInvoice.CreditNoteForInvoice.InvoiceNumber</a>
+                    }
+                    else if (selectedInvoice.CreditNoteForInvoiceId != null)
+                    {
+                        <span class="badge bg-light text-dark border">Parent invoice is not available</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning text-dark" data-testid="invoice-unlinked-credit">Unlinked credit note</span>
+                        <p class="small text-muted mb-2 mt-2">No parent invoice is linked. This credit still reduces the customer balance.</p>
+                        @if (UserCanManage)
+                        {
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" data-testid="invoice-credit-parent-search" placeholder="Parent invoice number"
+                                       @bind="_parentInvoiceNumber" @bind:event="oninput" />
+                                <button type="button" class="btn btn-outline-primary" data-testid="invoice-credit-parent-link" @onclick="LinkCreditParentAsync">Link parent</button>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            @if (selectedInvoice.JobId == null)
+            {
+                <div class="mb-3 border rounded p-3" data-testid="invoice-link-panel">
+                    <span class="badge bg-light text-dark border" data-testid="invoice-unlinked">Unlinked</span>
+                    @if (InvoiceLegacyRef.TryReadTrfId(selectedInvoice.Notes) is { } detailTrf)
+                    {
+                        <span class="ms-2">TRF <strong>@detailTrf</strong></span>
+                    }
+                    <p class="small text-muted mb-2 mt-2">
+                        This total is the invoice amount only. It is not the job quoted or actual total.
+                        Linking a job does not close the job.
+                    </p>
+                    @if (UserCanManage)
+                    {
+                        <div class="input-group input-group-sm">
+                            <input class="form-control" data-testid="invoice-link-search" placeholder="Job number or TRFid"
+                                   @bind="_linkJobSearch" @bind:event="oninput" />
+                            <button type="button" class="btn btn-outline-secondary" data-testid="invoice-link-find" @onclick="SearchLinkJobsAsync">Find</button>
+                        </div>
+                        @if (_linkSearched && _linkCandidates.Count == 0)
+                        {
+                            <p class="small text-muted mt-2 mb-0">No job matched that number.</p>
+                        }
+                        @foreach (var job in _linkCandidates)
+                        {
+                            <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
+                                <span>
+                                    <strong>@job.JobNumber</strong> — @job.Title
+                                    <span class="text-muted small">@job.Status · @(job.Customer?.Name ?? "—")</span>
+                                </span>
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-testid="invoice-link-job"
+                                        @onclick="() => LinkJobAsync(job)">Link job</button>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else if (selectedInvoice.Job != null)
+            {
+                <div class="mb-2">
+                    <strong>Linked job:</strong>
+                    <a href="@($"/jobs/{selectedInvoice.Job.Id}")" data-testid="invoice-job-link">@selectedInvoice.Job.JobNumber</a>
+                    <span class="text-muted small ms-2">Invoice total stays on this document. The job is not closed by this invoice.</span>
+                </div>
+            }
+            else
+            {
+                <div class="mb-2 text-muted small">This invoice has a job id, but that job is not available. Totals on this document are the invoice amounts.</div>
             }
 
             <h6 data-testid="invoice-line-items-header">Line Items (@selectedInvoice.Lines.Count(l => !l.IsDeleted))</h6>
@@ -290,8 +405,8 @@ else
                                 <td>@line.Description</td>
                                 <td class="text-end">@line.Quantity @line.Unit</td>
                                 <td><span class="badge bg-light text-dark">@line.LineType</span></td>
-                                <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
-                                <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
+                                <td class="text-end">@InvoiceCreditConvention.FormatDocumentAmount(selectedInvoice.DocumentType, line.UnitPrice)</td>
+                                <td class="text-end"><strong>@InvoiceCreditConvention.FormatDocumentAmount(selectedInvoice.DocumentType, line.LineTotal)</strong></td>
                                 @if (UserCanManage)
                                 {
                                     <td>
@@ -449,6 +564,12 @@ else
     private bool showForm;
     private bool isEditing;
     private string searchTerm = string.Empty;
+    private bool _unlinkedOnly;
+    private bool _unlinkedCreditsOnly;
+    private string _parentInvoiceNumber = "";
+    private string _linkJobSearch = string.Empty;
+    private List<Job> _linkCandidates = new();
+    private bool _linkSearched;
     private int currentPage = 1;
     private const int PageSize = 10;
     private bool _loading = true;
@@ -501,7 +622,7 @@ else
     private async Task LoadInvoices()
     {
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        invoices = (await InvoiceService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        invoices = (await InvoiceService.GetAllAsync(term, currentPage, PageSize, unlinkedOnly: _unlinkedOnly, unlinkedCreditsOnly: _unlinkedCreditsOnly)).ToList();
         _agedDebtors = (await InvoiceService.GetAgedDebtorsAsync()).ToList();
     }
 
@@ -514,6 +635,20 @@ else
     private async Task ClearSearch()
     {
         searchTerm = string.Empty;
+        _unlinkedOnly = false;
+        _unlinkedCreditsOnly = false;
+        currentPage = 1;
+        await LoadInvoices();
+    }
+
+    private async Task OnUnlinkedFilterChanged()
+    {
+        currentPage = 1;
+        await LoadInvoices();
+    }
+
+    private async Task OnUnlinkedCreditsFilterChanged()
+    {
         currentPage = 1;
         await LoadInvoices();
     }
@@ -613,6 +748,10 @@ else
     private async Task ViewInvoice(Invoice inv)
     {
         selectedInvoice = await InvoiceService.GetByIdAsync(inv.Id);
+        _linkJobSearch = InvoiceLegacyRef.TryReadTrfId(selectedInvoice?.Notes) ?? "";
+        _parentInvoiceNumber = "";
+        _linkCandidates = new();
+        _linkSearched = false;
         _payments = selectedInvoice != null
             ? (await InvoiceService.GetPaymentsAsync(selectedInvoice.Id)).ToList()
             : new();
@@ -632,27 +771,34 @@ else
         editingLine = null;
     }
 
-    private async Task CreateFromJobIfPossible()
+    private async Task SearchLinkJobsAsync()
     {
-        // Demo helper: find a job without invoice and create one
-        var jobs = await JobService.GetAllAsync();
-        var job = jobs.FirstOrDefault(j =>
-            (j.Status == JobStatus.Completed || j.Status == JobStatus.InProgress)
-            && j.SignOffStatus == JobSignOffStatus.SignedOff);
-        if (job != null)
+        var term = _linkJobSearch.Trim();
+        if (term.Length == 0)
         {
-            try
-            {
-                var inv = await InvoiceService.CreateFromJobAsync(job.Id);
-                await InvoiceService.UpdateStatusAsync(inv.Id, InvoiceStatus.Sent);
-                selectedInvoice = await InvoiceService.GetByIdAsync(inv.Id);
-                ToastService.ShowSuccess("Invoice created from job (demo).");
-                await LoadInvoices();
-            }
-            catch (Exception ex)
-            {
-                ToastService.ShowError($"Failed to create invoice from job: {ex.Message}");
-            }
+            ToastService.ShowError("Enter a job number or TRFid.");
+            return;
+        }
+
+        _linkCandidates = (await JobService.GetAllAsync(term, 1, 8)).ToList();
+        _linkSearched = true;
+    }
+
+    private async Task LinkJobAsync(Job job)
+    {
+        if (selectedInvoice == null)
+            return;
+
+        try
+        {
+            await InvoiceService.LinkJobAsync(selectedInvoice.Id, job.Id);
+            ToastService.ShowSuccess($"Linked {selectedInvoice.InvoiceNumber} to {job.JobNumber}. The job was not closed.");
+            await ViewInvoice(selectedInvoice);
+            await LoadInvoices();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
         }
     }
 
@@ -829,6 +975,24 @@ else
         }
     }
 
+    private async Task LinkCreditParentAsync()
+    {
+        if (selectedInvoice == null) return;
+        try
+        {
+            await InvoiceService.LinkCreditNoteParentAsync(selectedInvoice.Id, _parentInvoiceNumber);
+            ToastService.ShowSuccess($"Linked {_parentInvoiceNumber.Trim()}.");
+            var refreshed = await InvoiceService.GetByIdAsync(selectedInvoice.Id);
+            if (refreshed != null)
+                await ViewInvoice(refreshed);
+            await LoadInvoices();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
     private async Task CreateCreditNoteAsync()
     {
         if (selectedInvoice == null) return;
@@ -877,13 +1041,15 @@ else
             {
                 inv.InvoiceNumber,
                 inv.Customer?.Name ?? "",
-                inv.Job?.JobNumber ?? "",
+                inv.Job?.JobNumber ?? (inv.JobId == null ? "Unlinked" : ""),
                 inv.InvoiceDate.ToString("yyyy-MM-dd"),
                 inv.DueDate.ToString("yyyy-MM-dd"),
                 inv.DocumentType.ToString(),
                 inv.Status.ToString(),
-                TabularExportHelper.FormatDecimal(inv.Total),
-                TabularExportHelper.FormatDecimal(inv.BalanceDue)
+                TabularExportHelper.FormatDecimal(InvoiceCreditConvention.SignedStoredTotal(inv.DocumentType, inv.Total)),
+                TabularExportHelper.FormatDecimal(inv.DocumentType == InvoiceDocumentType.CreditNote
+                    ? InvoiceCreditConvention.ArSignedOpenBalance(inv.DocumentType, inv.Status, inv.Total, inv.AmountPaid)
+                    : inv.BalanceDue)
             };
         }
     }

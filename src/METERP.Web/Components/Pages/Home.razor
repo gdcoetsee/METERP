@@ -18,6 +18,7 @@
 @inject ILeaveService LeaveService
 @inject IFieldReportService FieldReportService
 @inject ICurrentUserService CurrentUserService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ITenantService TenantService
 @inject IBillingPortalService BillingPortalService
 @inject IAiAssistantService AiAssistantService
@@ -131,6 +132,10 @@
     </div>
 }
 
+@if (_showExecutiveView && _executiveError != null)
+{
+    <div class="alert alert-warning" data-testid="home-executive-error">@_executiveError</div>
+}
 @if (_showExecutiveView && _executive != null)
 {
     <h2 class="h5 mb-3" data-testid="home-needs-you">Needs you</h2>
@@ -177,15 +182,65 @@
                     <span> · <strong>@_executive.LowStockItems</strong> low-stock SKUs</span>
                 }
             </p>
+            <div class="mt-3" data-testid="home-proposal-quote-queue">
+                <div class="d-flex justify-content-between align-items-baseline">
+                    <h3 class="h6 mb-1">Convert / Create quote</h3>
+                    @if (_executive.UnquotedProposalDeals > 0)
+                    {
+                        <span class="small text-muted" data-testid="home-proposal-quote-count">showing 1–@_executive.ProposalQuoteQueue.Count of @_executive.UnquotedProposalDeals</span>
+                    }
+                </div>
+                <p class="small text-muted mb-2">Proposal deals with no quote yet. If the deal mentions travel, Create quote adds an explicit Travel line — it is not buried in materials.</p>
+                @if (_executive.ProposalQuoteQueue.Count == 0)
+                {
+                    <p class="small mb-0" data-testid="home-proposal-quote-empty">No Proposal deals are waiting for a quote.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Proposal deal</th>
+                                    <th>Customer</th>
+                                    <th class="text-end">Amount</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _executive.ProposalQuoteQueue)
+                                {
+                                    <tr data-testid="home-proposal-quote-row">
+                                        <td><a href="@row.Href">@row.Number</a></td>
+                                        <td>@row.CustomerName</td>
+                                        <td class="text-end">R @row.Total.ToString("N0")</td>
+                                        <td class="text-end">
+                                            @if (CanSendQuotes)
+                                            {
+                                                <button type="button" class="btn btn-sm btn-success"
+                                                        data-testid="home-create-quote-from-deal"
+                                                        disabled="@(_creatingProposalQuoteId != null)"
+                                                        @onclick="() => CreateQuoteFromProposalAsync(row)">
+                                                    @(_creatingProposalQuoteId == row.Id ? "Creating…" : "Create quote")
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <a class="btn btn-sm btn-outline-secondary" href="@row.Href">Open deal</a>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
             @{
-                var cashQueue = _executive.DepositDueQueue
-                    .Concat(_executive.ReadyToInvoiceQueue
-                        .Where(r => _executive.DepositDueQueue.All(d => d.JobId != r.JobId)))
-                    .Concat(_executive.AwaitingSignOffQueue
-                        .Where(r => _executive.DepositDueQueue.All(d => d.JobId != r.JobId)
-                            && _executive.ReadyToInvoiceQueue.All(x => x.JobId != r.JobId)))
-                    .Take(8)
-                    .ToList();
+                var cashQueue = CashDeskQueue.Mix(
+                    _executive.DepositDueQueue,
+                    _executive.ReadyToInvoiceQueue,
+                    _executive.AwaitingSignOffQueue);
             }
             @if (_executive.ApprovalQueue.Count > 0)
             {
@@ -648,19 +703,37 @@
                 }
             </div>
         </div>
-        <div class="card-body d-flex flex-wrap gap-2">
-            <QuotaUsageBadgeGroup Tenant="currentTenant" TestIdPrefix="home" />
+        <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 mb-2" data-testid="home-usage-scale">
+                <span class="badge bg-info text-dark" data-testid="home-usage-jobs">Jobs @currentTenant.TotalJobsCreated.ToString("N0")</span>
+                <span class="badge bg-info text-dark" data-testid="home-usage-quotes">Quotes @currentTenant.TotalQuotesCreated.ToString("N0")</span>
+                <span class="badge bg-info text-dark" data-testid="home-usage-invoices">Invoices @currentTenant.TotalInvoicesIssued.ToString("N0")</span>
+                <span class="badge bg-dark" data-testid="home-usage-revenue">Revenue R @currentTenant.TotalRevenueBilled.ToString("N0")</span>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+            @if (_quotaDisplay != null)
+            {
+                <QuotaUsageBadgeGroup Tenant="_quotaDisplay" TestIdPrefix="home" />
+            }
+            else
+            {
+                <p class="small text-muted mb-0" data-testid="home-quota-unavailable">Monthly counters are hidden until they match documents created this period.</p>
+            }
+            </div>
         </div>
         @if (!currentTenant.HasFeature("ai"))
         {
             <div class="card-footer small text-warning">AI Copilot is disabled for this tenant (feature flag). Upgrade tier or enable <code>ai</code> in tenant settings.</div>
         }
-        <QuotaExceededBanner Tenant="currentTenant"
+        @if (_quotaDisplay != null)
+        {
+        <QuotaExceededBanner Tenant="_quotaDisplay"
                              TestIdPrefix="home"
                              ShowBlockedActionsHint="true"
                              ShowUpgradeAction="true"
                              BillingPortalUrl="billingPortalUrl"
                              OnUpgradeClick="OpenBillingPortal" />
+        }
     </div>
 }
 
@@ -721,6 +794,7 @@
     private int _readyToInvoiceCount;
     private decimal _readyToInvoiceValue;
     private ExecutiveDashboardSummary? _executive;
+    private string? _executiveError;
     private List<DivisionScorecardRow> _divisionScorecards = new();
     private List<UserActivityRow> _userActivity = new();
     private List<OverdueApprovalRow> _overdueApprovals = new();
@@ -754,9 +828,11 @@
     private bool _isStores;
     private bool _isFinance;
     private Tenant? currentTenant;
+    private Tenant? _quotaDisplay;
     private string? billingPortalUrl;
     private bool _initialized;
     private Guid? _convertingId;
+    private Guid? _creatingProposalQuoteId;
     private Guid? _actingJobId;
     private Guid? _actingInvoiceId;
     private Guid? _sendingInvoiceId;
@@ -965,7 +1041,9 @@
             Eyebrow = row.Reason,
             Customer = row.CustomerName,
             Amount = row.UnbilledResidual,
-            Body = $"Quoted R {row.QuotedTotal:N0} · billed R {row.BilledToDate:N0}. {row.Reason} is waiting.",
+            Body = isDeposit
+                ? $"Quoted R {row.QuotedTotal:N0} · billed R {row.BilledToDate:N0}. A deposit invoice is not a final invoice and does not close the job."
+                : $"Quoted R {row.QuotedTotal:N0} · billed R {row.BilledToDate:N0}. {row.Reason} is waiting. Invoicing does not close the job. Executive close is separate.",
             ActionLabel = canAct ? label : "Open job",
             ActionTestId = testId,
             ActionClass = isSignOff ? "btn-warning" : "btn-success",
@@ -1001,57 +1079,192 @@
         _ => false
     };
 
-    protected override async Task OnInitializedAsync()
+    private static bool HasExecutivePermission(IEnumerable<string> permissions) =>
+        permissions.Contains(Permissions.AuditView) || permissions.Contains(Permissions.QuotesManage);
+
+    private async Task ResolveHomeIdentityAsync()
     {
+        var permissions = CurrentUserService.Permissions.ToList();
         try
         {
-            _showExecutiveView = CurrentUserService.Permissions.Contains(Permissions.AuditView)
-                || CurrentUserService.Permissions.Contains(Permissions.QuotesManage);
+            var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            permissions.AddRange(auth.User.Claims.Where(c => c.Type == "Permission").Select(c => c.Value));
+            if (auth.User.IsInRole("Admin") || auth.User.IsInRole("Executive"))
+                _showExecutiveView = true;
+        }
+        catch (Exception ex)
+        {
+            _executiveError = "Could not read the sign-in session. " + ex.Message;
+        }
 
-            if (CurrentUserService.UserId is { } userId)
-            {
-                var roles = await UserService.GetUserRolesAsync(userId);
-                _isTechnician = roles.Contains("Technician");
-                _isProcurement = roles.Contains("Procurement");
-                _isHr = roles.Contains("HrManager");
-                _isStores = roles.Contains("Stores");
-                _isFinance = roles.Contains("Finance");
-                _showRoleDashboard = _isTechnician || _isProcurement || _isHr || _isStores || _isFinance;
-            }
+        if (HasExecutivePermission(permissions))
+            _showExecutiveView = true;
 
-            lowStockCount = (await InventoryService.GetAllItemsAsync(lowStockOnly: true)).Count;
+        if (CurrentUserService.UserId is { } userId)
+        {
+            var roles = await UserService.GetUserRolesAsync(userId);
+            _isTechnician = roles.Contains("Technician");
+            _isProcurement = roles.Contains("Procurement");
+            _isHr = roles.Contains("HrManager");
+            _isStores = roles.Contains("Stores");
+            _isFinance = roles.Contains("Finance");
+            _showRoleDashboard = _isTechnician || _isProcurement || _isHr || _isStores || _isFinance;
+            if (roles.Contains("Admin") || roles.Contains("Executive"))
+                _showExecutiveView = true;
+        }
+    }
 
-            var activeJobs = (await JobService.GetAllAsync(pageSize: 200)).ToList();
+    private async Task LoadExecutiveDeskAsync()
+    {
+        if (!_showExecutiveView)
+            return;
 
-            var today = DateTime.UtcNow.Date;
-            _todaysJobs = activeJobs
-                .Where(j => j.Status is JobStatus.InProgress or JobStatus.Scheduled
-                    || j.CompletedDate?.Date == today)
-                .Where(j => j.Status is not JobStatus.Closed and not JobStatus.Cancelled)
-                .OrderBy(j => j.Status == JobStatus.InProgress ? 0 : 1)
-                .ThenBy(j => j.ScheduledStart ?? DateTime.MaxValue)
-                .Take(12)
-                .ToList();
-
+        try
+        {
             _executive = await ExecutiveDashboard.GetSummaryAsync();
             _readyToInvoiceCount = _executive.ReadyToInvoiceJobs;
             _readyToInvoiceValue = _executive.ReadyToInvoiceValue;
-            _divisionScorecards = (await AccountabilityReports.GetDivisionScorecardsAsync()).ToList();
-            _userActivity = (await AccountabilityReports.GetUserActivityAsync()).ToList();
-            _overdueApprovals = (await AccountabilityReports.GetOverdueApprovalsAsync()).ToList();
-
-            // Load current tenant commercial usage (for demo visibility)
-            var tid = CurrentUserService.TenantId;
-            if (tid != Guid.Empty)
+            if (_executive.LoadWarnings.Count > 0)
             {
-                currentTenant = await TenantService.GetByIdAsync(tid);
-                if (currentTenant != null)
-                    billingPortalUrl = await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+                _executiveError = "Some cash queues did not load: "
+                    + string.Join(", ", _executive.LoadWarnings)
+                    + ". The rest of the desk is shown.";
+            }
+            else
+            {
+                _executiveError = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _executive = new ExecutiveDashboardSummary();
+            _executiveError = "Cash desk is taking too long under current MET data volume. A partial desk is shown — " + ex.Message;
+        }
+    }
+
+    private async Task LoadHomeSecondaryAsync()
+    {
+        try
+        {
+            var lowStock = await InventoryService.GetAllItemsAsync(lowStockOnly: true, pageSize: 20);
+            lowStockCount = lowStock.Count;
+        }
+        catch
+        {
+            lowStockCount = 0;
+        }
+
+        try
+        {
+            _todaysJobs = (await JobService.GetTodaysWorkAsync(DateTime.UtcNow.Date, 12)).ToList();
+        }
+        catch
+        {
+            _todaysJobs = new();
+        }
+
+        if (_showExecutiveView)
+        {
+            try
+            {
+                _divisionScorecards = (await AccountabilityReports.GetDivisionScorecardsAsync()).ToList();
+                _userActivity = (await AccountabilityReports.GetUserActivityAsync()).ToList();
+                _overdueApprovals = (await AccountabilityReports.GetOverdueApprovalsAsync()).ToList();
+            }
+            catch
+            {
+                // scorecards optional — cash desk already rendered
+            }
+        }
+
+        var tid = CurrentUserService.TenantId;
+        if (tid == Guid.Empty)
+        {
+            try
+            {
+                var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var tenantClaim = auth.User.FindFirst("TenantId")?.Value;
+                if (Guid.TryParse(tenantClaim, out var parsed))
+                    tid = parsed;
+            }
+            catch
+            {
+                tid = Guid.Empty;
+            }
+        }
+
+        if (tid == Guid.Empty)
+            return;
+
+        try
+        {
+            Tenant? refreshed = null;
+            try
+            {
+                refreshed = await TenantService.RefreshUsageCountersAsync(tid);
+            }
+            catch
+            {
+                refreshed = null;
+            }
+
+            currentTenant = refreshed ?? await TenantService.GetByIdAsync(tid);
+            if (currentTenant == null)
+                return;
+
+            billingPortalUrl = await BillingPortalService.ResolveCustomerPortalUrlAsync(currentTenant);
+            if (refreshed != null)
+            {
+                _quotaDisplay = TenantQuotaDefaults.WithPeriodUsage(
+                    currentTenant,
+                    currentTenant.PeriodQuotesCreated,
+                    currentTenant.PeriodJobsCreated,
+                    currentTenant.PeriodInvoicesIssued,
+                    currentTenant.PeriodAiCalls);
+            }
+            else
+            {
+                var live = await TenantService.GetLivePeriodUsageAsync(tid);
+                _quotaDisplay = live == null
+                    ? null
+                    : TenantQuotaDefaults.WithPeriodUsage(currentTenant, live.Quotes, live.Jobs, live.Invoices, live.AiCalls);
             }
         }
         catch
         {
-            // ignore on initial load if DB not ready
+            _quotaDisplay = null;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await ResolveHomeIdentityAsync();
+            await LoadExecutiveDeskAsync();
+        }
+        catch (Exception ex)
+        {
+            if (_showExecutiveView)
+            {
+                _executive ??= new ExecutiveDashboardSummary();
+                _executiveError ??= "Cash desk could not be loaded. " + ex.Message;
+            }
+        }
+
+        if (_showExecutiveView && _executive != null)
+        {
+            _initialized = true;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        try
+        {
+            await LoadHomeSecondaryAsync();
+        }
+        catch
+        {
+            // secondary panels must not remove a desk that already rendered
         }
         finally
         {
@@ -1109,6 +1322,37 @@
         finally
         {
             _actingJobId = null;
+        }
+    }
+
+    private async Task CreateQuoteFromProposalAsync(ConvertibleDocumentRow row)
+    {
+        if (_creatingProposalQuoteId != null)
+            return;
+
+        _creatingProposalQuoteId = row.Id;
+        try
+        {
+            var quote = await QuoteService.CreateQuoteFromOpportunityAsync(row.Id);
+            var keptTravel = quote.Lines.Any(l =>
+                !l.IsDeleted && string.Equals(l.LineType, "Travel", StringComparison.OrdinalIgnoreCase));
+            Toast.ShowSuccess(keptTravel
+                ? $"{quote.QuoteNumber} created. Travel is its own line."
+                : $"{quote.QuoteNumber} created from {row.Number}.");
+            _executive = await ExecutiveDashboard.GetSummaryAsync();
+            if (_executive != null)
+            {
+                _readyToInvoiceCount = _executive.ReadyToInvoiceJobs;
+                _readyToInvoiceValue = _executive.ReadyToInvoiceValue;
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _creatingProposalQuoteId = null;
         }
     }
 

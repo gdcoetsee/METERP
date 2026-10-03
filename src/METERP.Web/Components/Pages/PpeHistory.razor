@@ -70,7 +70,7 @@ else
             <tbody>
                 @foreach (var issue in _issues)
                 {
-                    <tr data-testid="ppe-history-row" class="@(issue.IsFullyReturned ? "text-muted" : null)">
+                    <tr class="meterp-row-click @(issue.IsFullyReturned ? "text-muted" : null)" data-testid="ppe-history-row" title="Open PPE issue" @onclick="() => OpenIssueDetail(issue)">
                         <td>@issue.IssuedAt.ToString("yyyy-MM-dd")</td>
                         <td>@(issue.Employee != null ? $"{issue.Employee.FirstName} {issue.Employee.LastName}" : "—")</td>
                         <td>@(issue.InventoryItem != null ? $"{issue.InventoryItem.Sku} — {issue.InventoryItem.Name}" : "—")</td>
@@ -95,7 +95,7 @@ else
                                 {
                                     <button type="button" class="btn btn-sm btn-outline-primary"
                                             data-testid="ppe-return-btn"
-                                            @onclick="() => OpenReturnModal(issue)">Return</button>
+                                            @onclick="() => OpenReturnModal(issue)" @onclick:stopPropagation="true">Return</button>
                                 }
                             </td>
                         }
@@ -104,6 +104,28 @@ else
             </tbody>
         </table>
     </div>
+}
+
+@if (_detailIssue != null)
+{
+    <FormModal IsOpen="true" Title="PPE issue" Size="md" TestId="ppe-issue-detail" OnClose="CloseIssueDetail">
+        <ChildContent>
+            <p class="mb-1">Issued: <strong>@_detailIssue.IssuedAt.ToString("yyyy-MM-dd")</strong></p>
+            <p class="mb-1">Employee: @(_detailIssue.Employee != null ? $"{_detailIssue.Employee.FirstName} {_detailIssue.Employee.LastName}" : "—")</p>
+            <p class="mb-1">Item: @(_detailIssue.InventoryItem != null ? $"{_detailIssue.InventoryItem.Sku} — {_detailIssue.InventoryItem.Name}" : "—")</p>
+            <p class="mb-1">Quantity: @_detailIssue.Quantity.ToString("N2") · Outstanding: @_detailIssue.QuantityOutstanding.ToString("N2")</p>
+            <p class="mb-1">Job: @(_detailIssue.Job?.JobNumber ?? "—")</p>
+            <p class="mb-1">Requisition: @(_detailIssue.StockRequisition?.RequisitionNumber ?? "—")</p>
+            <p class="mb-0">Notes: @(_detailIssue.Notes ?? "—")</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseIssueDetail">Close</button>
+            @if (CanIssue && !_detailIssue.IsFullyReturned)
+            {
+                <button type="button" class="btn btn-primary" @onclick="() => OpenReturnModal(_detailIssue)">Return</button>
+            }
+        </Footer>
+    </FormModal>
 }
 
 @if (_showIssueModal)
@@ -158,7 +180,7 @@ else
 
 @if (_showReturnModal && _returnIssue != null)
 {
-    <FormModal IsOpen="true" Title="Return PPE to stock" TestId="ppe-return-modal" OnClose="CloseReturnModal">
+    <FormModal IsOpen="true" Title="Return PPE to stock" TestId="ppe-return-modal" Layer="2" OnClose="CloseReturnModal">
         <p class="small text-muted">
             @( _returnIssue.InventoryItem?.Name ?? "Item" ) issued to
             @( _returnIssue.Employee != null ? $"{_returnIssue.Employee.FirstName} {_returnIssue.Employee.LastName}" : "employee" ).
@@ -198,7 +220,11 @@ else
     private string _itemSearch = "";
 
     private bool _showReturnModal;
+    private EmployeePpeIssue? _detailIssue;
     private EmployeePpeIssue? _returnIssue;
+
+    private void OpenIssueDetail(EmployeePpeIssue issue) => _detailIssue = issue;
+    private void CloseIssueDetail() => _detailIssue = null;
     private decimal _returnQty = 1;
     private string _returnNotes = "";
 

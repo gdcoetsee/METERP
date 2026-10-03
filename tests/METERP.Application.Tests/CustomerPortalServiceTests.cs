@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
 using METERP.Infrastructure.Services;
@@ -58,11 +59,78 @@ public class CustomerPortalServiceTests
     }
 
     [Fact]
-    public async Task GetDashboardAsync_EmptyCustomer_Throws()
+    public void UnavailableMessage_IsTheLockedLoginCopy()
+    {
+        Assert.Equal("This portal login is not available. Contact MET office.", CustomerPortalMessages.Unavailable);
+        Assert.DoesNotContain("not linked", CustomerPortalMessages.Unavailable, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_EmptyCustomer_ReturnsFriendlyEmpty()
     {
         await using var db = CreateContext(Guid.NewGuid());
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new CustomerPortalService(db).GetDashboardAsync(Guid.Empty));
+
+        var dashboard = await new CustomerPortalService(db).GetDashboardAsync(Guid.Empty);
+
+        Assert.True(dashboard.IsUnlinked);
+        Assert.Equal(CustomerPortalMessages.Unlinked, dashboard.CustomerName);
+        Assert.Empty(dashboard.Quotes);
+        Assert.Empty(dashboard.Invoices);
+        Assert.Equal(0, dashboard.OpenQuoteCount);
+        Assert.Equal(0, dashboard.OpenInvoiceCount);
+        Assert.Equal(0m, dashboard.BalanceDue);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_MissingCustomer_ReturnsFriendlyEmpty()
+    {
+        await using var db = CreateContext(Guid.NewGuid());
+
+        var dashboard = await new CustomerPortalService(db).GetDashboardAsync(Guid.NewGuid());
+
+        Assert.True(dashboard.IsUnlinked);
+        Assert.Equal(CustomerPortalMessages.Unlinked, dashboard.CustomerName);
+        Assert.Empty(dashboard.Quotes);
+        Assert.Empty(dashboard.Invoices);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_SoftDeletedCustomer_ReturnsFriendlyEmpty()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        await using var db = CreateContext(tenantId);
+        db.Customers.Add(new Customer
+        {
+            Id = customerId,
+            TenantId = tenantId,
+            Name = "Wiped Hospital",
+            IsDeleted = true
+        });
+        db.Quotes.Add(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            QuoteNumber = "Q-GONE",
+            Status = QuoteStatus.Sent,
+            Total = 10m
+        });
+        db.Invoices.Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            InvoiceNumber = "INV-GONE",
+            Status = InvoiceStatus.Sent,
+            Total = 10m
+        });
+        await db.SaveChangesAsync();
+
+        var dashboard = await new CustomerPortalService(db).GetDashboardAsync(customerId);
+
+        Assert.True(dashboard.IsUnlinked);
+        Assert.Equal(CustomerPortalMessages.Unlinked, dashboard.CustomerName);
+        Assert.DoesNotContain(dashboard.Quotes, q => q.QuoteNumber == "Q-GONE");
+        Assert.DoesNotContain(dashboard.Invoices, i => i.InvoiceNumber == "INV-GONE");
     }
 
     [Fact]

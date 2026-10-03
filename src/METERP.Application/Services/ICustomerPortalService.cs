@@ -2,13 +2,22 @@ using METERP.Domain;
 
 namespace METERP.Application.Services;
 
+public static class CustomerPortalMessages
+{
+    public const string Unlinked = "Portal access not linked to a customer. Contact MET office.";
+
+    /// <summary>Locked or disabled portal identity. Do not describe it as an unlinked customer.</summary>
+    public const string Unavailable = "This portal login is not available. Contact MET office.";
+}
+
 public sealed record CustomerPortalDashboard(
     string CustomerName,
     int OpenQuoteCount,
     int OpenInvoiceCount,
     decimal BalanceDue,
     IReadOnlyList<Quote> Quotes,
-    IReadOnlyList<Invoice> Invoices);
+    IReadOnlyList<Invoice> Invoices,
+    bool IsUnlinked = false);
 
 public interface ICustomerPortalService
 {

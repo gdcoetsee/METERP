@@ -3,7 +3,13 @@ namespace METERP.Application.Services;
 /// <summary>
 /// Lightweight summary for listing users (avoids leaking Infrastructure types into Application layer).
 /// </summary>
-public record UserSummary(Guid Id, string Email, string? UserName);
+public record UserSummary(Guid Id, string Email, string? UserName)
+{
+    /// <summary>
+    /// False when Identity lockout is in effect, or the user's tenant is soft-deleted.
+    /// </summary>
+    public bool IsActive { get; init; } = true;
+}
 
 /// <summary>
 /// Tenant-scoped user management service on top of ASP.NET Identity.
@@ -11,7 +17,16 @@ public record UserSummary(Guid Id, string Email, string? UserName);
 /// </summary>
 public interface IUserService
 {
-    Task<IReadOnlyList<UserSummary>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
+    /// <summary>
+    /// Tenant users for the admin list. Locked-out users and users on a soft-deleted tenant
+    /// are omitted unless <paramref name="includeInactive"/> is true.
+    /// </summary>
+    Task<IReadOnlyList<UserSummary>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        bool includeInactive = false,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Creates a new user, sets tenant, hashes password, assigns to role, and ensures permission claims flow.

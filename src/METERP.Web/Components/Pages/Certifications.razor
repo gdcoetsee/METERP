@@ -57,7 +57,7 @@ else
             <tbody>
                 @foreach (var c in _certs)
                 {
-                    <tr data-testid="certs-row">
+                    <tr class="meterp-row-click" data-testid="certs-row" title="Open certification" @onclick="() => OpenCert(c)">
                         <td>@(c.Employee != null ? $"{c.Employee.FirstName} {c.Employee.LastName}" : c.EmployeeId.ToString("N")[..8])</td>
                         <td>@c.CertificationType</td>
                         <td>@(c.CertificateNumber ?? "—")</td>
@@ -74,7 +74,7 @@ else
                         <td class="text-end">
                             @if (CanManage)
                             {
-                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c)">Delete</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c)" @onclick:stopPropagation="true">Delete</button>
                             }
                         </td>
                     </tr>
@@ -82,6 +82,22 @@ else
             </tbody>
         </table>
     </div>
+}
+
+@if (_selected != null)
+{
+    <FormModal IsOpen="true" Title="@_selected.CertificationType" TestId="certs-detail" OnClose="CloseCert">
+        <ChildContent>
+            <p class="mb-1">Employee: <strong>@(_selected.Employee != null ? $"{_selected.Employee.FirstName} {_selected.Employee.LastName}" : "—")</strong></p>
+            <p class="mb-1">Type: @_selected.CertificationType</p>
+            <p class="mb-1">Number: @(_selected.CertificateNumber ?? "—")</p>
+            <p class="mb-1">Expiry: @(_selected.NoExpiry ? "No expiry" : _selected.ExpiryDate?.ToString("yyyy-MM-dd") ?? "—")</p>
+            <p class="mb-0">File: @(string.IsNullOrWhiteSpace(_selected.FileName) ? "—" : _selected.FileName)</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseCert">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @if (_showForm)
@@ -130,6 +146,10 @@ else
     private bool _loading = true;
     private Guid _filterEmployeeId = Guid.Empty;
     private bool _showForm;
+    private EmployeeCertification? _selected;
+
+    private void OpenCert(EmployeeCertification cert) => _selected = cert;
+    private void CloseCert() => _selected = null;
     private Guid _formEmployeeId;
     private string _formType = "";
     private string _formNumber = "";

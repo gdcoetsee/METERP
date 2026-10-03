@@ -23,20 +23,24 @@
 }
 else if (!accountRows.Any())
 {
-    <p class="text-muted" data-testid="finance-empty">No accounts yet. Run the demo seeder or create accounts in production.</p>
+    <p class="text-muted" data-testid="finance-empty">No accounts yet. Add the accounts this company uses. An empty chart means none have been loaded for this company.</p>
 }
 else
 {
     <div class="row" data-testid="finance-ready">
         <div class="col-md-8">
             <h5>Chart of Accounts</h5>
+            @if (accountRows.Any(r => r.Account.Description?.Contains("MET FY demo", StringComparison.OrdinalIgnoreCase) == true))
+            {
+                <p class="text-muted small" data-testid="finance-met-stub-note">Chart of accounts is loaded. Balances stay zero until a balanced journal is posted.</p>
+            }
             <table class="table table-sm" data-testid="finance-accounts-table">
                 <thead>
                     <tr>
                         <th>Code</th>
                         <th>Name</th>
                         <th>Type</th>
-                        <th class="text-end">Balance (demo)</th>
+                        <th class="text-end">Balance</th>
                         @if (CanManage)
                         {
                             <th></th>
@@ -46,7 +50,7 @@ else
                 <tbody>
                     @foreach (var row in accountRows)
                     {
-                        <tr>
+                        <tr class="meterp-row-click" title="Open account" @onclick="() => OpenAccount(row)">
                             <td><code>@row.Account.AccountCode</code></td>
                             <td>@row.Account.Name</td>
                             <td>@row.Account.Type</td>
@@ -56,7 +60,7 @@ else
                                 <td class="text-end">
                                     <button type="button" class="btn btn-link btn-sm p-0"
                                             data-testid="finance-account-deactivate"
-                                            @onclick="() => DeactivateAccountAsync(row.Account.Id)">
+                                            @onclick="() => DeactivateAccountAsync(row.Account.Id)" @onclick:stopPropagation="true">
                                         Deactivate
                                     </button>
                                 </td>
@@ -69,8 +73,8 @@ else
         <div class="col-md-4">
             <div class="card">
                 <div class="card-body">
-                    <h6>Post Journal (demo)</h6>
-                    <p class="small text-muted">In a full system this would be driven from invoices/costs/POs. For MVP the seeder posts example entries.</p>
+                    <h6>Balances</h6>
+                    <p class="small text-muted" data-testid="finance-journal-note">Journals post from invoices, job costs, and purchase orders. Refresh reloads balances. Export when the bookkeeper needs a file.</p>
                     <button class="btn btn-sm btn-outline-primary mb-2" @onclick="Refresh">Refresh Balances</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="ExportGlCsv" data-testid="finance-export-gl-csv">Export GL CSV</button>
                     <hr />
@@ -94,8 +98,33 @@ else
     </div>
 }
 
+@if (_selectedAccount != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"{_selectedAccount.Account.AccountCode} — {_selectedAccount.Account.Name}")"
+               TestId="finance-account-detail"
+               OnClose="CloseAccount">
+        <ChildContent>
+            <p class="mb-1">Type: <strong>@_selectedAccount.Account.Type</strong></p>
+            <p class="mb-1">Balance: R @_selectedAccount.Balance.ToString("N2")</p>
+            <p class="mb-0">Status: @(_selectedAccount.Account.IsActive ? "Active" : "Inactive")</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseAccount">Close</button>
+            @if (CanManage && _selectedAccount.Account.IsActive)
+            {
+                <button type="button" class="btn btn-outline-danger" @onclick="() => DeactivateAccountAsync(_selectedAccount.Account.Id)">Deactivate</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
 @code {
     private List<AccountBalanceRow> accountRows = new();
+    private AccountBalanceRow? _selectedAccount;
+
+    private void OpenAccount(AccountBalanceRow row) => _selectedAccount = row;
+    private void CloseAccount() => _selectedAccount = null;
     private bool _loading = true;
     private AccountingProvider _provider = AccountingProvider.None;
     private string _accountCode = "200";
@@ -137,6 +166,7 @@ else
         {
             await FinanceService.SetAccountActiveAsync(accountId, false);
             ToastService.ShowSuccess("Account deactivated.");
+            _selectedAccount = null;
             await Load();
         }
         catch (Exception ex)

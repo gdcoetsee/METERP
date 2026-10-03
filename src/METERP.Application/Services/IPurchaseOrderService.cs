@@ -55,6 +55,11 @@ public interface IPurchaseOrderService
 
     Task<IReadOnlyList<GoodsReceiptVoucher>> GetRecentGrvsAsync(int take = 50, CancellationToken ct = default);
 
+    Task<int> CountGrvsAsync(CancellationToken ct = default);
+
+    /// <summary>Paged GRV register. Page size is clamped to 1–50 (default 25).</summary>
+    Task<GrvPage> GetGrvsPageAsync(int page = 1, int pageSize = 25, CancellationToken ct = default);
+
     Task<IReadOnlyList<GoodsReceiptVoucher>> GetGrvsForPurchaseOrderAsync(Guid poId, CancellationToken ct = default);
 
     /// <summary>Sent or partially received POs whose expected date has passed.</summary>

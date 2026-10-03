@@ -104,6 +104,7 @@ public class AiQuoteApplyServiceTests
         _quoteService.Verify(s => s.AddLineAsync(It.Is<QuoteLine>(l =>
             l.QuoteId == quoteId &&
             l.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase) &&
+            l.LineType == "Travel" &&
             l.UnitPrice == 650m), It.IsAny<CancellationToken>()), Times.Once);
     }
 

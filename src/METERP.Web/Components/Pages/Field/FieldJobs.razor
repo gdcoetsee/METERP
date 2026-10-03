@@ -23,7 +23,7 @@
 else if (_jobs.Count == 0)
 {
     <div data-testid="field-jobs-ready">
-        <EmptyState Title="No jobs assigned"
+        <EmptyState Title="No jobs assigned to you"
                     Description="When you are assigned to jobs, they will appear here for field reporting."
                     Icon="🔧"
                     TestId="field-jobs-empty" />
@@ -35,7 +35,7 @@ else
         <div class="list-group" data-testid="field-jobs-list">
             @foreach (var job in _jobs)
             {
-                <div class="list-group-item" data-testid="field-job-row">
+                <div class="list-group-item meterp-row-click" data-testid="field-job-row" title="Open job" @onclick="() => ShowReportForm(job.Id)">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <strong>@job.JobNumber</strong>
@@ -46,7 +46,7 @@ else
                     </div>
                     <button type="button" class="btn btn-primary btn-sm mt-2 w-100"
                             data-testid="field-submit-report"
-                            @onclick="() => ShowReportForm(job.Id)">
+                            @onclick="() => ShowReportForm(job.Id)" @onclick:stopPropagation="true">
                         Submit field report
                     </button>
                 </div>
@@ -59,7 +59,7 @@ else
             <div class="list-group mb-3" data-testid="field-reports-recent">
                 @foreach (var r in _recentReports)
                 {
-                    <div class="list-group-item small" data-testid="field-report-row">
+                    <div class="list-group-item small meterp-row-click" data-testid="field-report-row" title="Open report" @onclick="() => OpenReport(r)">
                         <div class="d-flex justify-content-between">
                             <span>@(r.Job?.JobNumber ?? "Job") — @r.WorkDate.ToString("dd MMM")</span>
                             <span class="badge bg-secondary">@r.Status</span>
@@ -76,6 +76,22 @@ else
     </div>
 }
 </div>
+
+@if (_viewReport != null)
+{
+    <FormModal IsOpen="true" Title="Field report" TestId="field-report-detail" OnClose="CloseReport">
+        <p class="mb-1">Job: <strong>@(_viewReport.Job?.JobNumber ?? "—")</strong></p>
+        <p class="mb-1">Work date: @_viewReport.WorkDate.ToString("yyyy-MM-dd")</p>
+        <p class="mb-1">Status: @_viewReport.Status</p>
+        <p class="mb-1">Hours: @_viewReport.HoursWorked.ToString("N1") · Travel: R @_viewReport.TravelCost.ToString("N2")</p>
+        <p class="mb-1">Materials: @(string.IsNullOrWhiteSpace(_viewReport.MaterialsUsed) ? "—" : _viewReport.MaterialsUsed)</p>
+        <p class="mb-1">Comments: @(string.IsNullOrWhiteSpace(_viewReport.Comments) ? "—" : _viewReport.Comments)</p>
+        <p class="mb-0">Approver: @(string.IsNullOrWhiteSpace(_viewReport.ApproverNote) ? "—" : _viewReport.ApproverNote)</p>
+        <div class="d-flex justify-content-end mt-3">
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseReport">Close</button>
+        </div>
+    </FormModal>
+}
 
 <FormModal IsOpen="@(_showModal && _reportJob != null)"
            Title="Field report"
@@ -114,6 +130,10 @@ else
 @code {
     private List<Job> _jobs = new();
     private List<FieldReport> _recentReports = new();
+    private FieldReport? _viewReport;
+
+    private void OpenReport(FieldReport report) => _viewReport = report;
+    private void CloseReport() => _viewReport = null;
     private bool _loading = true;
     private bool _showModal;
     private Job? _reportJob;
@@ -128,14 +148,11 @@ else
         _loading = true;
         try
         {
-            var all = await JobService.GetAllAsync(page: 1, pageSize: 50);
-            _jobs = all
-                .Where(j => j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold)
-                .OrderBy(j => j.ScheduledStart ?? DateTime.MaxValue)
-                .ToList();
-
             if (CurrentUser.UserId is { } userId)
+            {
+                _jobs = (await JobService.GetAssignedOpenJobsForUserAsync(userId, take: 50)).ToList();
                 _recentReports = (await FieldReportService.GetBySubmitterAsync(userId, take: 8)).ToList();
+            }
 
             // Deep-link: /field/jobs?report=1 or ?report={jobId}
             var uri = Nav.ToAbsoluteUri(Nav.Uri);

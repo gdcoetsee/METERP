@@ -57,9 +57,10 @@
 }
 @if (_request != null)
 {
-    <div class="meterp-modal-backdrop" data-testid="confirm-dialog-backdrop" @onclick="CancelAsync">
+    <div class="meterp-modal-root">
+        <div class="meterp-modal-backdrop" data-testid="confirm-dialog-backdrop" @onclick="CancelAsync"></div>
         <div class="meterp-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title"
-             data-testid="confirm-dialog" @onclick:stopPropagation="true">
+             data-testid="confirm-dialog">
             <div class="meterp-modal-header">
                 <h5 class="meterp-modal-title" id="confirm-dialog-title">@_request.Title</h5>
                 <button type="button" class="btn-close" aria-label="Close" @onclick="CancelAsync"></button>

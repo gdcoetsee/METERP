@@ -102,6 +102,48 @@ public class JobTests
         Assert.False(new Job { Status = JobStatus.InProgress, DepositPercent = 30m, DepositReceived = true }.NeedsDepositInvoice());
         Assert.False(new Job { Status = JobStatus.InProgress, DepositPercent = 0m, DepositReceived = false }.NeedsDepositInvoice());
         Assert.False(new Job { Status = JobStatus.Closed, DepositPercent = 30m, DepositReceived = false }.NeedsDepositInvoice());
+        Assert.False(new Job { Status = JobStatus.Completed, DepositPercent = 30m, DepositReceived = false }.NeedsDepositInvoice());
+        Assert.False(new Job { Status = JobStatus.Invoiced, DepositPercent = 30m, DepositReceived = false }.NeedsDepositInvoice());
+    }
+
+    [Fact]
+    public void JobTrelloNotes_Parse_ReadsOverlayListAndBoard()
+    {
+        const string notes =
+            "StillToInvoice: 61840\n" +
+            "Trello[MET Field Teams Whiteboard/JOBS IN INITIAL ADMIN PREPARATION PHASE]: FT16010 KRUGER PARK LODGE https://trello.com/c/6QXIRSVX/5942-ft16010-kruger-park-lodge — SCHEDULED JOB";
+
+        var markers = JobTrelloNotes.Parse(notes);
+
+        var card = Assert.Single(markers);
+        Assert.Equal("JOBS IN INITIAL ADMIN PREPARATION PHASE", card.ListName);
+        Assert.Equal("Field Teams", card.BoardLabel);
+        Assert.Equal("https://trello.com/c/6QXIRSVX/5942-ft16010-kruger-park-lodge", card.CardUrl);
+    }
+
+    [Fact]
+    public void JobTrelloNotes_Parse_ReadsWorkshopAndDedupesStubPlusOverlay()
+    {
+        const string notes =
+            "Trello stub | Board=MET Workshop Whiteboard | List=JOBS DONE AND INVOICED | Url=https://trello.com/c/WQPuUsd7/82-5712w-actom-nelspruit\n" +
+            "Trello[MET Workshop Whiteboard/JOBS DONE AND INVOICED]: 5712W Actom Nelspruit https://trello.com/c/WQPuUsd7/82-5712w-actom-nelspruit";
+
+        var markers = JobTrelloNotes.Parse(notes);
+
+        var card = Assert.Single(markers);
+        Assert.Equal("JOBS DONE AND INVOICED", card.ListName);
+        Assert.Equal("Workshop", card.BoardLabel);
+        Assert.Equal("https://trello.com/c/WQPuUsd7/82-5712w-actom-nelspruit", card.CardUrl);
+    }
+
+    [Fact]
+    public void JobTrelloNotes_Parse_IgnoresNotesWithoutMarker()
+    {
+        Assert.Empty(JobTrelloNotes.Parse(null));
+        Assert.Empty(JobTrelloNotes.Parse("   "));
+        Assert.Empty(JobTrelloNotes.Parse("FT14711 refers to Internal EC0126"));
+        Assert.Empty(JobTrelloNotes.Parse("Mentioned trello in passing, no card marker"));
+        Assert.Empty(JobTrelloNotes.Parse("Trello[broken marker without a slash]"));
     }
 
     [Fact]
@@ -1937,6 +1979,121 @@ public class JobTests
 
         Assert.Contains(queue, r => r.JobId == dueId);
         Assert.DoesNotContain(queue, r => r.JobId == raisedId);
+
+        var raisedReloaded = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == raisedId);
+        var dueReloaded = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == dueId);
+        Assert.True(raisedReloaded.DepositReceived);
+        Assert.False(dueReloaded.DepositReceived);
+        Assert.NotEqual(JobStatus.Closed, raisedReloaded.Status);
+    }
+
+    [Fact]
+    public async Task JobService_GetDepositDueQueueAsync_ExcludesCompletedAndBilledCovered_SoftSyncsFlagWithoutClosing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var openId = await SeedJobAsync(db, service, tenantId);
+        var coveredId = await SeedJobAsync(db, service, tenantId);
+        var completedId = await SeedJobAsync(db, service, tenantId);
+
+        var covered = await db.Set<Job>().FirstAsync(j => j.Id == coveredId);
+        covered.Status = JobStatus.InProgress;
+        var completed = await db.Set<Job>().FirstAsync(j => j.Id == completedId);
+        completed.Status = JobStatus.Completed;
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = covered.CustomerId,
+            JobId = coveredId,
+            InvoiceNumber = "INV-COVERS-DEP",
+            DocumentType = InvoiceDocumentType.Standard,
+            Status = InvoiceStatus.Sent,
+            Total = 1500m
+        });
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = completed.CustomerId,
+            JobId = completedId,
+            InvoiceNumber = "INV-COMPLETED",
+            DocumentType = InvoiceDocumentType.Standard,
+            Status = InvoiceStatus.Paid,
+            Total = 5000m
+        });
+        await db.SaveChangesAsync();
+
+        var queue = await service.GetDepositDueQueueAsync();
+
+        Assert.Contains(queue, r => r.JobId == openId);
+        Assert.DoesNotContain(queue, r => r.JobId == coveredId);
+        Assert.DoesNotContain(queue, r => r.JobId == completedId);
+
+        var coveredReloaded = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == coveredId);
+        Assert.True(coveredReloaded.DepositReceived);
+        Assert.Equal(JobStatus.InProgress, coveredReloaded.Status);
+
+        var completedReloaded = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == completedId);
+        Assert.Equal(JobStatus.Completed, completedReloaded.Status);
+    }
+
+    [Fact]
+    public async Task JobService_GetCommandCenterSummary_SoftSyncsDepositReceived_FromDepositInvoice_DoesNotClose()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.Status = JobStatus.InProgress;
+        job.QuotedTotal = 61840m;
+        db.Set<Invoice>().Add(new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = job.CustomerId,
+            JobId = jobId,
+            InvoiceNumber = "DEP-FT",
+            DocumentType = InvoiceDocumentType.Deposit,
+            Status = InvoiceStatus.Sent,
+            Total = 18552m
+        });
+        await db.SaveChangesAsync();
+
+        var summary = await service.GetCommandCenterSummaryAsync(jobId);
+
+        Assert.NotNull(summary);
+        Assert.True(summary!.DepositReceived);
+        Assert.Equal(18552m, summary.BilledToDate);
+        Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            summary.Status, 30m, summary.DepositReceived, summary.QuotedTotal, summary.BilledToDate));
+
+        var reloaded = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == jobId);
+        Assert.True(reloaded.DepositReceived);
+        Assert.Equal(JobStatus.InProgress, reloaded.Status);
+    }
+
+    [Fact]
+    public async Task JobService_GetCommandCenterSummary_LeavesDepositOpen_WhenNothingBilled()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var service = new JobService(db);
+        var jobId = await SeedJobAsync(db, service, tenantId);
+        var job = await db.Set<Job>().FirstAsync(j => j.Id == jobId);
+        job.Status = JobStatus.InProgress;
+        job.QuotedTotal = 61840m;
+        job.DepositPercent = 30m;
+        job.DepositReceived = false;
+        await db.SaveChangesAsync();
+
+        var summary = await service.GetCommandCenterSummaryAsync(jobId);
+
+        Assert.NotNull(summary);
+        Assert.False(summary!.DepositReceived);
+        Assert.Equal(0m, summary.BilledToDate);
+        Assert.True(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            summary.Status, job.DepositPercent, summary.DepositReceived, summary.QuotedTotal, summary.BilledToDate));
+        Assert.Equal(JobStatus.InProgress, summary.Status);
     }
 
     [Fact]

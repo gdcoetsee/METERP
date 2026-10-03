@@ -49,7 +49,7 @@ else
             <div class="list-group" data-testid="field-leave-list">
                 @foreach (var req in _requests.Take(8))
                 {
-                    <div class="list-group-item" data-testid="field-leave-row">
+                    <div class="list-group-item meterp-row-click" data-testid="field-leave-row" title="Open leave request" @onclick="() => OpenRequest(req)">
                         <div class="d-flex justify-content-between align-items-start gap-2">
                             <div>
                                 <span>@req.StartDate.ToString("dd MMM") – @req.EndDate.ToString("dd MMM yyyy")</span>
@@ -61,7 +61,7 @@ else
                                 {
                                     <button type="button" class="btn btn-link btn-sm p-0 d-block mt-1"
                                             data-testid="field-leave-cancel"
-                                            @onclick="() => CancelRequestAsync(req)">Cancel</button>
+                                            @onclick="() => CancelRequestAsync(req)" @onclick:stopPropagation="true">Cancel</button>
                                 }
                             </div>
                         </div>
@@ -72,6 +72,24 @@ else
     </div>
 }
 </div>
+
+@if (_selected != null)
+{
+    <FormModal IsOpen="true" Title="Leave request" TestId="field-leave-detail" OnClose="CloseRequest">
+        <p class="mb-1">Dates: <strong>@_selected.StartDate.ToString("dd MMM yyyy") – @_selected.EndDate.ToString("dd MMM yyyy")</strong></p>
+        <p class="mb-1">Days: @_selected.DaysRequested.ToString("N1") · @(_selected.IsPaid ? "Paid" : "Unpaid")</p>
+        <p class="mb-1">Status: @_selected.Status</p>
+        <p class="mb-1">Reason: @(_selected.Reason ?? "—")</p>
+        <p class="mb-3">Approver: @(string.IsNullOrWhiteSpace(_selected.ApproverNote) ? "—" : _selected.ApproverNote)</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseRequest">Close</button>
+            @if (CanCancel(_selected))
+            {
+                <button type="button" class="btn btn-outline-danger" @onclick="() => CancelRequestAsync(_selected)">Cancel request</button>
+            }
+        </div>
+    </FormModal>
+}
 
 <FormModal IsOpen="_open"
            Title="Leave request"
@@ -102,6 +120,10 @@ else
     private Employee? _employee;
     private decimal _availableDays;
     private List<LeaveRequest> _requests = new();
+    private LeaveRequest? _selected;
+
+    private void OpenRequest(LeaveRequest request) => _selected = request;
+    private void CloseRequest() => _selected = null;
     private bool _loading = true;
     private bool _open;
     private DateTime _startDate = DateTime.Today.AddDays(7);

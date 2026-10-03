@@ -50,39 +50,73 @@ public class QuoteService : IQuoteService
             .FirstOrDefaultAsync(q => q.Id == id, ct);
     }
 
-    public async Task<IReadOnlyList<Quote>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Quote>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default,
+        QuoteBoardFilter filter = QuoteBoardFilter.All)
     {
         if (_cache != null && string.IsNullOrWhiteSpace(search))
         {
             return await _cache.GetOrCreateAsync(
                 TenantCacheCategories.Quotes,
-                $"p{page}:s{pageSize}",
-                () => LoadQuotesAsync(search, page, pageSize, ct),
+                $"p{page}:s{pageSize}:f{(int)filter}",
+                () => LoadQuotesAsync(search, page, pageSize, filter, ct),
                 ct: ct);
         }
 
-        return await LoadQuotesAsync(search, page, pageSize, ct);
+        return await LoadQuotesAsync(search, page, pageSize, filter, ct);
     }
 
-    private async Task<IReadOnlyList<Quote>> LoadQuotesAsync(string? search, int page, int pageSize, CancellationToken ct)
+    public async Task<int> CountAsync(
+        string? search = null,
+        QuoteBoardFilter filter = QuoteBoardFilter.All,
+        CancellationToken ct = default)
     {
-        var query = _dbContext.Set<Quote>()
-            .AsNoTracking()
+        return await ApplyQuoteListFilter(FilteredQuotes(search), filter).CountAsync(ct);
+    }
+
+    private IQueryable<Quote> FilteredQuotes(string? search)
+    {
+        var query = _dbContext.Set<Quote>().AsNoTracking().AsQueryable();
+        if (string.IsNullOrWhiteSpace(search))
+            return query;
+
+        var term = search.Trim().ToLower();
+        return query.Where(q =>
+            q.QuoteNumber.ToLower().Contains(term) ||
+            (q.Notes != null && q.Notes.ToLower().Contains(term)) ||
+            (q.Customer != null && q.Customer.Name.ToLower().Contains(term)));
+    }
+
+    private static IQueryable<Quote> ApplyQuoteListFilter(IQueryable<Quote> query, QuoteBoardFilter filter) =>
+        filter switch
+        {
+            QuoteBoardFilter.Live => query.Where(q => q.Status != QuoteStatus.Expired),
+            QuoteBoardFilter.Draft => query.Where(q => q.Status == QuoteStatus.Draft),
+            QuoteBoardFilter.Accepted => query.Where(q => q.Status == QuoteStatus.Accepted),
+            QuoteBoardFilter.Expired => query.Where(q => q.Status == QuoteStatus.Expired),
+            _ => query
+        };
+
+    private async Task<IReadOnlyList<Quote>> LoadQuotesAsync(
+        string? search,
+        int page,
+        int pageSize,
+        QuoteBoardFilter filter,
+        CancellationToken ct)
+    {
+        if (page < 1)
+            page = 1;
+        if (pageSize <= 0)
+            pageSize = 20;
+
+        var results = await ApplyQuoteListFilter(FilteredQuotes(search), filter)
             .Include(q => q.Lines)
             .Include(q => q.Customer)
-            .AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim().ToLower();
-            query = query.Where(q =>
-                q.QuoteNumber.ToLower().Contains(term) ||
-                (q.Notes != null && q.Notes.ToLower().Contains(term)) ||
-                (q.Customer != null && q.Customer.Name.ToLower().Contains(term)));
-        }
-
-        var results = await query
             .OrderByDescending(q => q.QuoteDate)
+            .ThenByDescending(q => q.QuoteNumber)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
@@ -159,6 +193,113 @@ public class QuoteService : IQuoteService
         }
 
         return quote.Id;
+    }
+
+    public async Task<Quote> CreateQuoteFromOpportunityAsync(Guid opportunityId, CancellationToken ct = default)
+    {
+        var opp = await _dbContext.Set<Opportunity>()
+            .FirstOrDefaultAsync(o => o.Id == opportunityId, ct)
+            ?? throw new InvalidOperationException("Opportunity not found.");
+
+        if (opp.Stage == OpportunityStage.ClosedLost)
+            throw new InvalidOperationException("Cannot create a quote from a Closed Lost deal.");
+
+        if (opp.QuoteId is { } linked && linked != Guid.Empty)
+            throw new InvalidOperationException("This deal already has a quote.");
+
+        if (opp.CustomerId is not { } customerId || customerId == Guid.Empty)
+            throw new InvalidOperationException("Link a customer on this deal before creating a quote.");
+
+        var mentionsTravel = TravelLineRules.MentionsTravel(opp.Title)
+            || TravelLineRules.MentionsTravel(opp.Notes);
+        var scopeDescription = mentionsTravel && TravelLineRules.MentionsTravel(opp.Title)
+            ? "Scope of work"
+            : TrimTo(string.IsNullOrWhiteSpace(opp.Title) ? "Scope of work" : opp.Title, 500);
+
+        var quote = new Quote
+        {
+            CustomerId = customerId,
+            QuoteDate = DateTime.UtcNow,
+            ValidUntil = DateTime.UtcNow.AddDays(30),
+            TaxRate = 0.15m,
+            Status = QuoteStatus.Draft,
+            Notes = BuildOpportunityQuoteNotes(opp, mentionsTravel),
+            Lines =
+            {
+                new QuoteLine
+                {
+                    Description = scopeDescription,
+                    Quantity = 1,
+                    UnitPrice = opp.Value < 0 ? 0 : opp.Value,
+                    Unit = "lot",
+                    LineType = "Other"
+                }
+            }
+        };
+
+        if (mentionsTravel)
+        {
+            quote.Lines.Add(new QuoteLine
+            {
+                Description = "Travel",
+                Quantity = 1,
+                UnitPrice = 0,
+                Unit = "lot",
+                LineType = TravelLineRules.TravelType
+            });
+        }
+
+        foreach (var line in quote.Lines)
+        {
+            line.LineType = TravelLineRules.EnsureExplicitType(line.LineType, line.Description);
+            if (TravelLineRules.IsTravelLine(line.LineType, line.Description)
+                && string.Equals(line.LineType, TravelLineRules.MaterialType, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Travel must stay an explicit Travel line, not a materials lump.");
+            }
+        }
+
+        var quoteId = await CreateAsync(quote, ct);
+
+        opp.QuoteId = quoteId;
+        if (opp.Stage is OpportunityStage.Lead or OpportunityStage.Qualified or OpportunityStage.Proposal or OpportunityStage.Negotiation)
+            opp.Stage = OpportunityStage.Proposal;
+
+        await _dbContext.SaveChangesAsync(ct);
+        _cache?.InvalidateCategory(TenantCacheCategories.Opportunities);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "CONVERT",
+                "Opportunity",
+                opp.Title,
+                $"Created quote {quote.QuoteNumber}" + (mentionsTravel ? " with an explicit travel line" : ""),
+                ct);
+        }
+
+        return (await GetByIdAsync(quoteId, ct))!;
+    }
+
+    private static string? BuildOpportunityQuoteNotes(Opportunity opp, bool mentionsTravel)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(opp.Title))
+            parts.Add(opp.Title.Trim());
+        if (!string.IsNullOrWhiteSpace(opp.Notes))
+            parts.Add(opp.Notes.Trim());
+        if (mentionsTravel)
+            parts.Add("Travel is an explicit line and is not included in materials.");
+        if (parts.Count == 0)
+            return null;
+        var notes = string.Join(". ", parts);
+        return notes.Length <= 2000 ? notes : notes[..2000];
+    }
+
+    private static string TrimTo(string value, int max)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length <= max ? trimmed : trimmed[..max];
     }
 
     public async Task UpdateAsync(Quote quote, CancellationToken ct = default)
@@ -473,6 +614,7 @@ public class QuoteService : IQuoteService
             .Include(q => q.Customer)
             .Where(q => q.ApprovalStatus == QuoteApprovalStatus.PendingExecutive)
             .OrderByDescending(q => q.SubmittedForApprovalAt)
+            .Take(200)
             .ToListAsync(ct);
     }
 
@@ -484,8 +626,8 @@ public class QuoteService : IQuoteService
         var quotes = await _dbContext.Set<Quote>()
             .AsNoTracking()
             .Include(q => q.Customer)
-            .Include(q => q.Lines)
-            .Where(q => q.Status == QuoteStatus.Sent || q.Status == QuoteStatus.Accepted)
+            .Where(q => (q.Status == QuoteStatus.Sent || q.Status == QuoteStatus.Accepted)
+                && q.Lines.Any(l => !l.IsDeleted))
             .OrderByDescending(q => q.Total)
             .Take(take * 3)
             .ToListAsync(ct);
@@ -500,7 +642,7 @@ public class QuoteService : IQuoteService
             .ToListAsync(ct)).ToHashSet();
 
         return quotes
-            .Where(q => !converted.Contains(q.Id) && q.Lines.Any(l => !l.IsDeleted))
+            .Where(q => !converted.Contains(q.Id))
             .Select(q => new ConvertibleDocumentRow(
                 q.Id,
                 "Quote",
@@ -729,12 +871,9 @@ public class QuoteService : IQuoteService
             if (line.Unit.Length > 20)
                 throw new InvalidOperationException("Line unit cannot exceed 20 characters.");
         }
-        if (!string.IsNullOrWhiteSpace(line.LineType))
-        {
-            line.LineType = line.LineType.Trim();
-            if (line.LineType.Length > 50)
-                throw new InvalidOperationException("Line type cannot exceed 50 characters.");
-        }
+        line.LineType = TravelLineRules.EnsureExplicitType(line.LineType, line.Description);
+        if (line.LineType.Length > 50)
+            throw new InvalidOperationException("Line type cannot exceed 50 characters.");
     }
 
     public async Task<Job> ConvertToJobAsync(Guid quoteId, CancellationToken ct = default)
@@ -802,19 +941,26 @@ public class QuoteService : IQuoteService
         _dbContext.Set<Job>().Add(job);
         await _dbContext.SaveChangesAsync(ct);
 
-        // Explicit travel from quote lines — contractor differentiator; carried into job costing.
+        // Explicit travel from quote lines. Never file travel as Material.
         foreach (var line in quote.Lines.Where(l => !l.IsDeleted))
         {
-            var isTravel = line.Description.Contains("Travel", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(line.LineType, "Travel", StringComparison.OrdinalIgnoreCase);
-            if (!isTravel) continue;
+            var promoted = TravelLineRules.EnsureExplicitType(line.LineType, line.Description);
+            if (!string.Equals(line.LineType, promoted, StringComparison.Ordinal))
+                line.LineType = promoted;
+
+            if (!TravelLineRules.IsTravelLine(line.LineType, line.Description))
+                continue;
+
+            var costType = TravelLineRules.JobCostType(line.LineType, line.Description);
+            if (string.Equals(costType, TravelLineRules.MaterialType, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Travel cannot be folded into a materials cost.");
 
             _dbContext.Set<JobCost>().Add(new JobCost
             {
                 JobId = job.Id,
-                Description = line.Description,
+                Description = string.IsNullOrWhiteSpace(line.Description) ? "Travel" : line.Description,
                 Amount = line.LineTotal,
-                CostType = "Travel",
+                CostType = costType,
                 CostDate = DateTime.UtcNow
             });
         }

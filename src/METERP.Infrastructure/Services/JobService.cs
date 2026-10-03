@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Models;
 using METERP.Application.Services;
@@ -41,18 +41,57 @@ public class JobService : IJobService
 
     public async Task<JobCommandCenterSummary?> GetCommandCenterSummaryAsync(Guid jobId, CancellationToken ct = default)
     {
-        var job = await GetByIdAsync(jobId, ct);
+        await SoftSyncDepositReceivedAsync(jobId, ct);
+
+        var job = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job == null) return null;
 
-        var costs = job.ActualCosts.Where(c => !c.IsDeleted).ToList();
-        var laborCost = job.Labors.Where(l => !l.IsDeleted).Sum(l => l.TotalCost);
+        // One GROUP BY per table. Do not SUM with ToLower() filters and do not load the rows (PD0085 ~2k live costs).
+        var costGroups = await _dbContext.Set<JobCost>().AsNoTracking()
+            .Where(c => c.JobId == jobId)
+            .GroupBy(c => c.CostType)
+            .Select(g => new { Type = g.Key, Amount = g.Sum(x => x.Amount), Count = g.Count() })
+            .ToListAsync(ct);
+        decimal materialCost = 0m, travelCost = 0m, otherCost = 0m;
+        var costLineCount = 0;
+        foreach (var group in costGroups)
+        {
+            costLineCount += group.Count;
+            AddCostBucket(group.Type, group.Amount, ref materialCost, ref travelCost, ref otherCost);
+        }
+
+        var laborAgg = await _dbContext.Set<JobLabor>().AsNoTracking()
+            .Where(l => l.JobId == jobId)
+            .GroupBy(l => l.JobId)
+            .Select(g => new
+            {
+                Amount = g.Sum(x => x.Hours * x.HourlyRate),
+                Hours = g.Sum(x => x.Hours),
+                Count = g.Count()
+            })
+            .FirstOrDefaultAsync(ct);
+        var laborCost = laborAgg?.Amount ?? 0m;
+        var laborHours = laborAgg?.Hours ?? 0m;
+        var laborLineCount = laborAgg?.Count ?? 0;
+        var actualTotal = materialCost + travelCost + otherCost + laborCost;
+        if (actualTotal <= 0m)
+            actualTotal = job.ActualCost;
 
         var requisitions = await _dbContext.Set<StockRequisition>()
             .AsNoTracking()
-            .Include(r => r.Lines)
-            .Include(r => r.PurchaseOrder)
             .Where(r => r.JobId == jobId)
             .OrderByDescending(r => r.CreatedDate)
+            .Take(50)
+            .Select(r => new
+            {
+                r.RequisitionNumber,
+                r.Status,
+                r.PurchaseOrderId,
+                PoNumber = r.PurchaseOrder != null ? r.PurchaseOrder.PoNumber : null,
+                LineCount = r.Lines.Count()
+            })
             .ToListAsync(ct);
 
         var poIds = requisitions
@@ -71,16 +110,19 @@ public class JobService : IJobService
         var grvByPo = grvs.GroupBy(g => g.PurchaseOrderId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.ReceivedAt).First().GrvNumber);
 
-        var invoices = await _dbContext.Set<Invoice>()
+        // Billed total is a SUM. The invoice grid is GetJobInvoicesAsync when that tab opens.
+        var billedToDate = await _dbContext.Set<Invoice>()
             .AsNoTracking()
-            .Where(i => i.JobId == jobId && !i.IsDeleted && i.DocumentType != InvoiceDocumentType.CreditNote)
-            .OrderByDescending(i => i.InvoiceDate)
-            .ToListAsync(ct);
+            .Where(i => i.JobId == jobId
+                && i.DocumentType != InvoiceDocumentType.Proforma
+                && i.DocumentType != InvoiceDocumentType.CreditNote
+                && i.Status != InvoiceStatus.Draft
+                && i.Status != InvoiceStatus.Cancelled)
+            .SumAsync(i => (decimal?)i.Total, ct) ?? 0m;
 
-        var billedToDate = invoices
-            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
-            .Sum(i => i.Total);
-        var actualTotal = job.GetActualTotal();
+        var marginPercent = job.QuotedTotal > 0
+            ? Math.Round((job.QuotedTotal - actualTotal) / job.QuotedTotal * 100m, 1)
+            : 0m;
 
         return new JobCommandCenterSummary
         {
@@ -92,26 +134,99 @@ public class JobService : IJobService
             QuotedTotal = job.QuotedTotal,
             ActualTotal = actualTotal,
             BilledToDate = billedToDate,
+            DepositReceived = job.DepositReceived,
             UnbilledResidual = Math.Max(0m, job.QuotedTotal - billedToDate),
-            MaterialCost = costs.Where(c => c.CostType.Equals("Material", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
-            TravelCost = costs.Where(c => c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
-            OtherCost = costs.Where(c => !c.CostType.Equals("Material", StringComparison.OrdinalIgnoreCase)
-                && !c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount),
+            MaterialCost = materialCost,
+            TravelCost = travelCost,
+            OtherCost = otherCost,
             LaborCost = laborCost,
-            MarginPercent = job.GetMarginPercent(),
+            LaborHours = laborHours,
+            CostLineCount = costLineCount,
+            LaborLineCount = laborLineCount,
+            MarginPercent = marginPercent,
             IsReadyToInvoice = job.IsReadyToInvoice(),
             ProgressPercent = job.GetProgressPercent(),
             Requisitions = requisitions.Select(r => new JobRequisitionSummary
             {
                 RequisitionNumber = r.RequisitionNumber,
                 Status = r.Status,
-                PurchaseOrderNumber = r.PurchaseOrder?.PoNumber,
+                PurchaseOrderNumber = r.PoNumber,
                 GrvNumber = r.PurchaseOrderId.HasValue && grvByPo.TryGetValue(r.PurchaseOrderId.Value, out var grv)
                     ? grv
                     : null,
-                LineCount = r.Lines.Count(l => !l.IsDeleted)
+                LineCount = r.LineCount
             }).ToList(),
-            Invoices = invoices.Select(i => new JobInvoiceSummary
+            Invoices = Array.Empty<JobInvoiceSummary>()
+        };
+    }
+
+    public async Task<Job?> GetCommandCenterShellAsync(Guid jobId, CancellationToken ct = default)
+    {
+        return await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Include(j => j.Division)
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+    }
+
+    public async Task<JobCostPage> GetCostsPageAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default)
+    {
+        (page, pageSize) = NormalizeGridPage(page, pageSize);
+        var query = _dbContext.Set<JobCost>().AsNoTracking().Where(c => c.JobId == jobId);
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(c => c.CostDate)
+            .ThenByDescending(c => c.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(c => new JobCostLine
+            {
+                Id = c.Id,
+                CostDate = c.CostDate,
+                CostType = c.CostType,
+                Description = c.Description,
+                Amount = c.Amount
+            })
+            .ToListAsync(ct);
+        return new JobCostPage { Items = items, Page = page, PageSize = pageSize, TotalCount = total };
+    }
+
+    public async Task<JobLaborPage> GetLaborPageAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default)
+    {
+        (page, pageSize) = NormalizeGridPage(page, pageSize);
+        var query = _dbContext.Set<JobLabor>().AsNoTracking().Where(l => l.JobId == jobId);
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(l => l.WorkDate)
+            .ThenByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(l => new JobLaborLine
+            {
+                Id = l.Id,
+                WorkDate = l.WorkDate,
+                Technician = l.Technician
+                    ?? (l.Employee != null ? (l.Employee.FirstName + " " + l.Employee.LastName).Trim() : string.Empty),
+                Hours = l.Hours,
+                HourlyRate = l.HourlyRate,
+                TotalCost = l.Hours * l.HourlyRate,
+                Description = l.Description
+            })
+            .ToListAsync(ct);
+        return new JobLaborPage { Items = items, Page = page, PageSize = pageSize, TotalCount = total };
+    }
+
+    public async Task<JobInvoicePage> GetJobInvoicesAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default)
+    {
+        (page, pageSize) = NormalizeGridPage(page, pageSize);
+        var query = _dbContext.Set<Invoice>().AsNoTracking().Where(i => i.JobId == jobId);
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(i => i.InvoiceDate)
+            .ThenByDescending(i => i.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(i => new JobInvoiceSummary
             {
                 InvoiceId = i.Id,
                 InvoiceNumber = i.InvoiceNumber,
@@ -119,16 +234,25 @@ public class JobService : IJobService
                 Status = i.Status,
                 Total = i.Total,
                 InvoiceDate = i.InvoiceDate
-            }).ToList()
-        };
+            })
+            .ToListAsync(ct);
+        return new JobInvoicePage { Items = items, Page = page, PageSize = pageSize, TotalCount = total };
     }
+
+    public async Task<IReadOnlyList<JobComplianceCertificate>> GetCertificatesAsync(Guid jobId, CancellationToken ct = default) =>
+        await _dbContext.Set<JobComplianceCertificate>()
+            .AsNoTracking()
+            .Where(c => c.JobId == jobId)
+            .OrderByDescending(c => c.IssuedDate)
+            .Take(100)
+            .ToListAsync(ct);
 
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        return await _dbContext.Set<Job>()
-            .Include(j => j.ActualCosts)
-            .Include(j => j.Labors)
-                .ThenInclude(l => l.Employee)
+        // Read model. AsNoTracking so assigning the first cost/labor page cannot pull the rest of the collection.
+        // Callers that need every row must query aggregates or pages, not this graph (PD0085 ~9k costs).
+        var job = await _dbContext.Set<Job>()
+            .AsNoTracking()
             .Include(j => j.Customer)
             .Include(j => j.Asset)
             .Include(j => j.AssignedEmployee)
@@ -137,21 +261,119 @@ public class JobService : IJobService
             .Include(j => j.Quote)
                 .ThenInclude(q => q != null ? q.Lines : null)
             .Include(j => j.SalesOrder)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(j => j.Id == id, ct);
+
+        if (job == null)
+            return null;
+
+        // First page only for UI grids; totals come from GetCommandCenterSummaryAsync aggregates.
+        const int pageSize = 50;
+        job.ActualCosts = await _dbContext.Set<JobCost>()
+            .AsNoTracking()
+            .Where(c => c.JobId == id && !c.IsDeleted)
+            .OrderByDescending(c => c.CreatedDate)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        job.Labors = await _dbContext.Set<JobLabor>()
+            .AsNoTracking()
+            .Include(l => l.Employee)
+            .Where(l => l.JobId == id && !l.IsDeleted)
+            .OrderByDescending(l => l.WorkDate)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return job;
     }
 
-    public async Task<IReadOnlyList<Job>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<int> CountAsync(string? search = null, CancellationToken ct = default, bool unassignedDivisionOnly = false)
     {
-        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        var q = _dbContext.Set<Job>().AsNoTracking().Where(j => !j.IsDeleted);
+        if (unassignedDivisionOnly)
+            q = q.Where(j => j.DivisionId == null);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(j =>
+                j.JobNumber.ToLower().Contains(term)
+                || j.Title.ToLower().Contains(term)
+                || (j.Customer != null && j.Customer.Name.ToLower().Contains(term)));
+        }
+        return await q.CountAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Job>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default,
+        bool unassignedDivisionOnly = false)
+    {
+        if (_cache != null && string.IsNullOrWhiteSpace(search) && !unassignedDivisionOnly)
         {
             return await _cache.GetOrCreateAsync(
                 TenantCacheCategories.Jobs,
                 $"p{page}:s{pageSize}",
-                () => LoadJobsAsync(search, page, pageSize, ct),
+                () => LoadJobsAsync(search, page, pageSize, false, ct),
                 ct: ct);
         }
 
-        return await LoadJobsAsync(search, page, pageSize, ct);
+        return await LoadJobsAsync(search, page, pageSize, unassignedDivisionOnly, ct);
+    }
+
+    public async Task<IReadOnlyList<Job>> GetAssignedOpenJobsForUserAsync(
+        Guid userId,
+        int take = 50,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        if (userId == Guid.Empty)
+            return Array.Empty<Job>();
+
+        var employeeId = await _dbContext.Set<Employee>()
+            .AsNoTracking()
+            .Where(e => e.LinkedUserId == userId && e.IsActive)
+            .Select(e => (Guid?)e.Id)
+            .FirstOrDefaultAsync(ct);
+        if (employeeId is null || employeeId == Guid.Empty)
+            return Array.Empty<Job>();
+
+        var id = employeeId.Value;
+        return await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Where(j => j.Status == JobStatus.Scheduled
+                || j.Status == JobStatus.InProgress
+                || j.Status == JobStatus.OnHold)
+            .Where(j => j.AssignedEmployeeId == id
+                || j.CrewAssignments.Any(c => c.EmployeeId == id))
+            .OrderBy(j => j.ScheduledStart == null)
+            .ThenBy(j => j.ScheduledStart)
+            .ThenBy(j => j.JobNumber)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Job>> GetTodaysWorkAsync(DateTime utcToday, int take = 12, CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var today = DateTime.SpecifyKind(utcToday.Date, DateTimeKind.Utc);
+        var tomorrow = today.AddDays(1);
+        return await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Include(j => j.Customer)
+            .Include(j => j.AssignedEmployee)
+            .Where(j => j.Status != JobStatus.Closed && j.Status != JobStatus.Cancelled)
+            .Where(j => j.Status == JobStatus.InProgress
+                || j.Status == JobStatus.Scheduled
+                || (j.CompletedDate >= today && j.CompletedDate < tomorrow))
+            .OrderBy(j => j.Status == JobStatus.InProgress ? 0 : 1)
+            .ThenBy(j => j.ScheduledStart == null)
+            .ThenBy(j => j.ScheduledStart)
+            .ThenBy(j => j.JobNumber)
+            .Take(take)
+            .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetReadyToInvoiceQueueAsync(
@@ -159,6 +381,7 @@ public class JobService : IJobService
         CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 50);
+        // Bound like deposit/sign-off: do not materialise every signed-off job on a 20k seed.
         var jobs = await _dbContext.Set<Job>()
             .AsNoTracking()
             .Include(j => j.Customer)
@@ -166,6 +389,9 @@ public class JobService : IJobService
                 j.SignOffStatus == JobSignOffStatus.SignedOff
                 && j.Status != JobStatus.Closed
                 && j.Status != JobStatus.Cancelled)
+            .OrderByDescending(j => j.QuotedTotal)
+            .ThenBy(j => j.JobNumber)
+            .Take(take * 4)
             .ToListAsync(ct);
 
         if (jobs.Count == 0)
@@ -192,7 +418,7 @@ public class JobService : IJobService
                     j.Id,
                     j.JobNumber,
                     j.Title,
-                    j.Customer?.Name ?? "—",
+                    j.Customer?.Name ?? "â€”",
                     j.QuotedTotal,
                     billed,
                     unbilled);
@@ -209,45 +435,70 @@ public class JobService : IJobService
         CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 50);
-        var jobs = await _dbContext.Set<Job>()
+        // Bound query: live ops only (not Completed/Closed) - full-seed must not load 20k jobs.
+        var candidates = await _dbContext.Set<Job>()
             .AsNoTracking()
             .Include(j => j.Customer)
             .Where(j =>
-                j.Status != JobStatus.Closed
-                && j.Status != JobStatus.Cancelled
+                (j.Status == JobStatus.Scheduled || j.Status == JobStatus.InProgress || j.Status == JobStatus.OnHold)
                 && j.DepositPercent > 0
-                && !j.DepositReceived)
+                && !j.DepositReceived
+                && j.QuotedTotal > 0)
+            .OrderByDescending(j => j.QuotedTotal)
+            .Take(take * 4)
             .ToListAsync(ct);
 
-        if (jobs.Count == 0)
+        if (candidates.Count == 0)
             return Array.Empty<ReadyToInvoiceJobRow>();
 
-        var jobIds = jobs.Select(j => j.Id).ToList();
-        var depositInvoiceJobIds = (await _dbContext.Set<Invoice>()
+        var jobIds = candidates.Select(j => j.Id).ToList();
+        var invoiceRows = await _dbContext.Set<Invoice>()
             .AsNoTracking()
-            .Where(i =>
-                i.JobId != null
-                && jobIds.Contains(i.JobId.Value)
-                && i.DocumentType == InvoiceDocumentType.Deposit)
-            .Select(i => new { i.JobId, i.DocumentType, i.Status })
-            .ToListAsync(ct))
+            .Where(i => i.JobId != null && jobIds.Contains(i.JobId.Value))
+            .Select(i => new { i.JobId, i.DocumentType, i.Status, i.Total })
+            .ToListAsync(ct);
+
+        var billedByJob = invoiceRows
             .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .GroupBy(i => i.JobId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+        var hasDepositInvoice = invoiceRows
+            .Where(i => i.DocumentType == InvoiceDocumentType.Deposit
+                && InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
             .Select(i => i.JobId!.Value)
             .ToHashSet();
 
-        return jobs
-            .Where(j => !depositInvoiceJobIds.Contains(j.Id))
+        var syncIds = candidates
+            .Where(j => InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(
+                j.DepositReceived,
+                j.QuotedTotal,
+                j.DepositPercent,
+                billedByJob.GetValueOrDefault(j.Id),
+                hasDepositInvoice.Contains(j.Id)))
+            .Select(j => j.Id)
+            .ToList();
+        await SoftSyncDepositFlagsAsync(syncIds, ct);
+
+        return candidates
+            .Where(j =>
+            {
+                if (hasDepositInvoice.Contains(j.Id)) return false;
+                var billed = billedByJob.GetValueOrDefault(j.Id);
+                return !InvoiceBillingCalculator.BilledCoversDeposit(j.QuotedTotal, j.DepositPercent, billed);
+            })
             .Select(j =>
             {
-                var deposit = Math.Round(j.QuotedTotal * j.DepositPercent / 100m, 2);
+                var deposit = InvoiceBillingCalculator.CalculateDepositThreshold(j.QuotedTotal, j.DepositPercent);
+                var billed = billedByJob.GetValueOrDefault(j.Id);
                 return new ReadyToInvoiceJobRow(
                     j.Id,
                     j.JobNumber,
                     j.Title,
-                    j.Customer?.Name ?? "—",
+                    j.Customer?.Name ?? "-",
                     j.QuotedTotal,
-                    0m,
-                    deposit,
+                    billed,
+                    Math.Max(0m, deposit - billed),
                     "Deposit");
             })
             .OrderByDescending(r => r.UnbilledResidual)
@@ -261,16 +512,34 @@ public class JobService : IJobService
         CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 50);
-        var jobs = await _dbContext.Set<Job>()
+        // Open work still needing sign-off. Cost comes from Job.ActualCost (the maintained rollup).
+        // Do not SUM JobCosts here: the MET seed has ~98k soft-deleted cost rows, and header ActualCost
+        // is already >= the live lines. Labor uses Hours * HourlyRate — TotalCost is unmapped and
+        // Npgsql throws "Translation of member 'TotalCost' on entity type 'JobLabor' failed".
+        // A deposit or other invoice reduces the residual. It does not close the job.
+        var open = _dbContext.Set<Job>()
             .AsNoTracking()
-            .Include(j => j.Customer)
-            .Include(j => j.ActualCosts)
-            .Include(j => j.Labors)
             .Where(j =>
                 j.SignOffStatus != JobSignOffStatus.SignedOff
                 && j.Status != JobStatus.Closed
-                && j.Status != JobStatus.Cancelled)
+                && j.Status != JobStatus.Cancelled);
+
+        var withCost = await ProjectSignOff(open.Where(j => j.ActualCost > 0)).ToListAsync(ct);
+        // JobNumber before Take keeps the SQL window stable (EF warns on Take without OrderBy).
+        var laborOnly = await ProjectSignOff(
+                open.Where(j => j.ActualCost <= 0 && j.Labors.Any(l => l.Hours > 0))
+                    .OrderBy(j => j.JobNumber))
+            .Take(take)
             .ToListAsync(ct);
+
+        var jobs = withCost
+            .OrderByDescending(j => j.ActualCost)
+            .ThenBy(j => j.JobNumber, StringComparer.Ordinal)
+            .Take(take * 4)
+            .Concat(laborOnly)
+            .GroupBy(j => j.Id)
+            .Select(g => g.First())
+            .ToList();
 
         if (jobs.Count == 0)
             return Array.Empty<ReadyToInvoiceJobRow>();
@@ -287,16 +556,25 @@ public class JobService : IJobService
             .GroupBy(i => i.JobId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
 
+        var laborRows = await _dbContext.Set<JobLabor>()
+            .AsNoTracking()
+            .Where(l => jobIds.Contains(l.JobId))
+            .GroupBy(l => l.JobId)
+            .Select(g => new { JobId = g.Key, Total = g.Sum(x => x.Hours * x.HourlyRate) })
+            .ToListAsync(ct);
+        var laborByJob = laborRows.ToDictionary(x => x.JobId, x => x.Total);
+
         return jobs
             .Select(j =>
             {
                 var billed = billedByJob.GetValueOrDefault(j.Id);
-                var unbilledWork = Math.Max(0m, Math.Round(j.GetActualTotal() - billed, 2));
+                var actual = j.ActualCost + laborByJob.GetValueOrDefault(j.Id);
+                var unbilledWork = Math.Max(0m, Math.Round(actual - billed, 2));
                 return new ReadyToInvoiceJobRow(
                     j.Id,
                     j.JobNumber,
                     j.Title,
-                    j.Customer?.Name ?? "—",
+                    string.IsNullOrWhiteSpace(j.CustomerName) ? "-" : j.CustomerName,
                     j.QuotedTotal,
                     billed,
                     unbilledWork,
@@ -304,16 +582,59 @@ public class JobService : IJobService
             })
             .Where(r => r.UnbilledResidual > 0)
             .OrderByDescending(r => r.UnbilledResidual)
-            .ThenBy(r => r.JobNumber)
+            .ThenBy(r => r.JobNumber, StringComparer.Ordinal)
             .Take(take)
             .ToList();
     }
 
-    private async Task<IReadOnlyList<Job>> LoadJobsAsync(string? search, int page, int pageSize, CancellationToken ct)
+    private static IQueryable<SignOffQueuePick> ProjectSignOff(IQueryable<Job> jobs) =>
+        jobs.Select(j => new SignOffQueuePick(
+            j.Id,
+            j.JobNumber,
+            j.Title,
+            j.Customer != null ? j.Customer.Name : null,
+            j.QuotedTotal,
+            j.ActualCost));
+
+    private sealed record SignOffQueuePick(
+        Guid Id,
+        string JobNumber,
+        string Title,
+        string? CustomerName,
+        decimal QuotedTotal,
+        decimal ActualCost);
+
+    private static (int Page, int PageSize) NormalizeGridPage(int page, int pageSize)
+    {
+        if (page < 1)
+            page = 1;
+        if (pageSize <= 0)
+            pageSize = 25;
+        pageSize = Math.Min(pageSize, 50);
+        return (page, pageSize);
+    }
+
+    private static void AddCostBucket(string? costType, decimal amount, ref decimal material, ref decimal travel, ref decimal other)
+    {
+        if (string.Equals(costType, "material", StringComparison.OrdinalIgnoreCase))
+            material += amount;
+        else if (string.Equals(costType, "travel", StringComparison.OrdinalIgnoreCase))
+            travel += amount;
+        else
+            other += amount;
+    }
+
+    private async Task<IReadOnlyList<Job>> LoadJobsAsync(
+        string? search,
+        int page,
+        int pageSize,
+        bool unassignedDivisionOnly,
+        CancellationToken ct)
     {
         var query = _dbContext.Set<Job>()
             .AsNoTracking()
             .Include(j => j.Customer)
+            .Include(j => j.Division)
             .Include(j => j.Asset)
             .Include(j => j.AssignedEmployee)
             .Include(j => j.CrewAssignments)
@@ -321,6 +642,9 @@ public class JobService : IJobService
             .Include(j => j.Quote)
             .Include(j => j.ActualCosts)
             .AsQueryable();
+
+        if (unassignedDivisionOnly)
+            query = query.Where(j => j.DivisionId == null);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -546,7 +870,7 @@ public class JobService : IJobService
 
         if (existing.Status is JobStatus.Closed or JobStatus.Cancelled)
             throw new InvalidOperationException(
-                $"Cannot edit job {existing.JobNumber} — it is {existing.Status}.");
+                $"Cannot edit job {existing.JobNumber} â€” it is {existing.Status}.");
 
         // Status lifecycle must go through dedicated methods (status / close / cancel / reopen).
         if (job.Status != existing.Status)
@@ -744,7 +1068,7 @@ public class JobService : IJobService
             .AnyAsync(i => i.JobId == job.Id, ct);
         if (hasInvoices)
             throw new InvalidOperationException(
-                $"Cannot delete job {job.JobNumber} — invoices exist. Cancel the job instead.");
+                $"Cannot delete job {job.JobNumber} â€” invoices exist. Cancel the job instead.");
 
         foreach (var cost in job.ActualCosts)
         {
@@ -846,8 +1170,8 @@ public class JobService : IJobService
                 "CLOSE",
                 "Job",
                 job.JobNumber,
-                $"Executive close — actual R {job.GetActualTotal():N0}, quoted R {job.QuotedTotal:N0}, billed R {billed:N0}, unbilled R {unbilled:N0}" +
-                (job.CloseNotes != null ? $" — {job.CloseNotes}" : ""),
+                $"Executive close â€” actual R {job.GetActualTotal():N0}, quoted R {job.QuotedTotal:N0}, billed R {billed:N0}, unbilled R {unbilled:N0}" +
+                (job.CloseNotes != null ? $" â€” {job.CloseNotes}" : ""),
                 ct);
         }
 
@@ -887,7 +1211,7 @@ public class JobService : IJobService
                 "REOPEN",
                 "Job",
                 job.JobNumber,
-                $"Executive reopen — {job.LastReopenReason}",
+                $"Executive reopen â€” {job.LastReopenReason}",
                 ct);
         }
 
@@ -1036,7 +1360,7 @@ public class JobService : IJobService
         await _notifications.CreateAsync(new TenantNotification
         {
             TenantId = job.TenantId,
-            Title = $"Job {job.JobNumber} is complete — start sign-off",
+            Title = $"Job {job.JobNumber} is complete â€” start sign-off",
             Message = $"{job.Title} is marked complete. Manager then executive sign-off unlocks the invoice.",
             Category = "collections",
             TargetRoles = "Admin,Executive,Finance",
@@ -1273,6 +1597,56 @@ public class JobService : IJobService
         }
     }
 
+    /// <summary>
+    /// Persist DepositReceived from linked invoice sums when a counting deposit invoice exists
+    /// or billed-to-date already meets the deposit threshold. Does not change job status.
+    /// </summary>
+    private async Task SoftSyncDepositReceivedAsync(Guid jobId, CancellationToken ct)
+    {
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || job.DepositReceived || job.DepositPercent <= 0m)
+            return;
+
+        var rows = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId == jobId)
+            .Select(i => new { i.DocumentType, i.Status, i.Total })
+            .ToListAsync(ct);
+
+        var billed = rows
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .Sum(i => i.Total);
+        var hasDeposit = rows.Any(i =>
+            i.DocumentType == InvoiceDocumentType.Deposit
+            && InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status));
+
+        if (!InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(
+                false, job.QuotedTotal, job.DepositPercent, billed, hasDeposit))
+            return;
+
+        job.DepositReceived = true;
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
+    private async Task SoftSyncDepositFlagsAsync(IReadOnlyList<Guid> jobIds, CancellationToken ct)
+    {
+        if (jobIds.Count == 0)
+            return;
+
+        var jobs = await _dbContext.Set<Job>()
+            .Where(j => jobIds.Contains(j.Id) && !j.DepositReceived)
+            .ToListAsync(ct);
+        if (jobs.Count == 0)
+            return;
+
+        foreach (var job in jobs)
+            job.DepositReceived = true;
+
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
     private Task InvalidateListCachesAsync(CancellationToken ct) =>
         _cache == null
             ? Task.CompletedTask
@@ -1305,7 +1679,7 @@ public class JobService : IJobService
         }
         catch
         {
-            // Best-effort commercial tracking — must not break business operations.
+            // Best-effort commercial tracking â€” must not break business operations.
         }
     }
 

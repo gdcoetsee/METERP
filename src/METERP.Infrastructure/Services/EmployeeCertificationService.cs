@@ -48,9 +48,15 @@ public sealed class EmployeeCertificationService : IEmployeeCertificationService
     {
         take = Math.Clamp(take, 1, 50);
         var today = DateTime.UtcNow.Date;
-        var certs = await GetExpiringAsync(30, ct);
-        return certs
+        var until = today.AddDays(30);
+        var certs = await _dbContext.Set<EmployeeCertification>()
+            .AsNoTracking()
+            .Include(c => c.Employee)
+            .Where(c => !c.NoExpiry && c.ExpiryDate != null && c.ExpiryDate <= until)
+            .OrderBy(c => c.ExpiryDate)
             .Take(take)
+            .ToListAsync(ct);
+        return certs
             .Select(c =>
             {
                 var expiry = c.ExpiryDate ?? today;

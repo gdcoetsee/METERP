@@ -55,31 +55,140 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Payments)
             .Include(i => i.Customer)
             .Include(i => i.Job)
+            .Include(i => i.CreditNoteForInvoice)
             .FirstOrDefaultAsync(i => i.Id == id, ct);
     }
 
-    public async Task<IReadOnlyList<Invoice>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Invoice>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default,
+        bool unlinkedOnly = false,
+        bool unlinkedCreditsOnly = false)
     {
-        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        if (_cache != null && string.IsNullOrWhiteSpace(search) && !unlinkedOnly && !unlinkedCreditsOnly)
         {
             return await _cache.GetOrCreateAsync(
                 TenantCacheCategories.Invoices,
                 $"p{page}:s{pageSize}",
-                () => LoadInvoicesAsync(search, page, pageSize, ct),
+                () => LoadInvoicesAsync(search, page, pageSize, false, false, ct),
                 ct: ct);
         }
 
-        return await LoadInvoicesAsync(search, page, pageSize, ct);
+        return await LoadInvoicesAsync(search, page, pageSize, unlinkedOnly, unlinkedCreditsOnly, ct);
     }
 
-    private async Task<IReadOnlyList<Invoice>> LoadInvoicesAsync(string? search, int page, int pageSize, CancellationToken ct)
+    public async Task LinkCreditNoteParentAsync(Guid creditNoteId, string parentInvoiceNumber, CancellationToken ct = default)
+    {
+        var number = parentInvoiceNumber?.Trim();
+        if (string.IsNullOrEmpty(number))
+            throw new InvalidOperationException("Enter the parent invoice number.");
+
+        var credit = await _dbContext.Set<Invoice>()
+            .FirstOrDefaultAsync(i => i.Id == creditNoteId, ct)
+            ?? throw new InvalidOperationException("Credit note not found.");
+
+        if (credit.DocumentType != InvoiceDocumentType.CreditNote)
+            throw new InvalidOperationException("Only a credit note can be linked to a parent invoice.");
+
+        var parent = await _dbContext.Set<Invoice>()
+            .FirstOrDefaultAsync(i => i.InvoiceNumber.ToLower() == number.ToLower(), ct)
+            ?? throw new InvalidOperationException($"Invoice '{number}' was not found.");
+
+        if (parent.Id == credit.Id)
+            throw new InvalidOperationException("A credit note cannot be its own parent.");
+
+        if (parent.DocumentType is InvoiceDocumentType.CreditNote or InvoiceDocumentType.Proforma)
+            throw new InvalidOperationException("Link the credit note to a sales invoice, not a credit note or proforma.");
+
+        if (parent.CustomerId != credit.CustomerId)
+            throw new InvalidOperationException("The parent invoice must belong to the same customer.");
+
+        if (credit.CreditNoteForInvoiceId is Guid existing)
+        {
+            if (existing == parent.Id)
+                return;
+
+            throw new InvalidOperationException("This credit note is already linked to another invoice.");
+        }
+
+        credit.CreditNoteForInvoiceId = parent.Id;
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "LINK_CREDIT",
+                "Invoice",
+                credit.InvoiceNumber,
+                $"Linked credit note {credit.InvoiceNumber} to {parent.InvoiceNumber}. Totals were not changed.",
+                ct);
+        }
+    }
+
+    public async Task LinkJobAsync(Guid invoiceId, Guid jobId, CancellationToken ct = default)
+    {
+        if (jobId == Guid.Empty)
+            throw new InvalidOperationException("Choose a job to link.");
+
+        var invoice = await _dbContext.Set<Invoice>()
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
+            ?? throw new InvalidOperationException("Invoice not found.");
+
+        if (invoice.JobId is Guid existing && existing != Guid.Empty)
+        {
+            if (existing == jobId)
+                return;
+            throw new InvalidOperationException("Invoice is already linked to a job.");
+        }
+
+        await ValidateInvoiceJobLinkAsync(jobId, invoice.CustomerId, ct);
+
+        var jobNumber = await _dbContext.Set<Job>().AsNoTracking()
+            .Where(j => j.Id == jobId)
+            .Select(j => j.JobNumber)
+            .FirstAsync(ct);
+
+        // JobId only. Totals, status, and the job itself stay as they are — linking is not a close.
+        invoice.JobId = jobId;
+        await _dbContext.SaveChangesAsync(ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "LINK_JOB",
+                "Invoice",
+                invoice.InvoiceNumber,
+                $"Linked {invoice.InvoiceNumber} to {jobNumber}. Invoice totals and job status were not changed.",
+                ct);
+        }
+
+        InvalidateListCaches();
+    }
+
+    private async Task<IReadOnlyList<Invoice>> LoadInvoicesAsync(
+        string? search,
+        int page,
+        int pageSize,
+        bool unlinkedOnly,
+        bool unlinkedCreditsOnly,
+        CancellationToken ct)
     {
         var query = _dbContext.Set<Invoice>()
             .AsNoTracking()
             .Include(i => i.Lines)
             .Include(i => i.Customer)
             .Include(i => i.Job)
+            .Include(i => i.CreditNoteForInvoice)
             .AsQueryable();
+
+        if (unlinkedOnly)
+            query = query.Where(i => i.JobId == null);
+
+        if (unlinkedCreditsOnly)
+            query = query.Where(i => i.DocumentType == InvoiceDocumentType.CreditNote && i.CreditNoteForInvoiceId == null);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -313,7 +422,6 @@ public class InvoiceService : IInvoiceService
             .Include(j => j.Customer)
             .Include(j => j.Quote)
                 .ThenInclude(q => q != null ? q.Lines : null)
-            .Include(j => j.ActualCosts)
             .FirstOrDefaultAsync(j =>
                 j.Id == jobId
                 && !j.IsDeleted
@@ -362,7 +470,13 @@ public class InvoiceService : IInvoiceService
             : $"{prefix}-{DateTime.UtcNow.Year}-{Guid.NewGuid().ToString("N")[..6].ToUpper()}";
 
         _dbContext.Set<Invoice>().Add(invoice);
-        AddLinesForBillingDocument(invoice, job, documentType, percentOfQuotedTotal);
+        // Travel extra is a SUM. Including ActualCosts materialises every cost row (PD0085).
+        var actualTravel = await _dbContext.Set<JobCost>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(c => c.JobId == job.Id && !c.IsDeleted && c.CostType.ToLower() == "travel")
+            .SumAsync(c => (decimal?)c.Amount, ct) ?? 0m;
+        AddLinesForBillingDocument(invoice, job, documentType, percentOfQuotedTotal, actualTravel);
         await _dbContext.SaveChangesAsync(ct);
 
         var saved = await GetByIdAsync(invoice.Id, ct);
@@ -452,7 +566,7 @@ public class InvoiceService : IInvoiceService
             DocumentType = InvoiceDocumentType.CreditNote,
             CreditNoteForInvoiceId = source.Id,
             TaxRate = source.TaxRate,
-            Notes = reason.Trim()
+            Notes = $"Credit for {source.InvoiceNumber}: {reason.Trim()}"
         };
 
         creditNote.InvoiceNumber = _documentSequence != null
@@ -467,8 +581,8 @@ public class InvoiceService : IInvoiceService
             {
                 InvoiceId = creditNote.Id,
                 Description = $"Credit: {line.Description}",
-                Quantity = line.Quantity,
-                UnitPrice = -line.UnitPrice,
+                Quantity = Math.Abs(line.Quantity),
+                UnitPrice = Math.Abs(line.UnitPrice),
                 Unit = line.Unit,
                 LineType = line.LineType
             });
@@ -500,7 +614,7 @@ public class InvoiceService : IInvoiceService
             {
                 TenantId = saved.TenantId,
                 Title = $"Credit note {saved.InvoiceNumber} for {source.InvoiceNumber}",
-                Message = $"{source.InvoiceNumber} credited R {Math.Abs(saved.Total):N0}: {reason}. Collections and job billed-to-date no longer count this invoice.",
+                Message = $"{source.InvoiceNumber} credited (R {Math.Abs(saved.Total):N0}): {reason}. Stored as a positive credit note and reduces the customer balance.",
                 Category = "collections",
                 TargetRoles = "Admin,Executive,Finance",
                 RelatedEntityId = saved.Id,
@@ -587,26 +701,83 @@ public class InvoiceService : IInvoiceService
 
     public async Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default)
     {
+        // Headline stays bounded for the MET seed (~16k invoices). Netting does not:
+        // a linked parent or the customer's real oldest invoice can sit outside the
+        // oldest-N window, and applying credits only to that window hits the wrong debt.
+        const int candidateWindow = 200;
+        const int headlineTake = 50;
         var now = DateTime.UtcNow;
-        var invoices = await _dbContext.Set<Invoice>()
+
+        var creditRows = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.DocumentType == InvoiceDocumentType.CreditNote
+                && i.Status != InvoiceStatus.Cancelled
+                && i.Status != InvoiceStatus.Paid
+                && i.Status != InvoiceStatus.Draft)
+            .Select(i => new { i.CustomerId, i.CreditNoteForInvoiceId, i.Total, i.AmountPaid })
+            .ToListAsync(ct);
+        var credits = creditRows
+            .Select(i => new InvoiceCreditConvention.OpenCredit(
+                i.CustomerId,
+                i.CreditNoteForInvoiceId,
+                InvoiceCreditConvention.OpenCreditMagnitude(i.Total, i.AmountPaid)))
+            .Where(i => i.Magnitude > 0m)
+            .ToList();
+
+        var openSales = _dbContext.Set<Invoice>()
             .AsNoTracking()
             .Include(i => i.Customer)
             .Where(i => i.DocumentType != InvoiceDocumentType.Proforma
                 && i.DocumentType != InvoiceDocumentType.CreditNote
                 && i.Status != InvoiceStatus.Cancelled
                 && i.Status != InvoiceStatus.Paid
-                && i.Status != InvoiceStatus.Draft)
+                && i.Status != InvoiceStatus.Draft);
+
+        var headlineCandidates = await openSales
+            .Where(i => i.DueDate < now)
+            .OrderBy(i => i.DueDate)
+            .ThenBy(i => i.Id)
+            .Take(candidateWindow)
             .ToListAsync(ct);
 
+        var invoicesById = new Dictionary<Guid, Invoice>(headlineCandidates.Count);
+        foreach (var invoice in headlineCandidates)
+            invoicesById[invoice.Id] = invoice;
+
+        var creditCustomerIds = credits.Select(c => c.CustomerId).Distinct().ToList();
+        if (creditCustomerIds.Count > 0)
+        {
+            // Every open invoice for a customer with an open credit, including ones that
+            // are not yet overdue, so a linked parent absorbs the credit before any leftover
+            // falls through to that customer's oldest overdue balance.
+            var creditCustomerInvoices = await openSales
+                .Where(i => creditCustomerIds.Contains(i.CustomerId))
+                .ToListAsync(ct);
+            foreach (var invoice in creditCustomerInvoices)
+                invoicesById.TryAdd(invoice.Id, invoice);
+        }
+
+        var invoices = invoicesById.Values.ToList();
+        var net = InvoiceCreditConvention.NetAgedBalances(
+            invoices.Select(i => new InvoiceCreditConvention.AgedInvoiceSlice(
+                i.Id,
+                i.CustomerId,
+                i.DueDate,
+                InvoiceBillingCalculator.CalculateBalanceDue(i.Total, i.AmountPaid))).ToList(),
+            credits);
+
         return invoices
+            .Where(i => i.DueDate < now)
             .Select(i =>
             {
-                var balance = InvoiceBillingCalculator.CalculateBalanceDue(i.Total, i.AmountPaid);
+                var balance = net.TryGetValue(i.Id, out var netBalance)
+                    ? netBalance
+                    : InvoiceBillingCalculator.CalculateBalanceDue(i.Total, i.AmountPaid);
                 var days = InvoiceBillingCalculator.GetDaysOverdue(i.DueDate, now);
                 return new AgedDebtorRow(
                     i.Id,
                     i.InvoiceNumber,
-                    i.Customer?.Name ?? "—",
+                    i.Customer?.Name ?? "-",
                     i.DueDate,
                     i.Total,
                     i.AmountPaid,
@@ -616,6 +787,8 @@ public class InvoiceService : IInvoiceService
             })
             .Where(r => r.BalanceDue > 0)
             .OrderByDescending(r => r.DaysOverdue)
+            .ThenBy(r => r.InvoiceId)
+            .Take(headlineTake)
             .ToList();
     }
 
@@ -754,7 +927,8 @@ public class InvoiceService : IInvoiceService
         Invoice invoice,
         Job job,
         InvoiceDocumentType documentType,
-        decimal? percentOfQuotedTotal)
+        decimal? percentOfQuotedTotal,
+        decimal actualTravel)
     {
         switch (documentType)
         {
@@ -789,18 +963,18 @@ public class InvoiceService : IInvoiceService
                 }
                 else
                 {
-                    AddQuoteOrSummaryLines(invoice, job);
+                    AddQuoteOrSummaryLines(invoice, job, actualTravel);
                 }
 
                 break;
             }
             default:
-                AddQuoteOrSummaryLines(invoice, job);
+                AddQuoteOrSummaryLines(invoice, job, actualTravel);
                 break;
         }
     }
 
-    private void AddQuoteOrSummaryLines(Invoice invoice, Job job)
+    private void AddQuoteOrSummaryLines(Invoice invoice, Job job, decimal actualTravel)
     {
         var linesAdded = false;
         if (job.Quote?.Lines != null && job.Quote.Lines.Any(l => !l.IsDeleted))
@@ -819,7 +993,7 @@ public class InvoiceService : IInvoiceService
             }
 
             linesAdded = true;
-            AddAdditionalTravelLine(invoice, job);
+            AddAdditionalTravelLine(invoice, job, actualTravel);
         }
 
         if (!linesAdded)
@@ -838,14 +1012,11 @@ public class InvoiceService : IInvoiceService
     /// <summary>
     /// Bill actual job travel that exceeds quoted travel so extra site travel is not left uninvoiced.
     /// </summary>
-    private void AddAdditionalTravelLine(Invoice invoice, Job job)
+    private void AddAdditionalTravelLine(Invoice invoice, Job job, decimal actualTravel)
     {
         var quotedTravel = job.Quote?.Lines?
             .Where(l => !l.IsDeleted && l.LineType.Equals("Travel", StringComparison.OrdinalIgnoreCase))
             .Sum(l => l.LineTotal) ?? 0m;
-        var actualTravel = (job.ActualCosts ?? Array.Empty<JobCost>())
-            .Where(c => !c.IsDeleted && c.CostType.Equals("Travel", StringComparison.OrdinalIgnoreCase))
-            .Sum(c => c.Amount);
         var extra = Math.Round(actualTravel - quotedTravel, 2);
         if (extra <= 0.01m)
             return;

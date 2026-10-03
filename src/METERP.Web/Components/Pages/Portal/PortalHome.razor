@@ -4,6 +4,7 @@
 @rendermode InteractiveServer
 @using METERP.Application.Interfaces
 @using METERP.Application.Services
+@using METERP.Domain
 @inject ICustomerPortalService Portal
 @inject ICurrentUserService CurrentUser
 @inject NavigationManager Nav
@@ -13,7 +14,7 @@
 
 @if (_error != null)
 {
-    <div class="alert alert-warning">@_error</div>
+    <div class="alert alert-warning" role="status" data-testid="portal-unlinked">@_error</div>
 }
 else if (_dash == null)
 {
@@ -28,7 +29,7 @@ else
     <div class="row g-3 mb-4" data-testid="portal-stats">
         <div class="col-md-4">
             <div class="portal-stat">
-                <div class="portal-stat-value" data-testid="portal-balance">R @_dash.BalanceDue.ToString("N2")</div>
+                <div class="portal-stat-value" data-testid="portal-balance">@InvoiceCreditConvention.FormatCustomerBalance(_dash.BalanceDue)</div>
                 <div class="portal-stat-label">Outstanding</div>
             </div>
         </div>
@@ -66,7 +67,7 @@ else
                                 <li class="portal-row">
                                     <strong>@invoice.InvoiceNumber</strong>
                                     <span>@invoice.Status · due @invoice.DueDate.ToString("dd MMM yyyy")</span>
-                                    <span class="ms-auto">R @invoice.BalanceDue.ToString("N2")</span>
+                                    <span class="ms-auto">@InvoiceCreditConvention.FormatDocumentBalance(invoice.DocumentType, invoice.BalanceDue)</span>
                                 </li>
                             }
                         </ul>
@@ -110,19 +111,24 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        if (CurrentUser.CustomerId is not { } customerId)
+        if (CurrentUser.CustomerId is not { } customerId || customerId == Guid.Empty)
         {
-            Nav.NavigateTo("/portal/login", forceLoad: true);
+            _error = CustomerPortalMessages.Unlinked;
             return;
         }
 
         try
         {
             _dash = await Portal.GetDashboardAsync(customerId);
+            if (_dash.IsUnlinked)
+            {
+                _error = _dash.CustomerName;
+                _dash = null;
+            }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _error = ex.Message;
+            _error = CustomerPortalMessages.Unlinked;
         }
     }
 }

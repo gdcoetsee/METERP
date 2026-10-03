@@ -22,7 +22,7 @@
             <div class="col-4">
                 <div class="border rounded p-2 text-center bg-white">
                     <div class="fw-semibold" data-testid="field-home-jobs-count">@_openJobs</div>
-                    <div class="small text-muted">Open jobs</div>
+                    <div class="small text-muted">My jobs</div>
                 </div>
             </div>
             <div class="col-4">
@@ -94,13 +94,10 @@
     {
         try
         {
-            var jobs = await JobService.GetAllAsync(pageSize: 100);
-            _openJobs = jobs.Count(j =>
-                j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold
-                || j.Status == JobStatus.Completed);
-
             if (CurrentUser.UserId is { } userId)
             {
+                var jobs = await JobService.GetAssignedOpenJobsForUserAsync(userId, take: 50);
+                _openJobs = jobs.Count;
                 _recentReports = (await FieldReportService.GetBySubmitterAsync(userId, take: 20)).Count;
                 var emp = await LeaveService.GetEmployeeForUserAsync(userId);
                 if (emp != null)

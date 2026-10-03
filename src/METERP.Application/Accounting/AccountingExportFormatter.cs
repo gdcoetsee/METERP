@@ -39,7 +39,10 @@ public static class AccountingExportFormatter
             var type = invoice.DocumentType == InvoiceDocumentType.CreditNote ? "Sales Credit" : "Sales Invoice";
             foreach (var line in VisibleLines(invoice))
             {
-                var net = line.LineTotal;
+                // Credit notes are stored positive. Sage wants a positive amount on the Sales Credit type.
+                var net = invoice.DocumentType == InvoiceDocumentType.CreditNote
+                    ? Math.Abs(line.LineTotal)
+                    : line.LineTotal;
                 var tax = Math.Round(net * invoice.TaxRate, 2);
                 sb.Append(type).Append(',')
                     .Append(Csv(accountCode)).Append(',')
@@ -74,7 +77,9 @@ public static class AccountingExportFormatter
                     .Append(Csv(invoice.Job?.JobNumber)).Append(',')
                     .Append(Csv(line.Description)).Append(',')
                     .Append(Inv(line.Quantity)).Append(',')
-                    .Append(Inv(line.UnitPrice)).Append(',')
+                    .Append(Inv(invoice.DocumentType == InvoiceDocumentType.CreditNote
+                        ? -Math.Abs(line.UnitPrice)
+                        : line.UnitPrice)).Append(',')
                     .Append(Csv(accountCode)).Append(',')
                     .Append(taxType).Append(',')
                     .Append("ZAR")

@@ -42,7 +42,7 @@ else
             <tbody>
                 @foreach (var r in _requests)
                 {
-                    <tr data-testid="leave-admin-row">
+                    <tr class="meterp-row-click" data-testid="leave-admin-row" title="Open leave request" @onclick="() => OpenRequest(r)">
                         <td>@(r.Employee != null ? $"{r.Employee.FirstName} {r.Employee.LastName}" : "—")</td>
                         <td>@r.StartDate.ToString("yyyy-MM-dd") → @r.EndDate.ToString("yyyy-MM-dd")</td>
                         <td class="text-end">@r.DaysRequested.ToString("N1")</td>
@@ -55,7 +55,7 @@ else
                             {
                                 <button type="button" class="btn btn-link btn-sm p-0"
                                         data-testid="leave-admin-cancel"
-                                        @onclick="() => CancelRequestAsync(r)">Cancel</button>
+                                        @onclick="() => CancelRequestAsync(r)" @onclick:stopPropagation="true">Cancel</button>
                             }
                         </td>
                     </tr>
@@ -67,6 +67,27 @@ else
             <p class="text-muted">No leave requests yet.</p>
         }
     </div>
+}
+
+@if (_selected != null)
+{
+    <FormModal IsOpen="true" Title="Leave request" TestId="leave-admin-detail" OnClose="CloseRequest">
+        <ChildContent>
+            <p class="mb-1">Employee: <strong>@(_selected.Employee != null ? $"{_selected.Employee.FirstName} {_selected.Employee.LastName}" : "—")</strong></p>
+            <p class="mb-1">Dates: @_selected.StartDate.ToString("yyyy-MM-dd") → @_selected.EndDate.ToString("yyyy-MM-dd")</p>
+            <p class="mb-1">Days: @_selected.DaysRequested.ToString("N1") · @(_selected.IsPaid ? "Paid" : "Unpaid")</p>
+            <p class="mb-1">Status: @_selected.Status</p>
+            <p class="mb-1">Reason: @(_selected.Reason ?? "—")</p>
+            <p class="mb-0">Approver note: @(string.IsNullOrWhiteSpace(_selected.ApproverNote) ? "—" : _selected.ApproverNote)</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseRequest">Close</button>
+            @if (CanCancel(_selected))
+            {
+                <button type="button" class="btn btn-outline-danger" @onclick="() => CancelRequestAsync(_selected)">Cancel request</button>
+            }
+        </Footer>
+    </FormModal>
 }
 
 @if (_showAdjust)
@@ -100,6 +121,10 @@ else
 
 @code {
     private List<LeaveRequest> _requests = new();
+    private LeaveRequest? _selected;
+
+    private void OpenRequest(LeaveRequest request) => _selected = request;
+    private void CloseRequest() => _selected = null;
     private List<Employee> _employees = new();
     private bool _loading = true;
     private bool _showAdjust;

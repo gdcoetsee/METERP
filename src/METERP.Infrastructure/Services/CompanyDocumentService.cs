@@ -195,9 +195,14 @@ public sealed class CompanyDocumentService : ICompanyDocumentService
     {
         take = Math.Clamp(take, 1, 50);
         var today = DateTime.UtcNow.Date;
-        var docs = await GetExpiringAsync(30, ct);
-        return docs
+        var cutoff = today.AddDays(30);
+        var docs = await _dbContext.Set<CompanyDocument>()
+            .AsNoTracking()
+            .Where(d => !d.NoExpiry && d.ExpiryDate != null && d.ExpiryDate <= cutoff)
+            .OrderBy(d => d.ExpiryDate)
             .Take(take)
+            .ToListAsync(ct);
+        return docs
             .Select(d =>
             {
                 var expiry = d.ExpiryDate ?? today;

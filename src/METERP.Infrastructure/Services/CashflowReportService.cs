@@ -35,7 +35,10 @@ public class CashflowReportService : ICashflowReportService
             .Where(p => p.Status != PurchaseOrderStatus.Received && p.Status != PurchaseOrderStatus.Cancelled)
             .ToListAsync(ct);
 
-        var receivableInflow = receivableInvoices.Sum(i => i.Total);
+        // Credit notes are stored positive and reduce receivable inflow. Sales invoices stay on Total.
+        var receivableInflow = receivableInvoices.Sum(i =>
+            i.DocumentType == InvoiceDocumentType.CreditNote ? -Math.Abs(i.Total) : i.Total);
+        var receivableCount = receivableInvoices.Count(i => i.DocumentType != InvoiceDocumentType.CreditNote);
         var pipelineInflow = pipelineQuotes.Sum(q => q.Total);
         var committedOutflow = openPurchaseOrders.Sum(p => p.Total);
         var grossInflow = receivableInflow + pipelineInflow;
@@ -47,7 +50,7 @@ public class CashflowReportService : ICashflowReportService
 
         return new CashflowForecastSummary(
             receivableInflow,
-            receivableInvoices.Count,
+            receivableCount,
             pipelineInflow,
             pipelineQuotes.Count,
             committedOutflow,

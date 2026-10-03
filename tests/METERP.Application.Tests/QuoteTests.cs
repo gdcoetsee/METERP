@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
+using METERP.Application.Models;
 using METERP.Application.Services;
 using METERP.Domain;
 using METERP.Infrastructure.Persistence;
@@ -97,6 +98,57 @@ public class QuoteTests
 
         // Verify commercial counter was triggered (best-effort fire-and-forget, so we just verify call attempt)
         tenantServiceMock.Verify(t => t.IncrementQuoteCountAsync(quote.TenantId, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_BoardFilter_HidesExpiredOnLive_AndCountMatchesTheView()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Board Customer" };
+        db.Set<Customer>().Add(customer);
+        db.Set<Quote>().AddRange(
+            new Quote
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-LIVE",
+                Status = QuoteStatus.Draft,
+                QuoteDate = DateTime.UtcNow.Date
+            },
+            new Quote
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-OLD",
+                Status = QuoteStatus.Expired,
+                QuoteDate = DateTime.UtcNow.Date.AddDays(-1)
+            },
+            new Quote
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                CustomerId = customer.Id,
+                QuoteNumber = "Q-WON",
+                Status = QuoteStatus.Accepted,
+                QuoteDate = DateTime.UtcNow.Date.AddDays(-2)
+            });
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db);
+        var live = await service.GetAllAsync(filter: QuoteBoardFilter.Live);
+        Assert.Equal(2, live.Count);
+        Assert.DoesNotContain(live, q => q.Status == QuoteStatus.Expired);
+        Assert.Equal(2, await service.CountAsync(filter: QuoteBoardFilter.Live));
+        Assert.Equal(1, await service.CountAsync(filter: QuoteBoardFilter.Expired));
+        Assert.Equal(1, await service.CountAsync(filter: QuoteBoardFilter.Draft));
+        Assert.Equal(3, await service.CountAsync(filter: QuoteBoardFilter.All));
+
+        var drafted = await service.GetAllAsync(filter: QuoteBoardFilter.Draft);
+        Assert.Single(drafted);
+        Assert.Equal("Q-LIVE", drafted[0].QuoteNumber);
     }
 
     [Fact]
@@ -932,6 +984,151 @@ public class QuoteTests
         var travelCost = job.ActualCosts.Single(c => c.CostType == "Travel");
         Assert.Equal(1200m, travelCost.Amount);
         Assert.Contains("Travel", travelCost.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task QuoteService_ConvertToJobAsync_PromotesMaterialTravelLine_DoesNotPostMaterial()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Lump Co" };
+        db.Set<Customer>().Add(customer);
+        var quote = new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            QuoteNumber = "Q-LUMP-001",
+            TaxRate = 0m,
+            Lines = new List<QuoteLine>
+            {
+                new QuoteLine { Description = "Cable drums", Quantity = 1, UnitPrice = 8000m, LineType = "Material" },
+                new QuoteLine { Description = "Travel to site", Quantity = 1, UnitPrice = 1500m, LineType = "Material" }
+            }
+        };
+        quote.RecalculateTotals();
+        db.Set<Quote>().Add(quote);
+        await db.SaveChangesAsync();
+
+        var job = await new QuoteService(db).ConvertToJobAsync(quote.Id);
+
+        var costs = job.ActualCosts.Where(c => !c.IsDeleted).ToList();
+        var travel = Assert.Single(costs);
+        Assert.Equal("Travel", travel.CostType);
+        Assert.Equal(1500m, travel.Amount);
+        Assert.DoesNotContain(costs, c => c.CostType == "Material");
+
+        var lines = await db.Set<QuoteLine>().Where(l => l.QuoteId == quote.Id).ToListAsync();
+        Assert.Equal("Travel", lines.Single(l => l.Description == "Travel to site").LineType);
+        Assert.Equal("Material", lines.Single(l => l.Description == "Cable drums").LineType);
+    }
+
+    [Fact]
+    public async Task QuoteService_CreateQuoteFromOpportunity_AddsExplicitTravelLine()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Barberton Mines" };
+        var opp = new Opportunity
+        {
+            TenantId = tenantId,
+            Title = "Substation upgrade",
+            CustomerId = customer.Id,
+            Value = 185000m,
+            Stage = OpportunityStage.Proposal,
+            Notes = "Remote site — include mobilization travel"
+        };
+        db.Set<Customer>().Add(customer);
+        db.Set<Opportunity>().Add(opp);
+        await db.SaveChangesAsync();
+
+        var quote = await new QuoteService(db).CreateQuoteFromOpportunityAsync(opp.Id);
+
+        Assert.Equal(customer.Id, quote.CustomerId);
+        var travel = Assert.Single(quote.Lines, l => !l.IsDeleted && l.LineType == "Travel");
+        Assert.Equal("Travel", travel.Description);
+        Assert.Equal(0m, travel.UnitPrice);
+        Assert.DoesNotContain(quote.Lines, l => l.LineType == "Material");
+        Assert.Contains(quote.Lines, l => l.LineType == "Other" && l.Description == "Substation upgrade" && l.UnitPrice == 185000m);
+        Assert.Contains("travel", quote.Notes ?? "", StringComparison.OrdinalIgnoreCase);
+
+        var linked = await db.Set<Opportunity>().FirstAsync(o => o.Id == opp.Id);
+        Assert.Equal(quote.Id, linked.QuoteId);
+        Assert.Equal(OpportunityStage.Proposal, linked.Stage);
+    }
+
+    [Fact]
+    public async Task QuoteService_CreateQuoteFromOpportunity_TitleTravel_DoesNotPriceTravelAsMaterials()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Kruger" };
+        var opp = new Opportunity
+        {
+            TenantId = tenantId,
+            Title = "Travel to Kruger yard",
+            CustomerId = customer.Id,
+            Value = 42000m,
+            Stage = OpportunityStage.Proposal
+        };
+        db.Set<Customer>().Add(customer);
+        db.Set<Opportunity>().Add(opp);
+        await db.SaveChangesAsync();
+
+        var quote = await new QuoteService(db).CreateQuoteFromOpportunityAsync(opp.Id);
+
+        Assert.DoesNotContain(quote.Lines, l => l.LineType == "Material");
+        var travel = Assert.Single(quote.Lines, l => l.LineType == "Travel");
+        Assert.Equal(0m, travel.UnitPrice);
+        var scope = Assert.Single(quote.Lines, l => l.LineType == "Other");
+        Assert.Equal("Scope of work", scope.Description);
+        Assert.Equal(42000m, scope.UnitPrice);
+        Assert.DoesNotContain("travel", scope.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task QuoteService_CreateQuoteFromOpportunity_WithoutTravelMention_OmitsTravelLine()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "York" };
+        var opp = new Opportunity
+        {
+            TenantId = tenantId,
+            Title = "York lighting",
+            CustomerId = customer.Id,
+            Value = 9000m,
+            Stage = OpportunityStage.Proposal,
+            Notes = "LED high-bay replacement"
+        };
+        db.Set<Customer>().Add(customer);
+        db.Set<Opportunity>().Add(opp);
+        await db.SaveChangesAsync();
+
+        var quote = await new QuoteService(db).CreateQuoteFromOpportunityAsync(opp.Id);
+
+        Assert.DoesNotContain(quote.Lines, l => l.LineType == "Travel" || TravelLineRules.MentionsTravel(l.Description));
+        Assert.Contains(quote.Lines, l => l.Description == "York lighting" && l.UnitPrice == 9000m);
+    }
+
+    [Fact]
+    public async Task QuoteService_CreateQuoteFromOpportunity_ThrowsWhenCustomerMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var opp = new Opportunity
+        {
+            TenantId = tenantId,
+            Title = "Unlinked deal",
+            Value = 1000m,
+            Stage = OpportunityStage.Proposal,
+            CustomerName = "Walk-in"
+        };
+        db.Set<Opportunity>().Add(opp);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new QuoteService(db).CreateQuoteFromOpportunityAsync(opp.Id));
+        Assert.Contains("customer", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -1,13 +1,15 @@
 @if (IsOpen)
 {
-    <div class="meterp-modal-backdrop @(LayerClass)" data-testid="@BackdropTestId" @onclick="HandleBackdropClick">
-        <div class="meterp-modal @(SizeClass) @(LayerClass)" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
-             data-testid="@TestId" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="HandleKeyDown">
+    <div class="meterp-modal-root @(LayerClass)">
+        <div class="meterp-modal-backdrop" data-testid="@BackdropTestId" @onclick="HandleBackdropClick"></div>
+        <div class="meterp-modal @(SizeClass)" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
+             data-testid="@TestId" tabindex="-1" @onkeydown="HandleKeyDown">
             <div class="meterp-modal-header">
                 <h5 class="meterp-modal-title" id="@TitleId" data-testid="@($"{TestId}-title")">@Title</h5>
                 <div class="meterp-modal-header-actions">
                     @HeaderActions
-                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseAsync" disabled="@CloseDisabled"></button>
+                    <button type="button" class="btn-close" aria-label="Close" data-testid="@($"{TestId}-close")"
+                            @onclick="CloseAsync" disabled="@CloseDisabled"></button>
                 </div>
             </div>
             <div class="meterp-modal-body">
@@ -52,7 +54,7 @@
 
     private async Task HandleBackdropClick()
     {
-        if (CloseOnBackdrop)
+        if (CloseOnBackdrop && !CloseDisabled)
             await CloseAsync();
     }
 

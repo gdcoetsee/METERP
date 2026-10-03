@@ -80,12 +80,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @for (var i = 0; i < _rows.Count; i++)
+                            @for (var i = PageStartIndex; i < PageEndIndex; i++)
                             {
                                 var index = i;
-                                var row = _rows[i];
-                                var jobId = _rowIds.Count > i ? _rowIds[i] : Guid.Empty;
+                                var row = _rows[index];
+                                var jobId = _rowIds.Count > index ? _rowIds[index] : Guid.Empty;
                                 <tr style="@(jobId != Guid.Empty ? "cursor:pointer;" : null)"
+                                    data-testid="reports-runner-row"
                                     @onclick="() => OpenJobAsync(jobId)">
                                     @foreach (var cell in row)
                                     {
@@ -95,6 +96,13 @@
                             }
                         </tbody>
                     </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2" data-testid="reports-runner-pager">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="reports-page-prev"
+                            @onclick="PreviousPage" disabled="@(_page <= 1)">Previous</button>
+                    <span class="text-muted small" data-testid="reports-showing">@ShowingCaption</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="reports-page-next"
+                            @onclick="NextPage" disabled="@(_page >= PageCount)">Next</button>
                 </div>
                 @if (_rowIds.Count > 0)
                 {
@@ -198,8 +206,37 @@
     private List<string[]> _rows = new();
     private List<Guid> _rowIds = new();
     private JobPerformanceDetail? _job;
+    private const int PageSize = 25;
+    private int _page = 1;
 
     private IEnumerable<string> Categories => _catalog.Select(c => c.Category).Distinct();
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_rows.Count / (double)PageSize));
+    private int PageStartIndex => (_page - 1) * PageSize;
+    private int PageEndIndex => Math.Min(_rows.Count, PageStartIndex + PageSize);
+    private string ShowingCaption
+    {
+        get
+        {
+            if (_rows.Count == 0)
+                return "showing 0 of 0";
+            var start = PageStartIndex + 1;
+            var end = PageEndIndex;
+            var caption = $"showing {start:N0}\u2013{end:N0} of {_rows.Count:N0}";
+            return _rows.Count == 500 ? caption + " (list limited to 500)" : caption;
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (_page > 1)
+            _page--;
+    }
+
+    private void NextPage()
+    {
+        if (_page < PageCount)
+            _page++;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -227,6 +264,7 @@
     private async Task ReloadAsync()
     {
         _busy = true;
+        _page = 1;
         _rows = new();
         _rowIds = new();
         _summary = null;

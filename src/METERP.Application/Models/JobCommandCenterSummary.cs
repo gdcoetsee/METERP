@@ -20,6 +20,9 @@ public sealed class JobCommandCenterSummary
 
     public decimal BilledToDate { get; init; }
 
+    /// <summary>Job flag after soft-sync from linked deposit invoices / billed sums.</summary>
+    public bool DepositReceived { get; init; }
+
     public decimal UnbilledResidual { get; init; }
 
     public decimal MaterialCost { get; init; }
@@ -27,6 +30,12 @@ public sealed class JobCommandCenterSummary
     public decimal TravelCost { get; init; }
 
     public decimal LaborCost { get; init; }
+
+    public decimal LaborHours { get; init; }
+
+    public int CostLineCount { get; init; }
+
+    public int LaborLineCount { get; init; }
 
     public decimal OtherCost { get; init; }
 

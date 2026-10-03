@@ -6,9 +6,9 @@ The in-app copy of this guide is at **[/help](http://localhost:8080/help)** afte
 
 | Who | URL | Demo login |
 |-----|-----|------------|
-| Office / executive | `/login` | `admin@acme.demo` / `Demo123!` |
-| Field technician | `/field` after staff login | field user on the Acme tenant |
-| Customer | `/portal/login` | `procurement@jhgh.co.za` / `Demo123!` |
+| Office / executive | `/login` | `admin@met.demo` / `Demo123!` |
+| Field technician | `/field` after staff login | field user on the MET Electrical tenant |
+| Customer | `/portal/login` | `portal@met.demo` / `Demo123!` |
 
 Staff may also use **Continue with Google / Microsoft** when those client IDs are set. Only emails that already have a METERP user can sign in that way.
 

@@ -93,7 +93,7 @@ public class AiQuoteApplyService : IAiQuoteApplyService
             Description = FallbackTravelDescription,
             Quantity = 1,
             UnitPrice = FallbackTravelUnitPrice,
-            LineType = "Other",
+            LineType = "Travel",
             Unit = "lot"
         }, ct);
 }

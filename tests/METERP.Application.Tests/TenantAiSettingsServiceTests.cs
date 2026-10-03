@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,7 +74,7 @@ public class TenantAiSettingsServiceTests
     }
 
     [Fact]
-    public async Task GetCurrentTenantSettingsAsync_ReturnsOpenAiDefaults_WhenTenantHasNoOverrides()
+    public async Task GetCurrentTenantSettingsAsync_ReturnsGrokDefaults_WhenTenantHasNoOverrides()
     {
         var tenantId = Guid.NewGuid();
         using var harness = new Harness(tenantId);
@@ -81,9 +82,9 @@ public class TenantAiSettingsServiceTests
 
         var settings = await harness.AiSettingsService.GetCurrentTenantSettingsAsync();
 
-        Assert.Equal(AiProviderProfiles.OpenAi, settings.Provider);
-        Assert.Equal("https://api.openai.com/v1", settings.BaseUrl);
-        Assert.Equal("gpt-4o-mini", settings.Model);
+        Assert.Equal(AiProviderProfiles.Grok, settings.Provider);
+        Assert.Equal("https://api.x.ai/v1", settings.BaseUrl);
+        Assert.Equal("grok-4.6", settings.Model);
         Assert.False(settings.UseTenantKey);
         Assert.False(settings.HasStoredKey);
         Assert.Equal("(not set)", settings.MaskedApiKey);
@@ -159,7 +160,7 @@ public class TenantAiSettingsServiceTests
 
         var betaSettings = await betaHarness.AiSettingsService.GetCurrentTenantSettingsAsync();
 
-        Assert.Equal(AiProviderProfiles.OpenAi, betaSettings.Provider);
+        Assert.Equal(AiProviderProfiles.Grok, betaSettings.Provider);
         Assert.False(betaSettings.HasStoredKey);
     }
 
@@ -207,5 +208,24 @@ public class TenantAiSettingsServiceTests
 
         Assert.False(result.Success);
         Assert.Contains("AIza", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FormatApiError_ReadsStringErrorAndObjectMessage()
+    {
+        var grok = TenantAiSettingsService.FormatApiError(
+            HttpStatusCode.BadRequest,
+            """{"code":"invalid-argument","error":"Incorrect API key provided. You can obtain an API key from https://console.x.ai."}""",
+            "Grok (xAI)");
+        Assert.Contains("Incorrect API key provided", grok, StringComparison.Ordinal);
+        Assert.Contains("console.x.ai. Check", grok, StringComparison.Ordinal);
+        Assert.DoesNotContain("{", grok);
+
+        var openai = TenantAiSettingsService.FormatApiError(
+            HttpStatusCode.Unauthorized,
+            """{"error":{"message":"Incorrect API key","type":"invalid_request_error"}}""",
+            "OpenAI");
+        Assert.Contains("Incorrect API key", openai, StringComparison.Ordinal);
+        Assert.Contains("The API key was rejected", openai, StringComparison.Ordinal);
     }
 }

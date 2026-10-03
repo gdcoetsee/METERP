@@ -69,6 +69,30 @@ public static class TenantQuotaDefaults
         };
     }
 
+    /// <summary>
+    /// Detached copy whose period counters are the supplied live month totals.
+    /// Does not attach to a DbContext, so viewing Home cannot persist the numbers.
+    /// </summary>
+    public static Tenant WithPeriodUsage(Tenant source, int quotes, int jobs, int invoices, int aiCalls) =>
+        new()
+        {
+            Id = source.Id,
+            Name = source.Name,
+            Subdomain = source.Subdomain,
+            Tier = source.Tier,
+            EnabledFeatures = source.EnabledFeatures,
+            SubscriptionStatus = source.SubscriptionStatus,
+            UsagePeriodStartUtc = source.UsagePeriodStartUtc,
+            MaxQuotesPerMonth = source.MaxQuotesPerMonth,
+            MaxJobsPerMonth = source.MaxJobsPerMonth,
+            MaxInvoicesPerMonth = source.MaxInvoicesPerMonth,
+            MaxAiCallsPerMonth = source.MaxAiCallsPerMonth,
+            PeriodQuotesCreated = quotes,
+            PeriodJobsCreated = jobs,
+            PeriodInvoicesIssued = invoices,
+            PeriodAiCalls = aiCalls
+        };
+
     public static int GetPeriodUsage(Tenant tenant, QuotaType type) =>
         type switch
         {

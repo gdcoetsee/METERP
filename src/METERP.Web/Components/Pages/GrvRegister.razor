@@ -13,7 +13,7 @@
 {
     <ListSkeleton Rows="5" TestId="grv-loading" AriaLabel="Loading GRVs" />
 }
-else if (_grvs.Count == 0)
+else if (_total == 0)
 {
     <div class="alert alert-info" data-testid="grv-empty">No GRVs yet. Receive a sent PO on Purchase Orders.</div>
 }
@@ -34,34 +34,124 @@ else
             <tbody>
                 @foreach (var g in _grvs)
                 {
-                    <tr data-testid="grv-row">
+                    <tr class="meterp-row-click" data-testid="grv-row" title="Open goods receipt" @onclick="() => OpenGrv(g)">
                         <td><strong>@g.GrvNumber</strong></td>
                         <td>@(g.PurchaseOrder?.PoNumber ?? "—")</td>
                         <td>@(g.PurchaseOrder?.Supplier?.Name ?? "—")</td>
                         <td>@g.ReceivedAt.ToString("yyyy-MM-dd HH:mm")</td>
                         <td>@(g.SupplierDeliveryNote ?? "—")</td>
-                        <td class="text-end">@g.Lines.Count</td>
+                        <td class="text-end">@g.Lines.Count(l => !l.IsDeleted)</td>
                     </tr>
                 }
             </tbody>
         </table>
     </div>
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2" data-testid="grv-pager">
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="grv-page-first" @onclick="FirstPage" disabled="@(_page <= 1)">First</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="grv-page-prev" @onclick="PreviousPage" disabled="@(_page <= 1)">Previous</button>
+            <span class="text-muted small">Page @_page of @_pageCount · @_total GRVs</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="grv-page-next" @onclick="NextPage" disabled="@(_page >= _pageCount)">Next</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="grv-page-last" @onclick="LastPage" disabled="@(_page >= _pageCount)">Last</button>
+        </div>
+    </div>
+}
+
+@if (_selected != null)
+{
+    <FormModal IsOpen="true"
+               Title="@_selected.GrvNumber"
+               Size="lg"
+               TestId="grv-detail"
+               OnClose="CloseGrv">
+        <ChildContent>
+            <p class="mb-1">Purchase order: <strong>@(_selected.PurchaseOrder?.PoNumber ?? "—")</strong></p>
+            <p class="mb-1">Supplier: @(_selected.PurchaseOrder?.Supplier?.Name ?? "—")</p>
+            <p class="mb-1">Received: @_selected.ReceivedAt.ToString("yyyy-MM-dd HH:mm")</p>
+            <p class="mb-3">Delivery note: @(_selected.SupplierDeliveryNote ?? "—")</p>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Item</th><th class="text-end">Qty received</th></tr></thead>
+                <tbody>
+                    @foreach (var line in _selected.Lines.Where(l => !l.IsDeleted))
+                    {
+                        <tr>
+                            <td>@(line.PurchaseOrderLine?.Description ?? line.InventoryItem?.Name ?? "Line")</td>
+                            <td class="text-end">@line.QuantityReceived.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseGrv">Close</button>
+        </Footer>
+    </FormModal>
 }
 
 @code {
+    private const int PageSize = 25;
     private List<GoodsReceiptVoucher> _grvs = new();
+    private GoodsReceiptVoucher? _selected;
     private bool _loading = true;
+    private int _page = 1;
+    private int _total;
+    private int _pageCount = 1;
+
+    private void OpenGrv(GoodsReceiptVoucher grv) => _selected = grv;
+    private void CloseGrv() => _selected = null;
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadPageAsync();
+    }
+
+    private async Task LoadPageAsync()
     {
         _loading = true;
         try
         {
-            _grvs = (await PurchaseOrderService.GetRecentGrvsAsync(100)).ToList();
+            var result = await PurchaseOrderService.GetGrvsPageAsync(_page, PageSize);
+            _grvs = result.Items.ToList();
+            _page = result.Page;
+            _total = result.TotalCount;
+            _pageCount = result.PageCount;
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private async Task FirstPage()
+    {
+        if (_page <= 1)
+            return;
+        _page = 1;
+        await LoadPageAsync();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (_page <= 1)
+            return;
+        _page--;
+        await LoadPageAsync();
+    }
+
+    private async Task NextPage()
+    {
+        if (_page >= _pageCount)
+            return;
+        _page++;
+        await LoadPageAsync();
+    }
+
+    private async Task LastPage()
+    {
+        if (_page >= _pageCount)
+            return;
+        _page = _pageCount;
+        await LoadPageAsync();
     }
 }

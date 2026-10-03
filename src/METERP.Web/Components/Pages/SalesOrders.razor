@@ -139,6 +139,7 @@ else
 
             @if (UserCanManage && (selectedSO.Status == SalesOrderStatus.Draft || selectedSO.Status == SalesOrderStatus.Confirmed))
             {
+                <p class="small text-muted mb-2" data-testid="sales-order-travel-stays-explicit">Travel stays its own line. Convert does not roll travel into materials.</p>
                 <button class="btn btn-success btn-sm" data-testid="sales-order-convert-to-job" @onclick="() => ConvertToJob(selectedSO)">Convert to Job</button>
             }
         </ChildContent>

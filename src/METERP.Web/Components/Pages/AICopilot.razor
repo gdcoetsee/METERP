@@ -47,21 +47,32 @@ else if (_aiQuotaExhausted)
     </div>
 }
 
-<PageHeader Title="AI Copilot" Subtitle="Bid help, variance analysis, and quote drafts. Does not replace checking the numbers." TestId="ai-copilot-page-header">
+<PageHeader Title="AI Copilot" Subtitle="@HeaderSubtitle" TestId="ai-copilot-page-header">
     <Actions>
         @if (_aiConfigured)
         {
-            <span class="badge bg-success">Connected (@_aiProvider)</span>
+            <span class="badge bg-success" data-testid="ai-config-badge">Configured · @_aiProvider</span>
         }
         else
         {
-            <a href="/settings/ai" class="badge bg-warning text-dark text-decoration-none">Not configured — open settings</a>
+            <a href="/settings/ai" class="badge bg-warning text-dark text-decoration-none" data-testid="ai-config-badge">Not configured — add a key</a>
         }
     </Actions>
 </PageHeader>
 
-<div class="row">
-    <div class="col-lg-4">
+@if (!_aiConfigured && _aiFeatureEnabled && !_aiQuotaExhausted)
+{
+    <div class="ai-needs-key mb-3" data-testid="ai-needs-key">
+        <div>
+            <strong>Live answers need an API key.</strong>
+            <span>Paste one on <a href="/settings/ai">AI Settings</a> and choose Test connection. User-secrets <code>Ai:ApiKey</code>, <code>Ai__ApiKey</code>, or <code>XAI_API_KEY</code> also connect. Until then you get offline guidance, including any FT / SD / PD job we can find.</span>
+        </div>
+        <a class="btn btn-primary btn-sm" href="/settings/ai">Add API key</a>
+    </div>
+}
+
+<div class="row g-3 ai-shell">
+    <div class="col-lg-4 order-2">
         <div class="card mb-3">
             <div class="card-header">
                 <strong>Quick Actions & Bid Optimizer</strong>
@@ -110,128 +121,101 @@ else if (_aiQuotaExhausted)
         </div>
     </div>
 
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header bg-dark text-white d-flex align-items-center">
-                <span class="me-2">💬 Ask the Copilot</span>
-                @if (_thinking)
-                {
-                    <span class="spinner-border spinner-border-sm text-light" role="status"></span>
-                }
-            </div>
-            <div class="card-body">
-                <div class="input-group mb-3">
-                    <input type="text" class="form-control" placeholder="Ask anything... e.g. 'How can I improve my quoting accuracy on electrical maintenance contracts?' or 'Why are my travel costs 40% over on the last 5 jobs?'"
-                           value="@userQuestion" @oninput="OnQuestionInput" @onkeyup="OnQuestionKeyUp" data-testid="ai-prompt-input" />
-                    <button class="btn btn-primary" @onclick="AskCopilot" disabled="@_thinking" data-testid="ai-ask-button">
-                        Ask AI
-                    </button>
+    <div class="col-lg-8 order-1">
+        <div class="card ai-chat">
+            <div class="ai-chat-head">
+                <div>
+                    <div class="ai-chat-kicker">@OfficeName</div>
+                    <strong>Ask about a job, quote, or invoice</strong>
                 </div>
-
-                @if (chatHistory.Any())
-                  {
-                      <div class="mb-3">
-                          <div class="d-flex justify-content-between align-items-center mb-1">
-                              <h6 class="mb-0">Conversation History</h6>
-                              <button class="btn btn-sm btn-outline-primary" @onclick="ExportFullSessionAsPdf" disabled="@(!chatHistory.Any())" data-testid="ai-export-full-pdf">Export full session as PDF</button>
-                          </div>
-                          <div style="max-height: 200px; overflow-y: auto; font-size: 0.85rem;">
-                             @foreach (var entry in chatHistory)
-                              {
-                                  <div class="border-bottom pb-1 mb-1">
-                                      <strong>You:</strong> @entry.Question<br />
-                                      <strong>AI:</strong> <span style="white-space: pre-wrap;">@entry.Response</span>
-                                      @if (UserCanManage)
-                                      {
-                                          <div class="mt-1 d-flex gap-1 flex-wrap">
-                                              <button class="btn btn-sm btn-success py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateQuoteFromAiText(entry.Response)" data-testid="ai-apply-quote">🚀 Quote</button>
-                                              <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateJobFromAiText(entry.Response)" data-testid="ai-apply-job">🚀 Job</button>
-                                              <button class="btn btn-sm btn-primary py-0 px-1" style="font-size:0.7rem" @onclick="() => CreateProjectPlanFromAiText(entry.Response)">Plan</button>
-                                              <button class="btn btn-sm btn-info py-0 px-1" style="font-size:0.7rem" @onclick="() => ExportSpecificResponseAsPdf(entry.Question, entry.Response)">Text PDF</button>
-                                              <button class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size:0.7rem" @onclick="() => ExportResponseAsQuotePdf(entry.Response)">Quote PDF</button>
-                                              <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.7rem" @onclick="() => ExportResponseAsJobPdf(entry.Response)">Job PDF</button>
-                                          </div>
-                                      }
-                                      <div class="mt-1">
-                                          <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.6rem" @onclick="() => GiveFeedback(entry, true)" data-testid="ai-feedback-thumbs-up">👍</button>
-                                          <button class="btn btn-sm btn-outline-danger py-0 px-1" style="font-size:0.6rem" @onclick="() => GiveFeedback(entry, false)" data-testid="ai-feedback-thumbs-down">👎</button>
-                                      </div>
-                                  </div>
-                              }
-                          </div>
-                      </div>
-                  }
-
-                @if (!string.IsNullOrWhiteSpace(lastResponse) || _thinking)
+                <button class="btn btn-sm btn-outline-light" @onclick="ExportFullSessionAsPdf" disabled="@(!chatHistory.Any())" data-testid="ai-export-full-pdf">Export session</button>
+            </div>
+            <div class="ai-transcript" aria-live="polite">
+                @if (!chatHistory.Any() && !_thinking)
                 {
-                    <div class="border rounded p-3 bg-light" data-testid="ai-last-response">
-                        <div class="d-flex justify-content-between mb-2">
-                            <strong>@(string.IsNullOrWhiteSpace(lastResponse) ? "Thinking…" : "Latest AI Response")</strong>
-                            @if (!string.IsNullOrWhiteSpace(lastResponse))
-                            {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse" data-testid="ai-copy-response">Copy</button>
-                            }
-                        </div>
-                        <div style="white-space: pre-wrap; font-size: 0.95rem;">@(lastResponse ?? "Working on your request…")</div>
-
-                        @if (UserCanManage && !string.IsNullOrWhiteSpace(lastResponse))
-                        {
-                            <div class="mt-2 d-flex gap-2 flex-wrap">
-                                <button class="btn btn-sm btn-success" @onclick="() => CreateQuoteFromAiText(lastResponse)" data-testid="ai-create-real-quote">🚀 Create Real Draft Quote</button>
-                                <button class="btn btn-sm btn-outline-success" @onclick="() => CreateJobFromAiText(lastResponse)" data-testid="ai-create-real-job">🚀 Create Real Draft Job</button>
-                                <button class="btn btn-sm btn-primary" @onclick="() => CreateProjectPlanFromAiText(lastResponse)">🚀 Generate Full Project Plan</button>
-                                <button class="btn btn-sm btn-info" @onclick="ExportAiResponseAsReport" data-testid="ai-export-response-pdf">📄 Export as PDF</button>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="GenerateDemoQuotePdfFromLastResponse" data-testid="ai-demo-quote-pdf">📄 Demo Quote PDF</button>
-                                <button class="btn btn-sm btn-outline-success" @onclick="GenerateDemoJobPdfFromLastResponse" data-testid="ai-demo-job-pdf">📄 Demo Job PDF</button>
-                                <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedQuote">📄 Download real PDF for the Quote you just created</button>
-                                <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedJob">📄 Download real PDF for the Job you just created</button>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="GenerateDemoQuotePdfFromLastResponse">📄 Demo Quote PDF (AI scope as notes)</button>
-                                <button class="btn btn-sm btn-outline-success" @onclick="GenerateDemoJobPdfFromLastResponse">📄 Demo Job Closeout PDF (AI notes + variance)</button>
-
-                                @if (lastCreatedQuote != null)
-                                {
-                                    <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedQuote" data-testid="ai-download-real-quote-pdf">📄 Download real PDF for the Quote you just created</button>
-                                }
-                                @if (lastCreatedJob != null)
-                                {
-                                    <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedJob" data-testid="ai-download-real-job-pdf">📄 Download real PDF for the Job you just created</button>
-                                }
-
-@if (lastCreatedQuote != null || lastCreatedJob != null)
-{
-    <div class="mt-2 p-2 border rounded bg-light">
-        <strong class="small">Real professional PDF for the entity created from this AI response (using actual data + AI notes):</strong>
-        @if (lastCreatedQuote != null)
-        {
-            <button class="btn btn-sm btn-success ms-1" @onclick="DownloadRealPdfForLastCreatedQuote" data-testid="ai-download-real-quote-pdf-detail">Quote PDF</button>
-        }
-        @if (lastCreatedJob != null)
-        {
-            <button class="btn btn-sm btn-success ms-1" @onclick="DownloadRealPdfForLastCreatedJob" data-testid="ai-download-real-job-pdf-detail">Job Closeout PDF</button>
-        }
-    </div>
-}
-                            </div>
-                            <span class="text-muted small d-block mt-1">Creates live records in the system from the AI response. The future of contracting ops.</span>
-                        }
+                    <div class="ai-empty" data-testid="ai-empty-state">
+                        <h2>Ask about a job, quote, or invoice…</h2>
+                        <p class="text-muted mb-0">Try FT16010, a travel line, or why a job is over quoted. An invoice does not close the job.</p>
                     </div>
-                }
-                else if (_thinking)
-                {
-                    <p class="text-muted"><em>The AI co-pilot is thinking with your live ERP data...</em></p>
                 }
                 else
                 {
-                    <div class="text-muted small">
-                        Try one of the quick actions on the left, or type your own question. The more specific (customer type, job category, recent issues), the better the answer.
-                    </div>
+                    @for (var i = 0; i < chatHistory.Count; i++)
+                    {
+                        var index = i;
+                        var current = chatHistory[index];
+                        var isLatest = index == chatHistory.Count - 1 && !_thinking;
+                        <div class="ai-bubble ai-bubble-user">
+                            <div class="ai-bubble-card">
+                                <span class="ai-bubble-label">You</span>
+                                <div class="ai-bubble-body">@current.Question</div>
+                            </div>
+                        </div>
+                        <div class="ai-bubble ai-bubble-assistant">
+                            <div class="ai-bubble-card" data-testid="@ResponseTestId(isLatest)">
+                                <span class="ai-bubble-label">@OfficeName</span>
+                                <div class="ai-bubble-body">@current.Response</div>
+                                @if (isLatest)
+                                {
+                                    <div class="ai-actions">
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResponse" data-testid="ai-copy-response">Copy</button>
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => GiveFeedback(current, true)" data-testid="ai-feedback-thumbs-up">Helpful</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => GiveFeedback(current, false)" data-testid="ai-feedback-thumbs-down">Not helpful</button>
+                                        @if (UserCanManage)
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => CreateQuoteFromAiText(current.Response)" data-testid="ai-apply-quote">Quote</button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => CreateJobFromAiText(current.Response)" data-testid="ai-apply-job">Job</button>
+                                            <button class="btn btn-sm btn-success" @onclick="() => CreateQuoteFromAiText(current.Response)" data-testid="ai-create-real-quote">Create draft quote</button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => CreateJobFromAiText(current.Response)" data-testid="ai-create-real-job">Create draft job</button>
+                                            <button class="btn btn-sm btn-primary" @onclick="() => CreateProjectPlanFromAiText(current.Response)">Project plan</button>
+                                            <button class="btn btn-sm btn-info" @onclick="ExportAiResponseAsReport" data-testid="ai-export-response-pdf">Export PDF</button>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="GenerateDemoQuotePdfFromLastResponse" data-testid="ai-demo-quote-pdf">Demo quote PDF</button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="GenerateDemoJobPdfFromLastResponse" data-testid="ai-demo-job-pdf">Demo job PDF</button>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => ExportResponseAsQuotePdf(current.Response)">Quote PDF</button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => ExportResponseAsJobPdf(current.Response)">Job PDF</button>
+                                            @if (lastCreatedQuote != null)
+                                            {
+                                                <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedQuote" data-testid="ai-download-real-quote-pdf">Quote PDF just created</button>
+                                            }
+                                            @if (lastCreatedJob != null)
+                                            {
+                                                <button class="btn btn-sm btn-success" @onclick="DownloadRealPdfForLastCreatedJob" data-testid="ai-download-real-job-pdf">Job PDF just created</button>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (_thinking)
+                    {
+                        <div class="ai-bubble ai-bubble-user">
+                            <div class="ai-bubble-card">
+                                <span class="ai-bubble-label">You</span>
+                                <div class="ai-bubble-body">@userQuestion</div>
+                            </div>
+                        </div>
+                        <div class="ai-typing" data-testid="ai-typing" role="status">
+                            <i></i><i></i><i></i>
+                            <span>@(_aiConfigured ? "Asking the provider…" : "Preparing an answer…")</span>
+                        </div>
+                    }
                 }
             </div>
-        </div>
-
-        <div class="mt-3 text-muted small">
-            <strong>Pro tip:</strong> The co-pilot sees real data (recent jobs, costs including travel, employees, inventory health). Answers are tailored to your actual operations — not generic advice.
-            Configure your preferred model (Grok, GPT-4o, local Llama, etc.) in <code>Ai:Model</code> + key.
+            @if (_contextChips.Count > 0)
+            {
+                <div class="ai-chips" data-testid="ai-context-chips">
+                    @foreach (var chip in _contextChips)
+                    {
+                        <span class="ai-chip">@chip</span>
+                    }
+                </div>
+            }
+            <form class="ai-composer" @onsubmit="OnComposerSubmit" @onsubmit:preventDefault="true">
+                <input type="text" class="form-control" placeholder="Ask about a job, quote, or invoice…"
+                       value="@userQuestion" @oninput="OnQuestionInput" data-testid="ai-prompt-input" />
+                <button type="submit" class="btn btn-primary" disabled="@_thinking" data-testid="ai-ask-button">Send</button>
+            </form>
         </div>
     </div>
 </div>
@@ -265,7 +249,20 @@ else if (_aiQuotaExhausted)
     private bool _autoOptimizeAfterRender;
 
     private TenantBranding _branding = TenantBranding.Default;
-    private string lastResponse = BuildImmediateOfflineAnswer("Ask about quotes, travel, jobs, or stock.");
+    private string lastResponse = "";
+    private readonly List<string> _contextChips = new();
+    private int _aiTimeoutSeconds = 60;
+
+    private string OfficeName =>
+        string.IsNullOrWhiteSpace(_branding.DisplayName) || _branding.DisplayName == "METERP"
+            ? "MET Electrical"
+            : _branding.DisplayName;
+
+    private string HeaderSubtitle =>
+        $"{OfficeName} office assistant. Travel is its own line. An invoice does not close the job.";
+
+    private static string ResponseTestId(bool isLatest) =>
+        isLatest ? "ai-last-response" : "ai-history-response";
 
     [SupplyParameterFromQuery(Name = "scope")]
     public string? ScopeFromQuery { get; set; }
@@ -276,7 +273,8 @@ else if (_aiQuotaExhausted)
     {
         var aiConfig = await AiConfigResolver.GetEffectiveAsync();
         _aiConfigured = aiConfig.IsConfigured;
-        _aiProvider = aiConfig.ProviderName;
+        _aiProvider = string.IsNullOrWhiteSpace(aiConfig.ProviderName) ? "Grok (xAI)" : aiConfig.ProviderName;
+        _aiTimeoutSeconds = aiConfig.TimeoutSeconds;
 
         // Load lightweight context for the copilot
         try
@@ -377,13 +375,7 @@ else if (_aiQuotaExhausted)
         userQuestion = e.Value?.ToString() ?? "";
     }
 
-    private async Task OnQuestionKeyUp(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(userQuestion))
-        {
-            await AskCopilot();
-        }
-    }
+    private async Task OnComposerSubmit() => await AskCopilot();
 
     private async Task AskCopilot()
     {
@@ -392,32 +384,38 @@ else if (_aiQuotaExhausted)
         if (string.IsNullOrWhiteSpace(userQuestion))
             userQuestion = "What travel cost risks should I watch on remote jobs?";
 
+        var question = userQuestion.Trim();
         _thinking = true;
-        // Keep any previous/immediate response visible so demos/E2E always have ai-last-response.
-        if (string.IsNullOrWhiteSpace(lastResponse))
-            lastResponse = BuildImmediateOfflineAnswer(userQuestion);
         StateHasChanged();
-        await Task.Yield(); // flush ai-last-response before any slow work
+        await Task.Yield();
 
         try
         {
-            // Prefer a quick offline answer; context/service must not block the UI path.
-            string context = "(context skipped for speed)";
+            var aiConfig = await AiConfigResolver.GetEffectiveAsync();
+            _aiConfigured = aiConfig.IsConfigured;
+            _aiProvider = string.IsNullOrWhiteSpace(aiConfig.ProviderName) ? _aiProvider : aiConfig.ProviderName;
+            _aiTimeoutSeconds = aiConfig.TimeoutSeconds <= 0 ? 60 : aiConfig.TimeoutSeconds;
+
+            var contextBudget = _aiConfigured ? TimeSpan.FromSeconds(8) : TimeSpan.FromSeconds(3);
+            var context = CashSpineContext;
             try
             {
-                var ctxTask = BuildRichContextAsync();
-                var ctxDone = await Task.WhenAny(ctxTask, Task.Delay(TimeSpan.FromSeconds(3)));
+                var ctxTask = BuildRichContextAsync(question);
+                var ctxDone = await Task.WhenAny(ctxTask, Task.Delay(contextBudget));
                 if (ctxDone == ctxTask)
                     context = await ctxTask;
             }
             catch
             {
-                context = "(context unavailable)";
+                context += "\n(job snapshot unavailable)";
             }
 
-            // Cap wait so demos/E2E never hang on a bad API key.
-            var askTask = AiAssistantService.AskCopilotAsync(userQuestion, context);
-            var finished = await Task.WhenAny(askTask, Task.Delay(TimeSpan.FromSeconds(8)));
+            var askTask = AiAssistantService.AskCopilotAsync(question, context);
+            // Offline answers return immediately. A configured provider may take the full timeout.
+            var wait = _aiConfigured
+                ? TimeSpan.FromSeconds(Math.Clamp(_aiTimeoutSeconds + 5, 20, 90))
+                : TimeSpan.FromSeconds(8);
+            var finished = await Task.WhenAny(askTask, Task.Delay(wait));
             string? result;
             if (finished == askTask)
             {
@@ -425,23 +423,23 @@ else if (_aiQuotaExhausted)
             }
             else
             {
-                result =
-                    "**Offline AI Copilot** (response timed out waiting for provider)\n\n"
-                    + "- Keep **travel** explicit on quotes and jobs\n"
-                    + "- Review quoted vs actual cost variance\n"
-                    + "- Use stock requisitions so materials hit the Job ID\n"
-                    + $"- Your question was: {userQuestion}";
+                result = "Live AI timed out before the provider answered. "
+                    + "Check the API key, base URL, and model on /settings/ai, then try again.";
             }
 
-            lastResponse = result ?? "The AI did not return a response. Please refine your question or check configuration.";
-            chatHistory.Add((userQuestion, lastResponse));
+            lastResponse = string.IsNullOrWhiteSpace(result)
+                ? "The AI returned an empty reply. Check /settings/ai and try again."
+                : result;
+            chatHistory.Add((question, lastResponse));
+            userQuestion = "";
             try { await SaveChatHistory(); }
             catch { /* localStorage optional */ }
         }
         catch (Exception ex)
         {
-            lastResponse = $"Error talking to AI: {ex.Message}";
-            ToastService.ShowError("AI query failed. See console for details.");
+            lastResponse = $"Live AI error: {ex.Message}. Open /settings/ai to check the API key.";
+            chatHistory.Add((question, lastResponse));
+            ToastService.ShowError("AI query failed. See the message in the chat.");
         }
         finally
         {
@@ -450,45 +448,67 @@ else if (_aiQuotaExhausted)
         }
     }
 
-    private async Task<string> BuildRichContextAsync()
+    private const string CashSpineContext =
+        "MET Electrical office rules: Opportunity → Quote → Sales Order (optional) → Job → Invoice. "
+        + "Travel is an explicit line, never buried in labour. Raising an invoice does not close the job. "
+        + "Job close is a separate executive step. Money is South African Rand (R).";
+
+    private async Task<string> BuildRichContextAsync(string question)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Current tenant ERP snapshot:");
+        sb.AppendLine(CashSpineContext);
+        _contextChips.Clear();
+
+        var thread = question + " " + string.Join(' ', chatHistory.Select(h => h.Question));
+        foreach (var token in OfficeReferenceTokens.Extract(thread).Take(3))
+        {
+            try
+            {
+                var matches = await JobService.GetAllAsync(token, 1, 3);
+                var job = matches.FirstOrDefault(j =>
+                    j.JobNumber.Contains(token, StringComparison.OrdinalIgnoreCase));
+                if (job == null)
+                {
+                    sb.AppendLine($"No job matched TRFid {token} in this tenant.");
+                    _contextChips.Add($"{token} not found");
+                    continue;
+                }
+
+                var travel = job.ActualCosts?
+                    .Where(c => !c.IsDeleted && string.Equals(c.CostType, "Travel", StringComparison.OrdinalIgnoreCase))
+                    .Sum(c => c.Amount) ?? 0m;
+                var closed = job.Status == JobStatus.Closed || job.ClosedAt.HasValue;
+                sb.AppendLine(
+                    $"Job {job.JobNumber}: {job.Title}; customer {job.Customer?.Name ?? "unknown"}; status {job.Status}; "
+                    + $"quoted R {job.QuotedTotal:N2}; actual cost R {job.ActualCost:N2}; travel lines R {travel:N2}; "
+                    + $"deposit received {(job.DepositReceived ? "yes" : "no")}; closed {(closed ? "yes" : "no")}. "
+                    + "An invoice on this job does not close it.");
+                _contextChips.Add($"{job.JobNumber} · {job.Customer?.Name ?? job.Status.ToString()}");
+            }
+            catch
+            {
+                sb.AppendLine($"Could not load job {token}.");
+            }
+        }
 
         try
         {
             var recentJobs = await JobService.GetAllAsync(null, 1, 5);
-            sb.AppendLine($"- Recent jobs: {recentJobs.Count} (latest variance examples available in analysis)");
-            
-            var lowStock = await InventoryService.GetAllItemsAsync(null, true, 1, 10);
+            sb.AppendLine($"Recent jobs in view: {recentJobs.Count}.");
+
+            var lowStock = await InventoryService.GetAllItemsAsync(null, true, 1, 5);
             if (lowStock.Any())
-                sb.AppendLine($"- Low stock items: {string.Join(", ", lowStock.Take(5).Select(i => i.Sku))}");
-
-            var employees = await EmployeeService.GetAllAsync(null, 1, 10);
-            sb.AppendLine($"- Active employees in system: {employees.Count}");
+                sb.AppendLine($"Low stock SKUs: {string.Join(", ", lowStock.Select(i => i.Sku))}.");
         }
-        catch { }
+        catch { /* snapshot is optional */ }
 
-        sb.AppendLine("Focus answers on practical South African contracting realities (travel, site access, skills, VAT, Rand costing).");
         return sb.ToString();
     }
-
-    private static string BuildImmediateOfflineAnswer(string prompt) =>
-        "**Offline AI Copilot**\n\n"
-        + "- Travel should stay explicit on quotes and jobs\n"
-        + "- Watch quoted vs actual cost variance\n"
-        + "- Materials via stock requisitions hit the Job ID\n"
-        + $"- Prompt: {prompt}";
 
     private async Task RunQuickPrompt(string prompt)
     {
         if (_thinking) return;
         userQuestion = prompt;
-        // Paint immediately so ai-last-response is visible before any service call.
-        lastResponse = BuildImmediateOfflineAnswer(prompt);
-        await InvokeAsync(StateHasChanged);
-        // Brief delay so InteractiveServer flushes the paint before the longer AskCopilot path.
-        await Task.Delay(30);
         await AskCopilot();
     }
 

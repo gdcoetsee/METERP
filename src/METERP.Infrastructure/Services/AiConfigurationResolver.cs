@@ -13,16 +13,20 @@ public class AiConfigurationResolver : IAiConfigurationResolver
     private readonly ITenantService? _tenantService;
     private readonly IDataProtector? _protector;
 
+    private readonly Func<string, string?> _environmentReader;
+
     public AiConfigurationResolver(
         IConfiguration configuration,
         ITenantProvider? tenantProvider = null,
         ITenantService? tenantService = null,
-        IDataProtectionProvider? dataProtectionProvider = null)
+        IDataProtectionProvider? dataProtectionProvider = null,
+        Func<string, string?>? environmentReader = null)
     {
         _configuration = configuration;
         _tenantProvider = tenantProvider;
         _tenantService = tenantService;
         _protector = dataProtectionProvider?.CreateProtector("METERP.TenantAiSettings");
+        _environmentReader = environmentReader ?? Environment.GetEnvironmentVariable;
     }
 
     public bool IsDeploymentConfigured
@@ -53,7 +57,7 @@ public class AiConfigurationResolver : IAiConfigurationResolver
                 return deployment;
 
             var provider = string.IsNullOrWhiteSpace(tenant.AiProvider)
-                ? AiProviderProfiles.Custom
+                ? deployment.ProviderName
                 : tenant.AiProvider;
             var preset = AiProviderProfiles.GetPreset(provider);
 
@@ -97,12 +101,18 @@ public class AiConfigurationResolver : IAiConfigurationResolver
     private AiRuntimeConfiguration ReadDeploymentConfig()
     {
         var aiSection = _configuration.GetSection("Ai");
-        var apiKey = aiSection["ApiKey"];
-        var baseUrl = aiSection["BaseUrl"]?.TrimEnd('/') ?? "https://api.openai.com/v1";
-        var model = aiSection["Model"] ?? "gpt-4o-mini";
+        var apiKey = FirstNonBlank(aiSection["ApiKey"], _environmentReader("Ai__ApiKey"), _environmentReader("XAI_API_KEY"));
+        var baseUrl = FirstNonBlank(aiSection["BaseUrl"], _environmentReader("Ai__BaseUrl"))
+            ?.TrimEnd('/')
+            ?? AiProviderProfiles.DefaultBaseUrl;
+        var model = FirstNonBlank(aiSection["Model"], _environmentReader("Ai__Model"))
+            ?? AiProviderProfiles.DefaultModel;
         var timeoutSeconds = int.TryParse(aiSection["TimeoutSeconds"], out var t) ? t : 60;
-        var enabled = !bool.TryParse(aiSection["Enabled"], out var e) || e;
-        var provider = aiSection["Provider"] ?? AiProviderProfiles.OpenAi;
+        var enabled = !bool.TryParse(
+            FirstNonBlank(aiSection["Enabled"], _environmentReader("Ai__Enabled")),
+            out var e) || e;
+        var provider = FirstNonBlank(aiSection["Provider"], _environmentReader("Ai__Provider"))
+            ?? AiProviderProfiles.InferProvider(baseUrl);
 
         return new AiRuntimeConfiguration(
             Enabled: enabled,
@@ -112,5 +122,16 @@ public class AiConfigurationResolver : IAiConfigurationResolver
             TimeoutSeconds: timeoutSeconds,
             ProviderName: provider,
             FromTenantOverride: false);
+    }
+
+    private static string? FirstNonBlank(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
     }
 }

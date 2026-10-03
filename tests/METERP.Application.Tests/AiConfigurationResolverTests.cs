@@ -165,7 +165,42 @@ public class AiConfigurationResolverTests
     [Fact]
     public void IsDeploymentConfigured_False_WhenApiKeyMissing()
     {
-        var resolver = new AiConfigurationResolver(CreateDeploymentConfig(apiKey: ""));
+        var resolver = new AiConfigurationResolver(
+            CreateDeploymentConfig(apiKey: " "),
+            environmentReader: _ => null);
         Assert.False(resolver.IsDeploymentConfigured);
+    }
+
+    [Fact]
+    public async Task GetEffectiveAsync_UsesXaiApiKey_WhenConfigKeyIsBlank()
+    {
+        var resolver = new AiConfigurationResolver(
+            CreateDeploymentConfig(apiKey: " "),
+            environmentReader: name => name == "XAI_API_KEY" ? "xai-unit-test-key" : null);
+
+        var config = await resolver.GetEffectiveAsync();
+
+        Assert.True(config.IsConfigured);
+        Assert.False(config.FromTenantOverride);
+        Assert.Equal("xai-unit-test-key", config.ApiKey);
+        Assert.Equal("https://api.openai.com/v1", config.BaseUrl);
+    }
+
+    [Fact]
+    public async Task ReadDeployment_InfersGrok_WhenProviderMissingAndBaseUrlIsXai()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Ai:ApiKey"] = "xai-unit-test-key",
+            ["Ai:BaseUrl"] = "https://api.x.ai/v1",
+            ["Ai:Model"] = "grok-4.6",
+            ["Ai:Enabled"] = "true"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var resolver = new AiConfigurationResolver(config, environmentReader: _ => null);
+
+        Assert.True(resolver.IsDeploymentConfigured);
+        var effective = await resolver.GetEffectiveAsync();
+        Assert.Equal(AiProviderProfiles.Grok, effective.ProviderName);
     }
 }

@@ -27,29 +27,47 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
             .OrderBy(d => d.Name)
             .ToListAsync(ct);
 
+        if (divisions.Count == 0)
+            return Array.Empty<DivisionScorecardRow>();
+
+        // Projections only — do not Include milestones/costs for every job on the MET seed.
         var jobs = await _dbContext.Set<Job>()
             .AsNoTracking()
-            .Include(j => j.Milestones)
             .Where(j => j.DivisionId.HasValue)
+            .Select(j => new
+            {
+                j.Id,
+                DivisionId = j.DivisionId!.Value,
+                j.Status,
+                j.SignOffStatus,
+                j.QuotedTotal
+            })
             .ToListAsync(ct);
 
-        var invoices = await _dbContext.Set<Invoice>()
+        var milestoneAvg = await _dbContext.Set<JobMilestone>()
             .AsNoTracking()
-            .Where(i => i.Status == InvoiceStatus.Paid || i.Status == InvoiceStatus.Sent || i.Status == InvoiceStatus.PartiallyPaid)
-            .Select(i => new { i.JobId, i.Total })
-            .ToListAsync(ct);
+            .GroupBy(m => m.JobId)
+            .Select(g => new { JobId = g.Key, Avg = g.Average(m => (decimal)m.PercentComplete) })
+            .ToDictionaryAsync(x => x.JobId, x => x.Avg, ct);
 
-        var revenueByJob = invoices
-            .Where(i => i.JobId.HasValue)
+        var revenueByJob = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId != null
+                && (i.Status == InvoiceStatus.Paid
+                    || i.Status == InvoiceStatus.Sent
+                    || i.Status == InvoiceStatus.PartiallyPaid))
             .GroupBy(i => i.JobId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+            .Select(g => new { JobId = g.Key, Total = g.Sum(x => x.Total) })
+            .ToDictionaryAsync(x => x.JobId, x => x.Total, ct);
 
         return divisions.Select(d =>
         {
             var divisionJobs = jobs.Where(j => j.DivisionId == d.Id).ToList();
             var active = divisionJobs.Where(j =>
                 j.Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold).ToList();
-            var ready = divisionJobs.Where(j => j.IsReadyToInvoice()).ToList();
+            var ready = divisionJobs.Where(j =>
+                j.SignOffStatus == JobSignOffStatus.SignedOff
+                && j.Status is not JobStatus.Closed and not JobStatus.Cancelled).ToList();
 
             return new DivisionScorecardRow
             {
@@ -59,7 +77,10 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
                 ActiveJobs = active.Count,
                 AvgProgressPercent = active.Count == 0
                     ? 0m
-                    : Math.Round((decimal)active.Average(j => j.GetProgressPercent()), 1),
+                    : Math.Round(active.Average(j =>
+                        milestoneAvg.TryGetValue(j.Id, out var avg)
+                            ? avg
+                            : StatusProgress(j.Status)), 1),
                 ReadyToInvoiceCount = ready.Count,
                 ReadyToInvoiceValue = ready.Sum(j => j.QuotedTotal),
                 InvoicedRevenue = divisionJobs
@@ -68,6 +89,17 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
             };
         }).ToList();
     }
+
+    private static decimal StatusProgress(JobStatus status) => status switch
+    {
+        JobStatus.Scheduled => 10m,
+        JobStatus.InProgress => 50m,
+        JobStatus.OnHold => 40m,
+        JobStatus.Completed => 90m,
+        JobStatus.Invoiced => 90m,
+        JobStatus.Closed => 100m,
+        _ => 0m
+    };
 
     public async Task<string> ExportDivisionScorecardsCsvAsync(CancellationToken ct = default)
     {
@@ -133,13 +165,18 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
         var now = DateTime.UtcNow;
         var rows = new List<OverdueApprovalRow>();
 
-        var pendingQuotes = (await _dbContext.Set<Quote>()
+        var quoteCutoff = now.AddHours(-slaHours);
+        var pendingQuotes = await _dbContext.Set<Quote>()
             .AsNoTracking()
             .Include(q => q.Customer)
-            .ToListAsync(ct))
-            .Where(q => q.ApprovalStatus == QuoteApprovalStatus.PendingExecutive);
+            .Where(q => q.ApprovalStatus == QuoteApprovalStatus.PendingExecutive
+                && q.SubmittedForApprovalAt != null
+                && q.SubmittedForApprovalAt <= quoteCutoff)
+            .OrderBy(q => q.SubmittedForApprovalAt)
+            .Take(40)
+            .ToListAsync(ct);
 
-        foreach (var quote in pendingQuotes.Where(q => q.SubmittedForApprovalAt.HasValue))
+        foreach (var quote in pendingQuotes)
         {
             var submitted = quote.SubmittedForApprovalAt!.Value;
             var hours = (int)Math.Floor((now - submitted).TotalHours);
@@ -157,11 +194,13 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
             }
         }
 
-        var pendingRequisitions = (await _dbContext.Set<StockRequisition>()
+        var pendingRequisitions = await _dbContext.Set<StockRequisition>()
             .AsNoTracking()
             .Include(r => r.Job)
-            .ToListAsync(ct))
-            .Where(r => r.Status == RequisitionStatus.PendingManager || r.Status == RequisitionStatus.PendingExecutive);
+            .Where(r => r.Status == RequisitionStatus.PendingManager || r.Status == RequisitionStatus.PendingExecutive)
+            .OrderBy(r => r.CreatedDate)
+            .Take(40)
+            .ToListAsync(ct);
 
         foreach (var req in pendingRequisitions)
         {
@@ -181,13 +220,15 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
             }
         }
 
-        var pendingLeave = (await _dbContext.Set<LeaveRequest>()
+        var pendingLeave = await _dbContext.Set<LeaveRequest>()
             .AsNoTracking()
             .Include(l => l.Employee)
-            .ToListAsync(ct))
             .Where(l => l.Status == LeaveRequestStatus.PendingManager
                 || l.Status == LeaveRequestStatus.PendingExecutive
-                || l.Status == LeaveRequestStatus.PendingHr);
+                || l.Status == LeaveRequestStatus.PendingHr)
+            .OrderBy(l => l.CreatedDate)
+            .Take(40)
+            .ToListAsync(ct);
 
         foreach (var leave in pendingLeave)
         {
@@ -209,11 +250,13 @@ public sealed class AccountabilityReportService : IAccountabilityReportService
             }
         }
 
-        var pendingFieldReports = (await _dbContext.Set<FieldReport>()
+        var pendingFieldReports = await _dbContext.Set<FieldReport>()
             .AsNoTracking()
             .Include(f => f.Job)
-            .ToListAsync(ct))
-            .Where(f => f.Status == FieldReportStatus.PendingApproval);
+            .Where(f => f.Status == FieldReportStatus.PendingApproval)
+            .OrderBy(f => f.CreatedDate)
+            .Take(40)
+            .ToListAsync(ct);
 
         foreach (var report in pendingFieldReports)
         {

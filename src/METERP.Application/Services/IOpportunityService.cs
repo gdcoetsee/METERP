@@ -36,4 +36,7 @@ public interface IOpportunityService
 
     /// <summary>Closed-won opportunities that do not yet have a quote.</summary>
     Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnquotedWonAsync(int take = 20, CancellationToken ct = default);
+
+    /// <summary>Proposal-stage deals with no quote yet — the Home convert / create-quote queue.</summary>
+    Task<ProposalQuoteQueueResult> GetUnquotedProposalQueueAsync(int take = 12, CancellationToken ct = default);
 }

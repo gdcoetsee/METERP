@@ -9,6 +9,7 @@
 <div class="help-hero">
     <p class="portal-kicker">User manual</p>
     <h1>How to run the business in METERP</h1>
+    <p class="text-muted" data-testid="help-spine-note">Cash spine: Opportunity → Quote → Job → Invoice. Travel is its own line. A <strong>deposit</strong> invoice is not a <strong>final</strong> invoice, and neither one is Executive close. <strong>Invoice does not close the job</strong>. TRFid examples: FT16010, SD393, PD0085 (MET Electrical).</p>
     <p class="lead text-muted">This is the working guide for office staff, field technicians, executives, and customers. Follow the spine: opportunity → quote → job → invoice. Travel is always a separate cost.</p>
 </div>
 
@@ -24,13 +25,14 @@
             <a href="#invoices">Invoices &amp; Sage/Xero</a>
             <a href="#portal">Customer portal</a>
             <a href="#grok">Grok Bot</a>
+            <a href="#ai">AI key</a>
             <a href="#field">Field app</a>
         </nav>
     </div>
     <div class="col-lg-9">
         <section id="staff-login" class="help-section">
             <h2>Sign in (staff)</h2>
-            <p>Go to <a href="/login">/login</a>. Demo office user is <code>admin@acme.demo</code> / <code>Demo123!</code>. If your company connected Google, Microsoft, or X, use those buttons — we only sign in emails that already have a METERP account (an administrator must create you first).</p>
+            <p>Go to <a href="/login">/login</a>. MET Electrical office sign-in is <code>admin@met.demo</code> / <code>Demo123!</code>. If your company connected Google, Microsoft, or X, use those buttons — we only sign in emails that already have a METERP account (an administrator must create you first).</p>
             <p>Accounts with authenticator 2FA will ask for a 6-digit code after the password. Customers use <a href="/portal/login">/portal/login</a>, not this screen.</p>
         </section>
         <section id="cash-desk" class="help-section">
@@ -66,12 +68,18 @@
         </section>
         <section id="portal" class="help-section">
             <h2>Customer portal</h2>
-            <p>Customers sign in at <a href="/portal/login">/portal/login</a> with the email on their customer record. They see only their quotes and invoices and the outstanding balance. They can <strong>Accept</strong> a sent quote and send an <strong>I've paid</strong> notice (the office still records the receipt). They cannot see jobs, stock, or other customers. Office staff create portal users from Users (tick “Customer portal login” and pick the customer). Demo: <code>procurement@jhgh.co.za</code> / <code>Demo123!</code>.</p>
+            <p>Customers sign in at <a href="/portal/login">/portal/login</a> with the email on their customer record. They see only their quotes and invoices and the outstanding balance. They can <strong>Accept</strong> a sent quote and send an <strong>I've paid</strong> notice (the office still records the receipt). They cannot see jobs, stock, or other customers. Office staff create portal users from Users (tick “Customer portal login” and pick the customer). MET demo: <code>portal@met.demo</code> / <code>Demo123!</code>, linked to a MET customer.</p>
         </section>
         <section id="grok" class="help-section">
             <h2>Grok Bot (AI copilot)</h2>
-            <p>Open <strong>AI Copilot</strong> (sparkle button) or <a href="/ai-copilot">/ai-copilot</a>. Ask in plain language: “create a quote with travel for Johannesburg General Hospital”, “why is this job over budget?”, “what is low in stock?”. Apply suggestions onto a real quote or job, then download the PDF.</p>
+            <p>Open <strong>AI Copilot</strong> (sparkle button) or <a href="/ai-copilot">/ai-copilot</a>. Ask in plain language: “create a quote with travel for Kruger Park Lodge”, “why is this job over budget?”, “what is low in stock?”. Apply suggestions onto a real quote or job, then download the PDF.</p>
             <p>To use <strong>your own Grok / Gemini / OpenAI subscription</strong>: go to <a href="/settings/ai">AI Settings</a> (tenant managers). Click <strong>Continue with Grok</strong> (or Google / OpenAI), sign in at the provider console, paste the API key, and save. Keys are encrypted at rest. Platform <code>XAI_API_KEY</code> / <code>Ai__ApiKey</code> is used when tenant override is off.</p>
+        </section>
+        <section id="ai" class="help-section" data-testid="help-ai-key">
+            <h2>AI key (Copilot)</h2>
+            <p>Copilot at <a href="/ai-copilot">/ai-copilot</a> calls a live model only when a key is configured. A blank <code>Ai:ApiKey</code> is not a key. Paste one on <a href="/settings/ai">AI Settings</a>, Save, then Test connection. The same page masks a saved tenant key.</p>
+            <p>Deployment names (no values in source control): <code>Ai:ApiKey</code>, <code>Ai:BaseUrl</code>, <code>Ai:Model</code>, <code>Ai:Provider</code>, <code>Ai:Enabled</code>. Environment equivalents use a double underscore (<code>Ai__ApiKey</code>). <code>XAI_API_KEY</code> is also read when the config key is empty. Default provider is Grok at <code>https://api.x.ai/v1</code>, model <code>grok-4.6</code>.</p>
+            <p>Ask with a TRFid such as FT16010, SD393, or PD0085. Travel stays an explicit line. An invoice does not close the job.</p>
         </section>
         <section id="field" class="help-section">
             <h2>Field technicians</h2>

@@ -142,6 +142,67 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_HidesLockedUsers_UntilIncludeInactive()
+    {
+        var tenantId = Guid.NewGuid();
+        using var harness = new TestHarness(tenantId);
+        await SeedUserAsync(harness.UserManager, tenantId, "admin@met.demo");
+        var locked = await SeedUserAsync(harness.UserManager, tenantId, "procurement@jhgh.co.za");
+        locked.LockoutEnabled = true;
+        locked.LockoutEnd = DateTimeOffset.UtcNow.AddYears(100);
+        await harness.Db.SaveChangesAsync();
+
+        var active = await harness.Service.GetAllAsync();
+        Assert.DoesNotContain(active, u => u.Email == "procurement@jhgh.co.za");
+        Assert.Contains(active, u => u.Email == "admin@met.demo" && u.IsActive);
+
+        var withInactive = await harness.Service.GetAllAsync(includeInactive: true);
+        var orphan = Assert.Single(withInactive, u => u.Email == "procurement@jhgh.co.za");
+        Assert.False(orphan.IsActive);
+        Assert.Contains(withInactive, u => u.Email == "admin@met.demo");
+    }
+
+    [Fact]
+    public async Task GetAllAsync_HidesSoftDeletedTenantUsers_AndDoesNotLeakLiveTenants()
+    {
+        var metId = Guid.NewGuid();
+        var betaId = Guid.NewGuid();
+        var otherLiveId = Guid.NewGuid();
+        using var harness = new TestHarness(metId);
+
+        harness.Db.Tenants.Add(new METERP.Domain.Tenant
+        {
+            Id = betaId,
+            Name = "Beta Corp (Demo)",
+            Subdomain = "beta-lock",
+            IsDeleted = true
+        });
+        harness.Db.Tenants.Add(new METERP.Domain.Tenant
+        {
+            Id = otherLiveId,
+            Name = "Other Live",
+            Subdomain = "other-live",
+            IsDeleted = false
+        });
+        await harness.Db.SaveChangesAsync();
+
+        await SeedUserAsync(harness.UserManager, metId, "admin@met.demo");
+        await SeedUserAsync(harness.UserManager, betaId, "admin@beta.demo");
+        await SeedUserAsync(harness.UserManager, otherLiveId, "admin@other.demo");
+
+        var active = await harness.Service.GetAllAsync();
+        Assert.DoesNotContain(active, u => u.Email == "admin@beta.demo");
+        Assert.DoesNotContain(active, u => u.Email == "admin@other.demo");
+        Assert.Contains(active, u => u.Email == "admin@met.demo" && u.IsActive);
+
+        var withInactive = await harness.Service.GetAllAsync(includeInactive: true);
+        var beta = Assert.Single(withInactive, u => u.Email == "admin@beta.demo");
+        Assert.False(beta.IsActive);
+        Assert.DoesNotContain(withInactive, u => u.Email == "admin@other.demo");
+        Assert.Contains(withInactive, u => u.Email == "admin@met.demo");
+    }
+
+    [Fact]
     public async Task CreateUserAsync_AssignsRoleTenantClaimAndPermissionClaims()
     {
         var tenantId = Guid.NewGuid();

@@ -71,6 +71,39 @@ public class InvoiceBillingCalculatorTests
     }
 
     [Fact]
+    public void ShowDepositCollectionBanner_SuppressesWhenBilledCoversThresholdOrCompletedWithBilled()
+    {
+        // FT16010 shape: in progress, quoted 61840, 30% deposit, nothing linked — CTA stays.
+        Assert.True(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            JobStatus.InProgress, 30m, false, 61840m, 0m));
+
+        var threshold = InvoiceBillingCalculator.CalculateDepositThreshold(61840m, 30m);
+        Assert.Equal(18552m, threshold);
+        Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            JobStatus.InProgress, 30m, false, 61840m, threshold));
+
+        Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            JobStatus.Completed, 30m, false, 61840m, 1m));
+        Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            JobStatus.Closed, 30m, false, 61840m, 100m));
+        // Helm: completed/closed stay off the mobilisation CTA even with nothing billed.
+        Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            JobStatus.Completed, 30m, false, 61840m, 0m));
+        Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            JobStatus.InProgress, 30m, true, 61840m, 0m));
+    }
+
+    [Fact]
+    public void ShouldSoftSyncDepositReceived_WhenDepositInvoiceOrBilledCoversThreshold()
+    {
+        Assert.True(InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(false, 5000m, 30m, 100m, true));
+        Assert.True(InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(false, 5000m, 30m, 1500m, false));
+        Assert.False(InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(false, 5000m, 30m, 1499.99m, false));
+        Assert.False(InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(true, 5000m, 30m, 0m, true));
+        Assert.False(InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(false, 5000m, 0m, 5000m, true));
+    }
+
+    [Fact]
     public void RequiresUnbilledCloseAcknowledgement_WhenMoreThanTenPercentAndAtLeast100()
     {
         Assert.True(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(5000m, 0m));

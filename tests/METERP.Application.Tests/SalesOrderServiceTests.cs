@@ -181,6 +181,45 @@ public class SalesOrderServiceTests
             Assert.Equal(soId, job.SalesOrderId);
             Assert.Equal(loadedSo!.Total, job.QuotedTotal);
             Assert.Contains(loadedSo.Lines, l => l.LineType == "Travel" && l.UnitPrice == 750m);
+
+            var costs = await db.Set<JobCost>().Where(c => c.JobId == job.Id && !c.IsDeleted).ToListAsync();
+            var travelCost = Assert.Single(costs);
+            Assert.Equal("Travel", travelCost.CostType);
+            Assert.Equal(750m, travelCost.Amount);
+            Assert.DoesNotContain(costs, c => c.CostType == "Material");
+        }
+    }
+
+    [Fact]
+    public async Task ConvertToJobAsync_MaterialTravelDescription_PostsTravelCostNotMaterial()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service) = CreateServices(tenantId);
+        using (db)
+        {
+            var (customerId, quoteId) = await SeedCustomerAndQuoteAsync(db, tenantId);
+            var soId = await service.CreateAsync(new SalesOrder
+            {
+                QuoteId = quoteId,
+                CustomerId = customerId,
+                Status = SalesOrderStatus.Confirmed,
+                TaxRate = 0m,
+                Lines =
+                {
+                    new SalesOrderLine { Description = "Cable drums", Quantity = 1, UnitPrice = 4000m, LineType = "Material" },
+                    new SalesOrderLine { Description = "Travel to site", Quantity = 1, UnitPrice = 900m, LineType = "Material" }
+                }
+            });
+
+            var job = await service.ConvertToJobAsync(soId);
+            var costs = await db.Set<JobCost>().Where(c => c.JobId == job.Id && !c.IsDeleted).ToListAsync();
+            var travel = Assert.Single(costs);
+            Assert.Equal("Travel", travel.CostType);
+            Assert.Equal(900m, travel.Amount);
+
+            var lines = await db.Set<SalesOrderLine>().Where(l => l.SalesOrderId == soId).ToListAsync();
+            Assert.Equal("Travel", lines.Single(l => l.Description.Contains("Travel")).LineType);
+            Assert.Equal("Material", lines.Single(l => l.Description == "Cable drums").LineType);
         }
     }
 

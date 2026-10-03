@@ -30,18 +30,19 @@ public class EmployeeService : IEmployeeService
         int page = 1,
         int pageSize = 20,
         bool includeInactive = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool unassignedDivisionOnly = false)
     {
-        if (_cache != null && string.IsNullOrWhiteSpace(search) && !includeInactive)
+        if (_cache != null && string.IsNullOrWhiteSpace(search) && !includeInactive && !unassignedDivisionOnly)
         {
             return await _cache.GetOrCreateAsync(
                 TenantCacheCategories.Employees,
                 $"p{page}:s{pageSize}",
-                () => LoadEmployeesAsync(search, page, pageSize, includeInactive, ct),
+                () => LoadEmployeesAsync(search, page, pageSize, includeInactive, false, ct),
                 ct: ct);
         }
 
-        return await LoadEmployeesAsync(search, page, pageSize, includeInactive, ct);
+        return await LoadEmployeesAsync(search, page, pageSize, includeInactive, unassignedDivisionOnly, ct);
     }
 
     private async Task<IReadOnlyList<Employee>> LoadEmployeesAsync(
@@ -49,6 +50,7 @@ public class EmployeeService : IEmployeeService
         int page,
         int pageSize,
         bool includeInactive,
+        bool unassignedDivisionOnly,
         CancellationToken ct)
     {
         var query = _dbContext.Set<Employee>()
@@ -58,6 +60,9 @@ public class EmployeeService : IEmployeeService
 
         if (!includeInactive)
             query = query.Where(e => e.IsActive);
+
+        if (unassignedDivisionOnly)
+            query = query.Where(e => e.DivisionId == null);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

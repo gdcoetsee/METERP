@@ -9,9 +9,17 @@ namespace METERP.Application.Services;
 public interface IQuoteService
 {
     Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<IReadOnlyList<Quote>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
+    Task<IReadOnlyList<Quote>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default, QuoteBoardFilter filter = QuoteBoardFilter.All);
+
+    /// <summary>Count quotes in the same search and board filter as <see cref="GetAllAsync"/>.</summary>
+    Task<int> CountAsync(string? search = null, QuoteBoardFilter filter = QuoteBoardFilter.All, CancellationToken ct = default);
 
     Task<Guid> CreateAsync(Quote quote, CancellationToken ct = default);
+
+    /// <summary>
+    /// One-click quote from a deal. Travel mentioned in the title or notes is an explicit Travel line, not a materials lump.
+    /// </summary>
+    Task<Quote> CreateQuoteFromOpportunityAsync(Guid opportunityId, CancellationToken ct = default);
     Task UpdateAsync(Quote quote, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
 

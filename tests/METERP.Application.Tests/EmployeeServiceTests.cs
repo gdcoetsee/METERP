@@ -25,6 +25,40 @@ public class EmployeeServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_UnassignedDivisionOnly_LeavesAssignedEmployeesOut()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var divisionId = Guid.NewGuid();
+        db.Set<Division>().Add(new Division { Id = divisionId, TenantId = tenantId, Code = "FT", Name = "Field" });
+        db.Set<Employee>().AddRange(
+            new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-1",
+                FirstName = "No",
+                LastName = "Division",
+                IsActive = true
+            },
+            new Employee
+            {
+                TenantId = tenantId,
+                EmployeeNumber = "E-2",
+                FirstName = "Has",
+                LastName = "Division",
+                DivisionId = divisionId,
+                IsActive = true
+            });
+        await db.SaveChangesAsync();
+
+        var service = new EmployeeService(db);
+        var rows = await service.GetAllAsync(unassignedDivisionOnly: true);
+        var only = Assert.Single(rows);
+        Assert.Equal("E-1", only.EmployeeNumber);
+        Assert.Null(only.DivisionId);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsWhenNotesTooLong()
     {
         var tenantId = Guid.NewGuid();

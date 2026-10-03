@@ -62,6 +62,68 @@ public sealed class OperationalReportService : IOperationalReportService
 
     public IReadOnlyList<ReportDefinition> GetCatalog() => Catalog;
 
+    public async Task<OperationalSnapshot> GetLiveSnapshotAsync(CancellationToken ct = default)
+    {
+        var quotes = _db.Set<Quote>().AsNoTracking();
+        var totalQuotes = await quotes.CountAsync(ct);
+        var acceptedQuotes = await quotes.CountAsync(q => q.Status == QuoteStatus.Accepted, ct);
+
+        var activeJobs = _db.Set<Job>().AsNoTracking()
+            .Where(j => j.Status == JobStatus.InProgress || j.Status == JobStatus.Scheduled);
+        var activeJobCount = await activeJobs.CountAsync(ct);
+        var activeQuoted = await activeJobs.SumAsync(j => (decimal?)j.QuotedTotal, ct) ?? 0m;
+
+        var outstanding = _db.Set<Invoice>().AsNoTracking()
+            .Where(i => i.Status != InvoiceStatus.Paid && i.Status != InvoiceStatus.Cancelled);
+        var outstandingCount = await outstanding.CountAsync(ct);
+        var standardValue = await outstanding
+            .Where(i => i.DocumentType != InvoiceDocumentType.CreditNote)
+            .SumAsync(i => (decimal?)i.Total, ct) ?? 0m;
+        var creditValue = await outstanding
+            .Where(i => i.DocumentType == InvoiceDocumentType.CreditNote)
+            .SumAsync(i => (decimal?)i.Total, ct) ?? 0m;
+
+        var items = _db.Set<InventoryItem>().AsNoTracking();
+        var totalItems = await items.CountAsync(ct);
+        var lowStock = await items.CountAsync(i => i.QuantityOnHand <= i.ReorderLevel, ct);
+
+        var assets = _db.Set<Asset>().AsNoTracking();
+        var totalAssets = await assets.CountAsync(ct);
+        var operationalAssets = await assets.CountAsync(a => a.Status == AssetStatus.Operational, ct);
+
+        var totalSuppliers = await _db.Set<Supplier>().AsNoTracking().CountAsync(ct);
+
+        var openPos = _db.Set<PurchaseOrder>().AsNoTracking()
+            .Where(p => p.Status != PurchaseOrderStatus.Received && p.Status != PurchaseOrderStatus.Cancelled);
+        var openPoCount = await openPos.CountAsync(ct);
+        var openPoValue = await openPos.SumAsync(p => (decimal?)p.Total, ct) ?? 0m;
+
+        var salesOrders = _db.Set<SalesOrder>().AsNoTracking();
+        var totalSalesOrders = await salesOrders.CountAsync(ct);
+        var confirmedSalesOrders = await salesOrders.CountAsync(
+            so => so.Status == SalesOrderStatus.Confirmed || so.Status == SalesOrderStatus.InProgress, ct);
+
+        var activeEmployees = await _db.Set<Employee>().AsNoTracking().CountAsync(e => e.IsActive, ct);
+
+        return new OperationalSnapshot(
+            totalQuotes,
+            acceptedQuotes,
+            activeJobCount,
+            activeQuoted,
+            outstandingCount,
+            standardValue - Math.Abs(creditValue),
+            totalItems,
+            lowStock,
+            totalAssets,
+            operationalAssets,
+            totalSuppliers,
+            openPoCount,
+            openPoValue,
+            totalSalesOrders,
+            confirmedSalesOrders,
+            activeEmployees);
+    }
+
     public async Task<ReportTable> RunAsync(string key, Guid? divisionId = null, CancellationToken ct = default)
     {
         var def = Catalog.FirstOrDefault(c => c.Key == key)
@@ -506,13 +568,19 @@ public sealed class OperationalReportService : IOperationalReportService
             i.Customer?.Name ?? "—",
             i.Job?.JobNumber ?? "—",
             i.Status.ToString(),
-            Money(i.Total),
-            Money(i.BalanceDue),
+            Money(InvoiceCreditConvention.SignedStoredTotal(i.DocumentType, i.Total)),
+            Money(i.DocumentType == InvoiceDocumentType.CreditNote
+                ? InvoiceCreditConvention.ArSignedOpenBalance(i.DocumentType, i.Status, i.Total, i.AmountPaid)
+                : i.BalanceDue),
             Date(i.InvoiceDate),
             Date(i.DueDate)
         }).ToList();
+        var signedBalance = list.Sum(i =>
+            i.DocumentType == InvoiceDocumentType.CreditNote
+                ? InvoiceCreditConvention.ArSignedOpenBalance(i.DocumentType, i.Status, i.Total, i.AmountPaid)
+                : i.BalanceDue);
         return new ReportTable("Invoices", ["Number", "Customer", "Job", "Status", "Total", "Balance", "Date", "Due"], rows,
-            $"{list.Count} invoice(s) · balance R {list.Sum(i => i.BalanceDue):N0}.");
+            $"{list.Count} invoice(s) · balance R {signedBalance:N0}.");
     }
 
     private async Task<ReportTable> CashflowAsync(CancellationToken ct)

@@ -1,0 +1,35 @@
+@using METERP.Application.Interfaces
+@using METERP.Application.Models
+@using METERP.Application.Services
+@inject IServiceScopeFactory ScopeFactory
+@inject ICurrentUserService CurrentUser
+
+<span class="meterp-brand-mark @CssClass" data-testid="@TestId" title="@_label">@_label</span>
+
+@code {
+    [Parameter] public string TestId { get; set; } = "shell-brand";
+    [Parameter] public string? CssClass { get; set; }
+
+    private string _label = "METERP";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (!CurrentUser.IsAuthenticated || CurrentUser.TenantId == Guid.Empty)
+                return;
+
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+            var tenant = await tenantService.GetByIdAsync(CurrentUser.TenantId);
+            if (tenant == null)
+                return;
+
+            _label = TenantBranding.OfficeLabel(tenant);
+        }
+        catch
+        {
+            // Branding is optional — keep the product name if the tenant cannot be read.
+        }
+    }
+}

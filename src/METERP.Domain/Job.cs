@@ -1,4 +1,4 @@
-namespace METERP.Domain;
+﻿namespace METERP.Domain;
 
 /// <summary>
 /// A job / work order created from an accepted quote (or standalone).
@@ -58,7 +58,7 @@ public class Job : BaseEntity
 
     public Guid? ManagerSignedOffByUserId { get; set; }
 
-    /// <summary>Executive work sign-off (second stage — full SignedOff).</summary>
+    /// <summary>Executive work sign-off (second stage â€” full SignedOff).</summary>
     public DateTime? SignedOffAt { get; set; }
 
     public Guid? SignedOffByUserId { get; set; }
@@ -77,8 +77,14 @@ public class Job : BaseEntity
 
     public bool DepositReceived { get; set; }
 
+    /// <summary>
+    /// Deposit CTA only for live ops jobs that have not yet collected deposit.
+    /// Completed/Closed never show Raise deposit (invoice honesty — Prompt 2).
+    /// </summary>
     public bool NeedsDepositInvoice() =>
-        IsOpenForOperations() && DepositPercent > 0 && !DepositReceived;
+        Status is JobStatus.Scheduled or JobStatus.InProgress or JobStatus.OnHold
+        && DepositPercent > 0
+        && !DepositReceived;
 
     /// <summary>
     /// Emergency / callout job created without a quote (job-first billing path).

@@ -41,12 +41,15 @@
 
     <main>
         <div class="top-row px-3 meterp-topbar d-flex justify-content-between align-items-center">
-            <div class="meterp-topbar-search">
-                <AuthorizeView>
-                    <Authorized>
-                        <GlobalSearch />
-                    </Authorized>
-                </AuthorizeView>
+            <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+                <TenantBrandMark TestId="topbar-brand" CssClass="meterp-topbar-brand" />
+                <div class="meterp-topbar-search">
+                    <AuthorizeView>
+                        <Authorized>
+                            <GlobalSearch />
+                        </Authorized>
+                    </AuthorizeView>
+                </div>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <AuthorizeView>

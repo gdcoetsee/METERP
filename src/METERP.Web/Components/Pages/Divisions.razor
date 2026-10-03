@@ -1,9 +1,12 @@
 @page "/divisions"
+@using METERP.Application.Interfaces
 @using METERP.Application.Services
+@using METERP.Common
 @using METERP.Domain
 @attribute [Authorize(Policy = "Divisions.View")]
 @rendermode InteractiveServer
 @inject IDivisionService DivisionService
+@inject ICurrentUserService CurrentUser
 @inject ToastService Toast
 
 <PageTitle>Divisions</PageTitle>
@@ -46,7 +49,7 @@ else
             <tbody>
                 @foreach (var div in _divisions)
                 {
-                    <tr data-testid="division-row">
+                    <tr class="meterp-row-click" data-testid="division-row" title="Open division" @onclick="() => OpenRow(div)">
                         <td><strong>@div.Code</strong></td>
                         <td>@div.Name</td>
                         <td>
@@ -64,10 +67,10 @@ else
                                 <td class="text-end text-nowrap">
                                     <button type="button" class="btn btn-sm btn-outline-secondary me-1"
                                             data-testid="division-edit"
-                                            @onclick="() => OpenEdit(div)">Edit</button>
+                                            @onclick="() => OpenEdit(div)" @onclick:stopPropagation="true">Edit</button>
                                     <button type="button" class="btn btn-sm btn-outline-@(div.IsActive ? "warning" : "success")"
                                             data-testid="division-toggle-active"
-                                            @onclick="() => ToggleActiveAsync(div)">
+                                            @onclick="() => ToggleActiveAsync(div)" @onclick:stopPropagation="true">
                                         @(div.IsActive ? "Deactivate" : "Activate")
                                     </button>
                                 </td>
@@ -87,23 +90,26 @@ else
     <ChildContent>
         <div class="mb-3">
             <label class="form-label" for="div-code">Code</label>
-            <input id="div-code" class="form-control" @bind="_formCode" maxlength="16" data-testid="division-code" />
+            <input id="div-code" class="form-control" @bind="_formCode" maxlength="16" data-testid="division-code" disabled="@_readOnly" />
         </div>
         <div class="mb-3">
             <label class="form-label" for="div-name">Name</label>
-            <input id="div-name" class="form-control" @bind="_formName" data-testid="division-name" />
+            <input id="div-name" class="form-control" @bind="_formName" data-testid="division-name" disabled="@_readOnly" />
         </div>
         @if (_editing != null)
         {
             <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="div-active" @bind="_formActive" data-testid="division-active" />
+                <input class="form-check-input" type="checkbox" id="div-active" @bind="_formActive" data-testid="division-active" disabled="@_readOnly" />
                 <label class="form-check-label" for="div-active">Active</label>
             </div>
         }
     </ChildContent>
     <Footer>
-        <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
-        <button type="button" class="btn btn-primary" data-testid="division-save" @onclick="SaveAsync">Save</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">@(_readOnly ? "Close" : "Cancel")</button>
+        @if (!_readOnly)
+        {
+            <button type="button" class="btn btn-primary" data-testid="division-save" @onclick="SaveAsync">Save</button>
+        }
     </Footer>
 </FormModal>
 
@@ -111,7 +117,10 @@ else
     private List<Division> _divisions = new();
     private bool _loading = true;
     private bool _modalOpen;
+    private bool _readOnly;
     private Division? _editing;
+
+    private bool CanManage => CurrentUser.Permissions.Contains(Permissions.DivisionsManage);
     private string _formCode = "";
     private string _formName = "";
     private bool _formActive = true;
@@ -133,6 +142,7 @@ else
 
     private void OpenCreate()
     {
+        _readOnly = false;
         _editing = null;
         _formCode = "";
         _formName = "";
@@ -140,8 +150,15 @@ else
         _modalOpen = true;
     }
 
+    private void OpenRow(Division div)
+    {
+        OpenEdit(div);
+        _readOnly = !CanManage;
+    }
+
     private void OpenEdit(Division div)
     {
+        _readOnly = false;
         _editing = div;
         _formCode = div.Code;
         _formName = div.Name;

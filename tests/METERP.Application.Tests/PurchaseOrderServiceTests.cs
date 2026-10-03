@@ -1089,6 +1089,47 @@ public class PurchaseOrderServiceTests
         }
     }
 
+    [Fact]
+    public async Task GetGrvsPageAsync_PagesNewestFirst_AndCounts()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, service, _) = CreateServices(tenantId);
+        using (db)
+        {
+            var received = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);
+            for (var i = 0; i < 3; i++)
+            {
+                db.Set<GoodsReceiptVoucher>().Add(new GoodsReceiptVoucher
+                {
+                    TenantId = tenantId,
+                    GrvNumber = $"GRV-{i + 1}",
+                    PurchaseOrderId = Guid.NewGuid(),
+                    ReceivedByUserId = TestUserId,
+                    ReceivedAt = received.AddHours(i)
+                });
+            }
+
+            await db.SaveChangesAsync();
+
+            Assert.Equal(3, await service.CountGrvsAsync());
+
+            var first = await service.GetGrvsPageAsync(1, 2);
+            Assert.Equal(3, first.TotalCount);
+            Assert.Equal(2, first.PageCount);
+            Assert.Equal(2, first.Items.Count);
+            Assert.Equal("GRV-3", first.Items[0].GrvNumber);
+            Assert.Equal("GRV-2", first.Items[1].GrvNumber);
+
+            var last = await service.GetGrvsPageAsync(2, 2);
+            Assert.Equal("GRV-1", Assert.Single(last.Items).GrvNumber);
+
+            var clamped = await service.GetGrvsPageAsync(9, 100);
+            Assert.Equal(1, clamped.Page);
+            Assert.Equal(50, clamped.PageSize);
+            Assert.Equal(3, clamped.Items.Count);
+        }
+    }
+
     private static async Task<GoodsReceiptVoucher?> ReceiveSentPoAsync(PurchaseOrderService service, Guid poId)
     {
         await service.UpdateStatusAsync(poId, PurchaseOrderStatus.Sent);

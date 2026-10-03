@@ -16,7 +16,11 @@
 <h1 class="portal-title">Quotes</h1>
 <p class="text-muted">Estimates we have sent you. Accept here when you want the work to start — travel is listed as its own line.</p>
 
-@if (_dash == null)
+@if (_denied != null)
+{
+    <div class="alert alert-warning" role="status" data-testid="portal-unlinked">@_denied</div>
+}
+else if (_dash == null)
 {
     <p class="text-muted">Loading…</p>
 }
@@ -41,7 +45,7 @@ else
             <tbody>
                 @foreach (var quote in _dash.Quotes)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" title="Open quote" @onclick="() => OpenQuote(quote)">
                         <td>@quote.QuoteNumber</td>
                         <td>@quote.QuoteDate.ToString("yyyy-MM-dd")</td>
                         <td>@quote.ValidUntil.ToString("yyyy-MM-dd")</td>
@@ -52,7 +56,7 @@ else
                             {
                                 <button type="button" class="btn btn-sm btn-primary"
                                         data-testid="portal-quote-accept"
-                                        @onclick="() => AcceptAsync(quote)">
+                                        @onclick="() => AcceptAsync(quote)" @onclick:stopPropagation="true">
                                     Accept
                                 </button>
                             }
@@ -64,17 +68,65 @@ else
     </div>
 }
 
+@if (_quote != null)
+{
+    <FormModal IsOpen="true" Title="@_quote.QuoteNumber" Size="lg" TestId="portal-quote-detail" OnClose="CloseQuote">
+        <ChildContent>
+            <p class="mb-1">Date: @_quote.QuoteDate.ToString("yyyy-MM-dd") · Valid until @_quote.ValidUntil.ToString("yyyy-MM-dd")</p>
+            <p class="mb-1">Status: @_quote.Status</p>
+            <p class="mb-3">Total: <strong>R @_quote.Total.ToString("N2")</strong></p>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Description</th><th class="text-end">Qty</th><th class="text-end">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var line in _quote.Lines.Where(l => !l.IsDeleted))
+                    {
+                        <tr>
+                            <td>@line.Description</td>
+                            <td class="text-end">@line.Quantity.ToString("N2")</td>
+                            <td class="text-end">R @line.LineTotal.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseQuote">Close</button>
+            @if (_quote.Status == QuoteStatus.Sent)
+            {
+                <button type="button" class="btn btn-primary" @onclick="() => AcceptAsync(_quote)">Accept</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
 @code {
     private CustomerPortalDashboard? _dash;
+    private string? _denied;
+    private Quote? _quote;
+
+    private void OpenQuote(Quote quote) => _quote = quote;
+    private void CloseQuote() => _quote = null;
 
     protected override async Task OnInitializedAsync()
     {
-        if (CurrentUser.CustomerId is not { } customerId)
+        if (CurrentUser.CustomerId is not { } customerId || customerId == Guid.Empty)
         {
-            Nav.NavigateTo("/portal/login", forceLoad: true);
+            _denied = CustomerPortalMessages.Unlinked;
             return;
         }
-        _dash = await Portal.GetDashboardAsync(customerId);
+        try
+        {
+            _dash = await Portal.GetDashboardAsync(customerId);
+            if (_dash.IsUnlinked)
+            {
+                _denied = _dash.CustomerName;
+                _dash = null;
+            }
+        }
+        catch (Exception)
+        {
+            _denied = CustomerPortalMessages.Unlinked;
+        }
     }
 
     private async Task AcceptAsync(Quote quote)
@@ -93,6 +145,8 @@ else
             await Portal.AcceptQuoteAsync(customerId, quote.Id);
             Toast.ShowSuccess($"{quote.QuoteNumber} accepted. Thank you.");
             _dash = await Portal.GetDashboardAsync(customerId);
+            if (_quote != null)
+                _quote = _dash.Quotes.FirstOrDefault(q => q.Id == _quote.Id);
         }
         catch (Exception ex)
         {

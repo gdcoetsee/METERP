@@ -246,4 +246,73 @@ public class TenantService : ITenantService
             }
         }
     }
+    public async Task<Tenant?> RefreshUsageCountersAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        if (tenantId == Guid.Empty) return null;
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var tenant = await db.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.Id == tenantId && !x.IsDeleted, ct);
+        if (tenant == null) return null;
+
+        var periodStart = QuotaService.GetCurrentPeriodStartUtc();
+        tenant.TotalJobsCreated = await CountDocumentsAsync<Job>(db, tenantId, ct);
+        tenant.TotalQuotesCreated = await CountDocumentsAsync<Quote>(db, tenantId, ct);
+        tenant.TotalInvoicesIssued = await CountDocumentsAsync<Invoice>(db, tenantId, ct);
+        tenant.TotalRevenueBilled = await db.Set<Invoice>().IgnoreQueryFilters()
+            .Where(i => i.TenantId == tenantId && !i.IsDeleted
+                && i.DocumentType != InvoiceDocumentType.CreditNote
+                && i.DocumentType != InvoiceDocumentType.Proforma
+                && i.Status != InvoiceStatus.Cancelled
+                && i.Status != InvoiceStatus.Draft)
+            .SumAsync(i => (decimal?)i.Total, ct) ?? 0m;
+
+        tenant.UsagePeriodStartUtc = periodStart;
+        tenant.PeriodQuotesCreated = await CountDocumentsAsync<Quote>(db, tenantId, ct, periodStart);
+        tenant.PeriodJobsCreated = await CountDocumentsAsync<Job>(db, tenantId, ct, periodStart);
+        tenant.PeriodInvoicesIssued = await CountDocumentsAsync<Invoice>(db, tenantId, ct, periodStart);
+
+        tenant.LastActivityUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        db.Entry(tenant).State = EntityState.Detached;
+        return tenant;
+    }
+
+    public async Task<TenantPeriodUsage?> GetLivePeriodUsageAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        if (tenantId == Guid.Empty) return null;
+
+        var tenant = await _dbContext.Tenants
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+        if (tenant == null) return null;
+
+        var periodStart = QuotaService.GetCurrentPeriodStartUtc();
+        var quotes = await CountDocumentsAsync<Quote>(_dbContext, tenantId, ct, periodStart);
+        var jobs = await CountDocumentsAsync<Job>(_dbContext, tenantId, ct, periodStart);
+        var invoices = await CountDocumentsAsync<Invoice>(_dbContext, tenantId, ct, periodStart);
+        return new TenantPeriodUsage(quotes, jobs, invoices, tenant.PeriodAiCalls);
+    }
+
+    private static Task<int> CountDocumentsAsync<T>(
+        AppDbContext db,
+        Guid tenantId,
+        CancellationToken ct,
+        DateTime? createdOnOrAfterUtc = null)
+        where T : BaseEntity
+    {
+        var query = db.Set<T>().IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.TenantId == tenantId && !e.IsDeleted);
+        if (createdOnOrAfterUtc.HasValue)
+        {
+            var start = createdOnOrAfterUtc.Value;
+            query = query.Where(e => e.CreatedDate >= start);
+        }
+
+        return query.CountAsync(ct);
+    }
 }

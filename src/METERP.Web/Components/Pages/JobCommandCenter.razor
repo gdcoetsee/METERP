@@ -17,14 +17,25 @@
 
 <PageTitle>@(_job?.JobNumber ?? "Job") — Command Center</PageTitle>
 
-@if (_loading)
+@if (_loading && _job == null)
 {
-    <p data-testid="job-command-center-loading"><em>Loading job…</em></p>
+    <p data-testid="job-command-center-loading"><em>Loading job...</em></p>
 }
-else if (_job == null || _summary == null)
+else if (_job == null && _costsStillLoading)
+{
+    <div data-testid="job-command-center-partial">
+        <p data-testid="job-cc-costs-loading"><em>Costs still loading</em></p>
+        <a href="/jobs">Back to jobs</a>
+    </div>
+}
+else if (_job == null)
 {
     <div class="alert alert-warning" data-testid="job-command-center-not-found">
         Job not found. <a href="/jobs">Back to jobs</a>
+        @if (!string.IsNullOrWhiteSpace(_loadError))
+        {
+            <div>@_loadError</div>
+        }
     </div>
 }
 else
@@ -36,6 +47,7 @@ else
                 <h1 class="h4 mb-1" data-testid="job-command-center-title">@_job.JobNumber — @_job.Title</h1>
                 <p class="text-muted small mb-0">
                     @(_job.Customer?.Name ?? "—") · @((MarkupString)GetStatusBadge(_job.Status))
+                    <span data-testid="job-cc-division"> · @JobDivisionCaption</span>
                     @if (_job.IsEmergency)
                     {
                         <span class="badge bg-danger ms-1">Emergency</span>
@@ -72,6 +84,34 @@ else
             </div>
         </div>
 
+        @if (TrelloMarkers.Count > 0)
+        {
+            <div class="card mb-3 border-info" data-testid="job-cc-trello" role="region" aria-label="Trello whiteboard status">
+                <div class="card-body py-2">
+                    @foreach (var card in TrelloMarkers)
+                    {
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                            <span class="badge bg-info text-dark text-wrap" data-testid="job-cc-trello-list">Trello: @card.ListName</span>
+                            <span data-testid="job-cc-trello-board">@card.BoardLabel</span>
+                            @if (!string.IsNullOrWhiteSpace(card.CardUrl))
+                            {
+                                <a class="small" href="@card.CardUrl" target="_blank" rel="noopener noreferrer">Open card</a>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_job.Notes))
+        {
+            <div class="card mb-3" data-testid="job-cc-notes">
+                <div class="card-header py-2">Notes</div>
+                <div class="card-body py-2">
+                    <pre class="small mb-0" style="white-space: pre-wrap; max-height: 12rem; overflow: auto;">@_job.Notes</pre>
+                </div>
+            </div>
+        }
+
         @if (_job.IsCancelled())
         {
             <div class="alert alert-danger small" data-testid="job-cc-cancelled-banner">
@@ -92,12 +132,12 @@ else
                 }
             </div>
         }
-        @if (_job.NeedsDepositInvoice())
+        @if (ShowDepositBanner)
         {
             <div class="alert alert-warning small d-flex flex-wrap justify-content-between align-items-center gap-2" data-testid="job-cc-deposit-banner">
                 <span>
                     Deposit @_job.DepositPercent.ToString("N0")% is not received.
-                    Raise a deposit invoice to start cash collection.
+                    Raise a deposit invoice to start cash collection. A deposit is not a final invoice and does not close the job.
                 </span>
                 @if (CanInvoice && _job.IsOpenForOperations())
                 {
@@ -111,7 +151,7 @@ else
             <div class="alert alert-warning small py-2" data-testid="job-cc-signoff-banner">
                 Work sign-off: <strong>@SignOffStatusLabel</strong>
                 — manager then executive before final/partial invoices.
-                @if (_summary.ActualTotal > 0)
+                @if (_summary != null && _summary.ActualTotal > 0)
                 {
                     <span data-testid="job-cc-posted-cost-signoff">
                         R @_summary.ActualTotal.ToString("N2") of cost is posted and waiting on sign-off.
@@ -119,7 +159,7 @@ else
                 }
             </div>
         }
-        else if (_summary.UnbilledResidual > 0)
+        else if (_summary != null && _summary.UnbilledResidual > 0)
         {
             <div class="alert alert-info small d-flex flex-wrap justify-content-between align-items-center gap-2" data-testid="job-cc-unbilled-banner">
                 <span>
@@ -138,7 +178,7 @@ else
                 <div class="card h-100">
                     <div class="card-body">
                         <div class="text-muted small">Quoted</div>
-                        <div class="h5 mb-0">R @_summary.QuotedTotal.ToString("N2")</div>
+                        <div class="h5 mb-0">R @_job.QuotedTotal.ToString("N2")</div>
                     </div>
                 </div>
             </div>
@@ -146,7 +186,7 @@ else
                 <div class="card h-100">
                     <div class="card-body">
                         <div class="text-muted small">Actual (costs + labor)</div>
-                        <div class="h5 mb-0" data-testid="job-cc-actual-total">R @_summary.ActualTotal.ToString("N2")</div>
+                        <div class="h5 mb-0" data-testid="job-cc-actual-total">@ActualTotalText</div>
                     </div>
                 </div>
             </div>
@@ -154,7 +194,7 @@ else
                 <div class="card h-100">
                     <div class="card-body">
                         <div class="text-muted small">Billed to date</div>
-                        <div class="h5 mb-0" data-testid="job-cc-billed-amount">R @_summary.BilledToDate.ToString("N2")</div>
+                        <div class="h5 mb-0" data-testid="job-cc-billed-amount">@BilledText</div>
                     </div>
                 </div>
             </div>
@@ -162,8 +202,8 @@ else
                 <div class="card h-100 border-primary">
                     <div class="card-body">
                         <div class="text-muted small">Margin / unbilled</div>
-                        <div class="h5 mb-0">@_summary.MarginPercent%</div>
-                        <small class="text-muted">Unbilled R @_summary.UnbilledResidual.ToString("N2")</small>
+                        <div class="h5 mb-0">@MarginText</div>
+                        <small class="text-muted">@UnbilledText</small>
                     </div>
                 </div>
             </div>
@@ -176,36 +216,16 @@ else
                         <span>Cost breakdown</span>
                     </div>
                     <div class="card-body small">
-                        <div class="d-flex justify-content-between"><span>Material</span><strong>R @_summary.MaterialCost.ToString("N2")</strong></div>
-                        <div class="d-flex justify-content-between"><span>Travel</span><strong>R @_summary.TravelCost.ToString("N2")</strong></div>
-                        <div class="d-flex justify-content-between"><span>Labor</span><strong>R @_summary.LaborCost.ToString("N2")</strong></div>
-                        <div class="d-flex justify-content-between"><span>Other</span><strong>R @_summary.OtherCost.ToString("N2")</strong></div>
-                    </div>
-                </div>
-
-                <div class="card mt-3" data-testid="job-cc-invoices">
-                    <div class="card-header">Invoices</div>
-                    <div class="card-body p-0">
-                        @if (_summary.Invoices.Count == 0)
+                        @if (_summary == null)
                         {
-                            <p class="text-muted small p-3 mb-0">No invoices yet — billing does not close the job.</p>
+                            <p class="text-muted mb-0" data-testid="job-cc-costs-loading">Costs still loading</p>
                         }
                         else
                         {
-                            <table class="table table-sm mb-0">
-                                <thead><tr><th>#</th><th>Type</th><th>Status</th><th class="text-end">Total</th></tr></thead>
-                                <tbody>
-                                    @foreach (var inv in _summary.Invoices)
-                                    {
-                                        <tr data-testid="job-cc-invoice-row">
-                                            <td><a href="@($"/invoices?open={inv.InvoiceId}")">@inv.InvoiceNumber</a></td>
-                                            <td>@inv.DocumentType</td>
-                                            <td>@inv.Status</td>
-                                            <td class="text-end">R @inv.Total.ToString("N2")</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                            <div class="d-flex justify-content-between"><span>Material</span><strong>R @_summary.MaterialCost.ToString("N2")</strong></div>
+                            <div class="d-flex justify-content-between"><span>Travel</span><strong>R @_summary.TravelCost.ToString("N2")</strong></div>
+                            <div class="d-flex justify-content-between"><span>Labor</span><strong>R @_summary.LaborCost.ToString("N2")</strong> <span class="text-muted">(@_summary.LaborHours.ToString("N1") h)</span></div>
+                            <div class="d-flex justify-content-between"><span>Other</span><strong>R @_summary.OtherCost.ToString("N2")</strong></div>
                         }
                     </div>
                 </div>
@@ -229,7 +249,7 @@ else
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Deposit received</span>
-                            <strong>@(_job.DepositReceived ? "Yes" : "No")</strong>
+                            <strong data-testid="job-cc-deposit-received">@((_summary?.DepositReceived ?? _job.DepositReceived) ? "Yes" : "No")</strong>
                         </div>
                         @if (CanManage && _job.IsOpenForOperations())
                         {
@@ -251,7 +271,11 @@ else
                         }
                     </div>
                     <div class="card-body p-0">
-                        @if (_summary.Requisitions.Count == 0)
+                        @if (_summary == null)
+                        {
+                            <p class="text-muted small p-3 mb-0">Costs still loading</p>
+                        }
+                        else if (_summary.Requisitions.Count == 0)
                         {
                             <p class="text-muted small p-3 mb-0">No requisitions linked to this job.</p>
                         }
@@ -262,7 +286,7 @@ else
                                 <tbody>
                                     @foreach (var req in _summary.Requisitions)
                                     {
-                                        <tr>
+                                        <tr class="meterp-row-click" title="Open requisitions" @onclick="OpenRequisitions">
                                             <td>@req.RequisitionNumber</td>
                                             <td>@req.Status</td>
                                             <td>@(req.PurchaseOrderNumber ?? "—")</td>
@@ -278,22 +302,202 @@ else
                     </div>
                 </div>
 
-                @if (_job.Labors?.Any(l => !l.IsDeleted) == true)
-                {
-                    <div class="card mt-3">
-                        <div class="card-header">Labor entries</div>
-                        <ul class="list-group list-group-flush small">
-                            @foreach (var labor in _job.Labors.Where(l => !l.IsDeleted))
-                            {
-                                <li class="list-group-item d-flex justify-content-between">
-                                    <span>@labor.Technician · @labor.Hours h @@ R @labor.HourlyRate.ToString("N2")</span>
-                                    <strong>R @labor.TotalCost.ToString("N2")</strong>
-                                </li>
-                            }
-                        </ul>
-                    </div>
-                }
             </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-lg-6">
+                <div class="card" data-testid="job-cc-costs">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>Costs</span>
+                        <span class="text-muted" data-testid="job-cc-costs-range">@(_costPage == null ? "" : CostRangeCaption)</span>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (_costPage == null)
+                        {
+                            <p class="text-muted small p-3 mb-0">Costs still loading</p>
+                        }
+                        else if (_costPage.Items.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No cost lines.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0" data-testid="job-cc-costs-table">
+                                <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="text-end">Amount</th></tr></thead>
+                                <tbody>
+                                    @foreach (var cost in _costPage.Items)
+                                    {
+                                        <tr>
+                                            <td>@cost.CostDate.ToString("yyyy-MM-dd")</td>
+                                            <td>@cost.CostType</td>
+                                            <td>@cost.Description</td>
+                                            <td class="text-end">R @cost.Amount.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="d-flex justify-content-between align-items-center p-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-costs-prev"
+                                        disabled="@(_costPage.Page <= 1 || _costPageBusy)" @onclick="PrevCostsAsync">Previous</button>
+                                <span class="small text-muted" data-testid="job-cc-costs-page">@CostRangeCaption</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-costs-next"
+                                        disabled="@(_costPage.Page >= _costPage.PageCount || _costPageBusy)" @onclick="NextCostsAsync">Next</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card" data-testid="job-cc-labor">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>Labor</span>
+                        <span class="text-muted" data-testid="job-cc-labor-range">@(_laborPage == null ? "" : LaborRangeCaption)</span>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (_laborPage == null)
+                        {
+                            <p class="text-muted small p-3 mb-0">Costs still loading</p>
+                        }
+                        else if (_laborPage.Items.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No labor lines.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0" data-testid="job-cc-labor-table">
+                                <thead><tr><th>Date</th><th>Technician</th><th class="text-end">Hours</th><th class="text-end">Amount</th></tr></thead>
+                                <tbody>
+                                    @foreach (var labor in _laborPage.Items)
+                                    {
+                                        <tr>
+                                            <td>@labor.WorkDate.ToString("yyyy-MM-dd")</td>
+                                            <td>@labor.Technician</td>
+                                            <td class="text-end">@labor.Hours.ToString("N2")</td>
+                                            <td class="text-end">R @labor.TotalCost.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="d-flex justify-content-between align-items-center p-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-labor-prev"
+                                        disabled="@(_laborPage.Page <= 1 || _laborPageBusy)" @onclick="PrevLaborAsync">Previous</button>
+                                <span class="small text-muted" data-testid="job-cc-labor-page">@LaborRangeCaption</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-labor-next"
+                                        disabled="@(_laborPage.Page >= _laborPage.PageCount || _laborPageBusy)" @onclick="NextLaborAsync">Next</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3" data-testid="job-cc-deferred">
+            <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Job detail sections">
+                <button type="button" class="btn btn-outline-secondary @(_deferred == "invoices" ? "active" : "")" data-testid="job-cc-tab-invoices" @onclick='() => OpenDeferredAsync("invoices")'>Invoices</button>
+                <button type="button" class="btn btn-outline-secondary @(_deferred == "snags" ? "active" : "")" data-testid="job-cc-tab-snags" @onclick='() => OpenDeferredAsync("snags")'>Snags</button>
+                <button type="button" class="btn btn-outline-secondary @(_deferred == "certificates" ? "active" : "")" data-testid="job-cc-tab-certificates" @onclick='() => OpenDeferredAsync("certificates")'>Certificates</button>
+            </div>
+            @if (_deferred == "invoices")
+            {
+                <div class="card" data-testid="job-cc-invoices">
+                    <div class="card-header">Invoices</div>
+                    <div class="card-body p-0">
+                        @if (_invoicePage == null)
+                        {
+                            <p class="text-muted small p-3 mb-0">Loading invoices...</p>
+                        }
+                        else if (_invoicePage.Items.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No invoices yet. Billing does not close the job.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>#</th><th>Type</th><th>Status</th><th class="text-end">Total</th></tr></thead>
+                                <tbody>
+                                    @foreach (var inv in _invoicePage.Items)
+                                    {
+                                        <tr class="meterp-row-click" data-testid="job-cc-invoice-row" title="Open invoice" @onclick="@(() => Nav.NavigateTo($"/invoices?open={inv.InvoiceId}"))">
+                                            <td><a href="@($"/invoices?open={inv.InvoiceId}")" @onclick:stopPropagation="true">@inv.InvoiceNumber</a></td>
+                                            <td>@inv.DocumentType</td>
+                                            <td>@inv.Status</td>
+                                            <td class="text-end">@InvoiceCreditConvention.FormatDocumentAmount(inv.DocumentType, inv.Total)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="d-flex justify-content-between align-items-center p-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-invoices-prev"
+                                        disabled="@(_invoicePage.Page <= 1 || _invoicePageBusy)" @onclick="PrevInvoicesAsync">Previous</button>
+                                <span class="small text-muted" data-testid="job-cc-invoices-page">Page @_invoicePage.Page of @_invoicePage.PageCount</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-cc-invoices-next"
+                                        disabled="@(_invoicePage.Page >= _invoicePage.PageCount || _invoicePageBusy)" @onclick="NextInvoicesAsync">Next</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else if (_deferred == "snags")
+            {
+                <div class="card" data-testid="job-cc-snags">
+                    <div class="card-header">Snags</div>
+                    <div class="card-body p-0">
+                        @if (_snags == null)
+                        {
+                            <p class="text-muted small p-3 mb-0">Loading snags...</p>
+                        }
+                        else if (_snags.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No snags on this job.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush small mb-0">
+                                @foreach (var snag in _snags)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span class="@(snag.IsResolved ? "text-muted" : "")">@snag.Description</span>
+                                        <span class="badge @(snag.IsResolved ? "bg-success" : "bg-warning text-dark")">@(snag.IsResolved ? "Resolved" : "Open")</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            }
+            else if (_deferred == "certificates")
+            {
+                <div class="card" data-testid="job-cc-certificates">
+                    <div class="card-header">Certificates</div>
+                    <div class="card-body p-0">
+                        @if (_certificates == null)
+                        {
+                            <p class="text-muted small p-3 mb-0">Loading certificates...</p>
+                        }
+                        else if (_certificates.Count == 0)
+                        {
+                            <p class="text-muted small p-3 mb-0">No compliance certificates on this job.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Type</th><th>Number</th><th>Expires</th></tr></thead>
+                                <tbody>
+                                    @foreach (var cert in _certificates)
+                                    {
+                                        <tr>
+                                            <td>@cert.CertificateType</td>
+                                            <td>@(cert.CertificateNumber ?? "-")</td>
+                                            <td>@(cert.NoExpiry ? "No expiry" : cert.ExpiryDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            }
         </div>
     </div>
 }
@@ -583,6 +787,7 @@ else
     private bool _openedInvoiceFromQuery;
 
     private Job? _job;
+    private IReadOnlyList<JobTrelloMarker> TrelloMarkers => JobTrelloNotes.Parse(_job?.Notes);
     private JobCommandCenterSummary? _summary;
     private bool _loading = true;
 
@@ -621,6 +826,26 @@ else
     private string _cancelReason = "";
     private InvoiceDocumentType _invoiceDocType = InvoiceDocumentType.Deposit;
     private decimal _invoicePercent = 30m;
+
+    private const int GridPageSize = 25;
+    private static readonly TimeSpan ShellBudget = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan GridBudget = TimeSpan.FromSeconds(8);
+
+    private Guid _trackedJobId;
+    private JobCostPage? _costPage;
+    private JobLaborPage? _laborPage;
+    private JobInvoicePage? _invoicePage;
+    private IReadOnlyList<JobSnagItem>? _snags;
+    private IReadOnlyList<JobComplianceCertificate>? _certificates;
+    private string? _deferred;
+    private bool _costPageBusy;
+    private bool _laborPageBusy;
+    private bool _invoicePageBusy;
+    private bool _costsStillLoading;
+    private string? _loadError;
+    private int _costPageNumber = 1;
+    private int _laborPageNumber = 1;
+    private int _invoicePageNumber = 1;
 
     private IReadOnlyList<EntityPickerOption> ReqItemOptions =>
         _reqItems.Select(i => new EntityPickerOption
@@ -698,6 +923,33 @@ else
         _ => "Sign-off"
     };
 
+
+    private string ActualTotalText =>
+        _summary == null ? "Costs still loading" : $"R {_summary.ActualTotal.ToString("N2")}";
+
+    private string BilledText =>
+        _summary == null ? "-" : $"R {_summary.BilledToDate.ToString("N2")}";
+
+    private string MarginText =>
+        _summary == null ? "-" : $"{_summary.MarginPercent.ToString("N1")}%";
+
+    private string UnbilledText =>
+        _summary == null ? "" : $"Unbilled R {_summary.UnbilledResidual.ToString("N2")}";
+
+    private string JobDivisionCaption =>
+        _job == null || _job.DivisionId == null || _job.DivisionId == Guid.Empty
+            ? "Unassigned division"
+            : (string.IsNullOrWhiteSpace(_job.Division?.Name) ? "Unassigned division" : _job.Division!.Name);
+
+    private bool ShowDepositBanner =>
+        _job != null
+        && _summary != null
+        && InvoiceBillingCalculator.ShowDepositCollectionBanner(
+            _job.Status,
+            _job.DepositPercent,
+            _summary.DepositReceived || _job.DepositReceived,
+            _job.QuotedTotal,
+            _summary.BilledToDate);
     private string SignOffStatusLabel => _job?.SignOffStatus switch
     {
         JobSignOffStatus.None => "Not started",
@@ -711,12 +963,47 @@ else
 
     private async Task LoadAsync()
     {
+        var switchedJob = _trackedJobId != JobId;
+        if (switchedJob)
+        {
+            _trackedJobId = JobId;
+            _job = null;
+            _summary = null;
+            _costPage = null;
+            _laborPage = null;
+            _invoicePage = null;
+            _snags = null;
+            _certificates = null;
+            _deferred = null;
+            _costPageNumber = 1;
+            _laborPageNumber = 1;
+            _invoicePageNumber = 1;
+            _openedInvoiceFromQuery = false;
+            _costsStillLoading = false;
+            _loadError = null;
+        }
+
         _loading = true;
         try
         {
-            _job = await JobService.GetByIdAsync(JobId);
-            _summary = _job != null ? await JobService.GetCommandCenterSummaryAsync(JobId) : null;
-            if (!string.IsNullOrWhiteSpace(InvoiceMode) && !_openedInvoiceFromQuery && _job != null
+            using var shellCts = new CancellationTokenSource(ShellBudget);
+            try
+            {
+                _job = await JobService.GetCommandCenterShellAsync(JobId, shellCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _costsStillLoading = true;
+                _loadError = "Costs still loading";
+                return;
+            }
+
+            if (_job == null)
+                return;
+
+            await LoadCostLaborAsync();
+
+            if (!string.IsNullOrWhiteSpace(InvoiceMode) && !_openedInvoiceFromQuery
                 && _job.IsOpenForOperations() && CanInvoice)
             {
                 if (string.Equals(InvoiceMode, "deposit", StringComparison.OrdinalIgnoreCase))
@@ -727,11 +1014,207 @@ else
                 _showInvoiceModal = true;
                 _openedInvoiceFromQuery = true;
             }
+
+            if (!string.IsNullOrEmpty(_deferred))
+                await ReloadDeferredAsync(_deferred);
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    /// <summary>
+    /// Aggregates plus the first visible cost/labor page. Invoices, snags, and certificates stay deferred.
+    /// A slow query leaves the shell up and the grids on "Costs still loading".
+    /// </summary>
+    private async Task LoadCostLaborAsync()
+    {
+        _summary = await WithGridBudgetAsync(
+            async ct =>
+            {
+                var summary = await JobService.GetCommandCenterSummaryAsync(JobId, ct);
+                if (summary == null)
+                    throw new InvalidOperationException("Job summary is not available.");
+                return summary;
+            },
+            _summary);
+        _costPage = await WithGridBudgetAsync(
+            ct => JobService.GetCostsPageAsync(JobId, _costPageNumber, GridPageSize, ct),
+            _costPage);
+        _laborPage = await WithGridBudgetAsync(
+            ct => JobService.GetLaborPageAsync(JobId, _laborPageNumber, GridPageSize, ct),
+            _laborPage);
+        _costsStillLoading = _summary == null || _costPage == null || _laborPage == null;
+    }
+
+    private async Task<T?> WithGridBudgetAsync<T>(Func<CancellationToken, Task<T>> load, T? keep) where T : class
+    {
+        using var cts = new CancellationTokenSource(GridBudget);
+        try
+        {
+            return await load(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _costsStillLoading = true;
+            return keep;
+        }
+        catch (Exception ex)
+        {
+            _costsStillLoading = true;
+            _loadError = ex.Message;
+            Toast.ShowError(ex.Message);
+            return keep;
+        }
+    }
+
+    private string CostRangeCaption => RangeCaption(_costPage?.Page ?? 1, _costPage?.PageSize ?? GridPageSize, _costPage?.TotalCount ?? 0, _costPage?.Items.Count ?? 0);
+
+    private string LaborRangeCaption => RangeCaption(_laborPage?.Page ?? 1, _laborPage?.PageSize ?? GridPageSize, _laborPage?.TotalCount ?? 0, _laborPage?.Items.Count ?? 0);
+
+    private static string RangeCaption(int page, int pageSize, int total, int shown)
+    {
+        if (total <= 0 || shown <= 0)
+            return "showing 0 of 0";
+        var start = ((Math.Max(1, page) - 1) * Math.Max(1, pageSize)) + 1;
+        var end = Math.Min(start + shown - 1, total);
+        return $"showing {start}\u2013{end} of {total}";
+    }
+
+    private async Task PrevCostsAsync()
+    {
+        if (_costPage == null || _costPage.Page <= 1 || _costPageBusy)
+            return;
+        await LoadCostPageAsync(_costPage.Page - 1);
+    }
+
+    private async Task NextCostsAsync()
+    {
+        if (_costPage == null || _costPage.Page >= _costPage.PageCount || _costPageBusy)
+            return;
+        await LoadCostPageAsync(_costPage.Page + 1);
+    }
+
+    private async Task LoadCostPageAsync(int page)
+    {
+        _costPageBusy = true;
+        try
+        {
+            _costPageNumber = page;
+            _costPage = await JobService.GetCostsPageAsync(JobId, page, GridPageSize);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _costPageBusy = false;
+        }
+    }
+
+    private async Task PrevLaborAsync()
+    {
+        if (_laborPage == null || _laborPage.Page <= 1 || _laborPageBusy)
+            return;
+        await LoadLaborPageAsync(_laborPage.Page - 1);
+    }
+
+    private async Task NextLaborAsync()
+    {
+        if (_laborPage == null || _laborPage.Page >= _laborPage.PageCount || _laborPageBusy)
+            return;
+        await LoadLaborPageAsync(_laborPage.Page + 1);
+    }
+
+    private async Task LoadLaborPageAsync(int page)
+    {
+        _laborPageBusy = true;
+        try
+        {
+            _laborPageNumber = page;
+            _laborPage = await JobService.GetLaborPageAsync(JobId, page, GridPageSize);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _laborPageBusy = false;
+        }
+    }
+
+    private async Task OpenDeferredAsync(string section)
+    {
+        if (string.Equals(_deferred, section, StringComparison.Ordinal))
+            return;
+
+        _deferred = section;
+        if (section == "invoices")
+            _invoicePage = null;
+        else if (section == "snags")
+            _snags = null;
+        else if (section == "certificates")
+            _certificates = null;
+
+        await ReloadDeferredAsync(section);
+    }
+
+    private async Task ReloadDeferredAsync(string section)
+    {
+        try
+        {
+            switch (section)
+            {
+                case "invoices":
+                    _invoicePageBusy = true;
+                    _invoicePage = await JobService.GetJobInvoicesAsync(JobId, _invoicePageNumber, GridPageSize);
+                    _invoicePageNumber = _invoicePage.Page;
+                    break;
+                case "snags":
+                    _snags = await JobService.GetSnagsAsync(JobId);
+                    break;
+                case "certificates":
+                    _certificates = await JobService.GetCertificatesAsync(JobId);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+            if (section == "invoices")
+                _invoicePage ??= new JobInvoicePage();
+            else if (section == "snags")
+                _snags ??= Array.Empty<JobSnagItem>();
+            else if (section == "certificates")
+                _certificates ??= Array.Empty<JobComplianceCertificate>();
+        }
+        finally
+        {
+            _invoicePageBusy = false;
+        }
+    }
+
+    private async Task PrevInvoicesAsync()
+    {
+        if (_invoicePage == null || _invoicePage.Page <= 1 || _invoicePageBusy)
+            return;
+        _invoicePageNumber = _invoicePage.Page - 1;
+        await ReloadDeferredAsync("invoices");
+    }
+
+    private async Task NextInvoicesAsync()
+    {
+        if (_invoicePage == null || _invoicePage.Page >= _invoicePage.PageCount || _invoicePageBusy)
+            return;
+        _invoicePageNumber = _invoicePage.Page + 1;
+        await ReloadDeferredAsync("invoices");
     }
 
     private void OpenDepositInvoice()
@@ -795,6 +1278,8 @@ else
     }
 
     private void CloseInvoiceModal() => _showInvoiceModal = false;
+
+    private void OpenRequisitions() => Nav.NavigateTo("/requisitions");
 
     private void OpenBillingTermsModal()
     {

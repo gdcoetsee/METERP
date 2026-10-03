@@ -680,6 +680,64 @@ public class OpportunityServiceTests
     }
 
     [Fact]
+    public async Task GetUnquotedProposalQueueAsync_ReturnsProposalDealsWithAmount_ExcludesQuotedAndOtherStages()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new OpportunityService(db);
+        var customerId = Guid.NewGuid();
+        db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "Barberton Mines" });
+        await db.SaveChangesAsync();
+
+        var bigId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Barberton substation",
+            Stage = OpportunityStage.Proposal,
+            Value = 250000m,
+            CustomerId = customerId,
+            Notes = "Include travel to site"
+        });
+        var smallId = await service.CreateAsync(new Opportunity
+        {
+            Title = "York lighting",
+            Stage = OpportunityStage.Proposal,
+            Value = 40000m,
+            CustomerId = customerId
+        });
+        var quotedId = await service.CreateAsync(new Opportunity
+        {
+            Title = "Already quoted proposal",
+            Stage = OpportunityStage.Proposal,
+            Value = 90000m,
+            CustomerId = customerId
+        });
+        await service.CreateAsync(new Opportunity
+        {
+            Title = "Still qualified",
+            Stage = OpportunityStage.Qualified,
+            Value = 10000m,
+            CustomerId = customerId
+        });
+
+        var quoteId = await SeedQuoteAsync(db, tenantId, customerId);
+        var quoted = await service.GetByIdAsync(quotedId);
+        quoted!.QuoteId = quoteId;
+        await db.SaveChangesAsync();
+
+        var queue = await service.GetUnquotedProposalQueueAsync();
+
+        Assert.Equal(2, queue.TotalCount);
+        Assert.Equal(2, queue.Items.Count);
+        Assert.Equal(bigId, queue.Items[0].Id);
+        Assert.Equal(250000m, queue.Items[0].Total);
+        Assert.Equal("Barberton Mines", queue.Items[0].CustomerName);
+        Assert.Equal("Proposal", queue.Items[0].Kind);
+        Assert.Contains(smallId, queue.Items.Select(i => i.Id));
+        Assert.DoesNotContain(queue.Items, i => i.Id == quotedId);
+        Assert.DoesNotContain(queue.Items, i => i.Number == "Still qualified");
+    }
+
+    [Fact]
     public async Task UpdateAsync_ClosedWon_ThrowsWhenLinkedCustomerDeleted()
     {
         var tenantId = Guid.NewGuid();

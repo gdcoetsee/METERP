@@ -16,7 +16,11 @@
 <h1 class="portal-title">Invoices</h1>
 <p class="text-muted">Sent, part-paid, and overdue documents. Pay by EFT using the invoice number as reference, then tell us you have paid — the office records the receipt when the money lands.</p>
 
-@if (_dash == null)
+@if (_denied != null)
+{
+    <div class="alert alert-warning" role="status" data-testid="portal-unlinked">@_denied</div>
+}
+else if (_dash == null)
 {
     <p class="text-muted">Loading…</p>
 }
@@ -42,19 +46,19 @@ else
             <tbody>
                 @foreach (var invoice in _dash.Invoices)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" title="Open invoice" @onclick="() => OpenInvoice(invoice)">
                         <td>@invoice.InvoiceNumber</td>
                         <td>@invoice.InvoiceDate.ToString("yyyy-MM-dd")</td>
                         <td>@invoice.DueDate.ToString("yyyy-MM-dd")</td>
                         <td>@invoice.Status</td>
-                        <td class="text-end">R @invoice.Total.ToString("N2")</td>
-                        <td class="text-end">R @invoice.BalanceDue.ToString("N2")</td>
+                        <td class="text-end">@InvoiceCreditConvention.FormatDocumentAmount(invoice.DocumentType, invoice.Total)</td>
+                        <td class="text-end">@InvoiceCreditConvention.FormatDocumentBalance(invoice.DocumentType, invoice.BalanceDue)</td>
                         <td class="text-end">
-                            @if (invoice.BalanceDue > 0)
+                            @if (invoice.DocumentType != InvoiceDocumentType.CreditNote && invoice.BalanceDue > 0)
                             {
                                 <button type="button" class="btn btn-sm btn-outline-primary"
                                         data-testid="portal-invoice-paid"
-                                        @onclick="() => ReportPaidAsync(invoice)">
+                                        @onclick="() => ReportPaidAsync(invoice)" @onclick:stopPropagation="true">
                                     I've paid
                                 </button>
                             }
@@ -66,17 +70,67 @@ else
     </div>
 }
 
+@if (_invoice != null)
+{
+    <FormModal IsOpen="true" Title="@_invoice.InvoiceNumber" Size="lg" TestId="portal-invoice-detail" OnClose="CloseInvoice">
+        <ChildContent>
+            <p class="mb-1">Date: @_invoice.InvoiceDate.ToString("yyyy-MM-dd") · Due @_invoice.DueDate.ToString("yyyy-MM-dd")</p>
+            <p class="mb-1">Status: @_invoice.Status</p>
+            <p class="mb-1">Total: @InvoiceCreditConvention.FormatDocumentAmount(_invoice.DocumentType, _invoice.Total)</p>
+            <p class="mb-3">Outstanding: <strong>@InvoiceCreditConvention.FormatDocumentBalance(_invoice.DocumentType, _invoice.BalanceDue)</strong></p>
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Description</th><th>Type</th><th class="text-end">Qty</th><th class="text-end">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var line in _invoice.Lines.Where(l => !l.IsDeleted))
+                    {
+                        <tr>
+                            <td>@line.Description</td>
+                            <td>@line.LineType</td>
+                            <td class="text-end">@line.Quantity.ToString("N2")</td>
+                            <td class="text-end">@InvoiceCreditConvention.FormatDocumentAmount(_invoice.DocumentType, line.LineTotal)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseInvoice">Close</button>
+            @if (_invoice.DocumentType != InvoiceDocumentType.CreditNote && _invoice.BalanceDue > 0)
+            {
+                <button type="button" class="btn btn-primary" @onclick="() => ReportPaidAsync(_invoice)">I've paid</button>
+            }
+        </Footer>
+    </FormModal>
+}
+
 @code {
     private CustomerPortalDashboard? _dash;
+    private string? _denied;
+    private Invoice? _invoice;
+
+    private void OpenInvoice(Invoice invoice) => _invoice = invoice;
+    private void CloseInvoice() => _invoice = null;
 
     protected override async Task OnInitializedAsync()
     {
-        if (CurrentUser.CustomerId is not { } customerId)
+        if (CurrentUser.CustomerId is not { } customerId || customerId == Guid.Empty)
         {
-            Nav.NavigateTo("/portal/login", forceLoad: true);
+            _denied = CustomerPortalMessages.Unlinked;
             return;
         }
-        _dash = await Portal.GetDashboardAsync(customerId);
+        try
+        {
+            _dash = await Portal.GetDashboardAsync(customerId);
+            if (_dash.IsUnlinked)
+            {
+                _denied = _dash.CustomerName;
+                _dash = null;
+            }
+        }
+        catch (Exception)
+        {
+            _denied = CustomerPortalMessages.Unlinked;
+        }
     }
 
     private async Task ReportPaidAsync(Invoice invoice)
@@ -95,6 +149,8 @@ else
             await Portal.ReportPaymentAsync(customerId, invoice.Id, invoice.BalanceDue, invoice.InvoiceNumber);
             Toast.ShowSuccess($"Thanks — we have a payment notice for {invoice.InvoiceNumber}.");
             _dash = await Portal.GetDashboardAsync(customerId);
+            if (_invoice != null)
+                _invoice = _dash.Invoices.FirstOrDefault(i => i.Id == _invoice.Id);
         }
         catch (Exception ex)
         {

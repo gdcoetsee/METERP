@@ -42,6 +42,10 @@
         <input class="form-check-input" type="checkbox" id="emp-include-inactive" @bind="_includeInactive" @bind:after="OnSearchChangedAsync" data-testid="employees-include-inactive" />
         <label class="form-check-label" for="emp-include-inactive">Show inactive</label>
     </div>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="emp-unassigned-division" @bind="_unassignedDivisionOnly" @bind:after="OnSearchChangedAsync" data-testid="employees-unassigned-division" />
+        <label class="form-check-label text-muted" for="emp-unassigned-division">Unassigned division</label>
+    </div>
 </div>
 
 @if (_loading)
@@ -50,9 +54,9 @@
 }
 else if (employees == null || !employees.Any())
 {
-    @if (!string.IsNullOrEmpty(searchTerm))
+    @if (!string.IsNullOrEmpty(searchTerm) || _unassignedDivisionOnly)
     {
-        <div class="alert alert-warning">No employees match your search. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear search</button></div>
+        <div class="alert alert-warning">No employees match. <button class="btn btn-sm btn-link p-0" @onclick="ClearSearch">Clear filters</button></div>
     }
     else
     {
@@ -82,7 +86,7 @@ else
                         <td><strong>@emp.EmployeeNumber</strong></td>
                         <td>@emp.FirstName @emp.LastName</td>
                         <td>@(emp.JobTitle ?? "—")</td>
-                        <td>@(emp.Division?.Name ?? "—")</td>
+                        <td class="text-muted small" data-testid="employee-division-label">@DivisionCaption(emp.DivisionId, emp.Division?.Name)</td>
                         <td class="text-end">R @emp.DefaultHourlyRate.ToString("N2")</td>
                         <td class="text-end">@emp.MandatoryHoursPerMonth.ToString("N0")</td>
                         <td>
@@ -155,7 +159,7 @@ else
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Division</label>
                     <InputSelect class="form-select" @bind-Value="currentEmployee.DivisionId" data-testid="employee-division">
-                        <option value="">— None —</option>
+                        <option value="">Unassigned division</option>
                         @foreach (var d in _divisions)
                         {
                             <option value="@d.Id">@d.Name</option>
@@ -225,7 +229,7 @@ else
                     <strong>Title:</strong> @(selectedEmployee.JobTitle ?? "—")<br />
                     <strong>Email:</strong> @(selectedEmployee.Email ?? "—")<br />
                     <strong>Phone:</strong> @(selectedEmployee.Phone ?? "—")<br />
-                    <strong>Division:</strong> @(selectedEmployee.Division?.Name ?? "—")
+                    <strong>Division:</strong> <span class="text-muted" data-testid="employee-detail-division">@DivisionCaption(selectedEmployee.DivisionId, selectedEmployee.Division?.Name)</span>
                 </div>
                 <div class="col-md-6">
                     <strong>Rate:</strong> R @selectedEmployee.DefaultHourlyRate.ToString("N2") / hr<br />
@@ -261,6 +265,12 @@ else
     private const int PageSize = 10;
     private bool _loading = true;
     private bool _includeInactive;
+    private bool _unassignedDivisionOnly;
+
+    private static string DivisionCaption(Guid? divisionId, string? name) =>
+        divisionId == null || divisionId == Guid.Empty
+            ? "Unassigned division"
+            : (string.IsNullOrWhiteSpace(name) ? "Unassigned division" : name);
     private int _employeesLoadGeneration;
     private readonly ComponentAsyncGate _dataGate = new();
 
@@ -316,7 +326,8 @@ else
     {
         var generation = ++_employeesLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
-        var loaded = (await EmployeeService.GetAllAsync(term, currentPage, PageSize, _includeInactive)).ToList();
+        var loaded = (await EmployeeService.GetAllAsync(
+            term, currentPage, PageSize, _includeInactive, unassignedDivisionOnly: _unassignedDivisionOnly)).ToList();
         if (generation != _employeesLoadGeneration)
             return;
         employees = loaded;
@@ -331,6 +342,7 @@ else
     private async Task ClearSearch()
     {
         searchTerm = string.Empty;
+        _unassignedDivisionOnly = false;
         currentPage = 1;
         await LoadEmployees();
     }

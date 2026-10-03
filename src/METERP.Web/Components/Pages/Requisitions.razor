@@ -1,5 +1,6 @@
 @page "/requisitions"
 @using METERP.Application.Interfaces
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Common
 @using METERP.Domain
@@ -52,40 +53,54 @@ else
             <tbody>
                 @foreach (var req in _requisitions)
                 {
-                    <tr data-testid="requisition-row">
+                    <tr class="meterp-row-click" data-testid="requisition-row" title="Open requisition" @onclick="() => OpenDetailAsync(req)">
                         <td><strong>@req.RequisitionNumber</strong></td>
-                        <td>@(req.Job?.JobNumber ?? "—")</td>
-                        <td>@((MarkupString)GetStatusBadge(req.Status))</td>
-                        <td>@req.Lines.Count</td>
-                        <td>@(req.IsPpe ? "Yes" : "—")</td>
-                        <td class="small">@(string.IsNullOrWhiteSpace(req.ApproverNote) ? "—" : req.ApproverNote)</td>
                         <td>
+                            @(req.Job?.JobNumber ?? "—")
+                            @if (req.Job?.IsEmergency == true)
+                            {
+                                <span class="badge bg-danger ms-1">Emergency</span>
+                            }
+                            else if (req.Job?.Quote != null)
+                            {
+                                <span class="badge bg-success ms-1">@req.Job.Quote.QuoteNumber</span>
+                            }
+                            else if (req.Job != null)
+                            {
+                                <span class="badge bg-warning text-dark ms-1">No quote</span>
+                            }
+                        </td>
+                        <td>@((MarkupString)GetStatusBadge(req.Status))</td>
+                        <td>@req.Lines.Count(l => !l.IsDeleted)</td>
+                        <td>@(req.IsPpe ? "Yes" : "—")</td>
+                        <td class="small">
                             @if (req.PurchaseOrderId.HasValue)
                             {
-                                <a href="purchase-orders" class="small">View PO</a>
+                                <a href="purchase-orders" class="small" @onclick:stopPropagation="true">View PO</a>
                             }
                             else
                             {
                                 <span class="text-muted">—</span>
                             }
                         </td>
+                        <td class="small">@(string.IsNullOrWhiteSpace(req.ApproverNote) ? "—" : req.ApproverNote)</td>
                         <td class="text-end text-nowrap">
                             @if (CanManage && req.Status == RequisitionStatus.AwaitingProcurement && !req.PurchaseOrderId.HasValue)
                             {
                                 <button type="button" class="btn btn-sm btn-outline-primary me-1" data-testid="requisition-rfq-btn"
-                                        @onclick="() => OpenRfqAsync(req)">RFQ</button>
+                                        @onclick="() => OpenRfqAsync(req)" @onclick:stopPropagation="true">RFQ</button>
                                 <button type="button" class="btn btn-sm btn-warning" data-testid="requisition-create-po-btn"
-                                        @onclick="() => ShowCreatePo(req)">Create PO</button>
+                                        @onclick="() => ShowCreatePo(req)" @onclick:stopPropagation="true">Create PO</button>
                             }
                             @if (CanIssue && CanIssueRequisition(req))
                             {
                                 <button type="button" class="btn btn-sm btn-success" data-testid="requisition-issue-btn"
-                                        @onclick="() => IssueAsync(req)">Issue to job</button>
+                                        @onclick="() => IssueAsync(req)" @onclick:stopPropagation="true">Issue to job</button>
                             }
                             @if (CanManage && CanCancelRequisition(req))
                             {
                                 <button type="button" class="btn btn-sm btn-outline-danger ms-1" data-testid="requisition-cancel-btn"
-                                        @onclick="() => CancelReqAsync(req)">Cancel</button>
+                                        @onclick="() => CancelReqAsync(req)" @onclick:stopPropagation="true">Cancel</button>
                             }
                         </td>
                     </tr>
@@ -96,11 +111,64 @@ else
 }
 </div>
 
+@if (_detail != null)
+{
+    <FormModal IsOpen="true"
+               Title="@_detail.RequisitionNumber"
+               Size="xl"
+               TestId="requisition-detail"
+               OnClose="CloseDetail">
+        <ChildContent>
+            <RequisitionDecisionContext Job="_detail.Job" OnOpenQuote="OpenLinkedQuote" />
+            <p class="mb-1">Status: @((MarkupString)GetStatusBadge(_detail.Status))</p>
+            <p class="mb-1">PPE: @(_detail.IsPpe ? "Yes" : "No")</p>
+            <p class="mb-1">Approver note: @(string.IsNullOrWhiteSpace(_detail.ApproverNote) ? "—" : _detail.ApproverNote)</p>
+            @if (!string.IsNullOrWhiteSpace(_detail.Notes))
+            {
+                <p class="mb-2">Notes: @_detail.Notes</p>
+            }
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Item</th><th>Against the quote</th><th class="text-end">Requested</th><th class="text-end">Reserved</th><th class="text-end">Issued</th></tr></thead>
+                <tbody>
+                    @foreach (var line in _detail.Lines.Where(l => !l.IsDeleted))
+                    {
+                        <tr>
+                            <td>@line.DisplayDescription</td>
+                            <td class="small" data-testid="requisition-quote-coverage">@RequisitionQuoteMatcher.CoverageLabel(_detail.Job, line)</td>
+                            <td class="text-end">@line.QuantityRequested.ToString("N2")</td>
+                            <td class="text-end">@line.QuantityReserved.ToString("N2")</td>
+                            <td class="text-end">@line.QuantityIssued.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseDetail">Close</button>
+            @if (CanManage && _detail.Status == RequisitionStatus.AwaitingProcurement && !_detail.PurchaseOrderId.HasValue)
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="() => OpenRfqAsync(_detail)">RFQ</button>
+                <button type="button" class="btn btn-warning" @onclick="() => ShowCreatePo(_detail)">Create PO</button>
+            }
+            @if (CanIssue && CanIssueRequisition(_detail))
+            {
+                <button type="button" class="btn btn-success" @onclick="() => IssueAsync(_detail)">Issue to job</button>
+            }
+            @if (CanManage && CanCancelRequisition(_detail))
+            {
+                <button type="button" class="btn btn-outline-danger" @onclick="() => CancelReqAsync(_detail)">Cancel</button>
+            }
+        </Footer>
+    </FormModal>
+    <RequisitionQuoteView IsOpen="_showLinkedQuote" Job="_detail.Job" OnClose="CloseLinkedQuote" />
+}
+
 @if (_showPoModal && _poRequisition != null)
 {
     <FormModal IsOpen="true"
                Title="@($"Create PO — {_poRequisition.RequisitionNumber}")"
                TestId="requisition-po-modal"
+               Layer="2"
                OnClose="ClosePoModal">
         <div class="mb-3">
             <label class="form-label meterp-required">Supplier</label>
@@ -128,6 +196,7 @@ else
     <FormModal IsOpen="true"
                Title="@($"Supplier quotes — {_rfqRequisition.RequisitionNumber}")"
                TestId="requisition-rfq-modal"
+               Layer="2"
                OnClose="CloseRfqModal">
         <p class="text-muted small">Add quotes from multiple suppliers (header total or per-line unit prices), select the winner, then create the PO from the selected quote.</p>
 
@@ -147,7 +216,7 @@ else
                     <tbody>
                         @foreach (var q in _rfqQuotes)
                         {
-                            <tr class="@(q.IsSelected ? "table-success" : null)" data-testid="requisition-rfq-row">
+                            <tr class="@(q.IsSelected ? "table-success" : "meterp-row-click")" data-testid="requisition-rfq-row" title="@(q.IsSelected ? null : "Select quote")" @onclick="() => SelectRfqRowAsync(q)">
                                 <td>@(q.Supplier?.Name ?? "—")</td>
                                 <td class="text-end">R @q.QuotedTotal.ToString("N2")</td>
                                 <td class="small">
@@ -170,7 +239,7 @@ else
                                     {
                                         <button type="button" class="btn btn-sm btn-outline-success"
                                                 data-testid="requisition-rfq-select"
-                                                @onclick="() => SelectQuoteAsync(q)">Select</button>
+                                                @onclick="() => SelectQuoteAsync(q)" @onclick:stopPropagation="true">Select</button>
                                     }
                                 </td>
                             </tr>
@@ -275,6 +344,7 @@ else
     private List<Supplier> _suppliers = new();
     private bool _loading = true;
     private bool _showPoModal;
+    private StockRequisition? _detail;
     private StockRequisition? _poRequisition;
     private Guid _selectedSupplierId;
 
@@ -330,11 +400,30 @@ else
         try
         {
             _requisitions = (await RequisitionService.GetAllAsync(pageSize: 50)).ToList();
+            if (_detail != null)
+                _detail = await RequisitionService.GetByIdAsync(_detail.Id);
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private async Task OpenDetailAsync(StockRequisition req)
+    {
+        _detail = await RequisitionService.GetByIdAsync(req.Id) ?? req;
+    }
+
+    private bool _showLinkedQuote;
+
+    private void OpenLinkedQuote() => _showLinkedQuote = true;
+
+    private void CloseLinkedQuote() => _showLinkedQuote = false;
+
+    private void CloseDetail()
+    {
+        _detail = null;
+        _showLinkedQuote = false;
     }
 
     private void ShowCreatePo(StockRequisition req)
@@ -466,6 +555,13 @@ else
         {
             Toast.ShowError(ex.Message);
         }
+    }
+
+    private Task SelectRfqRowAsync(ProcurementSupplierQuote quote)
+    {
+        if (quote.IsSelected || !CanManage)
+            return Task.CompletedTask;
+        return SelectQuoteAsync(quote);
     }
 
     private async Task SelectQuoteAsync(ProcurementSupplierQuote quote)

@@ -215,4 +215,102 @@ public class OperationalReportServiceTests
             Assert.Equal("Q-OPEN", table.Rows[0][0]);
         }
     }
+
+    [Fact]
+    public async Task LiveSnapshot_CountsTheTenant_NotTheFirstPage()
+    {
+        var (db, service, tenantId) = Create();
+        await using (db)
+        {
+            var customerId = Guid.NewGuid();
+            var supplierId = Guid.NewGuid();
+            var quoteId = Guid.NewGuid();
+            db.Set<Customer>().Add(new Customer { Id = customerId, TenantId = tenantId, Name = "MET site" });
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "Cable Co" });
+
+            var quotes = Enumerable.Range(1, 21).Select(i => new Quote
+            {
+                Id = i == 1 ? quoteId : Guid.NewGuid(),
+                TenantId = tenantId,
+                CustomerId = customerId,
+                QuoteNumber = $"Q-{i:000}",
+                Status = i <= 3 ? QuoteStatus.Accepted : QuoteStatus.Draft,
+                Total = 100m
+            }).ToList();
+            quotes.Add(new Quote
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                QuoteNumber = "Q-GONE",
+                Status = QuoteStatus.Accepted,
+                IsDeleted = true
+            });
+            quotes.Add(new Quote
+            {
+                TenantId = Guid.NewGuid(),
+                CustomerId = customerId,
+                QuoteNumber = "Q-OTHER",
+                Status = QuoteStatus.Accepted
+            });
+            db.Set<Quote>().AddRange(quotes);
+
+            db.Set<Job>().AddRange(
+                new Job { TenantId = tenantId, CustomerId = customerId, JobNumber = "J-LIVE", Title = "Live", Status = JobStatus.InProgress, QuotedTotal = 400m },
+                new Job { TenantId = tenantId, CustomerId = customerId, JobNumber = "J-BOOK", Title = "Booked", Status = JobStatus.Scheduled, QuotedTotal = 50m },
+                new Job { TenantId = tenantId, CustomerId = customerId, JobNumber = "J-DONE", Title = "Done", Status = JobStatus.Completed, QuotedTotal = 999m });
+
+            db.Set<Invoice>().AddRange(
+                new Invoice { TenantId = tenantId, CustomerId = customerId, InvoiceNumber = "INV-1", Status = InvoiceStatus.Sent, Total = 1000m },
+                new Invoice { TenantId = tenantId, CustomerId = customerId, InvoiceNumber = "CRN-1", Status = InvoiceStatus.Sent, DocumentType = InvoiceDocumentType.CreditNote, Total = 200m },
+                new Invoice { TenantId = tenantId, CustomerId = customerId, InvoiceNumber = "INV-PAID", Status = InvoiceStatus.Paid, Total = 5000m },
+                new Invoice { TenantId = tenantId, CustomerId = customerId, InvoiceNumber = "INV-X", Status = InvoiceStatus.Cancelled, Total = 800m });
+
+            db.Set<InventoryItem>().AddRange(
+                new InventoryItem { TenantId = tenantId, Sku = "LOW", Name = "Low", QuantityOnHand = 1, ReorderLevel = 5 },
+                new InventoryItem { TenantId = tenantId, Sku = "OK", Name = "Ok", QuantityOnHand = 10, ReorderLevel = 2 });
+
+            db.Set<Asset>().AddRange(
+                new Asset { TenantId = tenantId, CustomerId = customerId, AssetNumber = "A-1", Name = "Panel", Status = AssetStatus.Operational },
+                new Asset { TenantId = tenantId, CustomerId = customerId, AssetNumber = "A-2", Name = "Spare", Status = AssetStatus.InStorage });
+
+            db.Set<PurchaseOrder>().AddRange(
+                new PurchaseOrder { TenantId = tenantId, SupplierId = supplierId, PoNumber = "PO-OPEN", Status = PurchaseOrderStatus.Sent, Total = 300m },
+                new PurchaseOrder { TenantId = tenantId, SupplierId = supplierId, PoNumber = "PO-IN", Status = PurchaseOrderStatus.Received, Total = 900m });
+
+            db.Set<SalesOrder>().AddRange(
+                new SalesOrder { TenantId = tenantId, CustomerId = customerId, QuoteId = quoteId, SoNumber = "SO-1", Status = SalesOrderStatus.Confirmed, Total = 100m },
+                new SalesOrder { TenantId = tenantId, CustomerId = customerId, QuoteId = quoteId, SoNumber = "SO-2", Status = SalesOrderStatus.Draft, Total = 40m });
+
+            db.Set<Employee>().AddRange(
+                new Employee { TenantId = tenantId, EmployeeNumber = "E1", FirstName = "Ada", LastName = "Lovelace", IsActive = true },
+                new Employee { TenantId = tenantId, EmployeeNumber = "E2", FirstName = "Left", LastName = "Staff", IsActive = false });
+
+            await db.SaveChangesAsync();
+
+            // Added rows are stamped with the current tenant. Move Q-OTHER after that stamp
+            // so the snapshot query has a real cross-tenant row to ignore.
+            var otherQuote = quotes.Single(q => q.QuoteNumber == "Q-OTHER");
+            otherQuote.TenantId = Guid.NewGuid();
+            await db.SaveChangesAsync();
+
+            var snap = await service.GetLiveSnapshotAsync();
+
+            Assert.Equal(21, snap.TotalQuotes);
+            Assert.Equal(3, snap.AcceptedQuotes);
+            Assert.Equal(2, snap.ActiveJobs);
+            Assert.Equal(450m, snap.ActiveJobsQuoted);
+            Assert.Equal(2, snap.OutstandingInvoices);
+            Assert.Equal(800m, snap.OutstandingInvoiceValue);
+            Assert.Equal(2, snap.TotalItems);
+            Assert.Equal(1, snap.LowStockItems);
+            Assert.Equal(2, snap.TotalAssets);
+            Assert.Equal(1, snap.OperationalAssets);
+            Assert.Equal(1, snap.TotalSuppliers);
+            Assert.Equal(1, snap.OpenPurchaseOrders);
+            Assert.Equal(300m, snap.OpenPurchaseOrderValue);
+            Assert.Equal(2, snap.TotalSalesOrders);
+            Assert.Equal(1, snap.ConfirmedSalesOrders);
+            Assert.Equal(1, snap.ActiveEmployees);
+        }
+    }
 }

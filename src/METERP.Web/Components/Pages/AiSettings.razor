@@ -1,10 +1,14 @@
 @page "/settings/ai"
+@using METERP.Application.Interfaces
+@using METERP.Application.Models
 @using METERP.Application.Services
 @using METERP.Common
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "Tenants.Manage")]
 @inject ITenantAiSettingsService AiSettingsService
 @inject IAiConfigurationResolver ConfigResolver
+@inject ITenantProvider TenantProvider
+@inject ITenantService TenantService
 @inject ToastService ToastService
 
 <PageTitle>AI Settings</PageTitle>
@@ -14,16 +18,9 @@
     <span data-testid="ai-settings-ready" class="visually-hidden">ready</span>
 }
 
-<PageHeader Title="AI settings" Subtitle="Connect a provider for this tenant. Deployment defaults apply when override is off." TestId="ai-settings-page-header">
+<PageHeader Title="AI settings" Subtitle="@($"{_officeName} · paste a provider key, test it, then use Copilot.")" TestId="ai-settings-page-header">
     <Actions>
-        @if (effectiveConfigured)
-        {
-            <span class="badge bg-success">Configured</span>
-        }
-        else
-        {
-            <span class="badge bg-warning text-dark">Not configured</span>
-        }
+        <span class="badge @StatusBadgeClass" data-testid="ai-status-badge">@StatusLabel</span>
     </Actions>
 </PageHeader>
 
@@ -33,82 +30,117 @@
 }
 else
 {
-    <div class="card mb-3">
-        <div class="card-body">
-            <h2 class="h5">Connect your AI subscription</h2>
-            <p class="text-muted">Industry-standard: sign in at the provider, create an API key, paste it once. Grok is the default operator for quotes, job variance, and copilot.</p>
-            <div class="d-flex flex-wrap gap-2" data-testid="ai-connect-buttons">
-                <a class="btn btn-dark" href="https://console.x.ai" target="_blank" rel="noopener" @onclick="ConnectGrok" @onclick:preventDefault="false" data-testid="ai-connect-grok">Continue with Grok</a>
-                <a class="btn btn-outline-primary" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" @onclick="ConnectGemini" @onclick:preventDefault="false">Continue with Google</a>
-                <a class="btn btn-outline-secondary" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" @onclick="ConnectOpenAi" @onclick:preventDefault="false">Continue with OpenAI</a>
+    @if (!effectiveConfigured)
+    {
+        <div class="ai-needs-key mb-3" data-testid="ai-needs-key">
+            <div>
+                <strong>No API key is active.</strong>
+                <span>User-secrets <code>Ai:ApiKey</code> is empty. Paste a key from <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a> below and Save. Environment <code>Ai__ApiKey</code> or <code>XAI_API_KEY</code> also works. Never commit the key.</span>
             </div>
-            <small class="text-muted d-block mt-2">Each button opens the provider console and fills Grok/Gemini/OpenAI defaults below. Paste the key and Save.</small>
+            <a class="btn btn-sm btn-outline-primary" href="/help#ai">Where to put the key</a>
         </div>
-    </div>
-    <div class="card">
-        <div class="card-body">
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="useTenantKey" @bind="useTenantKey" data-testid="ai-use-tenant-key" />
-                    <label class="form-check-label" for="useTenantKey">Use tenant API key (override deployment default)</label>
-                </div>
-                <small class="text-muted">When off, METERP uses the platform <code>Ai__*</code> environment variables (e.g. docker-compose <code>.env</code>).</small>
-            </div>
+    }
 
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Provider</label>
-                    <select class="form-select" @bind="provider" @bind:after="OnProviderChanged" data-testid="ai-provider-select">
-                        @foreach (var p in AiProviderProfiles.All)
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="card ai-settings-card">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Connection</h2>
+                            <p class="text-muted mb-0">Effective source: <strong>@effectiveSource</strong>@if (!string.IsNullOrWhiteSpace(effectiveMasked)) { <span> · key @effectiveMasked</span> }</p>
+                            @if (effectiveConfigured && testMessage is null)
+                            {
+                                <p class="small text-muted mb-0 mt-1" data-testid="ai-configured-note">Configured means a key is on file. It does not mean Test connection has passed. A failed test leaves the key in place.</p>
+                            }
+                        </div>
+                        <div class="d-flex flex-wrap gap-2" data-testid="ai-connect-buttons">
+                            <a class="btn btn-dark btn-sm" href="https://console.x.ai" target="_blank" rel="noopener" @onclick="ConnectGrok" @onclick:preventDefault="false" data-testid="ai-connect-grok">Grok</a>
+                            <a class="btn btn-outline-primary btn-sm" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" @onclick="ConnectGemini" @onclick:preventDefault="false">Google</a>
+                            <a class="btn btn-outline-secondary btn-sm" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" @onclick="ConnectOpenAi" @onclick:preventDefault="false">OpenAI</a>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="useTenantKey" @bind="useTenantKey" data-testid="ai-use-tenant-key" />
+                            <label class="form-check-label" for="useTenantKey">Use tenant API key</label>
+                        </div>
+                        <small class="text-muted">On, with a saved key, this tenant overrides deployment settings. Off, or with no saved key, METERP uses <code>Ai:ApiKey</code> / <code>Ai__ApiKey</code> / <code>XAI_API_KEY</code>.</small>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="ai-provider-select">Provider</label>
+                            <select id="ai-provider-select" class="form-select" @bind="provider" @bind:after="OnProviderChanged" data-testid="ai-provider-select">
+                                @foreach (var p in AiProviderProfiles.All)
+                                {
+                                    <option value="@p">@p</option>
+                                }
+                            </select>
+                            <small class="text-muted">@providerHint</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="ai-base-url">Base URL</label>
+                            <input id="ai-base-url" class="form-control" @bind="baseUrl" placeholder="https://api.x.ai/v1" data-testid="ai-base-url" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="ai-model">Model</label>
+                            <input id="ai-model" class="form-control" list="ai-model-options" @bind="model" placeholder="grok-4.6" data-testid="ai-model" />
+                            <datalist id="ai-model-options">
+                                @foreach (var suggested in AiProviderProfiles.SuggestedModels(provider))
+                                {
+                                    <option value="@suggested"></option>
+                                }
+                            </datalist>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label" for="ai-api-key">API key</label>
+                        <input id="ai-api-key" type="password" class="form-control" @bind="apiKeyInput" placeholder="Paste a new key — it stays masked" autocomplete="off" data-testid="ai-api-key" />
+                        @if (hasStoredKey)
                         {
-                            <option value="@p">@p</option>
+                            <small class="text-muted">Stored tenant key: @maskedKey. Leave the box blank to keep it.</small>
                         }
-                    </select>
-                    <small class="text-muted">@providerHint</small>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Base URL</label>
-                    <input class="form-control" @bind="baseUrl" placeholder="https://api.x.ai/v1" data-testid="ai-base-url" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Model</label>
-                    <input class="form-control" @bind="model" placeholder="grok-3-mini" data-testid="ai-model" />
+                        else
+                        {
+                            <small class="text-muted">Nothing saved for this tenant yet. Saving a key turns on the tenant override and encrypts it.</small>
+                        }
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving" data-testid="ai-settings-save">@(_saving ? "Saving…" : "Save")</button>
+                        <button class="btn btn-outline-secondary" @onclick="TestConnection" disabled="@_testing" data-testid="ai-test-connection">@(_testing ? "Testing…" : "Test connection")</button>
+                        <a class="btn btn-outline-primary" href="/ai-copilot">Open copilot</a>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(testMessage))
+                    {
+                        <div class="alert @(testSuccess ? "alert-success" : "alert-danger") mt-3 mb-0" role="alert" data-testid="ai-test-result">@testMessage</div>
+                    }
                 </div>
             </div>
-
-            <div class="mt-3">
-                <label class="form-label">API Key</label>
-                <input type="password" class="form-control" @bind="apiKeyInput" placeholder="Enter new key to update" autocomplete="off" data-testid="ai-api-key" />
-                @if (hasStoredKey)
-                {
-                    <small class="text-muted">Stored key: @maskedKey — leave blank to keep existing.</small>
-                }
-            </div>
-
-            <div class="d-flex gap-2 mt-4">
-                <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving" data-testid="ai-settings-save">Save Settings</button>
-                <button class="btn btn-outline-secondary" @onclick="TestConnection" disabled="@_testing" data-testid="ai-test-connection">Test Connection</button>
-            </div>
-
-            @if (!string.IsNullOrWhiteSpace(testMessage))
-            {
-                <div class="alert @(testSuccess ? "alert-success" : "alert-danger") mt-3 mb-0" role="alert">@testMessage</div>
-            }
         </div>
-    </div>
 
-    <div class="card mt-3">
-        <div class="card-header"><strong>Provider quick reference</strong></div>
-        <div class="card-body small">
-            <p class="mb-2">METERP uses the <strong>OpenAI-compatible</strong> <code>/chat/completions</code> API. Your Google AI Studio curl uses a different native URL (<code>generateContent</code>) — use the preset below instead; the same <code>AIza...</code> key works.</p>
-            <ul class="mb-0">
-                <li><strong>Google Gemini (Free):</strong> <code>https://generativelanguage.googleapis.com/v1beta/openai</code> + <code>gemini-flash-latest</code></li>
-                <li><strong>Groq (Free tier):</strong> <code>https://api.groq.com/openai/v1</code> + <code>llama-3.3-70b-versatile</code></li>
-                <li><strong>Ollama (Local, Free):</strong> <code>http://localhost:11434/v1</code> + <code>llama3</code></li>
-                <li><strong>OpenRouter:</strong> free models e.g. <code>google/gemini-2.0-flash-exp:free</code></li>
-                <li><strong>Grok (xAI) — default:</strong> <code>https://api.x.ai/v1</code> + <code>grok-4.6</code>. Key from console.x.ai (X Premium ≠ API credits).</li>
-                <li><strong>OpenAI:</strong> <code>https://api.openai.com/v1</code> + <code>gpt-4o-mini</code></li>
-            </ul>
+        <div class="col-lg-4">
+            <div class="card ai-settings-card mb-3">
+                <div class="card-body">
+                    <h2 class="h6">Where the key can live</h2>
+                    <ol class="small mb-0 ps-3">
+                        <li class="mb-2"><strong>This page</strong> — paste, Save, Test connection. Encrypted on the tenant.</li>
+                        <li class="mb-2"><strong>User-secrets</strong> (Development): <code>dotnet user-secrets set "Ai:ApiKey" "…"</code> in <code>METERP.Web</code>. Also <code>Ai:BaseUrl</code>, <code>Ai:Model</code>, <code>Ai:Provider</code>, <code>Ai:Enabled</code>.</li>
+                        <li><strong>Environment</strong>: <code>Ai__ApiKey</code> or <code>XAI_API_KEY</code>. A blank user-secrets value does not count as a key.</li>
+                    </ol>
+                </div>
+            </div>
+            <div class="card ai-settings-card">
+                <div class="card-body small">
+                    <h2 class="h6">OpenAI-compatible endpoint</h2>
+                    <p class="mb-2">METERP calls <code>/chat/completions</code>. Grok default is <code>https://api.x.ai/v1</code> and <code>grok-4.6</code>. An X Premium login is not an API key.</p>
+                    <p class="mb-0 text-muted">@deploymentNote</p>
+                </div>
+            </div>
         </div>
     </div>
 }
@@ -118,6 +150,10 @@ else
     private bool _saving;
     private bool _testing;
     private bool effectiveConfigured;
+    private string effectiveSource = "Not configured";
+    private string effectiveMasked = "";
+    private string deploymentNote = "";
+    private string _officeName = "MET Electrical";
 
     private string provider = AiProviderProfiles.Grok;
     private string baseUrl = "";
@@ -130,6 +166,16 @@ else
     private string? testMessage;
     private bool testSuccess;
 
+    private string StatusLabel =>
+        testMessage != null && !testSuccess ? "Error"
+        : effectiveConfigured ? "Configured"
+        : "Not configured";
+
+    private string StatusBadgeClass =>
+        testMessage != null && !testSuccess ? "bg-danger"
+        : effectiveConfigured ? "bg-success"
+        : "bg-warning text-dark";
+
     protected override async Task OnInitializedAsync()
     {
         var settings = await AiSettingsService.GetCurrentTenantSettingsAsync();
@@ -139,22 +185,49 @@ else
         useTenantKey = settings.UseTenantKey;
         maskedKey = settings.MaskedApiKey ?? "(not set)";
         hasStoredKey = settings.HasStoredKey;
-        OnProviderChanged();
+        providerHint = AiProviderProfiles.GetPreset(provider).Hint;
 
+        try
+        {
+            var tenantId = TenantProvider.GetCurrentTenantId();
+            if (tenantId != Guid.Empty)
+            {
+                var tenant = await TenantService.GetByIdAsync(tenantId);
+                var brand = TenantBranding.From(tenant).DisplayName;
+                if (!string.IsNullOrWhiteSpace(brand) && brand != "METERP")
+                    _officeName = brand;
+            }
+        }
+        catch { /* branding is cosmetic */ }
+
+        await RefreshEffectiveAsync();
+        _loading = false;
+    }
+
+    private async Task RefreshEffectiveAsync()
+    {
         var effective = await ConfigResolver.GetEffectiveAsync();
         effectiveConfigured = effective.IsConfigured;
-        _loading = false;
+        effectiveMasked = effective.IsConfigured ? effective.MaskedApiKey : "";
+        effectiveSource = !effective.IsConfigured
+            ? "Not configured"
+            : effective.FromTenantOverride
+                ? "Tenant key"
+                : "Deployment (user-secrets or environment)";
+        deploymentNote = ConfigResolver.IsDeploymentConfigured
+            ? "A deployment key is present. Its value is not shown."
+            : "No deployment key. Ai:ApiKey in user-secrets is empty or whitespace.";
     }
 
     private void OnProviderChanged()
     {
         var preset = AiProviderProfiles.GetPreset(provider);
         providerHint = preset.Hint;
-        if (provider != AiProviderProfiles.Custom)
-        {
-            baseUrl = preset.BaseUrl;
-            model = preset.Model;
-        }
+        if (_loading || provider == AiProviderProfiles.Custom)
+            return;
+
+        baseUrl = preset.BaseUrl;
+        model = preset.Model;
     }
 
     private void ConnectGrok() => ApplyProvider(AiProviderProfiles.Grok);
@@ -178,10 +251,17 @@ else
                 string.IsNullOrWhiteSpace(apiKeyInput) ? null : apiKeyInput);
             apiKeyInput = "";
             var settings = await AiSettingsService.GetCurrentTenantSettingsAsync();
+            provider = settings.Provider;
+            baseUrl = settings.BaseUrl;
+            model = settings.Model;
+            useTenantKey = settings.UseTenantKey;
             maskedKey = settings.MaskedApiKey ?? "(not set)";
             hasStoredKey = settings.HasStoredKey;
-            effectiveConfigured = (await ConfigResolver.GetEffectiveAsync()).IsConfigured;
-            ToastService.ShowSuccess("AI settings saved.");
+            testMessage = null;
+            await RefreshEffectiveAsync();
+            ToastService.ShowSuccess(effectiveConfigured
+                ? "AI settings saved. Copilot can call the provider."
+                : "AI settings saved. Paste a key and test the connection to go live.");
         }
         catch (Exception ex)
         {
@@ -204,6 +284,12 @@ else
                 string.IsNullOrWhiteSpace(apiKeyInput) ? null : apiKeyInput);
             testSuccess = result.Success;
             testMessage = result.Message;
+            await RefreshEffectiveAsync();
+        }
+        catch (Exception ex)
+        {
+            testSuccess = false;
+            testMessage = $"Connection failed: {ex.Message}";
         }
         finally
         {

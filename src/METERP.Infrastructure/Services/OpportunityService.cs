@@ -577,5 +577,43 @@ public class OpportunityService : IOpportunityService
             .ToList();
     }
 
+    public async Task<ProposalQuoteQueueResult> GetUnquotedProposalQueueAsync(
+        int take = 12,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 20);
+        var query = _dbContext.Set<Opportunity>()
+            .AsNoTracking()
+            .Where(o => o.Stage == OpportunityStage.Proposal && o.QuoteId == null);
+
+        var total = await query.CountAsync(ct);
+        var rows = await query
+            .Include(o => o.Customer)
+            .OrderByDescending(o => o.Value)
+            .ThenBy(o => o.Title)
+            .Take(take)
+            .ToListAsync(ct);
+
+        var items = rows
+            .Select(o =>
+            {
+                var customer = o.Customer?.Name ?? o.CustomerName ?? "—";
+                return new ConvertibleDocumentRow(
+                    o.Id,
+                    "Proposal",
+                    o.Title,
+                    customer,
+                    o.Value,
+                    $"/opportunities?open={o.Id:D}");
+            })
+            .ToList();
+
+        return new ProposalQuoteQueueResult
+        {
+            TotalCount = total,
+            Items = items
+        };
+    }
+
     private void InvalidateListCaches() => _cache?.InvalidateCategory(TenantCacheCategories.Opportunities);
 }

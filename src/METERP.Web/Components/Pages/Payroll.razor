@@ -76,9 +76,9 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var e in employees)
+                @foreach (var e in PagedEmployees)
                 {
-                    <tr data-testid="payroll-row">
+                    <tr class="meterp-row-click" data-testid="payroll-row" title="Open payslip" @onclick="() => ViewPayslip(e)">
                         <td>@e.EmployeeNumber</td>
                         <td><strong>@e.Name</strong></td>
                         <td>@(e.JobTitle ?? "Technician")<br /><small>R @e.DefaultHourlyRate.ToString("N0")/hr</small></td>
@@ -88,12 +88,24 @@ else
                         <td class="text-end"><strong>R @e.NetPay.ToString("N2")</strong></td>
                         <td>@e.LaborEntryCount</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" data-testid="payroll-view-payslip" @onclick="() => ViewPayslip(e)">View Payslip</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-testid="payroll-view-payslip" @onclick="() => ViewPayslip(e)" @onclick:stopPropagation="true">View Payslip</button>
                         </td>
                     </tr>
                 }
             </tbody>
         </table>
+        <div class="d-flex align-items-center gap-2 mt-2" data-testid="payroll-pager">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-page-first" disabled="@(_page <= 1)" @onclick="() => GoPage(1)">First</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-page-prev" disabled="@(_page <= 1)" @onclick="() => GoPage(_page - 1)">Previous</button>
+            <span class="small text-muted" data-testid="payroll-page-status">Page @_page / @_totalPages (@employees.Count employees)</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-page-next" disabled="@(_page >= _totalPages)" @onclick="() => GoPage(_page + 1)">Next</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-page-last" disabled="@(_page >= _totalPages)" @onclick="() => GoPage(_totalPages)">Last</button>
+            <select class="form-select form-select-sm w-auto" data-testid="payroll-page-size" value="@_pageSize" @onchange="OnPageSizeSelected">
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
         <p class="small text-muted mb-0">Period: @_periodLabel (UTC). Only labor with a linked employee is included. Deductions: @_deductionPercent% + R @_fixedDeductions.ToString("N0") fixed.</p>
     </div>
 }
@@ -123,6 +135,25 @@ else
 
 @code {
     private List<PayrollEmployeeSummary> employees = new();
+    private int _page = 1;
+    private int _pageSize = 25;
+    private int SafePageSize => _pageSize is 50 or 100 ? _pageSize : 25;
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling(employees.Count / (double)SafePageSize));
+    private IEnumerable<PayrollEmployeeSummary> PagedEmployees =>
+        employees.Skip((_page - 1) * SafePageSize).Take(SafePageSize);
+
+    private void GoPage(int page)
+    {
+        _page = Math.Clamp(page, 1, _totalPages);
+    }
+
+    private void OnPageSizeSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && size is 25 or 50 or 100)
+            _pageSize = size;
+        _page = 1;
+    }
+
     private PayrollEmployeeSummary? selectedEmp;
 
     private void ClosePayslip() => selectedEmp = null;
@@ -166,6 +197,7 @@ else
             var month = ParsePeriodMonth();
             _periodLabel = month.ToString("MMMM yyyy");
             employees = (await PayrollService.GetMonthlySummariesAsync(month, _deductionPercent, _fixedDeductions)).ToList();
+            _page = 1;
             if (showToast && CanManage)
             {
                 var withLabor = employees.Count(e => e.LaborEntryCount > 0);

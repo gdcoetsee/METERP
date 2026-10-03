@@ -46,13 +46,13 @@ else
             <tbody>
                 @foreach (var session in _sessions)
                 {
-                    <tr>
+                    <tr class="meterp-row-click" data-testid="stock-take-row" title="Open stock take" @onclick="() => OpenSession(session.Id)">
                         <td><strong>@session.SessionNumber</strong></td>
                         <td>@((MarkupString)GetStatusBadge(session.Status))</td>
                         <td>@session.StartedAt.ToString("yyyy-MM-dd HH:mm")</td>
                         <td class="text-end">
                             <button type="button" class="btn btn-sm btn-outline-primary"
-                                    @onclick="() => OpenSession(session.Id)">Open</button>
+                                    @onclick="() => OpenSession(session.Id)" @onclick:stopPropagation="true">Open</button>
                         </td>
                     </tr>
                 }

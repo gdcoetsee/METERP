@@ -26,6 +26,45 @@ public class JobEmergencyAndBillingTermsTests
     }
 
     [Fact]
+    public async Task GetAllAsync_UnassignedDivisionOnly_DoesNotInventADivision()
+    {
+        var (service, db, tenantId) = Create();
+        await using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Mine" };
+            var divisionId = Guid.NewGuid();
+            db.Set<Division>().Add(new Division { Id = divisionId, TenantId = tenantId, Code = "JHB", Name = "Johannesburg" });
+            db.Set<Job>().AddRange(
+                new Job
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    JobNumber = "FT1",
+                    Title = "No division",
+                    Status = JobStatus.InProgress
+                },
+                new Job
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    DivisionId = divisionId,
+                    JobNumber = "FT2",
+                    Title = "Has division",
+                    Status = JobStatus.InProgress
+                });
+            db.Set<Customer>().Add(customer);
+            await db.SaveChangesAsync();
+
+            Assert.Equal(1, await service.CountAsync(unassignedDivisionOnly: true));
+            var rows = await service.GetAllAsync(unassignedDivisionOnly: true);
+            var only = Assert.Single(rows);
+            Assert.Equal("FT1", only.JobNumber);
+            Assert.Null(only.DivisionId);
+            Assert.Equal(2, await service.CountAsync());
+        }
+    }
+
+    [Fact]
     public async Task CreateEmergencyAsync_CreatesInProgressJobWithoutQuote()
     {
         var (service, db, tenantId) = Create();

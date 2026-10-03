@@ -495,15 +495,46 @@ public class AiAssistantServiceHttpTests
         tenantService.Verify(s => s.IncrementAiCallCountAsync(tenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task AskCopilotAsync_ReturnsClearError_When_ProviderReturns401()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(s => s.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, EnabledFeatures = "ai" });
+
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+
+        var handler = new StubLlmHandler("{\"error\":{\"message\":\"Incorrect API key\"}}", HttpStatusCode.Unauthorized);
+        using var http = new HttpClient(handler);
+        var service = CreateEnabledService(tenantService.Object, tenantProvider.Object, http);
+
+        var result = await service.AskCopilotAsync("Summarise job FT16010");
+
+        Assert.NotNull(result);
+        Assert.Contains("401", result, StringComparison.Ordinal);
+        Assert.Contains("/settings/ai", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Offline AI Copilot", result, StringComparison.Ordinal);
+        tenantService.Verify(
+            s => s.IncrementAiCallCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private sealed class StubLlmHandler : HttpMessageHandler
     {
         private readonly string _responseBody;
+        private readonly HttpStatusCode _status;
 
-        public StubLlmHandler(string responseBody) => _responseBody = responseBody;
+        public StubLlmHandler(string responseBody, HttpStatusCode status = HttpStatusCode.OK)
+        {
+            _responseBody = responseBody;
+            _status = status;
+        }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(_status)
             {
                 Content = new StringContent(_responseBody, Encoding.UTF8, "application/json")
             };

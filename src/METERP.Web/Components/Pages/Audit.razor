@@ -52,7 +52,7 @@
             <tbody>
                 @foreach (var log in logs)
                 {
-                    <tr data-testid="audit-row">
+                    <tr class="meterp-row-click" data-testid="audit-row" title="Open audit entry" @onclick="() => OpenLog(log)">
                         <td>@log.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
                         <td>@log.UserEmail</td>
                         <td><span class="badge bg-info">@log.Action</span></td>
@@ -65,8 +65,31 @@
     </div>
 </div>
 
+@if (_selected != null)
+{
+    <FormModal IsOpen="true"
+               Title="@($"{_selected.Action} · {_selected.EntityType}")"
+               Size="lg"
+               TestId="audit-detail"
+               OnClose="CloseLog">
+        <ChildContent>
+            <p class="mb-1">When (UTC): <strong>@_selected.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</strong></p>
+            <p class="mb-1">User: @_selected.UserEmail</p>
+            <p class="mb-1">Entity: @_selected.EntityType @_selected.EntityReference</p>
+            <p class="mb-0" style="white-space: pre-wrap;">@(string.IsNullOrWhiteSpace(_selected.Details) ? "—" : _selected.Details)</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseLog">Close</button>
+        </Footer>
+    </FormModal>
+}
+
 @code {
     private List<AuditLogRow> logs = new();
+    private AuditLogRow? _selected;
+
+    private void OpenLog(AuditLogRow log) => _selected = log;
+    private void CloseLog() => _selected = null;
     private string _entityType = "";
     private string _entityReference = "";
     private string _userEmail = "";

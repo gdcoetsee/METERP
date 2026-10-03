@@ -42,8 +42,18 @@ public sealed class TenantNotificationService : ITenantNotificationService
     public async Task<int> GetUnreadCountAsync(CancellationToken ct = default)
     {
         var roles = await GetCurrentUserRolesAsync(ct);
-        var all = await _dbContext.Set<TenantNotification>().AsNoTracking().ToListAsync(ct);
-        return all.Count(n => !n.IsRead && IsVisibleToRoles(n.TargetRoles, roles));
+        var lowered = roles
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(r => r.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        // Count in SQL. Home must not materialise the full notification table (~20k on MET).
+        return await _dbContext.Set<TenantNotification>()
+            .AsNoTracking()
+            .CountAsync(n => !n.IsRead && (
+                n.TargetRoles == "*"
+                || lowered.Any(role => n.TargetRoles.ToLower().Contains(role))), ct);
     }
 
     public async Task CreateAsync(TenantNotification notification, CancellationToken ct = default)

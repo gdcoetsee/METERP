@@ -34,7 +34,7 @@ else
         <div class="list-group" data-testid="field-stock-list">
             @foreach (var req in _recent.Take(5))
             {
-                <div class="list-group-item">
+                <div class="list-group-item meterp-row-click" title="Open requisition" @onclick="() => OpenRecent(req)">
                     <div class="d-flex justify-content-between">
                         <strong>@req.RequisitionNumber</strong>
                         <span class="badge bg-secondary">@req.Status</span>
@@ -47,6 +47,24 @@ else
     </div>
 }
 </div>
+
+@if (_recentDetail != null)
+{
+    <FormModal IsOpen="true" Title="@_recentDetail.RequisitionNumber" TestId="field-stock-detail" OnClose="CloseRecent">
+        <p class="mb-1">Job: <strong>@(_recentDetail.Job?.JobNumber ?? "—")</strong></p>
+        <p class="mb-1">Status: @_recentDetail.Status</p>
+        <p class="mb-2">@(string.IsNullOrWhiteSpace(_recentDetail.Notes) ? "" : _recentDetail.Notes)</p>
+        <ul class="list-group list-group-flush small mb-3">
+            @foreach (var line in _recentDetail.Lines.Where(l => !l.IsDeleted))
+            {
+                <li class="list-group-item px-0">@line.DisplayDescription · @line.QuantityRequested.ToString("N2")</li>
+            }
+        </ul>
+        <div class="d-flex justify-content-end">
+            <button type="button" class="btn btn-outline-secondary" @onclick="CloseRecent">Close</button>
+        </div>
+    </FormModal>
+}
 
 <FormModal IsOpen="_open"
            Title="Stock requisition"
@@ -163,6 +181,10 @@ else
     private List<Job> _jobs = new();
     private List<InventoryItem> _items = new();
     private List<StockRequisition> _recent = new();
+    private StockRequisition? _recentDetail;
+
+    private void OpenRecent(StockRequisition req) => _recentDetail = req;
+    private void CloseRecent() => _recentDetail = null;
     private List<DraftLine> _lines = new();
     private Guid _jobId;
     private Guid _itemId;
@@ -179,7 +201,8 @@ else
         _loading = true;
         try
         {
-            _jobs = (await JobService.GetAllAsync(pageSize: 50)).Where(j => j.IsOpenForOperations()).ToList();
+            if (CurrentUser.UserId is { } userId)
+                _jobs = (await JobService.GetAssignedOpenJobsForUserAsync(userId, take: 50)).ToList();
             _recent = (await RequisitionService.GetAllAsync(pageSize: 10)).ToList();
             await LoadItemsAsync();
             if (Nav.Uri.Contains("new=1", StringComparison.OrdinalIgnoreCase))
