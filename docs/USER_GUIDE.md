@@ -17,8 +17,9 @@ Staff may also use **Continue with Google / Microsoft** when those client IDs ar
 1. **Home** — cash desk: approve, send, convert, invoice, chase, receive, return PPE.
 2. **Quotes** — customer + lines (always a Travel line) → executive approval → Sent → convert to job.
 3. **Command Center** `/jobs/{id}` — labour, materials, travel, invoices. Invoicing does **not** close the job.
-4. **Close** — executive P&L review only. Reopen needs a reason.
-5. **Finance** — pick Sage or Xero and export sales CSV for the bookkeeper.
+4. **Customers** — open a customer for the account statement (invoices, credit notes, receipts, VAT-inclusive balance). Draft, proforma, and cancelled documents are left off.
+5. **Close** — executive P&L review only. Reopen needs a reason.
+6. **Finance** — pick Sage or Xero and export sales CSV for the bookkeeper.
 
 ## Grok Bot
 

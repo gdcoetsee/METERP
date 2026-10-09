@@ -87,6 +87,15 @@ public interface IInvoiceService
 
     Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Account statement for one customer. Null when the customer is not in this tenant.
+    /// Totals are the stored VAT-inclusive amounts. See <see cref="CustomerStatementBuilder"/>.
+    /// </summary>
+    Task<CustomerStatement?> GetCustomerStatementAsync(
+        Guid customerId,
+        DateTime? asOfUtc = null,
+        CancellationToken ct = default);
+
     /// <summary>Draft invoices that have lines and can be marked Sent.</summary>
     Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(int take = 20, CancellationToken ct = default);
 

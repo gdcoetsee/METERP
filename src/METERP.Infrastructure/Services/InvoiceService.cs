@@ -792,6 +792,57 @@ public class InvoiceService : IInvoiceService
             .ToList();
     }
 
+    public async Task<CustomerStatement?> GetCustomerStatementAsync(
+        Guid customerId,
+        DateTime? asOfUtc = null,
+        CancellationToken ct = default)
+    {
+        if (customerId == Guid.Empty)
+            return null;
+
+        var customer = await _dbContext.Set<Customer>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == customerId, ct);
+        if (customer == null)
+            return null;
+
+        var rows = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.CustomerId == customerId)
+            .Select(i => new
+            {
+                i.InvoiceDate,
+                i.DocumentType,
+                i.Status,
+                i.InvoiceNumber,
+                i.Total,
+                i.AmountPaid,
+                i.IsDeleted,
+                Payments = i.Payments.Select(p => new
+                {
+                    p.PaymentDate,
+                    p.Amount,
+                    p.Reference,
+                    p.IsDeleted
+                }).ToList()
+            })
+            .ToListAsync(ct);
+
+        var documents = rows.Select(i => new CustomerStatementDocument(
+            i.InvoiceDate,
+            i.DocumentType,
+            i.Status,
+            i.InvoiceNumber,
+            i.Total,
+            i.AmountPaid,
+            i.IsDeleted,
+            i.Payments
+                .Select(p => new CustomerStatementReceipt(p.PaymentDate, p.Amount, p.Reference, p.IsDeleted))
+                .ToList())).ToList();
+
+        return CustomerStatementBuilder.Build(customer.Id, customer.Name, asOfUtc ?? DateTime.UtcNow, documents);
+    }
+
     public async Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(
         int take = 20,
         CancellationToken ct = default)

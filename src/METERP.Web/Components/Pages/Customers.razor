@@ -9,6 +9,7 @@
 @attribute [Authorize(Policy = "Customers.View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject ICustomerService CustomerService
+@inject IInvoiceService InvoiceService
 @inject ICurrentUserService CurrentUserService
 @inject IJSRuntime JS
 @inject ToastService ToastService
@@ -201,7 +202,7 @@ else
 {
     <FormModal IsOpen="true"
                Title="@($"{selectedCustomer.Name} — contacts")"
-               Size="lg"
+               Size="xl"
                TestId="customer-detail"
                CloseOnBackdrop="false"
                OnClose="CloseCustomerView">
@@ -210,6 +211,64 @@ else
                 <strong>Details:</strong> @selectedCustomer.Phone | @selectedCustomer.Email<br />
                 @selectedCustomer.AddressLine1, @selectedCustomer.City
             </div>
+
+            @if (CanViewInvoices)
+            {
+                <h6>Account statement</h6>
+                @if (_statementLoading)
+                {
+                    <p class="text-muted" data-testid="customer-statement-loading">Loading statement…</p>
+                }
+                else if (_statement == null)
+                {
+                    <p class="text-muted" data-testid="customer-statement-missing">Statement unavailable.</p>
+                }
+                else
+                {
+                    <p class="small text-muted mb-2" data-testid="customer-statement">
+                        As at @_statement.AsOf.ToString("yyyy-MM-dd"). Amounts are VAT-inclusive.
+                        Draft, proforma, and cancelled documents are left off.
+                    </p>
+                    @if (_statement.Lines.Count == 0)
+                    {
+                        <p data-testid="customer-statement-empty">No invoices, credit notes, or receipts.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive mb-2">
+                            <table class="table table-sm mb-0" data-testid="customer-statement-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Type</th>
+                                        <th>Reference</th>
+                                        <th class="text-end">Debit</th>
+                                        <th class="text-end">Credit</th>
+                                        <th class="text-end">Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in _statement.Lines)
+                                    {
+                                        <tr>
+                                            <td>@line.Date.ToString("yyyy-MM-dd")</td>
+                                            <td>@line.Kind</td>
+                                            <td title="@line.Detail">@line.Reference</td>
+                                            <td class="text-end">@Money(line.Debit)</td>
+                                            <td class="text-end">@Money(line.Credit)</td>
+                                            <td class="text-end">@InvoiceCreditConvention.FormatCustomerBalance(line.RunningBalance)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    <p class="mb-3">
+                        <strong>Balance</strong>
+                        <span data-testid="customer-statement-balance">@_statement.ClosingBalanceDisplay</span>
+                    </p>
+                }
+            }
 
             <h6>Contacts (@selectedCustomer.Contacts.Count)</h6>
 
@@ -284,6 +343,8 @@ else
     private List<Customer> customers = new();
     private Customer currentCustomer = new();
     private Customer? selectedCustomer;
+    private CustomerStatement? _statement;
+    private bool _statementLoading;
     private bool showForm;
     private bool isEditing;
     private bool showContactForm;
@@ -296,6 +357,10 @@ else
     private readonly ComponentAsyncGate _dataGate = new();
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.CustomersManage);
+
+    private bool CanViewInvoices => CurrentUserService.Permissions.Contains(Permissions.InvoicesView);
+
+    private static string Money(decimal amount) => amount == 0m ? "" : $"R {amount:N2}";
 
     [SupplyParameterFromQuery(Name = "search")]
     public string? QuerySearch { get; set; }
@@ -420,6 +485,23 @@ else
         selectedCustomer = await CustomerService.GetByIdAsync(customer.Id);
         showForm = false;
         showContactForm = false;
+        _statement = null;
+        if (selectedCustomer == null || !CanViewInvoices)
+            return;
+
+        _statementLoading = true;
+        try
+        {
+            _statement = await InvoiceService.GetCustomerStatementAsync(selectedCustomer.Id);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _statementLoading = false;
+        }
     }
 
     private void CloseCustomerView()
@@ -427,6 +509,8 @@ else
         selectedCustomer = null;
         editingContact = null;
         showContactForm = false;
+        _statement = null;
+        _statementLoading = false;
     }
 
     private void ShowAddContactForm()
