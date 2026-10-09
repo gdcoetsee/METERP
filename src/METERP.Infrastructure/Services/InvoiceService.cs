@@ -507,7 +507,24 @@ public class InvoiceService : IInvoiceService
         return saved;
     }
 
-    public async Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default)
+    public Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default) =>
+        CreateCreditNoteCoreAsync(sourceInvoiceId, reason, partial: false, inclusiveAmount: null, percentOfTotal: null, ct);
+
+    public Task<Invoice> CreatePartialCreditNoteAsync(
+        Guid sourceInvoiceId,
+        string reason,
+        decimal? inclusiveAmount,
+        decimal? percentOfTotal,
+        CancellationToken ct = default) =>
+        CreateCreditNoteCoreAsync(sourceInvoiceId, reason, partial: true, inclusiveAmount, percentOfTotal, ct);
+
+    private async Task<Invoice> CreateCreditNoteCoreAsync(
+        Guid sourceInvoiceId,
+        string reason,
+        bool partial,
+        decimal? inclusiveAmount,
+        decimal? percentOfTotal,
+        CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(reason))
             throw new InvalidOperationException("A reason is required for a credit note.");
@@ -551,6 +568,16 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException(
                 "Cannot create a credit note — customer is missing or deleted.");
 
+        decimal? pinnedSubtotal = null;
+        decimal? pinnedTax = null;
+        if (partial)
+        {
+            var inclusive = ResolvePartialCreditAmount(source, inclusiveAmount, percentOfTotal);
+            var (subtotal, tax) = InvoiceBillingCalculator.SplitVatInclusive(inclusive, source.TaxRate);
+            pinnedSubtotal = subtotal;
+            pinnedTax = tax;
+        }
+
         if (tenantId == Guid.Empty)
             tenantId = source.TenantId;
         if (_quotaService != null && tenantId != Guid.Empty)
@@ -566,7 +593,9 @@ public class InvoiceService : IInvoiceService
             DocumentType = InvoiceDocumentType.CreditNote,
             CreditNoteForInvoiceId = source.Id,
             TaxRate = source.TaxRate,
-            Notes = $"Credit for {source.InvoiceNumber}: {reason.Trim()}"
+            Notes = partial
+                ? $"Credit for {source.InvoiceNumber}: {reason} (R {Math.Round(pinnedSubtotal!.Value + pinnedTax!.Value, 2, MidpointRounding.AwayFromZero):N2} incl. VAT)"
+                : $"Credit for {source.InvoiceNumber}: {reason}"
         };
 
         creditNote.InvoiceNumber = _documentSequence != null
@@ -575,17 +604,32 @@ public class InvoiceService : IInvoiceService
 
         _dbContext.Set<Invoice>().Add(creditNote);
 
-        foreach (var line in source.Lines.Where(l => !l.IsDeleted))
+        if (partial)
         {
             _dbContext.Set<InvoiceLine>().Add(new InvoiceLine
             {
                 InvoiceId = creditNote.Id,
-                Description = $"Credit: {line.Description}",
-                Quantity = Math.Abs(line.Quantity),
-                UnitPrice = Math.Abs(line.UnitPrice),
-                Unit = line.Unit,
-                LineType = line.LineType
+                Description = $"Credit: {reason}",
+                Quantity = 1m,
+                UnitPrice = pinnedSubtotal!.Value,
+                Unit = "each",
+                LineType = "Credit"
             });
+        }
+        else
+        {
+            foreach (var line in source.Lines.Where(l => !l.IsDeleted))
+            {
+                _dbContext.Set<InvoiceLine>().Add(new InvoiceLine
+                {
+                    InvoiceId = creditNote.Id,
+                    Description = $"Credit: {line.Description}",
+                    Quantity = Math.Abs(line.Quantity),
+                    UnitPrice = Math.Abs(line.UnitPrice),
+                    Unit = line.Unit,
+                    LineType = line.LineType
+                });
+            }
         }
 
         await _dbContext.SaveChangesAsync(ct);
@@ -595,26 +639,35 @@ public class InvoiceService : IInvoiceService
             return creditNote;
 
         saved.RecalculateTotals();
+        if (partial)
+        {
+            // RecalculateTotals rounds net × rate. The office typed a gross amount, so the split wins.
+            saved.Subtotal = pinnedSubtotal!.Value;
+            saved.Tax = pinnedTax!.Value;
+            saved.Total = Math.Round(pinnedSubtotal.Value + pinnedTax.Value, 2, MidpointRounding.AwayFromZero);
+        }
+
         await _dbContext.SaveChangesAsync(ct);
         InvalidateListCaches();
 
         if (_auditService != null)
         {
-            await _auditService.LogAsync(
-                "CREATE",
-                "Invoice",
-                saved.InvoiceNumber,
-                $"Credit note for {source.InvoiceNumber}: {reason}",
-                ct);
+            var detail = partial
+                ? $"Partial credit note for {source.InvoiceNumber}: R {saved.Total:N2} incl. VAT. {reason}"
+                : $"Credit note for {source.InvoiceNumber}: {reason}";
+            await _auditService.LogAsync("CREATE", "Invoice", saved.InvoiceNumber, detail, ct);
         }
 
         if (_notifications != null)
         {
+            var message = partial
+                ? $"{source.InvoiceNumber} credited R {saved.Total:N2} incl. VAT (ex-VAT R {saved.Subtotal:N2}, VAT R {saved.Tax:N2}): {reason}. Stored as a positive credit note. It reduces the customer balance once issued."
+                : $"{source.InvoiceNumber} credited (R {Math.Abs(saved.Total):N0}): {reason}. Stored as a positive credit note and reduces the customer balance.";
             await _notifications.CreateAsync(new TenantNotification
             {
                 TenantId = saved.TenantId,
                 Title = $"Credit note {saved.InvoiceNumber} for {source.InvoiceNumber}",
-                Message = $"{source.InvoiceNumber} credited (R {Math.Abs(saved.Total):N0}): {reason}. Stored as a positive credit note and reduces the customer balance.",
+                Message = message,
                 Category = "collections",
                 TargetRoles = "Admin,Executive,Finance",
                 RelatedEntityId = saved.Id,
@@ -623,6 +676,43 @@ public class InvoiceService : IInvoiceService
         }
 
         return saved;
+    }
+
+    /// <summary>
+    /// VAT-inclusive amount to credit. Percent is of the source total. The ceiling is the source balance due.
+    /// </summary>
+    private static decimal ResolvePartialCreditAmount(Invoice source, decimal? inclusiveAmount, decimal? percentOfTotal)
+    {
+        var hasAmount = inclusiveAmount.HasValue;
+        var hasPercent = percentOfTotal.HasValue;
+        if (hasAmount && hasPercent)
+            throw new InvalidOperationException("Enter either a VAT-inclusive amount or a percent, not both.");
+        if (!hasAmount && !hasPercent)
+            throw new InvalidOperationException("Enter a VAT-inclusive amount or a percent of the invoice total.");
+
+        decimal amount;
+        if (hasPercent)
+        {
+            var percent = percentOfTotal!.Value;
+            if (percent <= 0m || percent > 100m)
+                throw new InvalidOperationException("Credit percent must be greater than 0 and at most 100.");
+
+            amount = Math.Round(source.Total * percent / 100m, 2, MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            amount = Math.Round(inclusiveAmount!.Value, 2, MidpointRounding.AwayFromZero);
+        }
+
+        if (amount <= 0m)
+            throw new InvalidOperationException("Credit amount must be greater than zero.");
+
+        var balanceDue = InvoiceBillingCalculator.CalculateBalanceDue(source.Total, source.AmountPaid);
+        if (amount > balanceDue)
+            throw new InvalidOperationException(
+                $"Credit amount R {amount:N2} exceeds the source balance due of R {balanceDue:N2}.");
+
+        return amount;
     }
 
     public async Task<Invoice> IssueCreditNoteAsync(Guid creditNoteId, CancellationToken ct = default)

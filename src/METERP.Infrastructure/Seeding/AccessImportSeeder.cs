@@ -98,15 +98,8 @@ public static class AccessImportSeeder
             : 0m;
     }
 
-    public static (decimal Subtotal, decimal Tax) SplitVatInclusive(decimal total, decimal rate = VatRate)
-    {
-        if (total == 0 || rate <= 0)
-            return (total, 0m);
-
-        var subtotal = Math.Round(total / (1 + rate), 2, MidpointRounding.AwayFromZero);
-        var tax = Math.Round(total - subtotal, 2, MidpointRounding.AwayFromZero);
-        return (subtotal, tax);
-    }
+    public static (decimal Subtotal, decimal Tax) SplitVatInclusive(decimal total, decimal rate = VatRate) =>
+        InvoiceBillingCalculator.SplitVatInclusive(total, rate);
 
     public static DateTime? ParseDate(string? raw)
     {

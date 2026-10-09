@@ -80,6 +80,19 @@ public interface IInvoiceService
     Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default);
 
     /// <summary>
+    /// Credits a VAT-inclusive rand amount, or a percent of the source total, as one line.
+    /// Split with <see cref="InvoiceBillingCalculator.SplitVatInclusive"/> at the source tax rate.
+    /// Refuses an amount above the source balance due. Reason rules match a full credit note.
+    /// Amount and percent are mutually exclusive. A full-invoice credit still uses <see cref="CreateCreditNoteAsync"/>.
+    /// </summary>
+    Task<Invoice> CreatePartialCreditNoteAsync(
+        Guid sourceInvoiceId,
+        string reason,
+        decimal? inclusiveAmount,
+        decimal? percentOfTotal,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Marks a draft credit note as <see cref="InvoiceStatus.Sent"/> so it reduces the customer statement.
     /// Totals are unchanged. Refuses a proforma, a cancelled invoice, and a credit note whose source is
     /// another credit note, a proforma, or a cancelled invoice. Tenant-scoped. Does not require an email.

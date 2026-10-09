@@ -16,6 +16,20 @@ public static class InvoiceBillingCalculator
     public static decimal CalculateBalanceDue(decimal total, decimal amountPaid) =>
         Math.Max(0m, Math.Round(total - amountPaid, 2));
 
+    /// <summary>
+    /// Splits a VAT-inclusive rand amount into ex-VAT and VAT.
+    /// Access totals were split once this way. The office figure stays the gross amount.
+    /// </summary>
+    public static (decimal Subtotal, decimal Tax) SplitVatInclusive(decimal total, decimal rate = 0.15m)
+    {
+        if (total == 0 || rate <= 0)
+            return (total, 0m);
+
+        var subtotal = Math.Round(total / (1 + rate), 2, MidpointRounding.AwayFromZero);
+        var tax = Math.Round(total - subtotal, 2, MidpointRounding.AwayFromZero);
+        return (subtotal, tax);
+    }
+
     public static decimal CalculateNetCollectable(decimal total, decimal retentionAmount, decimal amountPaid) =>
         Math.Max(0m, Math.Round(total - retentionAmount - amountPaid, 2));
 

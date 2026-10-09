@@ -547,6 +547,32 @@ else
                         <button type="button" class="btn btn-sm btn-outline-warning" @onclick="CreateCreditNoteAsync" data-testid="invoice-create-credit-note">Create credit note</button>
                     }
                 </div>
+                @if (selectedInvoice.DocumentType != InvoiceDocumentType.CreditNote && selectedInvoice.DocumentType != InvoiceDocumentType.Proforma)
+                {
+                    <div class="border rounded p-3 mt-3" data-testid="invoice-partial-credit">
+                        <div class="small text-muted mb-2">
+                            Credit part of this invoice. The amount is VAT-inclusive (R 115.00 at 15% stores R 100.00 ex-VAT and R 15.00 VAT).
+                            Enter an amount or a percent, not both. Balance due R @selectedInvoice.BalanceDue.ToString("N2").
+                        </div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small">Reason</label>
+                                <InputText class="form-control form-control-sm" @bind-Value="_creditReason" data-testid="invoice-credit-reason" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Amount incl. VAT</label>
+                                <InputNumber class="form-control form-control-sm" @bind-Value="_creditAmount" step="0.01" data-testid="invoice-credit-amount" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Or percent</label>
+                                <InputNumber class="form-control form-control-sm" @bind-Value="_creditPercent" step="0.01" data-testid="invoice-credit-percent" />
+                            </div>
+                            <div class="col-md-3">
+                                <button type="button" class="btn btn-sm btn-outline-warning w-100" @onclick="CreatePartialCreditNoteAsync" data-testid="invoice-create-partial-credit">Credit this amount</button>
+                            </div>
+                        </div>
+                    </div>
+                }
                 <div class="mt-4">
                     <strong>Update Status:</strong>
                     <div class="btn-group mt-1" role="group">
@@ -583,6 +609,9 @@ else
     private bool _unlinkedOnly;
     private bool _unlinkedCreditsOnly;
     private string _parentInvoiceNumber = "";
+    private string _creditReason = "";
+    private decimal? _creditAmount;
+    private decimal? _creditPercent;
     private string _linkJobSearch = string.Empty;
     private List<Job> _linkCandidates = new();
     private bool _linkSearched;
@@ -766,6 +795,9 @@ else
         selectedInvoice = await InvoiceService.GetByIdAsync(inv.Id);
         _linkJobSearch = InvoiceLegacyRef.TryReadTrfId(selectedInvoice?.Notes) ?? "";
         _parentInvoiceNumber = "";
+        _creditReason = "";
+        _creditAmount = null;
+        _creditPercent = null;
         _linkCandidates = new();
         _linkSearched = false;
         _payments = selectedInvoice != null
@@ -1016,6 +1048,26 @@ else
         {
             var cn = await InvoiceService.CreateCreditNoteAsync(selectedInvoice.Id, "Credit note via Invoices UI");
             ToastService.ShowSuccess($"Credit note {cn.InvoiceNumber} created.");
+            await LoadInvoices();
+            await ViewInvoice(cn);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task CreatePartialCreditNoteAsync()
+    {
+        if (selectedInvoice == null) return;
+        try
+        {
+            var cn = await InvoiceService.CreatePartialCreditNoteAsync(
+                selectedInvoice.Id,
+                _creditReason,
+                _creditAmount,
+                _creditPercent);
+            ToastService.ShowSuccess($"Credit note {cn.InvoiceNumber} created for R {cn.Total:N2} incl. VAT.");
             await LoadInvoices();
             await ViewInvoice(cn);
         }

@@ -23,6 +23,34 @@ public class InvoiceBillingCalculatorTests
     }
 
     [Fact]
+    public void SplitVatInclusive_115At15Percent_Is100And15()
+    {
+        var split = InvoiceBillingCalculator.SplitVatInclusive(115m, 0.15m);
+        Assert.Equal(100m, split.Subtotal);
+        Assert.Equal(15m, split.Tax);
+    }
+
+    [Fact]
+    public void SplitVatInclusive_230At15Percent_MatchesAccessImport()
+    {
+        var split = InvoiceBillingCalculator.SplitVatInclusive(230m);
+        Assert.Equal(200m, split.Subtotal);
+        Assert.Equal(30m, split.Tax);
+    }
+
+    [Fact]
+    public void SplitVatInclusive_ZeroRateOrZeroTotal_KeepsTheGross()
+    {
+        var noRate = InvoiceBillingCalculator.SplitVatInclusive(115m, 0m);
+        Assert.Equal(115m, noRate.Subtotal);
+        Assert.Equal(0m, noRate.Tax);
+
+        var zero = InvoiceBillingCalculator.SplitVatInclusive(0m, 0.15m);
+        Assert.Equal(0m, zero.Subtotal);
+        Assert.Equal(0m, zero.Tax);
+    }
+
+    [Fact]
     public void DerivePaymentStatus_MarksPaidWhenFullyPaid()
     {
         var status = InvoiceBillingCalculator.DerivePaymentStatus(
