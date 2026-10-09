@@ -295,7 +295,18 @@ else
                     <div>Paid: R @selectedInvoice.AmountPaid.ToString("N2") · Balance: <strong>@InvoiceCreditConvention.FormatDocumentBalance(selectedInvoice.DocumentType, selectedInvoice.BalanceDue)</strong></div>
                     @if (selectedInvoice.DocumentType == InvoiceDocumentType.CreditNote)
                     {
-                        <div class="small text-muted">Credit note — stored as a positive total and shown as a credit. It reduces the customer balance.</div>
+                        @if (selectedInvoice.Status == InvoiceStatus.Draft)
+                        {
+                            <div class="small text-muted">Draft credit note — it does not reduce the customer balance until it is issued.</div>
+                        }
+                        else if (selectedInvoice.Status == InvoiceStatus.Cancelled)
+                        {
+                            <div class="small text-muted">Cancelled credit note — it does not reduce the customer balance.</div>
+                        }
+                        else
+                        {
+                            <div class="small text-muted">Credit note — stored as a positive total and shown as a credit. It reduces the customer balance.</div>
+                        }
                     }
                     @if (selectedInvoice.RetentionAmount > 0)
                     {
@@ -320,7 +331,7 @@ else
                     else
                     {
                         <span class="badge bg-warning text-dark" data-testid="invoice-unlinked-credit">Unlinked credit note</span>
-                        <p class="small text-muted mb-2 mt-2">No parent invoice is linked. This credit still reduces the customer balance.</p>
+                        <p class="small text-muted mb-2 mt-2">No parent invoice is linked. Once issued, this credit reduces the customer balance.</p>
                         @if (UserCanManage)
                         {
                             <div class="input-group input-group-sm">
@@ -329,6 +340,11 @@ else
                                 <button type="button" class="btn btn-outline-primary" data-testid="invoice-credit-parent-link" @onclick="LinkCreditParentAsync">Link parent</button>
                             </div>
                         }
+                    }
+                    @if (UserCanManage && selectedInvoice.Status == InvoiceStatus.Draft)
+                    {
+                        <p class="small text-muted mb-2 mt-2">Issue this draft so the VAT-inclusive credit reduces what the customer owes.</p>
+                        <button type="button" class="btn btn-sm btn-warning" data-testid="invoice-issue-credit-note" @onclick="IssueCreditNoteAsync">Issue credit note</button>
                     }
                 </div>
             }
@@ -1002,6 +1018,24 @@ else
             ToastService.ShowSuccess($"Credit note {cn.InvoiceNumber} created.");
             await LoadInvoices();
             await ViewInvoice(cn);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task IssueCreditNoteAsync()
+    {
+        if (selectedInvoice == null) return;
+        try
+        {
+            var issued = await InvoiceService.IssueCreditNoteAsync(selectedInvoice.Id);
+            ToastService.ShowSuccess($"Credit note {issued.InvoiceNumber} issued. The customer balance now includes this credit.");
+            await LoadInvoices();
+            var refreshed = await InvoiceService.GetByIdAsync(issued.Id);
+            if (refreshed != null)
+                await ViewInvoice(refreshed);
         }
         catch (Exception ex)
         {

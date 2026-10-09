@@ -625,6 +625,77 @@ public class InvoiceService : IInvoiceService
         return saved;
     }
 
+    public async Task<Invoice> IssueCreditNoteAsync(Guid creditNoteId, CancellationToken ct = default)
+    {
+        var credit = await _dbContext.Set<Invoice>()
+            .Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == creditNoteId, ct);
+
+        if (credit == null)
+            throw new InvalidOperationException("Credit note not found.");
+
+        if (credit.Status == InvoiceStatus.Cancelled)
+            throw new InvalidOperationException("Cannot issue a credit note from a cancelled invoice.");
+
+        if (credit.DocumentType == InvoiceDocumentType.Proforma)
+            throw new InvalidOperationException("Cannot issue a credit note from a proforma.");
+
+        if (credit.DocumentType != InvoiceDocumentType.CreditNote)
+            throw new InvalidOperationException("Only a draft credit note can be issued.");
+
+        if (credit.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException("Only a draft credit note can be issued.");
+
+        if (!credit.Lines.Any(l => !l.IsDeleted))
+            throw new InvalidOperationException("Cannot issue a credit note with no lines.");
+
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? Guid.Empty;
+        if (tenantId == Guid.Empty)
+            tenantId = credit.TenantId;
+
+        var customerOk = await _dbContext.Set<Customer>()
+            .AsNoTracking()
+            .AnyAsync(c => c.Id == credit.CustomerId, ct);
+        if (!customerOk)
+            throw new InvalidOperationException("Cannot issue a credit note — customer is missing or deleted.");
+
+        if (credit.CreditNoteForInvoiceId is Guid parentId)
+        {
+            var source = await _dbContext.Set<Invoice>()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == parentId && !i.IsDeleted, ct);
+
+            if (source == null || source.TenantId != tenantId)
+                throw new InvalidOperationException("Cannot issue a credit note — source invoice is missing.");
+
+            if (source.DocumentType == InvoiceDocumentType.CreditNote)
+                throw new InvalidOperationException("Cannot issue a credit note from another credit note.");
+
+            if (source.DocumentType == InvoiceDocumentType.Proforma)
+                throw new InvalidOperationException("Cannot issue a credit note from a proforma.");
+
+            if (source.Status == InvoiceStatus.Cancelled)
+                throw new InvalidOperationException("Cannot issue a credit note from a cancelled invoice.");
+        }
+
+        credit.Status = InvoiceStatus.Sent;
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "ISSUE",
+                "Invoice",
+                credit.InvoiceNumber,
+                $"Issued credit note {credit.InvoiceNumber}, VAT-inclusive R {Math.Abs(credit.Total):N2}",
+                ct);
+        }
+
+        return credit;
+    }
+
     public async Task<IReadOnlyList<InvoicePayment>> GetPaymentsAsync(Guid invoiceId, CancellationToken ct = default)
     {
         return await _dbContext.Set<InvoicePayment>()
@@ -1365,6 +1436,14 @@ public class InvoiceService : IInvoiceService
         if (newStatus == InvoiceStatus.Sent
             && !invoice.Lines.Any(l => !l.IsDeleted))
             throw new InvalidOperationException("Cannot send an invoice with no lines.");
+
+        // A credit note is issued onto the account. It must not wait on a customer email,
+        // and it must re-check the source document before it reduces the statement.
+        if (newStatus == InvoiceStatus.Sent && invoice.DocumentType == InvoiceDocumentType.CreditNote)
+        {
+            await IssueCreditNoteAsync(invoiceId, ct);
+            return;
+        }
 
         Customer? sentTo = null;
         if (newStatus == InvoiceStatus.Sent)
