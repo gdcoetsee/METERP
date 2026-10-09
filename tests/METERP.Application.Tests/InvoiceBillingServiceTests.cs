@@ -245,7 +245,7 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
-    public async Task CreateCreditNoteAsync_CreatesNegativeLines()
+    public async Task CreateCreditNoteAsync_StoresPositiveLines()
     {
         var (service, db, tenantId) = Create();
         await using (db)
@@ -276,7 +276,13 @@ public class InvoiceBillingServiceTests
             var creditNote = await service.CreateCreditNoteAsync(source.Id, "Rework credit");
 
             Assert.Equal(InvoiceDocumentType.CreditNote, creditNote.DocumentType);
-            Assert.True(creditNote.Lines.All(l => l.UnitPrice < 0));
+            Assert.NotEmpty(creditNote.Lines);
+            Assert.All(creditNote.Lines, line =>
+            {
+                Assert.True(line.Quantity > 0);
+                Assert.True(line.UnitPrice > 0);
+            });
+            Assert.True(creditNote.Total > 0);
             Assert.Equal(source.Id, creditNote.CreditNoteForInvoiceId);
         }
     }
@@ -450,9 +456,11 @@ public class InvoiceBillingServiceTests
             });
             await db.SaveChangesAsync();
 
-            var credit = await service.CreateCreditNoteAsync(source.Id, new string('R', 500));
+            var reason = new string('R', 500);
+            var credit = await service.CreateCreditNoteAsync(source.Id, reason);
             Assert.Equal(InvoiceDocumentType.CreditNote, credit.DocumentType);
-            Assert.Equal(500, credit.Notes!.Length);
+            Assert.Equal($"Credit for INV-CN-OK: {reason}", credit.Notes);
+            Assert.Equal(500, reason.Length);
         }
     }
 

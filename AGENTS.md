@@ -1,3 +1,12 @@
+## MET DATA RULES (Greg, 9 Oct 2026)
+
+- METERP_Dev and the MET tenant hold real, Access-derived data only.
+- Never seed, insert or patch dummy/Acme/E2E/demo data into METERP_Dev or the MET tenant.
+- Demo/E2E seeders run only when explicitly enabled (METERP_SEED_DEMO=true) for a separate CI/demo database.
+- Real data comes only from the one-way Access import (upsert-only loaders). Access (.accdb) is strictly read-only.
+- Never wipe, drop or reset the database (no METERP_SEED_RESET, no EnsureDeleted, no DROP DATABASE).
+- Commit and push each successful change; never force-push; never commit secrets/.env/_helm_walk/override files.
+
 # METERP — Agent Instructions
 
 Read this file first when starting work in this repository.
@@ -6,7 +15,7 @@ Read this file first when starting work in this repository.
 
 **METERP** is a **sellable, multi-tenant ERP for contractors** (field/project businesses: quotes, jobs, travel, invoicing, inventory, assets). It must work as:
 
-1. **A demo product** — polished UI, seeded Acme tenant, docker-compose one-command run.
+1. **A demo product** — polished UI. An Acme tenant and other demo fixtures are seeded only when `METERP_SEED_DEMO=true` (or `Seed:Demo=true`) on a separate CI/demo database. docker-compose does not seed by default.
 2. **A SaaS foundation** — per-tenant isolation, usage counters, feature flags, white-label CSS, billing hooks.
 
 This is **not** a throwaway prototype. Prefer changes that strengthen correctness, tenant safety, and sellability.
@@ -68,8 +77,10 @@ Supporting modules: Customers/Contacts, Inventory, Purchase Orders, Suppliers, A
 - `LineTotal` on `QuoteLine`, `SalesOrderLine`, `PurchaseOrderLine`, `InvoiceLine` is **computed**, not manually set in UI/services.
 
 ### Seeding
-- Seeder is **safe by default** (migrate + seed missing data only).
-- Full reset requires `METERP_SEED_RESET=true` — do not reintroduce auto-`EnsureDeleted` on startup.
+- Startup applies migrations only. Demo/E2E rows (Acme tenant, demo users, jobs, invoices, and the MET FY demo profile) are inserted only when `METERP_SEED_DEMO=true` or `Seed:Demo=true` on a separate CI/demo database.
+- Never seed into `METERP_Dev` or the MET tenant.
+- `METERP_SEED_RESET` / `Seed:ForceResetOnStart` is ignored unless demo seed is also on and the database name is not `METERP_Dev`. Do not reintroduce auto-`EnsureDeleted` on startup.
+- Access import, customer-contact backfill, and credit-note link passes run only when `METERP_STARTUP_BACKFILL=true` (or `Seed:StartupBackfill=true`).
 
 ### Commercial / sellable
 - Increment tenant usage counters in services when creating quotes, jobs, invoices, AI calls.
@@ -91,9 +102,9 @@ dotnet run --project src/METERP.Web
 
 | Item | Value |
 |------|-------|
-| Demo login | MET office: `admin@met.demo` / `Demo123!` (`METERP_SEED_E2E=false`). Automated tests: `admin@acme.demo` / `Demo123!`. Portal: `portal@met.demo` / `Demo123!`. |
+| Demo login | Only after `METERP_SEED_DEMO=true` on a separate CI/demo database. MET office shape (`METERP_SEED_E2E=false` or `Seed:Profile=MET`): `admin@met.demo` / `Demo123!`, portal `portal@met.demo` / `Demo123!`. Acme/E2E shape: `admin@acme.demo` / `Demo123!`. |
 | AI features | Require `Ai:ApiKey` in config/secrets |
-| DB reset | Set `METERP_SEED_RESET=true` in web service env |
+| DB reset | Ignored unless `METERP_SEED_DEMO=true` and the database is not `METERP_Dev`. Never reset `METERP_Dev`. |
 
 ## Testing expectations
 

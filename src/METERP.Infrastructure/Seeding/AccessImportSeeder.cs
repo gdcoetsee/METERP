@@ -62,9 +62,20 @@ public static class AccessImportSeeder
         if (chosen == null)
             return Path.GetFullPath(Path.Combine(contentRoot, "..", "..", "_helm_walk", "seed_fy2026"));
 
-        return Path.IsPathRooted(chosen)
-            ? Path.GetFullPath(chosen)
-            : Path.GetFullPath(Path.Combine(contentRoot, chosen));
+        // Drive-letter paths (D:\extracts) stay absolute when the process is on Linux.
+        // Path.IsPathRooted treats them as relative there and would join them onto the content root.
+        if (Path.IsPathRooted(chosen) || IsWindowsDrivePath(chosen))
+            return Path.GetFullPath(chosen);
+
+        return Path.GetFullPath(Path.Combine(contentRoot, chosen));
+    }
+
+    internal static bool IsWindowsDrivePath(string path)
+    {
+        if (path.Length < 3 || !char.IsLetter(path[0]) || path[1] != ':')
+            return false;
+
+        return path[2] is '\\' or '/';
     }
 
     public static string NormalizeName(string? value)

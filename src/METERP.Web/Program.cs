@@ -531,9 +531,8 @@ builder.Services.AddAuthorization(options =>
         policy.RequireClaim("Permission", Permissions.CompanyDocsManage, Permissions.TenantsManage));
 });
 
-// For development/demo only: ensure DB + seed data (idempotent by default).
-// Safe by default (no destructive drops). Use METERP_SEED_RESET=true or config "Seed:ForceResetOnStart" for full reset after schema work.
-// In production, disable the seeder (comment out or gate behind environment).
+// Migrations always run outside Testing. Demo rows require METERP_SEED_DEMO=true (or Seed:Demo=true)
+// on a separate CI/demo database. Reset is ignored unless that flag is also on and the database is not METERP_Dev.
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<DatabaseSeeder>();
 
@@ -616,10 +615,10 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
     ResponseWriter = HealthChecks.UI.Client.UIResponseWriter.WriteHealthCheckUIResponse
 }).DisableRateLimiting();
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() && SeedProfileGates.IsDemoSeedEnabled(app.Configuration))
 {
     // MET FY restarts must not reinsert Hospital / Mining / E2E fixtures through these hooks.
-    // Pool clear, beta 2FA, and email capture stay available. Default (E2E unset) still serves CI.
+    // Pool clear, beta 2FA, and email capture stay available when demo seed is explicitly on.
     app.Use(async (context, next) =>
     {
         var path = context.Request.Path;
@@ -896,6 +895,23 @@ if (app.Environment.IsDevelopment())
         return Results.Ok(new { ok = true });
     }).DisableRateLimiting();
 }
+else
+{
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/e2e"))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "E2E fixture endpoints are disabled. Set METERP_SEED_DEMO=true or Seed:Demo=true on a separate CI/demo database."
+            });
+            return;
+        }
+
+        await next();
+    });
+}
 
 app.MapPost("/webhooks/stripe", async (
     HttpContext httpContext,
@@ -1087,24 +1103,45 @@ public class DatabaseSeeder : IHostedService
 
         var env = scope.ServiceProvider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>();
 
-        // === Seeding strategy (Runnable & Demo-Ready) ===
-        // By default: safe mode — just Migrate + seed missing data only. Never destructive on normal starts.
-        // For major schema changes after code edits: set METERP_SEED_RESET=true (env var) or "Seed:ForceResetOnStart": true in config.
-        // This keeps everyday `dotnet run` or docker-compose starts fast and non-destructive while preserving the powerful reset option.
-        bool forceReset = string.Equals(Environment.GetEnvironmentVariable("METERP_SEED_RESET"), "true", StringComparison.OrdinalIgnoreCase)
-                       || config.GetValue<bool>("Seed:ForceResetOnStart");
+        // Migrations always. Demo tenants/users/documents only when METERP_SEED_DEMO=true (or Seed:Demo).
+        // Access import, customer enrich, and credit-note links only when METERP_STARTUP_BACKFILL=true.
+        // Reset only when demo seed is also on, the database name is known, and it is not METERP_Dev.
+        var demoSeed = SeedProfileGates.IsDemoSeedEnabled(config);
+        var startupBackfill = SeedProfileGates.IsStartupBackfillEnabled(config);
+        var resetRequested = SeedProfileGates.IsResetRequested(config);
 
-        // Dev-only robust reset (only when explicitly requested)
-        if (forceReset && (env?.IsDevelopment() ?? true))
+        string? databaseName = null;
+        try
+        {
+            var rawCs = db.Database.GetConnectionString();
+            if (!string.IsNullOrWhiteSpace(rawCs))
+                databaseName = new NpgsqlConnectionStringBuilder(rawCs).Database;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read the database name while evaluating METERP_SEED_RESET.");
+        }
+
+        if (resetRequested && !SeedProfileGates.ShouldForceReset(demoSeed, databaseName))
+        {
+            _logger.LogWarning(
+                "Ignoring METERP_SEED_RESET / Seed:ForceResetOnStart. Reset runs only when METERP_SEED_DEMO=true and the database name is not METERP_Dev. Database={Database}. DemoSeed={DemoSeed}.",
+                string.IsNullOrWhiteSpace(databaseName) ? "(unknown)" : databaseName,
+                demoSeed);
+        }
+        else if (resetRequested && !(env?.IsDevelopment() ?? true))
+        {
+            _logger.LogWarning("Ignoring METERP_SEED_RESET outside the Development environment.");
+        }
+        else if (resetRequested)
         {
             try
             {
                 var rawCs = db.Database.GetConnectionString()
-                            ?? "Host=localhost;Database=METERP_Dev;Username=postgres;Password=CHANGE_ME;Port=5432";
+                            ?? "Host=localhost;Database=METERP;Username=postgres;Password=CHANGE_ME;Port=5432";
                 var csb = new NpgsqlConnectionStringBuilder(rawCs);
-                var targetDb = csb.Database ?? "METERP_Dev";
+                var targetDb = csb.Database ?? "METERP";
 
-                // Maintenance connection to the always-present 'postgres' database
                 var maintCsb = new NpgsqlConnectionStringBuilder(rawCs) { Database = "postgres" };
                 await using var maint = new NpgsqlConnection(maintCsb.ConnectionString);
                 await maint.OpenAsync(cancellationToken);
@@ -1122,18 +1159,39 @@ public class DatabaseSeeder : IHostedService
                 }
                 await maint.CloseAsync();
 
-                // Wipe whatever was there (or no-op) so the exact current migrations + full model apply cleanly, then seed.
                 await db.Database.EnsureDeletedAsync(cancellationToken);
             }
             catch (Exception ex)
             {
-                // Non-fatal: surface in console so user sees why, then let Migrate surface the real problem if any.
-                _logger.LogWarning(ex, "Dev DB reset note (only when METERP_SEED_RESET=true)");
+                _logger.LogWarning(ex, "Dev DB reset note (only when METERP_SEED_DEMO=true and the database is not METERP_Dev)");
             }
         }
 
-        // Production-ready: Use migrations (now against a guaranteed clean DB in dev)
         await db.Database.MigrateAsync(cancellationToken);
+
+        if (!demoSeed)
+        {
+            _logger.LogInformation(
+                "Demo seeding is off. Migrations applied only. Set METERP_SEED_DEMO=true or Seed:Demo=true for a separate CI/demo database.");
+            if (startupBackfill)
+            {
+                await RunStartupDataBackfillAsync(
+                    db, config, env, tenantService, tenantProvider, fallbackTenantId: null, cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Startup backfill skipped. Set METERP_STARTUP_BACKFILL=true or Seed:StartupBackfill=true to run Access import, customer contact enrich, and credit-note link passes.");
+            }
+
+            return;
+        }
+
+        if (!startupBackfill)
+        {
+            _logger.LogInformation(
+                "Startup backfill skipped. Set METERP_STARTUP_BACKFILL=true or Seed:StartupBackfill=true to run Access import, customer contact enrich, and credit-note link passes.");
+        }
 
         // 1. Create a default tenant if none exists
         var existingTenants = await tenantService.GetAllAsync(ct: cancellationToken);
@@ -1775,12 +1833,18 @@ public class DatabaseSeeder : IHostedService
                             Status = AssetStatus.Operational
                         }, cancellationToken);
 
-                        // Link first asset to the job for demo
+                        // Link first asset to the job for demo.
+                        // Reload first: UpdateStatus/SignOff already changed status, and UpdateAsync
+                        // rejects a stale in-memory status ("use status, close, cancel, or reopen").
                         var linkableAssets = await assetService.GetAllAsync(ct: cancellationToken);
                         if (linkableAssets.Any())
                         {
-                            createdJob.AssetId = linkableAssets.First().Id;
-                            await jobService.UpdateAsync(createdJob, cancellationToken);
+                            var jobForAsset = await jobService.GetByIdAsync(createdJob.Id, cancellationToken);
+                            if (jobForAsset != null)
+                            {
+                                jobForAsset.AssetId = linkableAssets.First().Id;
+                                await jobService.UpdateAsync(jobForAsset, cancellationToken);
+                            }
                         }
 
                         // Seed suppliers + PO (Phase 2 Purchasing) to demonstrate replenishment -> inventory -> job use
@@ -2344,80 +2408,10 @@ public class DatabaseSeeder : IHostedService
             tenantProvider.SetTenantId(defaultTenantId);
         }
 
-        if (metSeedProfile)
+        if (metSeedProfile && startupBackfill)
         {
-            try
-            {
-                var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
-                var importTenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
-                    ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
-                var importTenantId = importTenant?.Id ?? defaultTenantId;
-                tenantProvider.SetTenantId(importTenantId);
-                var importOptions = AccessImportSeeder.OptionsFrom(config, env?.ContentRootPath);
-                var importResult = await AccessImportSeeder.RunAsync(
-                    db,
-                    tenantProvider,
-                    importTenantId,
-                    importOptions,
-                    _logger,
-                    cancellationToken);
-                _logger.LogInformation("Access CSV import finished. {Summary}", importResult.Summary);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Access CSV import failed. Existing MET rows were not wiped.");
-            }
-            finally
-            {
-                tenantProvider.SetTenantId(defaultTenantId);
-            }
-
-            // Fill-blank customer contact/address. Independent of METERP_ACCESS_IMPORT (that path stays off).
-            try
-            {
-                var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
-                var enrichTenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
-                    ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
-                var enrichTenantId = enrichTenant?.Id ?? defaultTenantId;
-                tenantProvider.SetTenantId(enrichTenantId);
-                var enrichOptions = CustomerEnrichSeeder.OptionsFrom(config, env?.ContentRootPath);
-                var enrichResult = await CustomerEnrichSeeder.RunAsync(
-                    db,
-                    tenantProvider,
-                    enrichTenantId,
-                    enrichOptions,
-                    _logger,
-                    cancellationToken);
-                _logger.LogInformation("Customer enrich finished. {Summary}", enrichResult.Summary);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Customer enrich failed. Existing customers were not wiped.");
-            }
-            finally
-            {
-                tenantProvider.SetTenantId(defaultTenantId);
-            }
-
-            // Positive credit totals + parent links. Independent of METERP_ACCESS_IMPORT.
-            try
-            {
-                var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
-                var linkTenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
-                    ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
-                var linkTenantId = linkTenant?.Id ?? defaultTenantId;
-                tenantProvider.SetTenantId(linkTenantId);
-                var linkResult = await CreditNoteLinkSeeder.RunAsync(db, linkTenantId, cancellationToken);
-                _logger.LogInformation("Credit note link pass finished. {Summary}", linkResult.Summary);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Credit note link pass failed. Existing invoices were not wiped.");
-            }
-            finally
-            {
-                tenantProvider.SetTenantId(defaultTenantId);
-            }
+            await RunStartupDataBackfillAsync(
+                db, config, env, tenantService, tenantProvider, defaultTenantId, cancellationToken);
         }
 
         // Field portal demo: a handful of InProgress TRFid jobs for tech@acme.demo.
@@ -2451,11 +2445,106 @@ public class DatabaseSeeder : IHostedService
     }
 
     /// <summary>
-    /// MET FY demo: <c>METERP_SEED_PROFILE=MET</c> or config <c>Seed:Profile=MET</c>,
-    /// or <c>METERP_SEED_E2E=false</c>. Acme/E2E stays the default.
+    /// MET FY demo shape: <c>METERP_SEED_PROFILE=MET</c> or config <c>Seed:Profile=MET</c>,
+    /// or <c>METERP_SEED_E2E=false</c>. Runs only after <c>METERP_SEED_DEMO=true</c>.
     /// </summary>
     private static bool IsMetSeedProfile(IConfiguration config) =>
         SeedProfileGates.IsMetSeedProfile(config);
+
+    /// <summary>
+    /// Upsert-style Access import, fill-blank customer contact/address, and credit-note links.
+    /// Creates no demo tenants. Skips when no tenant can be resolved.
+    /// </summary>
+    private async Task RunStartupDataBackfillAsync(
+        AppDbContext db,
+        IConfiguration config,
+        Microsoft.Extensions.Hosting.IHostEnvironment? env,
+        ITenantService tenantService,
+        ITenantProvider tenantProvider,
+        Guid? fallbackTenantId,
+        CancellationToken cancellationToken)
+    {
+        async Task<Guid?> ResolveTenantIdAsync()
+        {
+            var tenantsNow = await tenantService.GetAllAsync(pageSize: 100, ct: cancellationToken);
+            var tenant = tenantsNow.FirstOrDefault(TenantBranding.IsMetOfficeTenant)
+                ?? tenantsNow.FirstOrDefault(t => string.Equals(t.Subdomain, "acme", StringComparison.OrdinalIgnoreCase));
+            if (tenant != null)
+                return tenant.Id;
+            return fallbackTenantId;
+        }
+
+        var initialTenantId = await ResolveTenantIdAsync();
+        if (initialTenantId == null)
+        {
+            _logger.LogInformation("Startup backfill skipped. No tenant is available to patch.");
+            return;
+        }
+
+        var restoreTenantId = fallbackTenantId ?? initialTenantId.Value;
+
+        try
+        {
+            var importTenantId = await ResolveTenantIdAsync() ?? restoreTenantId;
+            tenantProvider.SetTenantId(importTenantId);
+            var importOptions = AccessImportSeeder.OptionsFrom(config, env?.ContentRootPath);
+            var importResult = await AccessImportSeeder.RunAsync(
+                db,
+                tenantProvider,
+                importTenantId,
+                importOptions,
+                _logger,
+                cancellationToken);
+            _logger.LogInformation("Access CSV import finished. {Summary}", importResult.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Access CSV import failed. Existing MET rows were not wiped.");
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(restoreTenantId);
+        }
+
+        try
+        {
+            var enrichTenantId = await ResolveTenantIdAsync() ?? restoreTenantId;
+            tenantProvider.SetTenantId(enrichTenantId);
+            var enrichOptions = CustomerEnrichSeeder.OptionsFrom(config, env?.ContentRootPath);
+            var enrichResult = await CustomerEnrichSeeder.RunAsync(
+                db,
+                tenantProvider,
+                enrichTenantId,
+                enrichOptions,
+                _logger,
+                cancellationToken);
+            _logger.LogInformation("Customer enrich finished. {Summary}", enrichResult.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Customer enrich failed. Existing customers were not wiped.");
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(restoreTenantId);
+        }
+
+        try
+        {
+            var linkTenantId = await ResolveTenantIdAsync() ?? restoreTenantId;
+            tenantProvider.SetTenantId(linkTenantId);
+            var linkResult = await CreditNoteLinkSeeder.RunAsync(db, linkTenantId, cancellationToken);
+            _logger.LogInformation("Credit note link pass finished. {Summary}", linkResult.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Credit note link pass failed. Existing invoices were not wiped.");
+        }
+        finally
+        {
+            tenantProvider.SetTenantId(restoreTenantId);
+        }
+    }
 
     /// <summary>
     /// Lock the legacy JHGH portal login when its customer was wiped. Keeps the Identity row

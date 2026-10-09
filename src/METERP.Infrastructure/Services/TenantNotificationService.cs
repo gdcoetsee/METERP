@@ -44,16 +44,41 @@ public sealed class TenantNotificationService : ITenantNotificationService
         var roles = await GetCurrentUserRolesAsync(ct);
         var lowered = roles
             .Where(r => !string.IsNullOrWhiteSpace(r))
-            .Select(r => r.ToLowerInvariant())
-            .Distinct()
-            .ToList();
+            .Select(r => r.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
         // Count in SQL. Home must not materialise the full notification table (~20k on MET).
-        return await _dbContext.Set<TenantNotification>()
-            .AsNoTracking()
-            .CountAsync(n => !n.IsRead && (
-                n.TargetRoles == "*"
-                || lowered.Any(role => n.TargetRoles.ToLower().Contains(role))), ct);
+        // Role tokens are matched with translates-everywhere string ops (comma-separated, case-insensitive).
+        // A captured list.Any(role => column.ToLower().Contains(role)) does not translate on the InMemory provider.
+        var unread = _dbContext.Set<TenantNotification>().AsNoTracking().Where(n => !n.IsRead);
+        IQueryable<Guid> ids = unread.Where(n => n.TargetRoles == "*").Select(n => n.Id);
+
+        foreach (var role in lowered)
+        {
+            var token = role;
+            var tokenComma = token + ",";
+            var commaToken = "," + token;
+            var commaSpaceToken = ", " + token;
+            var wrapped = "," + token + ",";
+            var wrappedAfterSpace = ", " + token + ",";
+            var wrappedBeforeSpace = "," + token + ", ";
+            var wrappedBothSpaces = ", " + token + ", ";
+
+            ids = ids.Union(unread.Where(n =>
+                    n.TargetRoles != null
+                    && (n.TargetRoles.ToLower() == token
+                        || n.TargetRoles.ToLower().StartsWith(tokenComma)
+                        || n.TargetRoles.ToLower().EndsWith(commaToken)
+                        || n.TargetRoles.ToLower().EndsWith(commaSpaceToken)
+                        || n.TargetRoles.ToLower().Contains(wrapped)
+                        || n.TargetRoles.ToLower().Contains(wrappedAfterSpace)
+                        || n.TargetRoles.ToLower().Contains(wrappedBeforeSpace)
+                        || n.TargetRoles.ToLower().Contains(wrappedBothSpaces)))
+                .Select(n => n.Id));
+        }
+
+        return await ids.CountAsync(ct);
     }
 
     public async Task CreateAsync(TenantNotification notification, CancellationToken ct = default)

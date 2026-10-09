@@ -1096,14 +1096,26 @@ public class PurchaseOrderServiceTests
         var (db, service, _) = CreateServices(tenantId);
         using (db)
         {
+            var supplierId = Guid.NewGuid();
+            db.Set<Supplier>().Add(new Supplier { Id = supplierId, TenantId = tenantId, Name = "GRV Sup" });
             var received = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);
             for (var i = 0; i < 3; i++)
             {
+                var poId = Guid.NewGuid();
+                db.Set<PurchaseOrder>().Add(new PurchaseOrder
+                {
+                    Id = poId,
+                    TenantId = tenantId,
+                    SupplierId = supplierId,
+                    PoNumber = $"PO-GRV-{i + 1}",
+                    PoDate = received,
+                    Status = PurchaseOrderStatus.Received
+                });
                 db.Set<GoodsReceiptVoucher>().Add(new GoodsReceiptVoucher
                 {
                     TenantId = tenantId,
                     GrvNumber = $"GRV-{i + 1}",
-                    PurchaseOrderId = Guid.NewGuid(),
+                    PurchaseOrderId = poId,
                     ReceivedByUserId = TestUserId,
                     ReceivedAt = received.AddHours(i)
                 });

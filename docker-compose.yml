@@ -16,7 +16,7 @@ services:
       # Connection string uses docker service name "postgres" as host. This overrides appsettings.
       # Pool 150: leftover InteractiveServer circuits during E2E; postgres max_connections=200.
       # Timeout=8 fails fast so retries cannot pile 15s waits onto an empty pool.
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=METERP;Username=postgres;Password=postgres;Port=5432;Maximum Pool Size=150;Timeout=8;Connection Idle Lifetime=30;Connection Pruning Interval=5
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=METERP;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres};Port=5432;Maximum Pool Size=150;Timeout=8;Connection Idle Lifetime=30;Connection Pruning Interval=5
       - Seq__ServerUrl=http://seq:5341
       - Cache__RedisConnection=redis:6379
       - Billing__CustomerPortalBaseUrl=https://billing.stripe.com/p/login/demo_meterp
@@ -31,9 +31,13 @@ services:
       - Email__UseSsl=${Email__UseSsl:-false}
       - Email__FromAddress=${Email__FromAddress:-noreply@acme.demo}
       - Email__FromName=${Email__FromName:-METERP}
-      # Optional: set to "true" to force a full DB reset + reseed on start (useful after model changes).
-      # - METERP_SEED_RESET=true
-      # Note: By default the seeder is now safe (Migrate + seed only missing data). Postgres data volume persists across restarts.
+      # Demo/E2E seed is OFF by default (migrations only; no Acme or MET demo rows).
+      # Enable only for a separate CI/demo database, never METERP_Dev:
+      #   METERP_SEED_DEMO=true docker compose up --build
+      # Reset is ignored unless demo seed is on AND the database is not METERP_Dev:
+      #   METERP_SEED_DEMO=true METERP_SEED_RESET=true docker compose up
+      - METERP_SEED_DEMO=${METERP_SEED_DEMO:-false}
+      - METERP_STARTUP_BACKFILL=${METERP_STARTUP_BACKFILL:-false}
       # AI: force offline-safe defaults for docker/E2E. Put a real key only via compose override, not .env bleed-through.
       # (Broken Gemini keys in .env were hanging copilot for 60s+ and failing Playwright.)
       - Ai__ApiKey=
@@ -63,7 +67,7 @@ services:
     environment:
       - POSTGRES_DB=METERP
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     healthcheck:

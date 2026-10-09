@@ -73,14 +73,14 @@ All features built per suggestions. Professional UI, ready for contractors. Buil
    ```
    - App on http://localhost:8080 (or 8081)
    - Postgres data persists in volume.
-   - MET office login: `admin@met.demo` / `Demo123!` when `METERP_SEED_E2E=false` or `Seed:Profile=MET` (see `docs/USER_GUIDE.md`). Customer portal: `portal@met.demo` / `Demo123!`.
-   - Automated tests and the default Acme seed keep `admin@acme.demo` / `Demo123!`.
-   - By default safe seeding (no data loss on restart). Set `METERP_SEED_RESET=true` in the web service env if you need a full reset.
+   - Startup migrates only. Demo logins exist only when `METERP_SEED_DEMO=true` on a separate CI/demo database (never `METERP_Dev`): MET office shape (`METERP_SEED_E2E=false` or `Seed:Profile=MET`) uses `admin@met.demo` / `Demo123!` and portal `portal@met.demo` / `Demo123!`. Acme/E2E shape uses `admin@acme.demo` / `Demo123!`.
+   - `METERP_SEED_RESET` is ignored unless demo seed is also on and the database is not `METERP_Dev`.
 
-2. **Local (requires local Postgres)**:
-   - Set a valid connection string (or use user-secrets).
-   - `dotnet run --project src/METERP.Web`
-   - First run migrates and seeds missing demo data. The default profile is the Acme sample (travel on quotes and jobs). The MET Electrical office profile is `METERP_SEED_E2E=false`. AI stays off until a key is set.
+2. **Local dev (requires local Postgres)**:
+   - The committed `appsettings.Development.json` connection string uses `Password=CHANGE_ME` and must not contain a real password.
+   - The real connection string comes from the environment variable `ConnectionStrings__DefaultConnection`, or from `dotnet user-secrets` (`UserSecretsId` is set in `src/METERP.Web/METERP.Web.csproj`). Example: `dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=METERP_Dev;Username=postgres;Password=YOUR_PASSWORD;Port=5432" --project src/METERP.Web`.
+   - `pwsh run-local.ps1` reads `ConnectionStrings__DefaultConnection` from the environment, or from a gitignored `src/METERP.Web/appsettings.Development.local.json` or `.env`, before it starts the app.
+   - `dotnet run --project src/METERP.Web` applies migrations only. It does not seed demo rows and does not run Access backfill unless `METERP_SEED_DEMO=true` or `METERP_STARTUP_BACKFILL=true`. Do not enable demo seed against `METERP_Dev`. AI stays off until a key is set.
 
 See "How to Test" section above for manual flows. AI features require an `Ai:ApiKey`.
 

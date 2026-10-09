@@ -66,3 +66,15 @@ logs/
 # Local agent / TUI session artifacts (do not commit)
 agent-tools/
 terminals/
+
+# Local-only extracts, compose overrides, and machine config
+_helm_walk/
+docker-compose.override.yml
+appsettings.*.local.json
+
+# Local run / E2E logs
+e2e-*.log
+meterp-local.log
+
+# Test results
+tests/**/TestResults/

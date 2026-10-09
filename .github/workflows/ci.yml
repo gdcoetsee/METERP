@@ -48,6 +48,8 @@ jobs:
         run: pwsh tests/METERP.E2ETests/bin/Release/net9.0/playwright.ps1 install chromium --with-deps
 
       - name: Build and start app with docker-compose
+        env:
+          METERP_SEED_DEMO: "true"
         run: |
           docker compose build --pull web
           docker compose up -d
