@@ -860,6 +860,111 @@ public class InvoiceService : IInvoiceService
             payment.PopContentType ?? "application/octet-stream");
     }
 
+    public async Task ReversePaymentAsync(Guid paymentId, string reason, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("A reason is required to reverse a receipt.");
+        reason = reason.Trim();
+        if (reason.Length < 3)
+            throw new InvalidOperationException("Reversal reason must be at least 3 characters.");
+        if (reason.Length > 500)
+            throw new InvalidOperationException("Reversal reason cannot exceed 500 characters.");
+
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? _dbContext.CurrentTenantId;
+        var payment = await _dbContext.Set<InvoicePayment>()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.Id == paymentId, ct);
+
+        if (payment == null)
+            throw new InvalidOperationException("Payment not found.");
+
+        if (payment.TenantId != tenantId)
+            throw new InvalidOperationException("Cannot reverse a payment on another tenant.");
+
+        if (payment.IsDeleted)
+            throw new InvalidOperationException("This receipt has already been reversed.");
+
+        var invoice = await _dbContext.Set<Invoice>()
+            .FirstOrDefaultAsync(i => i.Id == payment.InvoiceId, ct);
+        if (invoice == null || invoice.TenantId != tenantId)
+            throw new InvalidOperationException("Invoice not found.");
+
+        var amount = Math.Round(payment.Amount, 2);
+        if (amount <= 0)
+            throw new InvalidOperationException("This receipt has no amount to reverse.");
+
+        invoice.AmountPaid = Math.Max(0m, Math.Round(invoice.AmountPaid - amount, 2));
+        invoice.Status = InvoiceBillingCalculator.DerivePaymentStatus(
+            invoice.Total,
+            invoice.AmountPaid,
+            invoice.Status,
+            invoice.DueDate,
+            DateTime.UtcNow);
+
+        var stamp = $"Reversed: {reason}";
+        payment.Notes = string.IsNullOrWhiteSpace(payment.Notes)
+            ? stamp
+            : $"{payment.Notes.Trim()} | {stamp}";
+        payment.IsDeleted = true;
+
+        if (invoice.DocumentType == InvoiceDocumentType.Deposit && invoice.JobId is Guid jobId)
+        {
+            var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+            if (job != null && job.DepositReceived && invoice.AmountPaid < invoice.Total)
+            {
+                var siblings = await _dbContext.Set<Invoice>()
+                    .AsNoTracking()
+                    .Where(i => i.JobId == jobId && i.Id != invoice.Id)
+                    .Select(i => new { i.DocumentType, i.Status })
+                    .ToListAsync(ct);
+                var otherCountingDeposit = siblings.Any(i =>
+                    i.DocumentType == InvoiceDocumentType.Deposit
+                    && InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status));
+
+                if (InvoiceBillingCalculator.ShouldClearDepositReceived(
+                        job.DepositReceived,
+                        invoice.DocumentType,
+                        invoice.Total,
+                        invoice.AmountPaid,
+                        otherCountingDeposit))
+                {
+                    job.DepositReceived = false;
+                }
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+
+        var reference = payment.Reference;
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "REVERSE",
+                "Invoice",
+                invoice.InvoiceNumber,
+                $"Reversed receipt R {amount:N2}"
+                    + (string.IsNullOrWhiteSpace(reference) ? "" : $" ref {reference.Trim()}")
+                    + $". {reason}",
+                ct);
+        }
+
+        if (_notifications != null)
+        {
+            var remaining = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = invoice.TenantId,
+                Title = $"Receipt reversed on {invoice.InvoiceNumber}",
+                Message = $"R {amount:N2} reversed. Balance due R {remaining:N2}.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
+        }
+    }
+
     public async Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default)
     {
         // Headline stays bounded for the MET seed (~16k invoices). Netting does not:

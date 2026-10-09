@@ -481,8 +481,28 @@ else
                 <h6 class="mt-4" data-testid="invoice-payments-header">Payments (@_payments.Count)</h6>
                 @if (_payments.Any())
                 {
+                    @if (UserCanManage)
+                    {
+                        <div class="row g-2 mb-2" data-testid="invoice-reverse-receipt">
+                            <div class="col-md-6">
+                                <label class="form-label small">Reversal reason</label>
+                                <InputText class="form-control form-control-sm" @bind-Value="_reversalReason" data-testid="invoice-reversal-reason" placeholder="Why this receipt is wrong" />
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <span class="small text-muted">Reverse puts the amount back on the balance. The receipt cannot be reversed twice.</span>
+                            </div>
+                        </div>
+                    }
                     <table class="table table-sm">
-                        <thead><tr><th>Date</th><th>Amount</th><th>Reference</th><th>POP</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Date</th><th>Amount</th><th>Reference</th><th>POP</th>
+                                @if (UserCanManage)
+                                {
+                                    <th></th>
+                                }
+                            </tr>
+                        </thead>
                         <tbody>
                             @foreach (var p in _payments)
                             {
@@ -501,6 +521,13 @@ else
                                             <span>—</span>
                                         }
                                     </td>
+                                    @if (UserCanManage)
+                                    {
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" data-testid="invoice-reverse-payment"
+                                                    @onclick="() => ReversePaymentAsync(p)">Reverse</button>
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -600,6 +627,7 @@ else
     private decimal _paymentAmount;
     private DateTime _paymentDate = DateTime.UtcNow.Date;
     private string _paymentReference = "";
+    private string _reversalReason = "";
     private IBrowserFile? _popFile;
     private Invoice currentInvoice = new();
     private Invoice? selectedInvoice;
@@ -806,6 +834,7 @@ else
         _paymentAmount = selectedInvoice?.BalanceDue ?? 0;
         _paymentDate = DateTime.UtcNow.Date;
         _paymentReference = "";
+        _reversalReason = "";
         _popFile = null;
         showForm = false;
         showLineForm = false;
@@ -1014,6 +1043,25 @@ else
             }
 
             ToastService.ShowSuccess("Payment recorded.");
+            await ViewInvoice(selectedInvoice);
+            await LoadInvoices();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ReversePaymentAsync(InvoicePayment payment)
+    {
+        if (selectedInvoice == null) return;
+        if (!await ConfirmDelete($"Reverse this receipt of R {payment.Amount:N2}? The balance goes back on the invoice."))
+            return;
+
+        try
+        {
+            await InvoiceService.ReversePaymentAsync(payment.Id, _reversalReason);
+            ToastService.ShowSuccess("Receipt reversed. The balance is back on the invoice.");
             await ViewInvoice(selectedInvoice);
             await LoadInvoices();
         }

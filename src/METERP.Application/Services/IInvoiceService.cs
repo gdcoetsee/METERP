@@ -77,6 +77,14 @@ public interface IInvoiceService
         Guid paymentId,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Undoes one receipt. Requires a reason. Reduces <see cref="Invoice.AmountPaid"/> and
+    /// restores Sent, PartiallyPaid, or Overdue through <see cref="InvoiceBillingCalculator.DerivePaymentStatus"/>.
+    /// A second reversal of the same receipt fails. Another tenant's receipt cannot be reversed.
+    /// A deposit that is no longer fully paid clears <see cref="Job.DepositReceived"/> when no other counting deposit remains.
+    /// </summary>
+    Task ReversePaymentAsync(Guid paymentId, string reason, CancellationToken ct = default);
+
     Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default);
 
     /// <summary>

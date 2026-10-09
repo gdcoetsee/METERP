@@ -56,7 +56,8 @@ public static class InvoiceBillingCalculator
         if (asOfUtc.Date > dueDate.Date)
             return InvoiceStatus.Overdue;
 
-        return current is InvoiceStatus.Sent or InvoiceStatus.Overdue or InvoiceStatus.PartiallyPaid
+        // Paid falls back to Sent once the receipt is gone and the due date has not passed.
+        return current is InvoiceStatus.Sent or InvoiceStatus.Overdue or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid
             ? InvoiceStatus.Sent
             : current;
     }
@@ -120,6 +121,26 @@ public static class InvoiceBillingCalculator
             return true;
 
         return BilledCoversDeposit(quotedTotal, depositPercent, billedToDate);
+    }
+
+    /// <summary>
+    /// A reversed deposit receipt clears <see cref="Job.DepositReceived"/> only when this
+    /// deposit is no longer fully paid and no other counting deposit document remains.
+    /// </summary>
+    public static bool ShouldClearDepositReceived(
+        bool depositReceived,
+        InvoiceDocumentType reversedDocumentType,
+        decimal invoiceTotal,
+        decimal amountPaidAfterReversal,
+        bool otherCountingDepositRemains)
+    {
+        if (!depositReceived || reversedDocumentType != InvoiceDocumentType.Deposit)
+            return false;
+
+        if (amountPaidAfterReversal >= invoiceTotal)
+            return false;
+
+        return !otherCountingDepositRemains;
     }
 
     /// <summary>

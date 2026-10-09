@@ -74,6 +74,45 @@ public class InvoiceBillingCalculatorTests
         Assert.Equal(InvoiceStatus.Overdue, status);
     }
 
+    [Fact]
+    public void DerivePaymentStatus_RestoresSentWhenAPaidInvoiceIsUnpaidAndNotOverdue()
+    {
+        var status = InvoiceBillingCalculator.DerivePaymentStatus(
+            1000, 0, InvoiceStatus.Paid, DateTime.UtcNow.AddDays(10), DateTime.UtcNow);
+        Assert.Equal(InvoiceStatus.Sent, status);
+    }
+
+    [Fact]
+    public void DerivePaymentStatus_RestoresOverdueWhenAPaidInvoiceIsUnpaidAndPastDue()
+    {
+        var status = InvoiceBillingCalculator.DerivePaymentStatus(
+            1000, 0, InvoiceStatus.Paid, DateTime.UtcNow.AddDays(-3), DateTime.UtcNow);
+        Assert.Equal(InvoiceStatus.Overdue, status);
+    }
+
+    [Fact]
+    public void DerivePaymentStatus_RestoresPartiallyPaidWhenSomeReceiptRemains()
+    {
+        var status = InvoiceBillingCalculator.DerivePaymentStatus(
+            1000, 250, InvoiceStatus.Paid, DateTime.UtcNow.AddDays(-3), DateTime.UtcNow);
+        Assert.Equal(InvoiceStatus.PartiallyPaid, status);
+    }
+
+    [Fact]
+    public void ShouldClearDepositReceived_OnlyWhenThisDepositIsOpenAndNoOtherCountingDepositRemains()
+    {
+        Assert.True(InvoiceBillingCalculator.ShouldClearDepositReceived(
+            true, InvoiceDocumentType.Deposit, 3000m, 0m, false));
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceived(
+            true, InvoiceDocumentType.Deposit, 3000m, 0m, true));
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceived(
+            true, InvoiceDocumentType.Deposit, 3000m, 3000m, false));
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceived(
+            true, InvoiceDocumentType.Standard, 3000m, 0m, false));
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceived(
+            false, InvoiceDocumentType.Deposit, 3000m, 0m, false));
+    }
+
     [Theory]
     [InlineData(0, "Current")]
     [InlineData(15, "1-30")]
