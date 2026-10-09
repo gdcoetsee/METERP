@@ -101,6 +101,78 @@ public class QuoteTests
     }
 
     [Fact]
+    public async Task QuoteService_AddLine_StoresVatInclusiveUnitAsExVat_AndAddsVatOnce()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "VAT Customer" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db);
+        var quoteId = await service.CreateAsync(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0.15m
+        });
+
+        var inclusiveTravel = QuotePricing.UnitPriceFromEntry(115m, 0.15m, priceIncludesVat: true);
+        await service.AddLineAsync(new QuoteLine
+        {
+            QuoteId = quoteId,
+            Description = "Site travel",
+            LineType = "Travel",
+            Quantity = 1,
+            UnitPrice = inclusiveTravel
+        });
+
+        var saved = await service.GetByIdAsync(quoteId);
+        Assert.NotNull(saved);
+        var line = Assert.Single(saved!.Lines, l => !l.IsDeleted);
+        Assert.Equal("Travel", line.LineType);
+        Assert.Equal(100m, line.UnitPrice);
+        Assert.Equal(100m, saved.Subtotal);
+        Assert.Equal(15m, saved.Tax);
+        Assert.Equal(115m, saved.Total);
+    }
+
+    [Fact]
+    public async Task QuoteService_AddLine_ExVatEntry_StoresTheTypedUnitPrice()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateInMemoryContext(tenantId);
+        var customer = new Customer { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Ex-VAT Customer" };
+        db.Set<Customer>().Add(customer);
+        await db.SaveChangesAsync();
+
+        var service = new QuoteService(db);
+        var quoteId = await service.CreateAsync(new Quote
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            TaxRate = 0.15m
+        });
+
+        var exVat = QuotePricing.UnitPriceFromEntry(100m, 0.15m, priceIncludesVat: false);
+        await service.AddLineAsync(new QuoteLine
+        {
+            QuoteId = quoteId,
+            Description = "Cable",
+            LineType = "Material",
+            Quantity = 1,
+            UnitPrice = exVat
+        });
+
+        var saved = await service.GetByIdAsync(quoteId);
+        Assert.NotNull(saved);
+        var line = Assert.Single(saved!.Lines, l => !l.IsDeleted);
+        Assert.Equal(100m, line.UnitPrice);
+        Assert.Equal(15m, saved.Tax);
+        Assert.Equal(115m, saved.Total);
+    }
+
+    [Fact]
     public async Task GetAllAsync_BoardFilter_HidesExpiredOnLive_AndCountMatchesTheView()
     {
         var tenantId = Guid.NewGuid();

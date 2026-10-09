@@ -268,7 +268,7 @@
                                         <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" @bind="_reviewLineQty" />
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-0">Unit price</label>
+                                        <label class="form-label small mb-0">@(_reviewPriceIncludesVat ? "Unit price incl. VAT" : "Unit price ex-VAT")</label>
                                         <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-testid="approvals-quote-new-price"
                                                value="@_reviewLinePrice.ToString(System.Globalization.CultureInfo.InvariantCulture)"
                                                @oninput="OnReviewLinePriceChanged" />
@@ -277,6 +277,13 @@
                                         <button type="button" class="btn btn-sm btn-success" data-testid="approvals-quote-save-line" @onclick="SaveReviewAddLineAsync">Save line</button>
                                         <button type="button" class="btn btn-sm btn-secondary ms-1" @onclick="CancelReviewAddLine">Cancel</button>
                                     </div>
+                                </div>
+                                <div class="form-check form-switch mt-2 mb-0">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="approvals-quote-price-includes-vat"
+                                           @bind="_reviewPriceIncludesVat" @bind:after="RememberReviewPriceMode"
+                                           data-testid="approvals-quote-price-includes-vat" />
+                                    <label class="form-check-label small" for="approvals-quote-price-includes-vat">Includes VAT</label>
+                                    <span class="meterp-field-hint d-block">@ReviewPriceModeHint</span>
                                 </div>
                             </div>
                         }
@@ -792,6 +799,27 @@
     private string _reviewLineType = "Material";
     private decimal _reviewLineQty = 1;
     private decimal _reviewLinePrice;
+    private bool _reviewPriceIncludesVat;
+    private bool _preferReviewPriceIncludesVat;
+
+    private string ReviewPriceModeHint
+    {
+        get
+        {
+            if (!_reviewPriceIncludesVat)
+                return "Ex-VAT sell price. Tick Includes VAT to type the gross figure. Travel uses the same switch.";
+
+            if (_reviewLinePrice > 0 && _reviewQuote != null)
+            {
+                var stored = QuotePricing.UnitPriceFromEntry(_reviewLinePrice, _reviewQuote.TaxRate, priceIncludesVat: true);
+                return $"Saves as ex-VAT R {stored:N2} per unit. VAT is added once on the quote total.";
+            }
+
+            return "Gross price. Stored ex-VAT so VAT is added once on the quote total. Travel uses the same switch.";
+        }
+    }
+
+    private void RememberReviewPriceMode() => _preferReviewPriceIncludesVat = _reviewPriceIncludesVat;
 
     private async Task OpenQuoteReviewAsync(Quote quote)
     {
@@ -832,6 +860,7 @@
         _reviewLineType = "Material";
         _reviewLineQty = 1;
         _reviewLinePrice = 0;
+        _reviewPriceIncludesVat = _preferReviewPriceIncludesVat;
     }
 
     private void CancelReviewAddLine()
@@ -865,7 +894,8 @@
                 Description = _reviewLineDescription.Trim(),
                 LineType = _reviewLineType,
                 Quantity = _reviewLineQty,
-                UnitPrice = _reviewLinePrice
+                UnitPrice = QuotePricing.UnitPriceFromEntry(
+                    _reviewLinePrice, _reviewQuote.TaxRate, _reviewPriceIncludesVat)
             });
             _reviewQuote = QuoteUiHelper.DetachForUi(await QuoteService.GetByIdAsync(_reviewQuote.Id));
             CancelReviewAddLine();

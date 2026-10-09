@@ -14,6 +14,20 @@ public static class QuotePricing
         return Math.Round(unitCost / (1 - grossProfitPercent), 2, MidpointRounding.AwayFromZero);
     }
 
+    /// <summary>
+    /// Unit price stored on the quote line. Ex-VAT entry is kept as typed.
+    /// A VAT-inclusive entry is split once so <see cref="Quote.RecalculateTotals"/>
+    /// can add VAT on the ex-VAT subtotal. Travel uses the same switch as every other line.
+    /// Gross R 115.00 at 15% stores 100.00; the quote then carries tax 15.00 and total 115.00.
+    /// </summary>
+    public static decimal UnitPriceFromEntry(decimal enteredUnitPrice, decimal taxRate, bool priceIncludesVat)
+    {
+        if (!priceIncludesVat)
+            return enteredUnitPrice;
+
+        return InvoiceBillingCalculator.SplitVatInclusive(enteredUnitPrice, taxRate).Subtotal;
+    }
+
     public static decimal LineGrossProfit(QuoteLine line) =>
         line.LineTotal - (line.UnitCost * line.Quantity);
 

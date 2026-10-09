@@ -333,10 +333,17 @@ else
                                                value="@LineGrossProfitPercentDisplay" @oninput="OnLineGrossProfitChanged" data-testid="quote-line-gross-profit-percent" />
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-0 meterp-required">Unit price (sell)</label>
+                                        <label class="form-label small mb-0 meterp-required">@(linePriceIncludesVat ? "Unit price incl. VAT" : "Unit price ex-VAT")</label>
                                         <input type="text" inputmode="decimal" class="form-control form-control-sm"
                                                value="@lineUnitPriceText" @oninput="OnLineUnitPriceChanged" data-testid="quote-line-unit-price" />
                                     </div>
+                                </div>
+                                <div class="form-check form-switch mt-2 mb-0">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="quote-line-price-includes-vat"
+                                           @bind="linePriceIncludesVat" @bind:after="RememberPriceMode"
+                                           data-testid="quote-line-price-includes-vat" />
+                                    <label class="form-check-label small" for="quote-line-price-includes-vat">Includes VAT</label>
+                                    <span class="meterp-field-hint d-block" data-testid="quote-line-vat-split-hint">@PriceModeHint</span>
                                 </div>
                                 <div class="mt-2">
                                     <button type="button" class="btn btn-sm btn-success" @onclick="() => SaveLine(false)" disabled="@_lineSaving" data-testid="quote-line-save-button">Save line</button>
@@ -486,6 +493,8 @@ else
     private decimal lineGrossProfitPercent = 0.25m;
     private decimal lineUnitPrice;
     private string lineUnitPriceText = "";
+    private bool linePriceIncludesVat;
+    private bool preferPriceIncludesVat;
 
     private bool showNewCustomer;
     private bool _createQueryApplied;
@@ -586,6 +595,30 @@ else
     private decimal DisplayTax => Math.Round(DisplaySubtotal * (editorQuote?.TaxRate ?? 0.15m), 2);
     private decimal DisplayTotal => DisplaySubtotal + DisplayTax;
 
+    private decimal CurrentTaxRate() => editorQuote?.TaxRate ?? 0.15m;
+
+    private string PriceModeHint
+    {
+        get
+        {
+            if (!linePriceIncludesVat)
+                return "Ex-VAT sell price. Tick Includes VAT to type the gross figure. Travel uses the same switch.";
+
+            if (TryParseDecimal(lineUnitPriceText, out var entered) && entered > 0)
+            {
+                var stored = QuotePricing.UnitPriceFromEntry(entered, CurrentTaxRate(), priceIncludesVat: true);
+                return $"Saves as ex-VAT R {stored:N2} per unit. VAT is added once on the quote total.";
+            }
+
+            return "Gross price. Stored ex-VAT so VAT is added once on the quote total. Travel uses the same switch.";
+        }
+    }
+
+    private void RememberPriceMode() => preferPriceIncludesVat = linePriceIncludesVat;
+
+    private decimal StoredUnitPrice() =>
+        QuotePricing.UnitPriceFromEntry(lineUnitPrice, CurrentTaxRate(), linePriceIncludesVat);
+
     private IReadOnlyList<EntityPickerOption> CustomerPickerOptions =>
         availableCustomers.Select(c => new EntityPickerOption { Id = c.Id, Label = c.Name }).ToList();
 
@@ -676,6 +709,8 @@ else
     private void ApplyGrossProfitToLinePrice()
     {
         if (lineUnitCost <= 0) return;
+        // GP% is on ex-VAT revenue. The box must show that ex-VAT sell price.
+        linePriceIncludesVat = false;
         lineUnitPrice = QuotePricing.SellPriceFromCost(lineUnitCost, lineGrossProfitPercent);
         lineUnitPriceText = lineUnitPrice.ToString(CultureInfo.InvariantCulture);
     }
@@ -1087,6 +1122,7 @@ else
     private void ShowAddLineForm()
     {
         ResetLineFormFields();
+        linePriceIncludesVat = preferPriceIncludesVat;
         showLineForm = true;
         StateHasChanged();
     }
@@ -1106,6 +1142,7 @@ else
         lineGrossProfitPercent = line.GrossProfitPercent;
         lineUnitPrice = line.UnitPrice;
         lineUnitPriceText = line.UnitPrice.ToString(CultureInfo.InvariantCulture);
+        linePriceIncludesVat = false;
         lineFormKey++;
         showLineForm = true;
     }
@@ -1125,6 +1162,7 @@ else
         lineGrossProfitPercent = line.GrossProfitPercent;
         lineUnitPrice = line.UnitPrice;
         lineUnitPriceText = line.UnitPrice.ToString(CultureInfo.InvariantCulture);
+        linePriceIncludesVat = false;
         lineFormKey++;
         showLineForm = true;
     }
@@ -1138,6 +1176,7 @@ else
         }
 
         CommitLineNumericFields();
+        var storedUnitPrice = StoredUnitPrice();
 
         if (editorIsNew)
         {
@@ -1149,7 +1188,7 @@ else
                 Unit = lineUnit,
                 UnitCost = lineUnitCost,
                 GrossProfitPercent = lineGrossProfitPercent,
-                UnitPrice = lineUnitPrice
+                UnitPrice = storedUnitPrice
             };
             if (editingLineIsNew)
                 draftLines.Add(draft);
@@ -1162,6 +1201,7 @@ else
             if (addAnother)
             {
                 ResetLineFormFields();
+                linePriceIncludesVat = preferPriceIncludesVat;
                 showLineForm = true;
                 ToastService.ShowSuccess("Line added. Add another below.");
             }
@@ -1188,7 +1228,7 @@ else
                     Unit = lineUnit,
                     UnitCost = lineUnitCost,
                     GrossProfitPercent = lineGrossProfitPercent,
-                    UnitPrice = lineUnitPrice
+                    UnitPrice = storedUnitPrice
                 };
                 if (editingLineIsNew || !editingSavedLineId.HasValue)
                 {
@@ -1210,6 +1250,7 @@ else
                 if (addAnother)
                 {
                     ResetLineFormFields();
+                    linePriceIncludesVat = preferPriceIncludesVat;
                     showLineForm = true;
                     ToastService.ShowSuccess("Line saved. Add another below.");
                 }
