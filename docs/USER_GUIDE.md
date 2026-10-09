@@ -19,7 +19,7 @@ Staff may also use **Continue with Google / Microsoft** when those client IDs ar
 3. **Command Center** `/jobs/{id}` — labour, materials, travel, invoices. Invoicing does **not** close the job.
 4. **Customers** — open a customer for the account statement (invoices, credit notes, receipts, VAT-inclusive balance). Draft, proforma, and cancelled documents are left off.
 5. **Close** — executive P&L review only. Reopen needs a reason.
-6. **Finance** — pick Sage or Xero and export sales CSV for the bookkeeper.
+6. **Finance** — pick Sage or Xero and export sales CSV for the bookkeeper. Output VAT for a month is on the same page: stored tax, and credit notes reduce the total.
 
 ## Grok Bot
 
@@ -31,4 +31,4 @@ Customers see **only their** quotes and invoices and the outstanding balance. Th
 
 ## Sage / Xero
 
-Finance → package + sales account code → **Export sales CSV**. Sage = sales daybook. Xero = official invoice import columns (ZAR). Optional tenant invoice webhook still posts JSON when an invoice is created.
+Finance → package + sales account code → **Export sales CSV**. Sage = sales daybook. Xero = official invoice import columns (ZAR). Optional tenant invoice webhook still posts JSON when an invoice is created. **Output VAT** on Finance is the month worksheet (date, number, customer, net, VAT, gross). It uses the tax already stored. Draft, proforma, and cancelled documents are left out. Credit notes reduce the total. The CSV total line matches the screen.

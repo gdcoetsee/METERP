@@ -269,4 +269,37 @@ public class FinanceService : IFinanceService
 
         return GlCsvExporter.BuildJournalLinesCsv(exportLines);
     }
+
+    public async Task<OutputVatPack> GetOutputVatPackAsync(DateTime from, DateTime to, CancellationToken ct = default)
+    {
+        var start = from.Date;
+        var end = to.Date;
+        if (end < start)
+            throw new InvalidOperationException("VAT pack end date is before the start date.");
+
+        var endExclusive = end.AddDays(1);
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Include(i => i.Customer)
+            .Where(i => i.InvoiceDate >= start && i.InvoiceDate < endExclusive)
+            .Where(i => i.Status == InvoiceStatus.Sent
+                || i.Status == InvoiceStatus.PartiallyPaid
+                || i.Status == InvoiceStatus.Paid
+                || i.Status == InvoiceStatus.Overdue)
+            .Where(i => i.DocumentType != InvoiceDocumentType.Proforma)
+            .ToListAsync(ct);
+
+        var documents = invoices.Select(i => new OutputVatDocument(
+            i.InvoiceDate,
+            i.DocumentType,
+            i.Status,
+            i.InvoiceNumber,
+            i.Customer?.Name,
+            i.Subtotal,
+            i.Tax,
+            i.Total,
+            i.IsDeleted));
+
+        return OutputVatPackBuilder.Build(start, end, documents);
+    }
 }

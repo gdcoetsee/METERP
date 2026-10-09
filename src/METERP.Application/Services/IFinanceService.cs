@@ -26,6 +26,12 @@ public interface IFinanceService
     /// Exports all journal lines as CSV (Xero/Sage-compatible columns) for accounting integrations.
     /// </summary>
     Task<string> ExportGlCsvAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Output VAT for an inclusive date range. Uses stored tax and total.
+    /// Credit notes subtract. Draft, proforma, and cancelled documents are omitted.
+    /// </summary>
+    Task<OutputVatPack> GetOutputVatPackAsync(DateTime from, DateTime to, CancellationToken ct = default);
 }
 
 public record AccountBalanceRow(Account Account, decimal Balance);

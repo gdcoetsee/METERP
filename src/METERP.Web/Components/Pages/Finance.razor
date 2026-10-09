@@ -21,79 +21,149 @@
 {
     <ListSkeleton Rows="6" TestId="finance-loading" AriaLabel="Loading accounts" />
 }
-else if (!accountRows.Any())
-{
-    <p class="text-muted" data-testid="finance-empty">No accounts yet. Add the accounts this company uses. An empty chart means none have been loaded for this company.</p>
-}
 else
 {
-    <div class="row" data-testid="finance-ready">
-        <div class="col-md-8">
-            <h5>Chart of Accounts</h5>
-            @if (accountRows.Any(r => r.Account.Description?.Contains("MET FY demo", StringComparison.OrdinalIgnoreCase) == true))
-            {
-                <p class="text-muted small" data-testid="finance-met-stub-note">Chart of accounts is loaded. Balances stay zero until a balanced journal is posted.</p>
-            }
-            <table class="table table-sm" data-testid="finance-accounts-table">
-                <thead>
-                    <tr>
-                        <th>Code</th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th class="text-end">Balance</th>
-                        @if (CanManage)
-                        {
-                            <th></th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in accountRows)
-                    {
-                        <tr class="meterp-row-click" title="Open account" @onclick="() => OpenAccount(row)">
-                            <td><code>@row.Account.AccountCode</code></td>
-                            <td>@row.Account.Name</td>
-                            <td>@row.Account.Type</td>
-                            <td class="text-end">R @row.Balance.ToString("N2")</td>
+    @if (!accountRows.Any())
+    {
+        <p class="text-muted" data-testid="finance-empty">No accounts yet. Add the accounts this company uses. An empty chart means none have been loaded for this company.</p>
+    }
+    else
+    {
+        <div class="row" data-testid="finance-ready">
+            <div class="col-md-8">
+                <h5>Chart of Accounts</h5>
+                @if (accountRows.Any(r => r.Account.Description?.Contains("MET FY demo", StringComparison.OrdinalIgnoreCase) == true))
+                {
+                    <p class="text-muted small" data-testid="finance-met-stub-note">Chart of accounts is loaded. Balances stay zero until a balanced journal is posted.</p>
+                }
+                <table class="table table-sm" data-testid="finance-accounts-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th class="text-end">Balance</th>
                             @if (CanManage)
                             {
-                                <td class="text-end">
-                                    <button type="button" class="btn btn-link btn-sm p-0"
-                                            data-testid="finance-account-deactivate"
-                                            @onclick="() => DeactivateAccountAsync(row.Account.Id)" @onclick:stopPropagation="true">
-                                        Deactivate
-                                    </button>
-                                </td>
+                                <th></th>
                             }
                         </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h6>Balances</h6>
-                    <p class="small text-muted" data-testid="finance-journal-note">Journals post from invoices, job costs, and purchase orders. Refresh reloads balances. Export when the bookkeeper needs a file.</p>
-                    <button class="btn btn-sm btn-outline-primary mb-2" @onclick="Refresh">Refresh Balances</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="ExportGlCsv" data-testid="finance-export-gl-csv">Export GL CSV</button>
-                    <hr />
-                    <h6>Sage / Xero</h6>
-                    <p class="small text-muted">Export sent invoices as a bookkeeper import. Webhook URL on the tenant still receives JSON on invoice create.</p>
-                    <label class="form-label small">Package</label>
-                    <select class="form-select form-select-sm mb-2" @bind="_provider" data-testid="finance-accounting-provider">
-                        <option value="@AccountingProvider.None">Not set</option>
-                        <option value="@AccountingProvider.Sage">Sage</option>
-                        <option value="@AccountingProvider.Xero">Xero</option>
-                    </select>
-                    <label class="form-label small">Sales account code</label>
-                    <input class="form-control form-control-sm mb-2" @bind="_accountCode" data-testid="finance-accounting-code" />
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="SaveAccountingSettings" data-testid="finance-save-accounting">Save package</button>
-                        <button type="button" class="btn btn-sm btn-primary" @onclick="ExportAccountingCsv" data-testid="finance-export-accounting-csv">Export sales CSV</button>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in accountRows)
+                        {
+                            <tr class="meterp-row-click" title="Open account" @onclick="() => OpenAccount(row)">
+                                <td><code>@row.Account.AccountCode</code></td>
+                                <td>@row.Account.Name</td>
+                                <td>@row.Account.Type</td>
+                                <td class="text-end">R @row.Balance.ToString("N2")</td>
+                                @if (CanManage)
+                                {
+                                    <td class="text-end">
+                                        <button type="button" class="btn btn-link btn-sm p-0"
+                                                data-testid="finance-account-deactivate"
+                                                @onclick="() => DeactivateAccountAsync(row.Account.Id)" @onclick:stopPropagation="true">
+                                            Deactivate
+                                        </button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h6>Balances</h6>
+                        <p class="small text-muted" data-testid="finance-journal-note">Journals post from invoices, job costs, and purchase orders. Refresh reloads balances. Export when the bookkeeper needs a file.</p>
+                        <button class="btn btn-sm btn-outline-primary mb-2" @onclick="Refresh">Refresh Balances</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ExportGlCsv" data-testid="finance-export-gl-csv">Export GL CSV</button>
+                        <hr />
+                        <h6>Sage / Xero</h6>
+                        <p class="small text-muted">Export sent invoices as a bookkeeper import. Webhook URL on the tenant still receives JSON on invoice create.</p>
+                        <label class="form-label small">Package</label>
+                        <select class="form-select form-select-sm mb-2" @bind="_provider" data-testid="finance-accounting-provider">
+                            <option value="@AccountingProvider.None">Not set</option>
+                            <option value="@AccountingProvider.Sage">Sage</option>
+                            <option value="@AccountingProvider.Xero">Xero</option>
+                        </select>
+                        <label class="form-label small">Sales account code</label>
+                        <input class="form-control form-control-sm mb-2" @bind="_accountCode" data-testid="finance-accounting-code" />
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="SaveAccountingSettings" data-testid="finance-save-accounting">Save package</button>
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="ExportAccountingCsv" data-testid="finance-export-accounting-csv">Export sales CSV</button>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
+    }
+
+    <div class="card mt-3" data-testid="finance-output-vat">
+        <div class="card-body">
+            <h6>Output VAT</h6>
+            <p class="small text-muted mb-2">Issued invoices for the dates below. VAT is the tax stored on the document. Draft, proforma, and cancelled documents are left out. Credit notes reduce the pack.</p>
+            <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+                <div>
+                    <label class="form-label small mb-1">From</label>
+                    <InputDate class="form-control form-control-sm" @bind-Value="_vatFrom" data-testid="finance-vat-from" />
+                </div>
+                <div>
+                    <label class="form-label small mb-1">To</label>
+                    <InputDate class="form-control form-control-sm" @bind-Value="_vatTo" data-testid="finance-vat-to" />
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="LoadVatPackAsync" data-testid="finance-vat-load">Show pack</button>
+                <button type="button" class="btn btn-sm btn-primary" @onclick="ExportVatCsv" data-testid="finance-vat-csv">Export VAT CSV</button>
+            </div>
+            @if (_vatPack != null)
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm mb-2" data-testid="finance-vat-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Number</th>
+                                <th>Customer</th>
+                                <th class="text-end">Net</th>
+                                <th class="text-end">VAT</th>
+                                <th class="text-end">Gross</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_vatPack.Lines.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="6" class="text-muted">No issued documents in this range.</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var line in _vatPack.Lines)
+                                {
+                                    <tr>
+                                        <td>@line.Date.ToString("yyyy-MM-dd")</td>
+                                        <td>@line.Number</td>
+                                        <td>@line.Customer</td>
+                                        <td class="text-end">@OutputVatPack.FormatAmount(line.Net)</td>
+                                        <td class="text-end">@OutputVatPack.FormatAmount(line.Vat)</td>
+                                        <td class="text-end">@OutputVatPack.FormatAmount(line.Gross)</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr data-testid="finance-vat-totals">
+                                <th colspan="3">Total</th>
+                                <th class="text-end" data-testid="finance-vat-total-net">@OutputVatPack.FormatAmount(_vatPack.NetTotal)</th>
+                                <th class="text-end" data-testid="finance-vat-total-vat">@OutputVatPack.FormatAmount(_vatPack.VatTotal)</th>
+                                <th class="text-end" data-testid="finance-vat-total-gross">@OutputVatPack.FormatAmount(_vatPack.GrossTotal)</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <p class="small text-muted mb-0">CSV columns are date, number, customer, net, VAT, gross. The total line matches these figures.</p>
+            }
         </div>
     </div>
 }
@@ -128,12 +198,35 @@ else
     private bool _loading = true;
     private AccountingProvider _provider = AccountingProvider.None;
     private string _accountCode = "200";
+    private DateTime _vatFrom = DateTime.UtcNow.Date;
+    private DateTime _vatTo = DateTime.UtcNow.Date;
+    private OutputVatPack? _vatPack;
 
     private bool CanManage => CurrentUserService.Permissions.Contains(Permissions.FinanceManage);
 
     protected override async Task OnInitializedAsync()
     {
+        var today = OfficeToday();
+        _vatFrom = new DateTime(today.Year, today.Month, 1);
+        _vatTo = today;
         await Load();
+    }
+
+    private static DateTime OfficeToday()
+    {
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById("Africa/Johannesburg");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone).Date;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return DateTime.UtcNow.Date;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return DateTime.UtcNow.Date;
+        }
     }
 
     private async Task Load()
@@ -142,6 +235,7 @@ else
         try
         {
             accountRows = (await FinanceService.GetAccountsWithBalancesAsync()).ToList();
+            await LoadVatPackAsync();
             var tenant = await TenantService.GetByIdAsync(CurrentUserService.TenantId);
             if (tenant != null)
             {
@@ -236,5 +330,38 @@ else
         {
             ToastService.ShowError(ex.Message);
         }
+    }
+
+    private async Task LoadVatPackAsync()
+    {
+        try
+        {
+            _vatPack = await FinanceService.GetOutputVatPackAsync(_vatFrom, _vatTo);
+        }
+        catch (Exception ex)
+        {
+            _vatPack = null;
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task ExportVatCsv()
+    {
+        await LoadVatPackAsync();
+        if (_vatPack == null)
+            return;
+
+        var csv = _vatPack.ToCsv();
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", _vatPack.FileName, csv, "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            try { await JS.InvokeVoidAsync("meterpClipboard.write", csv); }
+            catch { /* headless may block both download and clipboard */ }
+        }
+
+        ToastService.ShowSuccess("Output VAT CSV uses the totals on this page.");
     }
 }
