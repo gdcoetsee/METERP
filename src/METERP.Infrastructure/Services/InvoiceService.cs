@@ -965,6 +965,232 @@ public class InvoiceService : IInvoiceService
         }
     }
 
+    public async Task<IReadOnlyList<AllocatableInvoiceRow>> GetAllocatableInvoicesAsync(
+        Guid customerId,
+        CancellationToken ct = default)
+    {
+        if (customerId == Guid.Empty)
+            return Array.Empty<AllocatableInvoiceRow>();
+
+        var rows = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.CustomerId == customerId
+                && i.DocumentType != InvoiceDocumentType.Proforma
+                && i.DocumentType != InvoiceDocumentType.CreditNote
+                && i.Status != InvoiceStatus.Draft
+                && i.Status != InvoiceStatus.Cancelled)
+            .OrderBy(i => i.InvoiceDate)
+            .ThenBy(i => i.InvoiceNumber)
+            .Select(i => new { i.Id, i.InvoiceNumber, i.InvoiceDate, i.Total, i.AmountPaid })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(i => new AllocatableInvoiceRow(
+                i.Id,
+                i.InvoiceNumber,
+                i.InvoiceDate,
+                InvoiceBillingCalculator.CalculateBalanceDue(i.Total, i.AmountPaid)))
+            .Where(r => r.BalanceDue > 0m)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<Guid>> AllocateReceiptAsync(
+        Guid customerId,
+        decimal bankAmount,
+        DateTime paymentDate,
+        string? reference,
+        IReadOnlyList<ReceiptAllocationLine> allocations,
+        Guid? recordedByUserId,
+        string? notes,
+        CancellationToken ct = default)
+    {
+        if (bankAmount <= 0)
+            throw new InvalidOperationException("Payment amount must be positive.");
+        if (bankAmount > 100_000_000m)
+            throw new InvalidOperationException("Payment amount cannot exceed 100,000,000.");
+
+        paymentDate = paymentDate == default ? DateTime.UtcNow.Date : paymentDate.Date;
+        if (paymentDate > DateTime.UtcNow.Date.AddDays(1))
+            throw new InvalidOperationException("Payment date cannot be more than one day in the future.");
+        if (paymentDate < DateTime.UtcNow.Date.AddYears(-2))
+            throw new InvalidOperationException("Payment date cannot be more than 2 years in the past.");
+
+        if (string.IsNullOrWhiteSpace(reference))
+            throw new InvalidOperationException("A receipt reference is required when allocating across invoices.");
+        reference = reference.Trim();
+        if (reference.Length > 100)
+            throw new InvalidOperationException("Payment reference cannot exceed 100 characters.");
+
+        if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > 500)
+            throw new InvalidOperationException("Payment notes cannot exceed 500 characters.");
+        var paymentNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+
+        var lines = new List<(Guid InvoiceId, decimal Amount)>();
+        if (allocations != null)
+        {
+            foreach (var line in allocations)
+            {
+                var amount = ToCents(line.Amount);
+                if (amount <= 0)
+                    throw new InvalidOperationException("Each allocation must be a positive amount.");
+                lines.Add((line.InvoiceId, amount));
+            }
+        }
+
+        if (lines.Count < 2)
+            throw new InvalidOperationException("Allocate a receipt across at least two invoices.");
+
+        if (lines.Select(l => l.InvoiceId).Distinct().Count() != lines.Count)
+            throw new InvalidOperationException("Each invoice can appear only once on a receipt.");
+
+        var bank = ToCents(bankAmount);
+        var sum = ToCents(lines.Sum(l => l.Amount));
+        if (sum != bank)
+            throw new InvalidOperationException(
+                $"Allocations R {sum:N2} do not add up to the bank amount R {bank:N2}.");
+
+        if (customerId == Guid.Empty)
+            throw new InvalidOperationException("Customer not found.");
+
+        var customer = await _dbContext.Set<Customer>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == customerId, ct);
+        if (customer == null)
+            throw new InvalidOperationException("Customer not found.");
+
+        var tenantId = _tenantProvider?.GetCurrentTenantId() ?? _dbContext.CurrentTenantId;
+        var ids = lines.Select(l => l.InvoiceId).ToList();
+        var invoices = await _dbContext.Set<Invoice>()
+            .IgnoreQueryFilters()
+            .Where(i => ids.Contains(i.Id))
+            .ToListAsync(ct);
+        var byId = invoices.ToDictionary(i => i.Id);
+
+        var ordered = new List<(Invoice Invoice, decimal Amount)>(lines.Count);
+        foreach (var line in lines)
+        {
+            if (!byId.TryGetValue(line.InvoiceId, out var invoice) || invoice.IsDeleted)
+                throw new InvalidOperationException("Invoice not found.");
+
+            if (invoice.TenantId != tenantId)
+                throw new InvalidOperationException("Cannot allocate a receipt to an invoice on another tenant.");
+
+            if (invoice.CustomerId != customerId)
+                throw new InvalidOperationException("All invoices on one receipt must belong to the same customer.");
+
+            if (invoice.DocumentType == InvoiceDocumentType.CreditNote)
+                throw new InvalidOperationException(
+                    $"Payments cannot be recorded against credit note {invoice.InvoiceNumber}.");
+
+            if (invoice.DocumentType == InvoiceDocumentType.Proforma)
+                throw new InvalidOperationException(
+                    $"Payments cannot be recorded against proforma {invoice.InvoiceNumber}.");
+
+            if (invoice.Status == InvoiceStatus.Cancelled)
+                throw new InvalidOperationException(
+                    $"Cannot allocate a receipt to cancelled invoice {invoice.InvoiceNumber}.");
+
+            if (invoice.Status == InvoiceStatus.Draft)
+                throw new InvalidOperationException(
+                    $"Send {invoice.InvoiceNumber} before allocating a receipt.");
+
+            var balance = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+            if (balance <= 0m)
+                throw new InvalidOperationException($"Invoice {invoice.InvoiceNumber} is already fully paid.");
+
+            if (line.Amount > balance)
+                throw new InvalidOperationException(
+                    $"Payment R {line.Amount:N2} exceeds balance due R {balance:N2} on {invoice.InvoiceNumber}.");
+
+            ordered.Add((invoice, line.Amount));
+        }
+
+        var paymentIds = new List<Guid>(ordered.Count);
+        foreach (var (invoice, amount) in ordered)
+        {
+            var payment = new InvoicePayment
+            {
+                InvoiceId = invoice.Id,
+                Amount = amount,
+                PaymentDate = paymentDate,
+                Reference = reference,
+                RecordedByUserId = recordedByUserId,
+                Notes = paymentNotes
+            };
+            _dbContext.Set<InvoicePayment>().Add(payment);
+            paymentIds.Add(payment.Id);
+
+            invoice.AmountPaid = Math.Round(invoice.AmountPaid + amount, 2);
+            invoice.Status = InvoiceBillingCalculator.DerivePaymentStatus(
+                invoice.Total,
+                invoice.AmountPaid,
+                invoice.Status,
+                invoice.DueDate,
+                DateTime.UtcNow);
+        }
+
+        await MarkDepositsReceivedAsync(ordered.Select(o => o.Invoice), ct);
+
+        await _dbContext.SaveChangesAsync(ct);
+        InvalidateListCaches();
+
+        foreach (var (invoice, amount) in ordered)
+        {
+            var remaining = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+            await TryEmailPaymentReceiptAsync(invoice, amount, remaining, ct);
+        }
+
+        var invoiceNumbers = ordered.Select(o => o.Invoice.InvoiceNumber).ToList();
+        var listed = string.Join(", ", ordered.Select(o => $"{o.Invoice.InvoiceNumber} R {o.Amount:N2}"));
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                "ALLOCATE",
+                "Invoice",
+                reference,
+                $"Allocated receipt R {bank:N2} ref {reference} to {listed}",
+                ct);
+        }
+
+        if (_notifications != null)
+        {
+            await _notifications.CreateAsync(new TenantNotification
+            {
+                TenantId = tenantId,
+                Title = $"Receipt allocated ref {reference}",
+                Message = $"R {bank:N2} allocated to {string.Join(", ", invoiceNumbers)}.",
+                Category = "collections",
+                TargetRoles = "Admin,Executive,Finance",
+                RelatedEntityId = ordered[0].Invoice.Id,
+                RelatedEntityType = nameof(Invoice)
+            }, ct);
+        }
+
+        return paymentIds;
+    }
+
+    private async Task MarkDepositsReceivedAsync(IEnumerable<Invoice> invoices, CancellationToken ct)
+    {
+        var jobIds = invoices
+            .Where(i => i.DocumentType == InvoiceDocumentType.Deposit
+                && i.JobId.HasValue
+                && i.AmountPaid >= i.Total)
+            .Select(i => i.JobId!.Value)
+            .Distinct()
+            .ToList();
+        if (jobIds.Count == 0)
+            return;
+
+        var jobs = await _dbContext.Set<Job>()
+            .Where(j => jobIds.Contains(j.Id) && !j.DepositReceived)
+            .ToListAsync(ct);
+        foreach (var job in jobs)
+            job.DepositReceived = true;
+    }
+
+    private static decimal ToCents(decimal amount) =>
+        Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+
     public async Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default)
     {
         // Headline stays bounded for the MET seed (~16k invoices). Netting does not:

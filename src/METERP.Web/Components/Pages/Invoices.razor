@@ -564,6 +564,59 @@ else
                         </div>
                     </div>
                 }
+
+                @if (UserCanManage && _splitRows.Count >= 2)
+                {
+                    var entered = _splitRows.Sum(r => r.Amount);
+                    <div class="border rounded p-3 mt-3" data-testid="invoice-allocate-receipt">
+                        <h6 class="mb-1">Allocate one receipt</h6>
+                        <p class="small text-muted mb-2">
+                            One EFT can pay several of this customer's invoices. The amounts must add up to the bank amount.
+                            An amount cannot exceed that invoice's balance. Draft, proforma, cancelled, and credit notes are left off.
+                        </p>
+                        <div class="row g-2 align-items-end mb-2">
+                            <div class="col-md-3">
+                                <label class="form-label small">Bank amount</label>
+                                <InputNumber class="form-control form-control-sm" @bind-Value="_bankAmount" step="0.01" data-testid="invoice-allocate-bank" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Date</label>
+                                <InputDate class="form-control form-control-sm" @bind-Value="_allocateDate" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">EFT reference</label>
+                                <InputText class="form-control form-control-sm" @bind-Value="_allocateReference" placeholder="Bank reference" data-testid="invoice-allocate-reference" />
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-sm btn-success w-100" @onclick="AllocateReceiptAsync" data-testid="invoice-allocate-btn">Allocate</button>
+                            </div>
+                        </div>
+                        <table class="table table-sm mb-1">
+                            <thead>
+                                <tr>
+                                    <th>Invoice</th>
+                                    <th class="text-end">Balance</th>
+                                    <th class="text-end">This receipt</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _splitRows)
+                                {
+                                    <tr data-testid="invoice-allocate-row">
+                                        <td>@row.InvoiceNumber</td>
+                                        <td class="text-end">R @row.BalanceDue.ToString("N2")</td>
+                                        <td style="width:10rem">
+                                            <InputNumber class="form-control form-control-sm text-end" @bind-Value="row.Amount" step="0.01" data-testid="invoice-allocate-amount" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        <div class="small @(entered == _bankAmount ? "text-muted" : "text-danger")" data-testid="invoice-allocate-sum">
+                            Entered R @entered.ToString("N2") · Bank R @_bankAmount.ToString("N2")
+                        </div>
+                    </div>
+                }
             }
 
             @if (UserCanManage)
@@ -628,6 +681,10 @@ else
     private DateTime _paymentDate = DateTime.UtcNow.Date;
     private string _paymentReference = "";
     private string _reversalReason = "";
+    private List<ReceiptSplitRow> _splitRows = new();
+    private decimal _bankAmount;
+    private DateTime _allocateDate = DateTime.UtcNow.Date;
+    private string _allocateReference = "";
     private IBrowserFile? _popFile;
     private Invoice currentInvoice = new();
     private Invoice? selectedInvoice;
@@ -656,6 +713,14 @@ else
     private InvoiceLine? editingLine;
 
     private bool UserCanManage => CurrentUserService.Permissions.Contains(Permissions.InvoicesManage);
+
+    private sealed class ReceiptSplitRow
+    {
+        public Guid InvoiceId { get; set; }
+        public string InvoiceNumber { get; set; } = "";
+        public decimal BalanceDue { get; set; }
+        public decimal Amount { get; set; }
+    }
 
     [SupplyParameterFromQuery(Name = "open")]
     public Guid? OpenInvoiceId { get; set; }
@@ -836,6 +901,7 @@ else
         _paymentReference = "";
         _reversalReason = "";
         _popFile = null;
+        await LoadAllocationDraftAsync(selectedInvoice);
         showForm = false;
         showLineForm = false;
         editingLine = null;
@@ -1005,6 +1071,53 @@ else
             await stream.CopyToAsync(ms);
             var base64 = Convert.ToBase64String(ms.ToArray());
             await JS.InvokeVoidAsync("meterpUi.downloadBytes", pop.Value.FileName, base64, pop.Value.ContentType);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    private async Task LoadAllocationDraftAsync(Invoice? invoice)
+    {
+        _splitRows = new();
+        _bankAmount = 0;
+        _allocateDate = DateTime.UtcNow.Date;
+        _allocateReference = "";
+        if (invoice == null
+            || invoice.CustomerId == Guid.Empty
+            || invoice.DocumentType is InvoiceDocumentType.Proforma or InvoiceDocumentType.CreditNote)
+            return;
+
+        var open = await InvoiceService.GetAllocatableInvoicesAsync(invoice.CustomerId);
+        _splitRows = open.Select(r => new ReceiptSplitRow
+        {
+            InvoiceId = r.InvoiceId,
+            InvoiceNumber = r.InvoiceNumber,
+            BalanceDue = r.BalanceDue
+        }).ToList();
+    }
+
+    private async Task AllocateReceiptAsync()
+    {
+        if (selectedInvoice == null) return;
+        var lines = _splitRows
+            .Where(r => r.Amount > 0)
+            .Select(r => new ReceiptAllocationLine(r.InvoiceId, r.Amount))
+            .ToList();
+        try
+        {
+            await InvoiceService.AllocateReceiptAsync(
+                selectedInvoice.CustomerId,
+                _bankAmount,
+                _allocateDate.ToUniversalTime(),
+                string.IsNullOrWhiteSpace(_allocateReference) ? null : _allocateReference,
+                lines,
+                CurrentUserService.UserId,
+                null);
+            ToastService.ShowSuccess("Receipt allocated.");
+            await ViewInvoice(selectedInvoice);
+            await LoadInvoices();
         }
         catch (Exception ex)
         {

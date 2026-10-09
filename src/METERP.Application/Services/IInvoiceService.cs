@@ -85,6 +85,32 @@ public interface IInvoiceService
     /// </summary>
     Task ReversePaymentAsync(Guid paymentId, string reason, CancellationToken ct = default);
 
+    /// <summary>
+    /// Open sales invoices for one customer that can take a receipt.
+    /// Draft, proforma, cancelled, credit notes, and zero balances are omitted. Tenant-scoped.
+    /// </summary>
+    Task<IReadOnlyList<AllocatableInvoiceRow>> GetAllocatableInvoicesAsync(
+        Guid customerId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Splits one bank receipt across two or more invoices for the same customer.
+    /// Writes one <see cref="InvoicePayment"/> per invoice, sharing <paramref name="reference"/>.
+    /// The amounts must add up to <paramref name="bankAmount"/>. Each amount must be positive
+    /// and must not exceed that invoice's balance due. Draft, proforma, cancelled, and credit
+    /// notes are refused. An invoice on another tenant is refused. Nothing is saved if any
+    /// line is refused. One audit row lists the reference and each invoice number.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> AllocateReceiptAsync(
+        Guid customerId,
+        decimal bankAmount,
+        DateTime paymentDate,
+        string? reference,
+        IReadOnlyList<ReceiptAllocationLine> allocations,
+        Guid? recordedByUserId,
+        string? notes,
+        CancellationToken ct = default);
+
     Task<Invoice> CreateCreditNoteAsync(Guid sourceInvoiceId, string reason, CancellationToken ct = default);
 
     /// <summary>
