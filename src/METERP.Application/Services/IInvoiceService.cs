@@ -142,6 +142,13 @@ public interface IInvoiceService
     Task<IReadOnlyList<AgedDebtorRow>> GetAgedDebtorsAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Customers whose open credit notes exceed open invoices.
+    /// The amount is the VAT-inclusive excess from <see cref="InvoiceCreditConvention.ArSignedOpenBalance"/>.
+    /// Draft, proforma, cancelled, and settled documents contribute nothing.
+    /// </summary>
+    Task<IReadOnlyList<CustomerInCreditRow>> GetCustomersInCreditAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Account statement for one customer. Null when the customer is not in this tenant.
     /// Totals are the stored VAT-inclusive amounts. See <see cref="CustomerStatementBuilder"/>.
     /// </summary>

@@ -77,6 +77,39 @@
     </div>
 }
 
+@if (_customersInCredit.Count > 0)
+{
+    <div class="card mb-3 border-success" data-testid="customers-in-credit">
+        <div class="card-body py-2">
+            <strong>Customers in credit:</strong>
+            <span class="ms-2">@_customersInCredit.Count customer(s)</span>
+            <span class="ms-2 text-success" data-testid="customers-in-credit-total">R @_customersInCredit.Sum(c => c.CreditAmount).ToString("N2") in credit</span>
+            <span class="ms-2 small text-muted">Open credit notes above open invoices. Draft credits are left out.</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" data-testid="customers-in-credit-table">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th class="text-end">In credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _customersInCredit)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/customers?search=@Uri.EscapeDataString(row.CustomerName)">@row.CustomerName</a>
+                            </td>
+                            <td class="text-end" data-testid="customer-in-credit-amount">R @row.CreditAmount.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
 <PageHeader Title="Invoices" Subtitle="Bill completed work. Record payments here; invoicing does not close the job." TestId="invoices-page-header">
     <Actions>
         <ExportToolbar TestId="invoices-export" OnExportCsv="ExportInvoicesCsvAsync" OnExportExcel="ExportInvoicesExcelAsync" OnExportPdf="ExportInvoicesPdfAsync" Disabled="@_loading" />
@@ -676,6 +709,7 @@ else
 @code {
     private List<Invoice> invoices = new();
     private List<AgedDebtorRow> _agedDebtors = new();
+    private List<CustomerInCreditRow> _customersInCredit = new();
     private List<InvoicePayment> _payments = new();
     private decimal _paymentAmount;
     private DateTime _paymentDate = DateTime.UtcNow.Date;
@@ -762,6 +796,7 @@ else
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
         invoices = (await InvoiceService.GetAllAsync(term, currentPage, PageSize, unlinkedOnly: _unlinkedOnly, unlinkedCreditsOnly: _unlinkedCreditsOnly)).ToList();
         _agedDebtors = (await InvoiceService.GetAgedDebtorsAsync()).ToList();
+        _customersInCredit = (await InvoiceService.GetCustomersInCreditAsync()).ToList();
     }
 
     private async Task OnSearchChangedAsync()

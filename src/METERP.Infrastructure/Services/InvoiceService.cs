@@ -1285,6 +1285,51 @@ public class InvoiceService : IInvoiceService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<CustomerInCreditRow>> GetCustomersInCreditAsync(CancellationToken ct = default)
+    {
+        // Header columns only. ArSignedOpenBalance drops draft, proforma, cancelled,
+        // and settled documents, so a draft credit cannot put a customer in credit.
+        var documents = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Select(i => new { i.CustomerId, i.DocumentType, i.Status, i.Total, i.AmountPaid })
+            .ToListAsync(ct);
+
+        var inCredit = documents
+            .GroupBy(i => i.CustomerId)
+            .Select(g => new
+            {
+                CustomerId = g.Key,
+                Signed = Math.Round(
+                    g.Sum(i => InvoiceCreditConvention.ArSignedOpenBalance(
+                        i.DocumentType, i.Status, i.Total, i.AmountPaid)),
+                    2,
+                    MidpointRounding.AwayFromZero)
+            })
+            .Where(x => x.Signed < 0m)
+            .ToList();
+
+        if (inCredit.Count == 0)
+            return Array.Empty<CustomerInCreditRow>();
+
+        var ids = inCredit.Select(x => x.CustomerId).ToList();
+        var names = await _dbContext.Set<Customer>()
+            .AsNoTracking()
+            .Where(c => ids.Contains(c.Id))
+            .Select(c => new { c.Id, c.Name })
+            .ToListAsync(ct);
+        var nameById = names.ToDictionary(c => c.Id, c => c.Name);
+
+        return inCredit
+            .Select(x => new CustomerInCreditRow(
+                x.CustomerId,
+                nameById.TryGetValue(x.CustomerId, out var name) && !string.IsNullOrWhiteSpace(name) ? name : "-",
+                -x.Signed))
+            .OrderByDescending(r => r.CreditAmount)
+            .ThenBy(r => r.CustomerName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.CustomerId)
+            .ToList();
+    }
+
     public async Task<CustomerStatement?> GetCustomerStatementAsync(
         Guid customerId,
         DateTime? asOfUtc = null,
