@@ -1216,6 +1216,57 @@ public class InvoiceBillingServiceTests
     }
 
     [Fact]
+    public async Task RecordPaymentAsync_PartialReceiptEmail_StatesReceivedTotalAndBalance()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantProvider = new Mock<ITenantProvider>();
+        tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"pay-receipt-partial-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new AppDbContext(options, tenantProvider.Object, new Mock<ICurrentUserService>().Object);
+
+        string? body = null;
+        var email = new Mock<IEmailSender>();
+        email.Setup(e => e.IsConfigured).Returns(true);
+        email.Setup(e => e.SendEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, string, CancellationToken>((_, _, html, _) => body = html)
+            .Returns(Task.CompletedTask);
+
+        var service = new InvoiceService(db, email: email.Object);
+        var customer = new Customer { TenantId = tenantId, Name = "Part Pay", Email = "ap@part.co" };
+        db.Set<Customer>().Add(customer);
+        var invoice = new Invoice
+        {
+            TenantId = tenantId,
+            CustomerId = customer.Id,
+            InvoiceNumber = "INV-PART",
+            Status = InvoiceStatus.Sent,
+            Total = 1150m,
+            AmountPaid = 200m
+        };
+        db.Set<Invoice>().Add(invoice);
+        await db.SaveChangesAsync();
+
+        var paymentId = await service.RecordPaymentAsync(
+            invoice.Id, 400m, DateTime.UtcNow.Date, "EFT-PART", null, null);
+
+        Assert.NotEqual(Guid.Empty, paymentId);
+        Assert.NotNull(body);
+        Assert.Contains("Amount received", body, StringComparison.Ordinal);
+        Assert.Contains("R 400.00", body, StringComparison.Ordinal);
+        Assert.Contains("Invoice total (VAT inclusive)", body, StringComparison.Ordinal);
+        Assert.Contains("R 1,150.00", body, StringComparison.Ordinal);
+        Assert.Contains("Balance due", body, StringComparison.Ordinal);
+        Assert.Contains("R 550.00", body, StringComparison.Ordinal);
+
+        var saved = await db.Set<Invoice>().FirstAsync(i => i.Id == invoice.Id);
+        Assert.Equal(600m, saved.AmountPaid);
+        Assert.Equal(InvoiceStatus.PartiallyPaid, saved.Status);
+    }
+
+    [Fact]
     public async Task RecordPaymentAsync_SucceedsWithoutReceipt_WhenNoSmtpOrEmail()
     {
         var (service, db, tenantId) = Create();

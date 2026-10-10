@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Application.Models;
 using METERP.Application.Services;
+using METERP.Common;
 using METERP.Domain;
 using METERP.Infrastructure.Caching;
 using METERP.Infrastructure.Persistence;
@@ -1877,15 +1878,11 @@ public class InvoiceService : IInvoiceService
             if (_email?.IsConfigured != true)
                 return " SMTP not configured — receipt recorded in-system only.";
 
-            var html = $"""
-                <p>We have received your payment.</p>
-                <ul>
-                  <li><strong>Invoice:</strong> {invoice.InvoiceNumber}</li>
-                  <li><strong>Amount received:</strong> R {amount:N2}</li>
-                  <li><strong>Balance due:</strong> R {remaining:N2}</li>
-                </ul>
-                <p>Thank you.</p>
-                """;
+            var html = PaymentReceiptEmailBuilder.BuildHtml(
+                invoice.InvoiceNumber,
+                amount,
+                invoice.Total,
+                remaining);
             await _email.SendEmailAsync(email, $"Payment received — invoice {invoice.InvoiceNumber}", html, ct);
             return $" Receipt emailed to {email}.";
         }
