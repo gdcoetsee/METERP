@@ -20,6 +20,12 @@ public class Customer : BaseEntity
 
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Days after the invoice date until payment is due.
+    /// Null or 0 means <see cref="CustomerPaymentTerms.DefaultDays"/>. Allowed range is 0–180.
+    /// </summary>
+    public int? PaymentTermsDays { get; set; }
+
     // Navigation
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
 }

@@ -450,12 +450,13 @@ public class InvoiceService : IInvoiceService
             await _quotaService.EnsureAllowedAsync(tenantId, QuotaType.Invoice, ct);
 
         var (sequenceType, prefix) = GetSequenceForDocumentType(documentType);
+        var invoiceDate = DateTime.UtcNow;
         var invoice = new Invoice
         {
             CustomerId = job.CustomerId,
             JobId = job.Id,
-            InvoiceDate = DateTime.UtcNow,
-            DueDate = DateTime.UtcNow.AddDays(30),
+            InvoiceDate = invoiceDate,
+            DueDate = CustomerPaymentTerms.DueDateFrom(invoiceDate, job.Customer.PaymentTermsDays),
             Status = InvoiceStatus.Draft,
             DocumentType = documentType,
             Notes = job.Description ?? job.Notes,

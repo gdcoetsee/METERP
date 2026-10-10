@@ -68,6 +68,7 @@ public class CustomerService : ICustomerService
         customer.Name = customer.Name.Trim();
         if (customer.Name.Length > 200)
             throw new InvalidOperationException("Customer name cannot exceed 200 characters.");
+        CustomerPaymentTerms.EnsureAllowed(customer.PaymentTermsDays);
         if (!string.IsNullOrWhiteSpace(customer.Email))
         {
             customer.Email = customer.Email.Trim();
@@ -117,6 +118,7 @@ public class CustomerService : ICustomerService
         customer.Name = customer.Name.Trim();
         if (customer.Name.Length > 200)
             throw new InvalidOperationException("Customer name cannot exceed 200 characters.");
+        CustomerPaymentTerms.EnsureAllowed(customer.PaymentTermsDays);
         if (!string.IsNullOrWhiteSpace(customer.Email))
         {
             customer.Email = customer.Email.Trim();

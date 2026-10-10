@@ -145,6 +145,11 @@ else
                             <label class="form-label">VAT number <span class="text-muted fw-normal">(optional)</span></label>
                             <InputText class="form-control" @bind-Value="currentCustomer.VatNumber" />
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="customer-payment-terms">Payment terms (days)</label>
+                            <InputNumber id="customer-payment-terms" class="form-control" @bind-Value="currentCustomer.PaymentTermsDays" data-testid="customer-payment-terms" />
+                            <span class="meterp-field-hint">Blank or 0 means 30 days. Invoices raised from a job are due this many days after the invoice date. Use 0–180.</span>
+                        </div>
                     </div>
                 </div>
                 <div class="meterp-section">
@@ -209,7 +214,8 @@ else
         <ChildContent>
             <div class="mb-3">
                 <strong>Details:</strong> @selectedCustomer.Phone | @selectedCustomer.Email<br />
-                @selectedCustomer.AddressLine1, @selectedCustomer.City
+                @selectedCustomer.AddressLine1, @selectedCustomer.City<br />
+                <span data-testid="customer-payment-terms-summary">Payment terms: @CustomerPaymentTerms.ResolveDays(selectedCustomer.PaymentTermsDays) days</span>
             </div>
 
             @if (CanViewInvoices)
@@ -432,9 +438,15 @@ else
         currentCustomer = new Customer
         {
             Id = customer.Id,
+            TenantId = customer.TenantId,
+            CreatedDate = customer.CreatedDate,
+            CreatedBy = customer.CreatedBy,
+            IsDeleted = customer.IsDeleted,
+            RowVersion = customer.RowVersion,
             Name = customer.Name,
             CompanyRegistrationNumber = customer.CompanyRegistrationNumber,
             VatNumber = customer.VatNumber,
+            PaymentTermsDays = customer.PaymentTermsDays,
             Phone = customer.Phone,
             Email = customer.Email,
             AddressLine1 = customer.AddressLine1,

@@ -391,6 +391,9 @@ namespace METERP.Infrastructure.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
+                    b.Property<int?>("PaymentTermsDays")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
