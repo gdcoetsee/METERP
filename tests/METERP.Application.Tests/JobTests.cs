@@ -2064,8 +2064,9 @@ public class JobTests
         Assert.NotNull(summary);
         Assert.True(summary!.DepositReceived);
         Assert.Equal(18552m, summary.BilledToDate);
+        Assert.Equal(18552m, summary.DepositBilledCover);
         Assert.False(InvoiceBillingCalculator.ShowDepositCollectionBanner(
-            summary.Status, 30m, summary.DepositReceived, summary.QuotedTotal, summary.BilledToDate));
+            summary.Status, 30m, summary.DepositReceived, summary.QuotedTotal, summary.DepositBilledCover));
 
         var reloaded = await db.Set<Job>().AsNoTracking().FirstAsync(j => j.Id == jobId);
         Assert.True(reloaded.DepositReceived);
@@ -2091,8 +2092,9 @@ public class JobTests
         Assert.NotNull(summary);
         Assert.False(summary!.DepositReceived);
         Assert.Equal(0m, summary.BilledToDate);
+        Assert.Equal(0m, summary.DepositBilledCover);
         Assert.True(InvoiceBillingCalculator.ShowDepositCollectionBanner(
-            summary.Status, job.DepositPercent, summary.DepositReceived, summary.QuotedTotal, summary.BilledToDate));
+            summary.Status, job.DepositPercent, summary.DepositReceived, summary.QuotedTotal, summary.DepositBilledCover));
         Assert.Equal(JobStatus.InProgress, summary.Status);
     }
 

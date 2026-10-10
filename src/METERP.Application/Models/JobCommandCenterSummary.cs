@@ -20,6 +20,12 @@ public sealed class JobCommandCenterSummary
 
     public decimal BilledToDate { get; init; }
 
+    /// <summary>
+    /// Billed cash still covering the deposit after issued credit notes.
+    /// <see cref="BilledToDate"/> stays the gross sum and does not subtract credits.
+    /// </summary>
+    public decimal DepositBilledCover { get; init; }
+
     /// <summary>Job flag after soft-sync from linked deposit invoices / billed sums.</summary>
     public bool DepositReceived { get; init; }
 

@@ -56,8 +56,8 @@ public interface IJobService
 
     /// <summary>
     /// Live jobs (scheduled, in progress, on hold) whose linked invoices do not yet cover the deposit.
-    /// Completed and closed jobs are omitted. Counting deposit invoices, or billed sums at the deposit
-    /// threshold, soft-sync <c>DepositReceived</c> and stay off this queue.
+    /// Completed and closed jobs are omitted. A deposit with no issued credit note against it, or billed
+    /// cash net of issued credits at the deposit threshold, soft-syncs <c>DepositReceived</c> and stays off this queue.
     /// </summary>
     Task<IReadOnlyList<ReadyToInvoiceJobRow>> GetDepositDueQueueAsync(int take = 20, CancellationToken ct = default);
 

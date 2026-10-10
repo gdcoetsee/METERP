@@ -130,6 +130,9 @@ public interface IInvoiceService
     /// Marks a draft credit note as <see cref="InvoiceStatus.Sent"/> so it reduces the customer statement.
     /// Totals are unchanged. Refuses a proforma, a cancelled invoice, and a credit note whose source is
     /// another credit note, a proforma, or a cancelled invoice. Tenant-scoped. Does not require an email.
+    /// When the credit is linked to a job, an open job loses <see cref="Job.DepositReceived"/> if issued
+    /// credits leave no counting deposit and billed cover below the deposit threshold. A partial credit
+    /// that leaves cover at or above the threshold does not. Closed and cancelled jobs keep the flag.
     /// </summary>
     Task<Invoice> IssueCreditNoteAsync(Guid creditNoteId, CancellationToken ct = default);
 

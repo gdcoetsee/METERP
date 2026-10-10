@@ -951,7 +951,7 @@ else
             _job.DepositPercent,
             _summary.DepositReceived || _job.DepositReceived,
             _job.QuotedTotal,
-            _summary.BilledToDate);
+            _summary.DepositBilledCover);
     private string SignOffStatusLabel => _job?.SignOffStatus switch
     {
         JobSignOffStatus.None => "Not started",

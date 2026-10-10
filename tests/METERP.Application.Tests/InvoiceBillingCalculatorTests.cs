@@ -171,6 +171,88 @@ public class InvoiceBillingCalculatorTests
     }
 
     [Fact]
+    public void SummarizeDepositCover_FullCreditOfOnlyDepositClearsWhenTheJobIsOpen()
+    {
+        var depositId = Guid.NewGuid();
+        var issued = InvoiceBillingCalculator.SummarizeDepositCover(new[]
+        {
+            Slice(depositId, InvoiceDocumentType.Deposit, InvoiceStatus.Paid, 3000m, null),
+            Slice(Guid.NewGuid(), InvoiceDocumentType.CreditNote, InvoiceStatus.Sent, 3000m, depositId)
+        });
+
+        Assert.Equal(0m, issued.BilledCover);
+        Assert.False(issued.HasCountingDeposit);
+        Assert.True(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.InProgress, 10000m, 30m, issued.BilledCover, issued.HasCountingDeposit));
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.Closed, 10000m, 30m, issued.BilledCover, issued.HasCountingDeposit));
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.Cancelled, 10000m, 30m, issued.BilledCover, issued.HasCountingDeposit));
+
+        var draft = InvoiceBillingCalculator.SummarizeDepositCover(new[]
+        {
+            Slice(depositId, InvoiceDocumentType.Deposit, InvoiceStatus.Paid, 3000m, null),
+            Slice(Guid.NewGuid(), InvoiceDocumentType.CreditNote, InvoiceStatus.Draft, 3000m, depositId)
+        });
+        Assert.Equal(3000m, draft.BilledCover);
+        Assert.True(draft.HasCountingDeposit);
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.InProgress, 10000m, 30m, draft.BilledCover, draft.HasCountingDeposit));
+    }
+
+    [Fact]
+    public void SummarizeDepositCover_PartialCreditAboveThresholdDoesNotClear()
+    {
+        var depositId = Guid.NewGuid();
+        var cover = InvoiceBillingCalculator.SummarizeDepositCover(new[]
+        {
+            Slice(depositId, InvoiceDocumentType.Deposit, InvoiceStatus.Paid, 3000m, null),
+            Slice(Guid.NewGuid(), InvoiceDocumentType.Standard, InvoiceStatus.Sent, 5000m, null),
+            Slice(Guid.NewGuid(), InvoiceDocumentType.CreditNote, InvoiceStatus.Sent, 1000m, depositId)
+        });
+
+        Assert.Equal(7000m, cover.BilledCover);
+        Assert.False(cover.HasCountingDeposit);
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.InProgress, 10000m, 30m, cover.BilledCover, cover.HasCountingDeposit));
+    }
+
+    [Fact]
+    public void SummarizeDepositCover_PartialCreditBelowThresholdClears_OtherDepositKeepsTheFlag()
+    {
+        var depositId = Guid.NewGuid();
+        var below = InvoiceBillingCalculator.SummarizeDepositCover(new[]
+        {
+            Slice(depositId, InvoiceDocumentType.Deposit, InvoiceStatus.Sent, 3000m, null),
+            Slice(Guid.NewGuid(), InvoiceDocumentType.CreditNote, InvoiceStatus.Sent, 500m, depositId)
+        });
+        Assert.Equal(2500m, below.BilledCover);
+        Assert.False(below.HasCountingDeposit);
+        Assert.True(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.InProgress, 10000m, 30m, below.BilledCover, below.HasCountingDeposit));
+
+        var otherDepositId = Guid.NewGuid();
+        var kept = InvoiceBillingCalculator.SummarizeDepositCover(new[]
+        {
+            Slice(depositId, InvoiceDocumentType.Deposit, InvoiceStatus.Sent, 2000m, null),
+            Slice(otherDepositId, InvoiceDocumentType.Deposit, InvoiceStatus.Sent, 2000m, null),
+            Slice(Guid.NewGuid(), InvoiceDocumentType.CreditNote, InvoiceStatus.Sent, 2000m, depositId)
+        });
+        Assert.Equal(2000m, kept.BilledCover);
+        Assert.True(kept.HasCountingDeposit);
+        Assert.False(InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+            true, JobStatus.InProgress, 10000m, 30m, kept.BilledCover, kept.HasCountingDeposit));
+    }
+
+    private static InvoiceBillingCalculator.BillingDocumentSlice Slice(
+        Guid id,
+        InvoiceDocumentType type,
+        InvoiceStatus status,
+        decimal total,
+        Guid? creditFor) =>
+        new(id, type, status, total, creditFor);
+
+    [Fact]
     public void RequiresUnbilledCloseAcknowledgement_WhenMoreThanTenPercentAndAtLeast100()
     {
         Assert.True(InvoiceBillingCalculator.RequiresUnbilledCloseAcknowledgement(5000m, 0m));

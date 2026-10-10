@@ -649,6 +649,7 @@ public class InvoiceService : IInvoiceService
         }
 
         await _dbContext.SaveChangesAsync(ct);
+        await SyncDepositReceivedAfterCreditAsync(saved, ct);
         InvalidateListCaches();
 
         if (_auditService != null)
@@ -772,6 +773,7 @@ public class InvoiceService : IInvoiceService
 
         credit.Status = InvoiceStatus.Sent;
         await _dbContext.SaveChangesAsync(ct);
+        await SyncDepositReceivedAfterCreditAsync(credit, ct);
         InvalidateListCaches();
 
         if (_auditService != null)
@@ -1168,6 +1170,47 @@ public class InvoiceService : IInvoiceService
         }
 
         return paymentIds;
+    }
+
+    /// <summary>
+    /// A draft credit does not reduce cover, so creating one leaves the flag alone.
+    /// Issuing it clears the flag when the job is still open and the deposit is no longer covered.
+    /// </summary>
+    private async Task SyncDepositReceivedAfterCreditAsync(Invoice credit, CancellationToken ct)
+    {
+        if (credit.JobId is not Guid jobId)
+            return;
+
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job == null || !job.DepositReceived)
+            return;
+
+        if (job.Status is JobStatus.Closed or JobStatus.Cancelled)
+            return;
+
+        var rows = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId == jobId)
+            .Select(i => new { i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId })
+            .ToListAsync(ct);
+
+        var cover = InvoiceBillingCalculator.SummarizeDepositCover(rows.Select(i =>
+            new InvoiceBillingCalculator.BillingDocumentSlice(
+                i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId)));
+
+        if (!InvoiceBillingCalculator.ShouldClearDepositReceivedAfterCredit(
+                job.DepositReceived,
+                job.Status,
+                job.QuotedTotal,
+                job.DepositPercent,
+                cover.BilledCover,
+                cover.HasCountingDeposit))
+            return;
+
+        job.DepositReceived = false;
+        await _dbContext.SaveChangesAsync(ct);
+        if (_cache != null)
+            await TenantCacheInvalidation.OnJobMutatedAsync(_cache, ct);
     }
 
     private async Task MarkDepositsReceivedAsync(IEnumerable<Invoice> invoices, CancellationToken ct)

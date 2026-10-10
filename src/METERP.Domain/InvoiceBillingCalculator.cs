@@ -104,8 +104,72 @@ public static class InvoiceBillingCalculator
     }
 
     /// <summary>
+    /// One job invoice used to decide whether the deposit is still covered.
+    /// </summary>
+    public readonly record struct BillingDocumentSlice(
+        Guid Id,
+        InvoiceDocumentType DocumentType,
+        InvoiceStatus Status,
+        decimal Total,
+        Guid? CreditNoteForInvoiceId);
+
+    /// <summary>
+    /// Billed cash net of issued credit notes, and whether a deposit document
+    /// still counts (no issued credit note is linked to it).
+    /// </summary>
+    public readonly record struct DepositCoverSnapshot(decimal BilledCover, bool HasCountingDeposit);
+
+    /// <summary>
+    /// Issued credit notes reduce billed cover. A draft or cancelled credit does not.
+    /// A deposit document stops counting once an issued credit note is linked to it.
+    /// </summary>
+    public static DepositCoverSnapshot SummarizeDepositCover(IEnumerable<BillingDocumentSlice> documents)
+    {
+        var billed = 0m;
+        var credits = 0m;
+        var creditedDeposits = new HashSet<Guid>();
+        var countingDeposits = new List<Guid>();
+
+        foreach (var doc in documents)
+        {
+            if (CountsTowardJobBilled(doc.DocumentType, doc.Status))
+            {
+                billed += doc.Total;
+                if (doc.DocumentType == InvoiceDocumentType.Deposit)
+                    countingDeposits.Add(doc.Id);
+            }
+            else if (doc.DocumentType == InvoiceDocumentType.CreditNote
+                && doc.Status is not (InvoiceStatus.Draft or InvoiceStatus.Cancelled))
+            {
+                var amount = Math.Abs(doc.Total);
+                credits += amount;
+                if (doc.CreditNoteForInvoiceId is Guid parent && amount > 0m)
+                    creditedDeposits.Add(parent);
+            }
+        }
+
+        var hasCountingDeposit = false;
+        foreach (var id in countingDeposits)
+        {
+            if (!creditedDeposits.Contains(id))
+            {
+                hasCountingDeposit = true;
+                break;
+            }
+        }
+
+        return new DepositCoverSnapshot(
+            Math.Round(billed - credits, 2, MidpointRounding.AwayFromZero),
+            hasCountingDeposit);
+    }
+
+    /// <summary>
     /// Catch the job flag up to linked invoices. A counting deposit document, or billed cash
     /// that already meets the deposit threshold, is enough — no separate money column.
+    /// Pass billed cash net of issued credit notes (<see cref="DepositCoverSnapshot.BilledCover"/>).
+    /// Pass false for <paramref name="hasCountingDepositInvoice"/> when an issued credit note
+    /// is already linked to that deposit. This only turns the flag on. Clearing is
+    /// <see cref="ShouldClearDepositReceivedAfterCredit"/>.
     /// </summary>
     public static bool ShouldSoftSyncDepositReceived(
         bool depositReceived,
@@ -121,6 +185,35 @@ public static class InvoiceBillingCalculator
             return true;
 
         return BilledCoversDeposit(quotedTotal, depositPercent, billedToDate);
+    }
+
+    /// <summary>
+    /// An issued credit clears <see cref="Job.DepositReceived"/> when the job is still open
+    /// and soft-sync would not turn the flag back on. A full credit of the only counting
+    /// deposit drops billed cover below the threshold and clears the flag. A partial credit
+    /// that leaves billed cover at or above the threshold does not. Closed and cancelled
+    /// jobs are unchanged. A draft credit does not change the snapshot, so it does not clear.
+    /// </summary>
+    public static bool ShouldClearDepositReceivedAfterCredit(
+        bool depositReceived,
+        JobStatus jobStatus,
+        decimal quotedTotal,
+        decimal depositPercent,
+        decimal billedCover,
+        bool hasCountingDeposit)
+    {
+        if (!depositReceived)
+            return false;
+
+        if (jobStatus is JobStatus.Closed or JobStatus.Cancelled)
+            return false;
+
+        return !ShouldSoftSyncDepositReceived(
+            false,
+            quotedTotal,
+            depositPercent,
+            billedCover,
+            hasCountingDeposit);
     }
 
     /// <summary>

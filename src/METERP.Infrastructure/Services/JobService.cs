@@ -110,15 +110,19 @@ public class JobService : IJobService
         var grvByPo = grvs.GroupBy(g => g.PurchaseOrderId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.ReceivedAt).First().GrvNumber);
 
-        // Billed total is a SUM. The invoice grid is GetJobInvoicesAsync when that tab opens.
-        var billedToDate = await _dbContext.Set<Invoice>()
+        // Billed total is a SUM and does not subtract credit notes. Deposit cover does.
+        // The invoice grid is GetJobInvoicesAsync when that tab opens.
+        var billingRows = await _dbContext.Set<Invoice>()
             .AsNoTracking()
-            .Where(i => i.JobId == jobId
-                && i.DocumentType != InvoiceDocumentType.Proforma
-                && i.DocumentType != InvoiceDocumentType.CreditNote
-                && i.Status != InvoiceStatus.Draft
-                && i.Status != InvoiceStatus.Cancelled)
-            .SumAsync(i => (decimal?)i.Total, ct) ?? 0m;
+            .Where(i => i.JobId == jobId)
+            .Select(i => new { i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId })
+            .ToListAsync(ct);
+        var billedToDate = billingRows
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .Sum(i => i.Total);
+        var depositCover = InvoiceBillingCalculator.SummarizeDepositCover(billingRows.Select(i =>
+            new InvoiceBillingCalculator.BillingDocumentSlice(
+                i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId)));
 
         var marginPercent = job.QuotedTotal > 0
             ? Math.Round((job.QuotedTotal - actualTotal) / job.QuotedTotal * 100m, 1)
@@ -134,6 +138,7 @@ public class JobService : IJobService
             QuotedTotal = job.QuotedTotal,
             ActualTotal = actualTotal,
             BilledToDate = billedToDate,
+            DepositBilledCover = depositCover.BilledCover,
             DepositReceived = job.DepositReceived,
             UnbilledResidual = Math.Max(0m, job.QuotedTotal - billedToDate),
             MaterialCost = materialCost,
@@ -455,27 +460,28 @@ public class JobService : IJobService
         var invoiceRows = await _dbContext.Set<Invoice>()
             .AsNoTracking()
             .Where(i => i.JobId != null && jobIds.Contains(i.JobId.Value))
-            .Select(i => new { i.JobId, i.DocumentType, i.Status, i.Total })
+            .Select(i => new { i.JobId, i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId })
             .ToListAsync(ct);
 
-        var billedByJob = invoiceRows
-            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+        var coverByJob = invoiceRows
             .GroupBy(i => i.JobId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
-
-        var hasDepositInvoice = invoiceRows
-            .Where(i => i.DocumentType == InvoiceDocumentType.Deposit
-                && InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
-            .Select(i => i.JobId!.Value)
-            .ToHashSet();
+            .ToDictionary(
+                g => g.Key,
+                g => InvoiceBillingCalculator.SummarizeDepositCover(g.Select(i =>
+                    new InvoiceBillingCalculator.BillingDocumentSlice(
+                        i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId))));
 
         var syncIds = candidates
-            .Where(j => InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(
-                j.DepositReceived,
-                j.QuotedTotal,
-                j.DepositPercent,
-                billedByJob.GetValueOrDefault(j.Id),
-                hasDepositInvoice.Contains(j.Id)))
+            .Where(j =>
+            {
+                var cover = coverByJob.GetValueOrDefault(j.Id);
+                return InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(
+                    j.DepositReceived,
+                    j.QuotedTotal,
+                    j.DepositPercent,
+                    cover.BilledCover,
+                    cover.HasCountingDeposit);
+            })
             .Select(j => j.Id)
             .ToList();
         await SoftSyncDepositFlagsAsync(syncIds, ct);
@@ -483,14 +489,15 @@ public class JobService : IJobService
         return candidates
             .Where(j =>
             {
-                if (hasDepositInvoice.Contains(j.Id)) return false;
-                var billed = billedByJob.GetValueOrDefault(j.Id);
-                return !InvoiceBillingCalculator.BilledCoversDeposit(j.QuotedTotal, j.DepositPercent, billed);
+                var cover = coverByJob.GetValueOrDefault(j.Id);
+                if (cover.HasCountingDeposit) return false;
+                return !InvoiceBillingCalculator.BilledCoversDeposit(j.QuotedTotal, j.DepositPercent, cover.BilledCover);
             })
             .Select(j =>
             {
+                var cover = coverByJob.GetValueOrDefault(j.Id);
                 var deposit = InvoiceBillingCalculator.CalculateDepositThreshold(j.QuotedTotal, j.DepositPercent);
-                var billed = billedByJob.GetValueOrDefault(j.Id);
+                var billed = cover.BilledCover;
                 return new ReadyToInvoiceJobRow(
                     j.Id,
                     j.JobNumber,
@@ -1599,7 +1606,8 @@ public class JobService : IJobService
 
     /// <summary>
     /// Persist DepositReceived from linked invoice sums when a counting deposit invoice exists
-    /// or billed-to-date already meets the deposit threshold. Does not change job status.
+    /// or billed cover, net of issued credit notes, already meets the deposit threshold.
+    /// A deposit with an issued credit note linked to it no longer counts. Does not change job status.
     /// </summary>
     private async Task SoftSyncDepositReceivedAsync(Guid jobId, CancellationToken ct)
     {
@@ -1610,18 +1618,15 @@ public class JobService : IJobService
         var rows = await _dbContext.Set<Invoice>()
             .AsNoTracking()
             .Where(i => i.JobId == jobId)
-            .Select(i => new { i.DocumentType, i.Status, i.Total })
+            .Select(i => new { i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId })
             .ToListAsync(ct);
 
-        var billed = rows
-            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
-            .Sum(i => i.Total);
-        var hasDeposit = rows.Any(i =>
-            i.DocumentType == InvoiceDocumentType.Deposit
-            && InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status));
+        var cover = InvoiceBillingCalculator.SummarizeDepositCover(rows.Select(i =>
+            new InvoiceBillingCalculator.BillingDocumentSlice(
+                i.Id, i.DocumentType, i.Status, i.Total, i.CreditNoteForInvoiceId)));
 
         if (!InvoiceBillingCalculator.ShouldSoftSyncDepositReceived(
-                false, job.QuotedTotal, job.DepositPercent, billed, hasDeposit))
+                false, job.QuotedTotal, job.DepositPercent, cover.BilledCover, cover.HasCountingDeposit))
             return;
 
         job.DepositReceived = true;
