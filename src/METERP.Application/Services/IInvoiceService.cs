@@ -161,8 +161,10 @@ public interface IInvoiceService
     Task<IReadOnlyList<ConvertibleDocumentRow>> GetUnsentQueueAsync(int take = 20, CancellationToken ct = default);
 
     /// <summary>
-    /// Sends a payment reminder for an overdue invoice with a remaining balance.
-    /// Emails the customer when SMTP is configured; always audits the chase.
+    /// Sends a payment reminder for an overdue invoice.
+    /// The amount is the net balance after receipts and open credits (same netting as aged debtors).
+    /// Emails the customer when SMTP is configured; always audits a chase that is sent.
+    /// A paid invoice, or one with nothing left after credits, is refused and not audited.
     /// </summary>
     Task<InvoiceChaseResult> ChaseOverdueAsync(Guid invoiceId, CancellationToken ct = default);
 }

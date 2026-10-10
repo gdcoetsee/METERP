@@ -1418,13 +1418,19 @@ public class InvoiceService : IInvoiceService
         if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Cancelled)
             throw new InvalidOperationException("Cannot chase a draft or cancelled invoice.");
 
-        var balance = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
-        if (balance <= 0.01m)
+        var gross = InvoiceBillingCalculator.CalculateBalanceDue(invoice.Total, invoice.AmountPaid);
+        if (invoice.Status == InvoiceStatus.Paid || gross <= 0.01m)
             throw new InvalidOperationException("Invoice is already fully paid.");
 
         var days = InvoiceBillingCalculator.GetDaysOverdue(invoice.DueDate, DateTime.UtcNow);
         if (days <= 0)
             throw new InvalidOperationException("Invoice is not overdue yet.");
+
+        // Receipts are already in AmountPaid. Open credits net the same way as aged debtors,
+        // so the reminder asks for what is still owed, not the original gross.
+        var balance = await NetChaseBalanceAsync(invoice, gross, ct);
+        if (balance <= 0.01m)
+            throw new InvalidOperationException("Invoice has nothing left to chase after credits.");
 
         var customer = invoice.Customer
             ?? await _dbContext.Set<Customer>()
@@ -1501,6 +1507,59 @@ public class InvoiceService : IInvoiceService
         }
 
         return new InvoiceChaseResult(invoice.Id, invoice.InvoiceNumber, emailSent, email, days, balance);
+    }
+
+    private async Task<decimal> NetChaseBalanceAsync(Invoice invoice, decimal gross, CancellationToken ct)
+    {
+        var openSales = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.CustomerId == invoice.CustomerId
+                && i.DocumentType != InvoiceDocumentType.Proforma
+                && i.DocumentType != InvoiceDocumentType.CreditNote
+                && i.Status != InvoiceStatus.Cancelled
+                && i.Status != InvoiceStatus.Paid
+                && i.Status != InvoiceStatus.Draft)
+            .Select(i => new { i.Id, i.CustomerId, i.DueDate, i.Total, i.AmountPaid })
+            .ToListAsync(ct);
+
+        var slices = openSales
+            .Select(i => new InvoiceCreditConvention.AgedInvoiceSlice(
+                i.Id,
+                i.CustomerId,
+                i.DueDate,
+                InvoiceBillingCalculator.CalculateBalanceDue(i.Total, i.AmountPaid)))
+            .ToList();
+        if (slices.TrueForAll(s => s.InvoiceId != invoice.Id))
+        {
+            slices.Add(new InvoiceCreditConvention.AgedInvoiceSlice(
+                invoice.Id,
+                invoice.CustomerId,
+                invoice.DueDate,
+                gross));
+        }
+
+        var creditRows = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.DocumentType == InvoiceDocumentType.CreditNote
+                && i.Status != InvoiceStatus.Cancelled
+                && i.Status != InvoiceStatus.Paid
+                && i.Status != InvoiceStatus.Draft
+                && (i.CustomerId == invoice.CustomerId || i.CreditNoteForInvoiceId == invoice.Id))
+            .Select(i => new { i.CustomerId, i.CreditNoteForInvoiceId, i.Total, i.AmountPaid })
+            .ToListAsync(ct);
+
+        var credits = creditRows
+            .Select(i => new InvoiceCreditConvention.OpenCredit(
+                i.CustomerId,
+                i.CreditNoteForInvoiceId,
+                InvoiceCreditConvention.OpenCreditMagnitude(i.Total, i.AmountPaid)))
+            .Where(i => i.Magnitude > 0m)
+            .ToList();
+        if (credits.Count == 0)
+            return gross;
+
+        var net = InvoiceCreditConvention.NetAgedBalances(slices, credits);
+        return net.TryGetValue(invoice.Id, out var balance) ? balance : gross;
     }
 
     private static (string SequenceType, string Prefix) GetSequenceForDocumentType(InvoiceDocumentType type) => type switch
