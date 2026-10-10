@@ -126,6 +126,8 @@ public class TenantService : ITenantService
         if (normalizedSubdomain.Any(c => !(char.IsLetterOrDigit(c) || c is '-' or '_')))
             throw new InvalidOperationException("Subdomain may only contain letters, digits, hyphens, and underscores.");
 
+        var vatNumber = NormalizeVatNumber(tenant.VatNumber);
+
         var taken = await _dbContext.Tenants
             .IgnoreQueryFilters()
             .AnyAsync(t => !t.IsDeleted && t.Subdomain == normalizedSubdomain && t.Id != tenant.Id, ct);
@@ -164,8 +166,20 @@ public class TenantService : ITenantService
         existing.AccountingSalesAccountCode = string.IsNullOrWhiteSpace(tenant.AccountingSalesAccountCode)
             ? "200"
             : tenant.AccountingSalesAccountCode.Trim();
+        existing.VatNumber = vatNumber;
 
         await _dbContext.SaveChangesAsync(ct);
+    }
+
+    private static string? NormalizeVatNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var vat = value.Trim();
+        if (vat.Length > 50)
+            throw new InvalidOperationException("VAT number cannot exceed 50 characters.");
+        return vat;
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)

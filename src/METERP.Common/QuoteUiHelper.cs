@@ -48,7 +48,12 @@ public static class QuoteUiHelper
             Total = source.Total,
             Customer = source.Customer == null
                 ? null
-                : new Customer { Id = source.Customer.Id, Name = source.Customer.Name },
+                : new Customer
+                {
+                    Id = source.Customer.Id,
+                    Name = source.Customer.Name,
+                    VatNumber = source.Customer.VatNumber
+                },
             Lines = source.Lines
                 .Where(l => !l.IsDeleted)
                 .Select(l => new QuoteLine

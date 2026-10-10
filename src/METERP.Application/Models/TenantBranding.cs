@@ -5,7 +5,7 @@ namespace METERP.Application.Models;
 /// <summary>
 /// Tenant white-label settings for PDF exports and UI accents.
 /// </summary>
-public sealed record TenantBranding(string DisplayName, string ColorHex, string? LogoUrl)
+public sealed record TenantBranding(string DisplayName, string ColorHex, string? LogoUrl, string? VatNumber = null)
 {
     public const string DefaultColorHex = "#0d6efd";
 
@@ -19,7 +19,8 @@ public sealed record TenantBranding(string DisplayName, string ColorHex, string?
         return new TenantBranding(
             OfficeLabel(tenant),
             NormalizeColor(tenant.BrandColorHex),
-            string.IsNullOrWhiteSpace(tenant.LogoUrl) ? null : tenant.LogoUrl.Trim());
+            string.IsNullOrWhiteSpace(tenant.LogoUrl) ? null : tenant.LogoUrl.Trim(),
+            string.IsNullOrWhiteSpace(tenant.VatNumber) ? null : tenant.VatNumber.Trim());
     }
 
     /// <summary>

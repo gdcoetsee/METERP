@@ -274,6 +274,50 @@ public class TenantServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_PersistsVatNumber_AndLeavesOtherTenantAlone()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var met = await SeedTenantAsync(db, "MET Electrical", "met");
+        var other = await SeedTenantAsync(db, "Other Co", "other");
+        other.VatNumber = "4099999999";
+        await db.SaveChangesAsync();
+
+        met.VatNumber = " 4012345678 ";
+        await service.UpdateAsync(met);
+
+        var updated = await service.GetByIdAsync(met.Id);
+        var untouched = await service.GetByIdAsync(other.Id);
+        Assert.NotNull(updated);
+        Assert.NotNull(untouched);
+        Assert.Equal("4012345678", updated!.VatNumber);
+        Assert.Equal("4099999999", untouched!.VatNumber);
+
+        updated.VatNumber = "   ";
+        await service.UpdateAsync(updated);
+        var cleared = await service.GetByIdAsync(met.Id);
+        Assert.Null(cleared!.VatNumber);
+        Assert.Equal("4099999999", (await service.GetByIdAsync(other.Id))!.VatNumber);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RejectsVatNumberOver50Characters()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateDbContext(dbName);
+        var service = CreateService(dbName);
+        var tenant = await SeedTenantAsync(db, "MET Electrical", "met");
+        tenant.VatNumber = new string('4', 51);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(tenant));
+        Assert.Contains("50", ex.Message);
+
+        var stored = await service.GetByIdAsync(tenant.Id);
+        Assert.True(string.IsNullOrWhiteSpace(stored!.VatNumber));
+    }
+
+    [Fact]
     public async Task IncrementQuoteCountAsync_NoOpForEmptyTenantId()
     {
         var dbName = Guid.NewGuid().ToString();

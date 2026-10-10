@@ -21,6 +21,17 @@ public class TenantBrandingTests
     }
 
     [Fact]
+    public void From_CopiesVatNumber_AndDropsBlank()
+    {
+        var set = new Tenant { Name = "MET Electrical", VatNumber = " 4012345678 " };
+        Assert.Equal("4012345678", TenantBranding.From(set).VatNumber);
+
+        var blank = new Tenant { Name = "MET Electrical", VatNumber = "  " };
+        Assert.Null(TenantBranding.From(blank).VatNumber);
+        Assert.Null(TenantBranding.From(null).VatNumber);
+    }
+
+    [Fact]
     public void OfficeLabel_MetTenant_KeepsExistingMetBrand()
     {
         var tenant = new Tenant

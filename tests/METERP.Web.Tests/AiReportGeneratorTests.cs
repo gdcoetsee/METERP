@@ -38,6 +38,31 @@ public class AiReportGeneratorTests
     }
 
     [Fact]
+    public void GenerateQuotePdf_WithBothVatNumbers_StillRendersWhenCustomerVatIsBlank()
+    {
+        var quote = new Quote
+        {
+            QuoteNumber = "Q-VAT-1",
+            QuoteDate = new DateTime(2026, 10, 10),
+            ValidUntil = new DateTime(2026, 11, 9),
+            Subtotal = 1000m,
+            Tax = 150m,
+            Total = 1150m,
+            Customer = new Customer { Name = "Mines Ltd", VatNumber = "4098765432" }
+        };
+        var branding = new TenantBranding("MET Electrical", "#0d6efd", null, "4012345678");
+
+        var withBoth = AiReportGenerator.GenerateQuotePdf(quote, branding: branding);
+        quote.Customer.VatNumber = "  ";
+        var withoutCustomerVat = AiReportGenerator.GenerateQuotePdf(quote, branding: branding);
+
+        Assert.True(withBoth.Length > 200);
+        Assert.True(withoutCustomerVat.Length > 200);
+        Assert.Equal(0x25, withBoth[0]);
+        Assert.Equal(0x25, withoutCustomerVat[0]);
+    }
+
+    [Fact]
     public void GenerateJobCloseoutPdf_WithTravelCosts_ProducesNonEmptyPdf()
     {
         var job = new Job

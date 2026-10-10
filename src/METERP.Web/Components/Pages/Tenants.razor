@@ -136,7 +136,11 @@ else
             <p class="mb-1">Tier: @_viewing.Tier</p>
             <p class="mb-1">Status: @(_viewing.IsActive ? "Active" : "Inactive")</p>
             <p class="mb-1">Jobs: @_viewing.TotalJobsCreated Â· Quotes: @_viewing.TotalQuotesCreated Â· Invoices: @_viewing.TotalInvoicesIssued</p>
-            <p class="mb-0">Revenue billed: R @_viewing.TotalRevenueBilled.ToString("N0")</p>
+            <p class="mb-1">Revenue billed: R @_viewing.TotalRevenueBilled.ToString("N0")</p>
+            @if (!string.IsNullOrWhiteSpace(_viewing.VatNumber))
+            {
+                <p class="mb-0" data-testid="tenant-view-vat">VAT number: @_viewing.VatNumber</p>
+            }
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-outline-secondary" @onclick="CloseTenantView">Close</button>
@@ -243,6 +247,11 @@ else
                         <label class="form-label">Brand display name</label>
                         <InputText class="form-control" @bind-Value="currentTenant.BrandDisplayName" placeholder="MET Electrical" />
                         <div class="form-text">Shown in the office header and on PDF exports. Falls back to the tenant name.</div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">VAT number <span class="text-muted fw-normal">(optional)</span></label>
+                        <InputText class="form-control" @bind-Value="currentTenant.VatNumber" data-testid="tenant-vat-number" placeholder="VAT registration" />
+                        <div class="form-text">Printed on quotes. Leave blank when this company has no VAT number.</div>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Brand colour (hex)</label>
@@ -423,7 +432,8 @@ else
             InvoiceWebhookUrl = tenant.InvoiceWebhookUrl,
             NotificationEmail = tenant.NotificationEmail,
             StripeCustomerId = tenant.StripeCustomerId,
-            SubscriptionStatus = tenant.SubscriptionStatus
+            SubscriptionStatus = tenant.SubscriptionStatus,
+            VatNumber = tenant.VatNumber
         };
         isEditing = true;
         showForm = true;

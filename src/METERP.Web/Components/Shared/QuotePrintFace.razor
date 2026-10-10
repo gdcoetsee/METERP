@@ -1,0 +1,73 @@
+@using METERP.Application.Models
+@using METERP.Domain
+@using METERP.Web.Reports
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+@if (Quote != null)
+{
+    <section class="card mb-3 quote-print-face" data-testid="quote-print-face" aria-label="Quote to send">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+            <span>Quote to send</span>
+            <span class="quote-print-actions d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quote-print-face-print"
+                        title="Print quote" @onclick="PrintAsync">
+                    <i class="bi bi-printer" aria-hidden="true"></i> Print
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quote-print-face-pdf"
+                        title="Download quote PDF" @onclick="DownloadPdfAsync">
+                    <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> PDF
+                </button>
+            </span>
+        </div>
+        <pre class="card-body py-2 mb-0 small quote-print-text" data-testid="quote-print-text">@Text</pre>
+    </section>
+}
+
+@code {
+    [Parameter] public Quote? Quote { get; set; }
+    [Parameter] public TenantBranding? Branding { get; set; }
+    [Parameter] public string? CustomerVatNumber { get; set; }
+
+    private string Text => Quote == null
+        ? ""
+        : QuotePrintDocument.Build(
+            Quote,
+            Branding?.VatNumber,
+            Branding?.DisplayName,
+            CustomerVatNumber);
+
+    private async Task PrintAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.printSelector", ".quote-print-face");
+        }
+        catch
+        {
+            Toast.ShowInfo("Print is not available in this browser context.");
+        }
+    }
+
+    private async Task DownloadPdfAsync()
+    {
+        if (Quote == null)
+            return;
+
+        try
+        {
+            var branding = Branding ?? TenantBranding.Default;
+            var bytes = AiReportGenerator.GenerateQuotePdf(
+                Quote,
+                tenantName: branding.DisplayName,
+                branding: branding,
+                customerVatNumber: CustomerVatNumber);
+            var fileName = string.IsNullOrWhiteSpace(Quote.QuoteNumber) ? "quote.pdf" : $"{Quote.QuoteNumber.Trim()}.pdf";
+            await JS.InvokeVoidAsync("meterpUi.downloadBytes", fileName, Convert.ToBase64String(bytes), "application/pdf");
+        }
+        catch
+        {
+            Toast.ShowInfo("PDF download is not available in this browser context.");
+        }
+    }
+}

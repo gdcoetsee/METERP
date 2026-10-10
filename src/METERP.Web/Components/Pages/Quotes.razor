@@ -405,6 +405,10 @@ else
                         <div class="meterp-totals-row"><span>VAT (@((editorQuote.TaxRate * 100).ToString("0"))%)</span><span>R @DisplayTax.ToString("N2")</span></div>
                         <div class="meterp-totals-row meterp-totals-total"><span>Total</span><span>R @DisplayTotal.ToString("N2")</span></div>
                     </div>
+                    @if (!editorIsNew)
+                    {
+                        <QuotePrintFace Quote="editorQuote" Branding="_branding" CustomerVatNumber="@PrintCustomerVat" />
+                    }
                 </div>
             </div>
     </ChildContent>
@@ -678,6 +682,11 @@ else
         availableCustomers.FirstOrDefault(c => c.Id == editorQuote?.CustomerId)?.Name
         ?? editorQuote?.Customer?.Name;
 
+    private string? PrintCustomerVat =>
+        QuotePrintDocument.ResolveCustomerVat(
+            availableCustomers.FirstOrDefault(c => c.Id == editorQuote?.CustomerId)?.VatNumber,
+            editorQuote?.Customer?.VatNumber);
+
     private string QuoteEditorTitle => editorQuote == null
         ? "Quote"
         : editorIsNew
@@ -847,7 +856,7 @@ else
         // Strip Contacts navigation — Customer→Contacts→Customer cycles break Blazor Server circuits.
         availableCustomers = (await CustomerService.GetAllAsync(
                 string.IsNullOrWhiteSpace(term) ? null : term.Trim(), 1, 50))
-            .Select(c => new Customer { Id = c.Id, Name = c.Name })
+            .Select(c => new Customer { Id = c.Id, Name = c.Name, VatNumber = c.VatNumber })
             .ToList();
         await EnsureSelectedCustomerInListAsync();
     }
@@ -860,7 +869,7 @@ else
             return;
         var extra = await CustomerService.GetByIdAsync(editorQuote.CustomerId);
         if (extra != null)
-            availableCustomers.Insert(0, new Customer { Id = extra.Id, Name = extra.Name });
+            availableCustomers.Insert(0, new Customer { Id = extra.Id, Name = extra.Name, VatNumber = extra.VatNumber });
     }
 
     private Task OnCustomerPickedAsync(Guid id)

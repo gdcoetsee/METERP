@@ -100,11 +100,15 @@ public static class AiReportGenerator
         Quote quote,
         string? aiNotes = null,
         string? tenantName = null,
-        TenantBranding? branding = null)
+        TenantBranding? branding = null,
+        string? customerVatNumber = null)
     {
         branding ??= TenantBranding.Default;
         var displayName = tenantName ?? branding.DisplayName;
         var brandColor = branding.ColorHex;
+        var ourVatLine = QuotePrintDocument.OurVatLine(branding.VatNumber);
+        var customerVatLine = QuotePrintDocument.CustomerVatLine(
+            QuotePrintDocument.ResolveCustomerVat(customerVatNumber, quote.Customer?.VatNumber));
 
         var doc = Document.Create(container =>
         {
@@ -123,8 +127,13 @@ public static class AiReportGenerator
 
                 page.Content().PaddingVertical(10).Column(col =>
                 {
+                    if (ourVatLine != null)
+                        col.Item().Text(ourVatLine);
+
                     col.Item().Text("Bill To:").Bold();
                     col.Item().Text(quote.Customer?.Name ?? "Customer");
+                    if (customerVatLine != null)
+                        col.Item().Text(customerVatLine);
 
                     col.Item().PaddingTop(8).Text("Scope / Notes").Bold();
                     col.Item().Text(string.IsNullOrWhiteSpace(quote.Notes) ? "(See AI Copilot for detailed scope & line suggestions)" : quote.Notes);

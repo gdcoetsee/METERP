@@ -1178,6 +1178,16 @@ h1 {
     break-inside: avoid;
   }
 
+  .quote-print-face {
+    border: 1px solid #111 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  .quote-print-actions {
+    display: none !important;
+  }
+
   body.meterp-print-selection .sidebar,
   body.meterp-print-selection .top-row,
   body.meterp-print-selection .ai-fab,

@@ -80,6 +80,9 @@ public class Tenant : BaseEntity
     /// <summary>Optional logo URL for future PDF embedding.</summary>
     public string? LogoUrl { get; set; }
 
+    /// <summary>Tenant VAT registration number printed on quotes. Blank means the line is omitted.</summary>
+    public string? VatNumber { get; set; }
+
     /// <summary>Default max hours an approval may sit in queue before flagged overdue on executive dashboard.</summary>
     public int DefaultApprovalSlaHours { get; set; } = 48;
 
