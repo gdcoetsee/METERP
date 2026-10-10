@@ -1171,6 +1171,19 @@ h1 {
     box-shadow: none !important;
     break-inside: avoid;
   }
+
+  .job-card-face {
+    border: 1px solid #111 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  body.meterp-print-selection .sidebar,
+  body.meterp-print-selection .top-row,
+  body.meterp-print-selection .ai-fab,
+  body.meterp-print-selection [data-testid="job-command-center-ready"] > *:not(.job-card-face) {
+    display: none !important;
+  }
 }
 
 /* === AI copilot + settings === */

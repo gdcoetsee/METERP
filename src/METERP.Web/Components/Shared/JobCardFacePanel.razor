@@ -1,0 +1,78 @@
+@using METERP.Domain
+@inject IJSRuntime JS
+@inject ToastService Toast
+
+<section class="card mb-3 job-card-face" data-testid="job-card-face" aria-label="Job card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+        <span>Job card</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="job-card-face-print"
+                title="Print job card" @onclick="PrintAsync">
+            <i class="bi bi-printer" aria-hidden="true"></i> Print
+        </button>
+    </div>
+    <div class="card-body py-2">
+        <dl class="row mb-0 small job-card-face-grid">
+            <dt class="col-6 col-md-3">Job number</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-job-number">@Show(Job?.JobNumber)</dd>
+            <dt class="col-6 col-md-3">Status</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-status">@StatusText</dd>
+
+            <dt class="col-6 col-md-3">Title</dt>
+            <dd class="col-6 col-md-9" data-testid="job-card-title">@Show(Job?.Title)</dd>
+
+            <dt class="col-6 col-md-3">Customer</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-customer">@Show(Job?.Customer?.Name)</dd>
+            <dt class="col-6 col-md-3">Division</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-division">@Show(Job?.Division?.Name)</dd>
+
+            <dt class="col-6 col-md-3">Scheduled</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-scheduled">@Scheduled</dd>
+            <dt class="col-6 col-md-3">TRFid</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-trfid">@Face.TrfId</dd>
+
+            <dt class="col-6 col-md-3">Job card no</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-no">@Face.JobCardNo</dd>
+            <dt class="col-6 col-md-3">Team</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-team">@Face.Team</dd>
+
+            <dt class="col-6 col-md-3">Region</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-region">@Face.Region</dd>
+            <dt class="col-6 col-md-3">Customer order</dt>
+            <dd class="col-6 col-md-3" data-testid="job-card-customer-order">@Face.CustomerOrderNo</dd>
+        </dl>
+    </div>
+</section>
+
+@code {
+    [Parameter] public Job? Job { get; set; }
+
+    private JobCardFace Face => Job == null ? JobCardFace.Read(null) : JobCardFace.From(Job);
+
+    private string StatusText => Job == null
+        ? JobCardFace.Blank
+        : Job.Status switch
+        {
+            JobStatus.InProgress => "In progress",
+            JobStatus.OnHold => "On hold",
+            _ => Job.Status.ToString()
+        };
+
+    private string Scheduled => Job?.ScheduledStart is DateTime start
+        ? start.ToString("yyyy-MM-dd")
+        : JobCardFace.Blank;
+
+    private static string Show(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? JobCardFace.Blank : value.Trim();
+
+    private async Task PrintAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.printSelector", ".job-card-face");
+        }
+        catch
+        {
+            Toast.ShowInfo("Print is not available in this browser context.");
+        }
+    }
+}

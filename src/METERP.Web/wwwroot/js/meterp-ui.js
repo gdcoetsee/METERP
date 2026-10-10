@@ -2,6 +2,20 @@ window.meterpUi = {
   print: function () {
     window.print();
   },
+  printSelector: function (selector) {
+    var node = selector ? document.querySelector(selector) : null;
+    if (!node) {
+      window.print();
+      return;
+    }
+    document.body.classList.add('meterp-print-selection');
+    var done = function () {
+      window.removeEventListener('afterprint', done);
+      document.body.classList.remove('meterp-print-selection');
+    };
+    window.addEventListener('afterprint', done);
+    window.print();
+  },
   downloadText: function (filename, content, mimeType) {
     var blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
