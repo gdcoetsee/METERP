@@ -3,7 +3,8 @@ namespace METERP.Domain;
 /// <summary>
 /// Workshop job-card face. Reads Access tokens already stored on the job
 /// (<c>TRFid=</c>, <c>JobCardNo=</c>, <c>Team=</c>, and the same keys with a colon
-/// as written into the job description). No schema change and no writes.
+/// as written into the job description). A saved <see cref="Job.CustomerOrderNo"/>
+/// replaces the note token for that field only.
 /// </summary>
 public sealed record JobCardFace(
     string TrfId,
@@ -17,7 +18,20 @@ public sealed record JobCardFace(
     public static JobCardFace From(Job job)
     {
         ArgumentNullException.ThrowIfNull(job);
-        return Read(job.Notes, job.Description, job.JobNumber);
+        var face = Read(job.Notes, job.Description, job.JobNumber);
+        if (string.IsNullOrWhiteSpace(job.CustomerOrderNo))
+            return face;
+
+        return face with { CustomerOrderNo = job.CustomerOrderNo.Trim() };
+    }
+
+    /// <summary>
+    /// Customer order token from notes or description. Null when the token is missing or empty.
+    /// </summary>
+    public static string? TryReadCustomerOrderNo(string? notes, string? description = null)
+    {
+        var raw = First(ReadToken(notes, "CustomerOrderNo"), ReadToken(description, "CustomerOrderNo"));
+        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
     }
 
     /// <summary>

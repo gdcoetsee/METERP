@@ -1030,6 +1030,7 @@ public class QuoteService : IQuoteService
             Description = quote.Notes,
             QuotedTotal = quote.Total,
             ActualCost = 0,
+            CustomerOrderNo = JobCustomerOrder.Normalize(JobCardFace.TryReadCustomerOrderNo(quote.Notes)),
             ScheduledStart = DateTime.UtcNow.AddDays(7),
             Status = JobStatus.Scheduled
         };

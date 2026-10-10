@@ -29,6 +29,12 @@ public class Job : BaseEntity
 
     public string JobNumber { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Customer's purchase-order / order number. Null when unset.
+    /// Does not affect quote or invoice totals.
+    /// </summary>
+    public string? CustomerOrderNo { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     public string? Description { get; set; }

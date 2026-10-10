@@ -86,6 +86,21 @@ else
 
         <JobCardFacePanel Job="_job" />
 
+        <div class="card mb-3" data-testid="job-cc-customer-order">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+                <span>Customer order number</span>
+                @if (CanManage)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-testid="job-cc-edit-customer-order"
+                            @onclick="OpenCustomerOrderModal">Edit</button>
+                }
+            </div>
+            <div class="card-body py-2 small">
+                <strong data-testid="job-cc-customer-order-value">@CustomerOrderText</strong>
+                <div class="text-muted">Accounts match this to the customer's purchase order. It does not change quote or invoice totals.</div>
+            </div>
+        </div>
+
         @if (TrelloMarkers.Count > 0)
         {
             <div class="card mb-3 border-info" data-testid="job-cc-trello" role="region" aria-label="Trello whiteboard status">
@@ -504,6 +519,22 @@ else
     </div>
 }
 
+@if (_showCustomerOrderModal)
+{
+    <FormModal IsOpen="true" Title="Customer order number" TestId="job-cc-customer-order-modal" OnClose="() => _showCustomerOrderModal = false">
+        <p class="small text-muted">Leave blank to clear. Quote and invoice totals stay as they are.</p>
+        <div class="mb-3">
+            <label class="form-label" for="job-cc-customer-order-input">Customer order number</label>
+            <input id="job-cc-customer-order-input" class="form-control" maxlength="100" @bind="_editCustomerOrder"
+                   data-testid="job-cc-customer-order-input" />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="() => _showCustomerOrderModal = false">Cancel</button>
+            <button type="button" class="btn btn-primary" data-testid="job-cc-customer-order-save" @onclick="SaveCustomerOrderAsync">Save</button>
+        </div>
+    </FormModal>
+}
+
 @if (_showBillingTermsModal)
 {
     <FormModal IsOpen="true" Title="Billing terms" TestId="job-cc-billing-terms-modal" OnClose="() => _showBillingTermsModal = false">
@@ -800,6 +831,8 @@ else
     private bool _showCancelModal;
     private bool _showInvoiceModal;
     private bool _showBillingTermsModal;
+    private bool _showCustomerOrderModal;
+    private string _editCustomerOrder = "";
     private decimal _editDepositPercent = 30m;
     private decimal _editRetentionPercent = 10m;
     private bool _showReqModal;
@@ -1282,6 +1315,31 @@ else
     private void CloseInvoiceModal() => _showInvoiceModal = false;
 
     private void OpenRequisitions() => Nav.NavigateTo("/requisitions");
+
+    private string CustomerOrderText =>
+        string.IsNullOrWhiteSpace(_job?.CustomerOrderNo) ? JobCardFace.Blank : _job.CustomerOrderNo.Trim();
+
+    private void OpenCustomerOrderModal()
+    {
+        if (_job == null) return;
+        _editCustomerOrder = _job.CustomerOrderNo ?? "";
+        _showCustomerOrderModal = true;
+    }
+
+    private async Task SaveCustomerOrderAsync()
+    {
+        try
+        {
+            await JobService.UpdateCustomerOrderNoAsync(JobId, _editCustomerOrder);
+            Toast.ShowSuccess("Customer order number saved.");
+            _showCustomerOrderModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
 
     private void OpenBillingTermsModal()
     {

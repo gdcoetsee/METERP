@@ -88,6 +88,12 @@ public interface IJobService
         decimal retentionPercent,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Stores the customer's order number. Blank becomes null.
+    /// Does not change the quoted total or any quote or invoice totals.
+    /// </summary>
+    Task UpdateCustomerOrderNoAsync(Guid jobId, string? customerOrderNo, CancellationToken ct = default);
+
     Task UpdateAsync(Job job, CancellationToken ct = default);
     Task SetCrewAssignmentsAsync(Guid jobId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);

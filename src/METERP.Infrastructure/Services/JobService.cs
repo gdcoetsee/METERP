@@ -695,6 +695,7 @@ public class JobService : IJobService
             if (job.Notes.Length > 2000)
                 throw new InvalidOperationException("Job notes cannot exceed 2000 characters.");
         }
+        job.CustomerOrderNo = JobCustomerOrder.Normalize(job.CustomerOrderNo);
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
         if (job.QuotedTotal > 100_000_000m)
@@ -847,6 +848,17 @@ public class JobService : IJobService
         await InvalidateListCachesAsync(ct);
     }
 
+    public async Task UpdateCustomerOrderNoAsync(Guid jobId, string? customerOrderNo, CancellationToken ct = default)
+    {
+        var normalized = JobCustomerOrder.Normalize(customerOrderNo);
+        var job = await _dbContext.Set<Job>().FirstOrDefaultAsync(j => j.Id == jobId, ct)
+            ?? throw new InvalidOperationException("Job not found.");
+
+        job.CustomerOrderNo = normalized;
+        await _dbContext.SaveChangesAsync(ct);
+        await InvalidateListCachesAsync(ct);
+    }
+
     public async Task UpdateAsync(Job job, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(job.Title))
@@ -866,6 +878,7 @@ public class JobService : IJobService
             if (job.Notes.Length > 2000)
                 throw new InvalidOperationException("Job notes cannot exceed 2000 characters.");
         }
+        job.CustomerOrderNo = JobCustomerOrder.Normalize(job.CustomerOrderNo);
         if (job.QuotedTotal < 0)
             throw new InvalidOperationException("Quoted total cannot be negative.");
         if (job.QuotedTotal > 100_000_000m)

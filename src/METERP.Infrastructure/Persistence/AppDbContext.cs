@@ -177,6 +177,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                 .IsUnique()
                 .HasDatabaseName("IX_Jobs_TenantId_JobNumber")
                 .HasFilter("\"IsDeleted\" = false");
+            entity.Property(j => j.CustomerOrderNo).HasMaxLength(JobCustomerOrder.MaxLength);
         });
 
         modelBuilder.Entity<Invoice>(entity =>
