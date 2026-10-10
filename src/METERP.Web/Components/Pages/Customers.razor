@@ -231,10 +231,13 @@ else
                 }
                 else
                 {
-                    <p class="small text-muted mb-2" data-testid="customer-statement">
-                        As at @_statement.AsOf.ToString("yyyy-MM-dd"). Amounts are VAT-inclusive.
-                        Draft, proforma, and cancelled documents are left off.
-                    </p>
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <p class="small text-muted mb-0" data-testid="customer-statement">
+                            As at @_statement.AsOf.ToString("yyyy-MM-dd"). Amounts are VAT-inclusive.
+                            Draft, proforma, and cancelled documents are left off.
+                        </p>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="customer-statement-csv" @onclick="ExportStatementCsv">Export CSV</button>
+                    </div>
                     @if (_statement.Lines.Count == 0)
                     {
                         <p data-testid="customer-statement-empty">No invoices, credit notes, or receipts.</p>
@@ -514,6 +517,24 @@ else
         {
             _statementLoading = false;
         }
+    }
+
+    private async Task ExportStatementCsv()
+    {
+        if (_statement == null)
+            return;
+
+        var csv = _statement.ToCsv();
+        try
+        {
+            await JS.InvokeVoidAsync("meterpUi.downloadText", _statement.FileName, csv, "text/csv;charset=utf-8");
+        }
+        catch
+        {
+            /* download helper may be blocked in headless browsers */
+        }
+
+        ToastService.ShowSuccess("Statement CSV downloaded.");
     }
 
     private void CloseCustomerView()

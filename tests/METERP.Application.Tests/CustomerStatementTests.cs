@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using METERP.Application.Interfaces;
 using METERP.Domain;
@@ -94,6 +95,111 @@ public class CustomerStatementTests
 
         Assert.Empty(statement.Lines);
         Assert.Equal(0m, statement.ClosingBalance);
+    }
+
+    [Fact]
+    public void ToCsv_MatchesBuilderLines_AndClosingBalance_WithNoSecondTotal()
+    {
+        var statement = CustomerStatementBuilder.Build(
+            Guid.NewGuid(),
+            "  Metro Power  ",
+            AsOf,
+            new[]
+            {
+                Doc("INV-100", new DateTime(2026, 9, 1), 1150m, amountPaid: 1150m, status: InvoiceStatus.Paid),
+                Doc("CRN-1", new DateTime(2026, 9, 2), 80m, type: InvoiceDocumentType.CreditNote)
+            });
+
+        var csv = statement.ToCsv();
+        var rows = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(CustomerStatement.CsvHeader, rows[0]);
+        Assert.Equal(statement.Lines.Count + 1, rows.Length);
+        Assert.Equal("statement-Metro-Power-20261009.csv", statement.FileName);
+
+        Assert.Equal("2026-09-01,Invoice,INV-100,VAT-inclusive,1150.00,0.00,1150.00", rows[1]);
+        var collected = statement.Lines[1];
+        Assert.Equal("Collected", collected.Kind);
+        Assert.Equal(
+            $"2026-09-01,Collected,INV-100,\"On the invoice, no receipt row\",{CustomerStatement.FormatAmount(collected.Debit)},{CustomerStatement.FormatAmount(collected.Credit)},{CustomerStatement.FormatAmount(collected.RunningBalance)}",
+            rows[2]);
+
+        for (var i = 0; i < statement.Lines.Count; i++)
+        {
+            var cells = SplitCsv(rows[i + 1]);
+            var line = statement.Lines[i];
+            Assert.Equal(line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), cells[0]);
+            Assert.Equal(line.Kind, cells[1]);
+            Assert.Equal(line.Reference, cells[2]);
+            Assert.Equal(line.Detail, cells[3]);
+            Assert.Equal(line.Debit, decimal.Parse(cells[4], CultureInfo.InvariantCulture));
+            Assert.Equal(line.Credit, decimal.Parse(cells[5], CultureInfo.InvariantCulture));
+            Assert.Equal(line.RunningBalance, decimal.Parse(cells[6], CultureInfo.InvariantCulture));
+        }
+
+        var closingInFile = decimal.Parse(SplitCsv(rows[^1])[6], CultureInfo.InvariantCulture);
+        Assert.Equal(statement.ClosingBalance, closingInFile);
+        Assert.Equal(-80m, closingInFile);
+        Assert.DoesNotContain(rows, row => row.Contains("Total", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ToCsv_EmptyStatement_IsHeaderOnly()
+    {
+        var statement = CustomerStatementBuilder.Build(Guid.NewGuid(), "Empty", AsOf, null);
+
+        var rows = statement.ToCsv().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(new[] { CustomerStatement.CsvHeader }, rows);
+        Assert.Equal(0m, statement.ClosingBalance);
+    }
+
+    private static string[] SplitCsv(string row)
+    {
+        var cells = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var quoted = false;
+        for (var i = 0; i < row.Length; i++)
+        {
+            var ch = row[i];
+            if (quoted)
+            {
+                if (ch == '"')
+                {
+                    if (i + 1 < row.Length && row[i + 1] == '"')
+                    {
+                        current.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        quoted = false;
+                    }
+                }
+                else
+                {
+                    current.Append(ch);
+                }
+
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                quoted = true;
+                continue;
+            }
+
+            if (ch == ',')
+            {
+                cells.Add(current.ToString());
+                current.Clear();
+                continue;
+            }
+
+            current.Append(ch);
+        }
+
+        cells.Add(current.ToString());
+        return cells.ToArray();
     }
 
     [Fact]

@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace METERP.Domain;
 
 /// <summary>
@@ -26,7 +29,55 @@ public sealed record CustomerStatement(
     IReadOnlyList<CustomerStatementLine> Lines,
     decimal ClosingBalance)
 {
+    public const string CsvHeader = "Date,Kind,Reference,Detail,Debit,Credit,Balance";
+
     public string ClosingBalanceDisplay => InvoiceCreditConvention.FormatCustomerBalance(ClosingBalance);
+
+    public string FileName
+    {
+        get
+        {
+            var slug = new string(CustomerName.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray()).Trim('-');
+            if (slug.Length == 0)
+                slug = "customer";
+            return $"statement-{slug}-{AsOf:yyyyMMdd}.csv";
+        }
+    }
+
+    /// <summary>
+    /// The rows already on this statement. The balance column is each line's running
+    /// balance, so the last figure is <see cref="ClosingBalance"/>. No extra total row.
+    /// An empty statement is the header only.
+    /// </summary>
+    public string ToCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(CsvHeader);
+        foreach (var line in Lines)
+        {
+            sb.Append(line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append(',')
+                .Append(Csv(line.Kind)).Append(',')
+                .Append(Csv(line.Reference)).Append(',')
+                .Append(Csv(line.Detail)).Append(',')
+                .Append(FormatAmount(line.Debit)).Append(',')
+                .Append(FormatAmount(line.Credit)).Append(',')
+                .Append(FormatAmount(line.RunningBalance))
+                .AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    public static string FormatAmount(decimal value) =>
+        value.ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static string Csv(string? value)
+    {
+        var text = value ?? "";
+        if (text.Contains('"') || text.Contains(',') || text.Contains('\n') || text.Contains('\r'))
+            return "\"" + text.Replace("\"", "\"\"") + "\"";
+        return text;
+    }
 }
 
 /// <summary>
