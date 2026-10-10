@@ -297,14 +297,7 @@ public class JobService : IJobService
         var q = _dbContext.Set<Job>().AsNoTracking().Where(j => !j.IsDeleted);
         if (unassignedDivisionOnly)
             q = q.Where(j => j.DivisionId == null);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim().ToLower();
-            q = q.Where(j =>
-                j.JobNumber.ToLower().Contains(term)
-                || j.Title.ToLower().Contains(term)
-                || (j.Customer != null && j.Customer.Name.ToLower().Contains(term)));
-        }
+        q = ApplyListSearch(q, search);
         return await q.CountAsync(ct);
     }
 
@@ -674,6 +667,27 @@ public class JobService : IJobService
             other += amount;
     }
 
+    /// <summary>
+    /// Job list and its count share this filter. Blank search leaves the query unchanged.
+    /// TRFid and job card tokens live in notes (<c>TRFid=</c>, <c>JobCardNo=</c>) and in the
+    /// Access description (<c>JobCardNo:</c>). Customer order number is the saved column.
+    /// </summary>
+    private static IQueryable<Job> ApplyListSearch(IQueryable<Job> query, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+            return query;
+
+        var term = search.Trim().ToLower();
+        return query.Where(j =>
+            j.JobNumber.ToLower().Contains(term) ||
+            j.Title.ToLower().Contains(term) ||
+            (j.Notes != null && j.Notes.ToLower().Contains(term)) ||
+            (j.Description != null && j.Description.ToLower().Contains(term)) ||
+            (j.CustomerOrderNo != null && j.CustomerOrderNo.ToLower().Contains(term)) ||
+            (j.Customer != null && j.Customer.Name.ToLower().Contains(term)) ||
+            (j.Quote != null && j.Quote.QuoteNumber.ToLower().Contains(term)));
+    }
+
     private async Task<IReadOnlyList<Job>> LoadJobsAsync(
         string? search,
         int page,
@@ -696,16 +710,7 @@ public class JobService : IJobService
         if (unassignedDivisionOnly)
             query = query.Where(j => j.DivisionId == null);
 
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim().ToLower();
-            query = query.Where(j =>
-                j.JobNumber.ToLower().Contains(term) ||
-                j.Title.ToLower().Contains(term) ||
-                (j.Notes != null && j.Notes.ToLower().Contains(term)) ||
-                (j.Customer != null && j.Customer.Name.ToLower().Contains(term)) ||
-                (j.Quote != null && j.Quote.QuoteNumber.ToLower().Contains(term)));
-        }
+        query = ApplyListSearch(query, search);
 
         var results = await query
             .OrderByDescending(j => j.CreatedDate)

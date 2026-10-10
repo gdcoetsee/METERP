@@ -33,6 +33,7 @@ Staff may also use **Continue with Google / Microsoft** when those client IDs ar
 - **Deposit.** On Command Center, issuing a full credit of the only deposit clears the deposit flag while the job is still open, and a partial credit that still covers the deposit does not. Reversing a deposit receipt clears that flag only when the deposit is no longer fully paid and no other deposit still covers it; a closed job is left unchanged.
 - **Chase.** Chasing an overdue invoice states the net still owed after receipts and open credit notes. A paid invoice, or one already covered by credit, is not chased.
 - **Command Center.** The job card shows TRFid, job card number, team, region, and customer order, and a missing value is a dash. The customer order number saves on the job; blank stays empty and does not change quote or invoice totals.
+- **Jobs.** On Jobs, search matches a TRFid or job card number in the notes or the description, and the customer order number. A blank search still lists the jobs.
 - **Inventory.** The register shows on hand, reorder level, and shortfall. Inactive items stay off the list.
 - **Purchase orders.** On Purchase orders, Still to receive lists open lines with ordered, received, and outstanding. Fully received and cancelled orders are left off.
 - **Goods received.** On GRV Register, the delivery note saved with the goods receipt is shown. A GRV with no note shows a dash.

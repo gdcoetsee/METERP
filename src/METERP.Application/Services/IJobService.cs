@@ -25,6 +25,12 @@ public interface IJobService
     Task<JobInvoicePage> GetJobInvoicesAsync(Guid jobId, int page = 1, int pageSize = 25, CancellationToken ct = default);
 
     Task<IReadOnlyList<JobComplianceCertificate>> GetCertificatesAsync(Guid jobId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Job list. Search matches job number, title, customer, quote number, notes, description
+    /// (TRFid and job card tokens), and customer order number. Blank search is the unfiltered page.
+    /// Another tenant's job is excluded. <see cref="CountAsync"/> uses the same search.
+    /// </summary>
     Task<IReadOnlyList<Job>> GetAllAsync(
         string? search = null,
         int page = 1,

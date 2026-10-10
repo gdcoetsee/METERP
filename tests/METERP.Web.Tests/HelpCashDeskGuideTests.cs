@@ -29,6 +29,7 @@ public class HelpCashDeskGuideTests : IClassFixture<MeterpWebApplicationFactory>
         "A paid invoice, or one already covered by credit, is not chased.",
         "The job card shows TRFid, job card number, team, region, and customer order, and a missing value is a dash.",
         "The customer order number saves on the job; blank stays empty and does not change quote or invoice totals.",
+        "On Jobs, search matches a TRFid or job card number in the notes or the description, and the customer order number. A blank search still lists the jobs.",
         "The register shows on hand, reorder level, and shortfall. Inactive items stay off the list.",
         "On Purchase orders, Still to receive lists open lines with ordered, received, and outstanding. Fully received and cancelled orders are left off.",
         "On GRV Register, the delivery note saved with the goods receipt is shown. A GRV with no note shows a dash.",
