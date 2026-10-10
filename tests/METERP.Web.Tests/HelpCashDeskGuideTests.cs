@@ -31,6 +31,7 @@ public class HelpCashDeskGuideTests : IClassFixture<MeterpWebApplicationFactory>
         "The customer order number saves on the job; blank stays empty and does not change quote or invoice totals.",
         "The register shows on hand, reorder level, and shortfall. Inactive items stay off the list.",
         "On Purchase orders, Still to receive lists open lines with ordered, received, and outstanding. Fully received and cancelled orders are left off.",
+        "On GRV Register, the delivery note saved with the goods receipt is shown. A GRV with no note shows a dash.",
         "the weekly timesheet is Monday to Sunday, hours sit on the posted day, and closed-job hours stay. The total equals the cells.",
         "On the customer portal, the outstanding balance matches that customer's statement as at today.",
         "Output VAT uses the tax already stored, credit notes reduce the total, and the CSV total matches the screen."

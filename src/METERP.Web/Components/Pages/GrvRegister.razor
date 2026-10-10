@@ -39,7 +39,7 @@ else
                         <td>@(g.PurchaseOrder?.PoNumber ?? "—")</td>
                         <td>@(g.PurchaseOrder?.Supplier?.Name ?? "—")</td>
                         <td>@g.ReceivedAt.ToString("yyyy-MM-dd HH:mm")</td>
-                        <td>@(g.SupplierDeliveryNote ?? "—")</td>
+                        <td data-testid="grv-delivery-note">@GrvDeliveryNote.Show(g.SupplierDeliveryNote)</td>
                         <td class="text-end">@g.Lines.Count(l => !l.IsDeleted)</td>
                     </tr>
                 }
@@ -69,7 +69,7 @@ else
             <p class="mb-1">Purchase order: <strong>@(_selected.PurchaseOrder?.PoNumber ?? "—")</strong></p>
             <p class="mb-1">Supplier: @(_selected.PurchaseOrder?.Supplier?.Name ?? "—")</p>
             <p class="mb-1">Received: @_selected.ReceivedAt.ToString("yyyy-MM-dd HH:mm")</p>
-            <p class="mb-3">Delivery note: @(_selected.SupplierDeliveryNote ?? "—")</p>
+            <p class="mb-3" data-testid="grv-detail-delivery-note">Delivery note: @GrvDeliveryNote.Show(_selected.SupplierDeliveryNote)</p>
             <table class="table table-sm mb-0">
                 <thead><tr><th>Item</th><th class="text-end">Qty received</th></tr></thead>
                 <tbody>
