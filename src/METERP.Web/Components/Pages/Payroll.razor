@@ -87,8 +87,9 @@ else
                         <td class="text-end">R @e.Deductions.ToString("N2")</td>
                         <td class="text-end"><strong>R @e.NetPay.ToString("N2")</strong></td>
                         <td>@e.LaborEntryCount</td>
-                        <td>
+                        <td class="text-nowrap">
                             <button type="button" class="btn btn-sm btn-outline-primary" data-testid="payroll-view-payslip" @onclick="() => ViewPayslip(e)" @onclick:stopPropagation="true">View Payslip</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" data-testid="payroll-view-timesheet" @onclick="() => OpenTimesheetAsync(e)" @onclick:stopPropagation="true">Timesheet</button>
                         </td>
                     </tr>
                 }
@@ -107,6 +108,92 @@ else
             </select>
         </div>
         <p class="small text-muted mb-0">Period: @_periodLabel (UTC). Only labor with a linked employee is included. Deductions: @_deductionPercent% + R @_fixedDeductions.ToString("N0") fixed.</p>
+    </div>
+}
+
+@if (_timesheetEmployeeId != null)
+{
+    <div class="card mt-3" data-testid="payroll-timesheet">
+        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+            <strong>Weekly timesheet</strong>
+            @if (_timesheet != null)
+            {
+                <span data-testid="payroll-timesheet-week" data-week-start="@_timesheet.WeekStartUtc.ToString("yyyy-MM-dd")">
+                    @_timesheet.EmployeeNumber @_timesheet.Name · @_timesheet.Days[0].Date.ToString("dd MMM yyyy") to @_timesheet.Days[6].Date.ToString("dd MMM yyyy")
+                </span>
+            }
+            <div class="ms-auto d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-timesheet-prev" @onclick="() => ShiftTimesheetAsync(-1)" disabled="@_timesheetLoading">Previous week</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-timesheet-next" @onclick="() => ShiftTimesheetAsync(1)" disabled="@_timesheetLoading">Next week</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="payroll-timesheet-close" @onclick="CloseTimesheet">Close</button>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (_timesheetLoading)
+            {
+                <ListSkeleton Rows="3" TestId="payroll-timesheet-loading" AriaLabel="Loading timesheet" />
+            }
+            else if (_timesheet == null)
+            {
+                <div class="alert alert-warning mb-0" data-testid="payroll-timesheet-missing">That employee is not on this company.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0" data-testid="payroll-timesheet-grid">
+                        <thead>
+                            <tr>
+                                <th>Job</th>
+                                @foreach (var day in _timesheet.Days)
+                                {
+                                    <th class="text-end">@day.Label<br /><small class="text-muted">@day.Date.ToString("dd MMM")</small></th>
+                                }
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_timesheet.Rows.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="9" class="text-muted" data-testid="payroll-timesheet-empty">No hours posted this week.</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var row in _timesheet.Rows)
+                                {
+                                    <tr data-testid="payroll-timesheet-row">
+                                        <td>
+                                            @TimesheetJobLabel(row)
+                                            @if (row.JobClosed)
+                                            {
+                                                <span class="badge bg-secondary ms-1" data-testid="payroll-timesheet-closed">Closed</span>
+                                            }
+                                        </td>
+                                        @foreach (var hours in row.HoursByDay)
+                                        {
+                                            <td class="text-end" data-testid="payroll-timesheet-cell">@FormatHours(hours)</td>
+                                        }
+                                        <td class="text-end" data-testid="payroll-timesheet-row-total">@FormatHours(row.TotalHours)</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr data-testid="payroll-timesheet-totals">
+                                <th>Total</th>
+                                @foreach (var day in _timesheet.Days)
+                                {
+                                    <th class="text-end">@FormatHours(day.Hours)</th>
+                                }
+                                <th class="text-end" data-testid="payroll-timesheet-grand-total">@FormatHours(_timesheet.TotalHours)</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <p class="small text-muted mb-0 mt-2">Read-only. Hours already posted on a closed job stay on this week.</p>
+            }
+        </div>
     </div>
 }
 
@@ -155,8 +242,63 @@ else
     }
 
     private PayrollEmployeeSummary? selectedEmp;
+    private Guid? _timesheetEmployeeId;
+    private WeeklyTimesheet? _timesheet;
+    private bool _timesheetLoading;
+    private DateTime _timesheetAnchor = DateTime.UtcNow;
 
     private void ClosePayslip() => selectedEmp = null;
+
+    private void CloseTimesheet()
+    {
+        _timesheet = null;
+        _timesheetEmployeeId = null;
+    }
+
+    private async Task OpenTimesheetAsync(PayrollEmployeeSummary employee)
+    {
+        _timesheetEmployeeId = employee.EmployeeId;
+        var month = ParsePeriodMonth();
+        var today = DateTime.UtcNow;
+        _timesheetAnchor = today.Year == month.Year && today.Month == month.Month ? today : month;
+        await LoadTimesheetAsync();
+    }
+
+    private async Task ShiftTimesheetAsync(int weeks)
+    {
+        _timesheetAnchor = (_timesheet?.WeekStartUtc ?? _timesheetAnchor).AddDays(7 * weeks);
+        await LoadTimesheetAsync();
+    }
+
+    private async Task LoadTimesheetAsync()
+    {
+        if (_timesheetEmployeeId == null) return;
+        _timesheetLoading = true;
+        try
+        {
+            _timesheet = await PayrollService.GetWeeklyTimesheetAsync(_timesheetEmployeeId.Value, _timesheetAnchor);
+        }
+        catch (Exception ex)
+        {
+            _timesheet = null;
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _timesheetLoading = false;
+        }
+    }
+
+    private static string TimesheetJobLabel(WeeklyTimesheetRow row)
+    {
+        if (string.IsNullOrWhiteSpace(row.JobNumber))
+            return string.IsNullOrWhiteSpace(row.JobTitle) ? "Job" : row.JobTitle;
+        if (string.IsNullOrWhiteSpace(row.JobTitle))
+            return row.JobNumber;
+        return $"{row.JobNumber} — {row.JobTitle}";
+    }
+
+    private static string FormatHours(decimal hours) => hours.ToString("0.##");
     private TenantBranding _branding = TenantBranding.Default;
     private bool _loading = true;
     private string _periodLabel = DateTime.UtcNow.ToString("MMMM yyyy");
@@ -192,6 +334,7 @@ else
     {
         _loading = true;
         selectedEmp = null;
+        CloseTimesheet();
         try
         {
             var month = ParsePeriodMonth();

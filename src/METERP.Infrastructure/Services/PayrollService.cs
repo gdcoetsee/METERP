@@ -8,6 +8,8 @@ namespace METERP.Infrastructure.Services;
 
 public class PayrollService : IPayrollService
 {
+    private static readonly string[] DayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
     /// <summary>Default simple deduction: 1% of gross + R0 fixed (configurable per call).</summary>
     public const decimal DefaultDeductionPercent = 1m;
 
@@ -66,6 +68,73 @@ public class PayrollService : IPayrollService
             .ToListAsync(ct);
 
         return BuildSummary(employee, entries, pct, fixedAmt);
+    }
+
+    public async Task<WeeklyTimesheet?> GetWeeklyTimesheetAsync(
+        Guid employeeId,
+        DateTime? weekContainingUtc = null,
+        CancellationToken ct = default)
+    {
+        var employee = await _dbContext.Set<Domain.Employee>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee == null) return null;
+
+        var weekStart = StartOfWeekUtc(weekContainingUtc ?? DateTime.UtcNow);
+        var weekEnd = weekStart.AddDays(7);
+
+        var entries = await _dbContext.Set<Domain.JobLabor>()
+            .AsNoTracking()
+            .Where(l => !l.IsDeleted
+                && l.EmployeeId == employeeId
+                && l.WorkDate >= weekStart
+                && l.WorkDate < weekEnd)
+            .ToListAsync(ct);
+
+        var jobIds = entries.Select(l => l.JobId).Distinct().ToList();
+        var jobs = jobIds.Count == 0
+            ? new Dictionary<Guid, Domain.Job>()
+            : await _dbContext.Set<Domain.Job>()
+                .AsNoTracking()
+                .Where(j => jobIds.Contains(j.Id))
+                .ToDictionaryAsync(j => j.Id, ct);
+
+        var dayDates = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+
+        var rows = entries
+            .GroupBy(l => l.JobId)
+            .Select(group =>
+            {
+                jobs.TryGetValue(group.Key, out var job);
+                var hoursByDay = dayDates
+                    .Select(day => group.Where(l => l.WorkDate.Date == day.Date).Sum(l => l.Hours))
+                    .ToList();
+                return new WeeklyTimesheetRow(
+                    group.Key,
+                    job?.JobNumber ?? string.Empty,
+                    job?.Title ?? string.Empty,
+                    job?.Status == Domain.JobStatus.Closed,
+                    hoursByDay,
+                    hoursByDay.Sum());
+            })
+            .OrderBy(r => r.JobNumber)
+            .ThenBy(r => r.JobTitle)
+            .ThenBy(r => r.JobId)
+            .ToList();
+
+        var days = dayDates.Select((date, index) => new WeeklyTimesheetDay(
+            date,
+            DayLabels[index],
+            rows.Sum(r => r.HoursByDay[index]))).ToList();
+
+        return new WeeklyTimesheet(
+            employee.Id,
+            employee.EmployeeNumber,
+            $"{employee.FirstName} {employee.LastName}".Trim(),
+            weekStart,
+            days,
+            rows,
+            days.Sum(d => d.Hours));
     }
 
     public async Task<string> ExportMonthlyCsvAsync(
@@ -160,6 +229,20 @@ public class PayrollService : IPayrollService
             entries.Count,
             employee.IsActive,
             employee.MandatoryHoursPerMonth > 0 ? employee.MandatoryHoursPerMonth : 160m);
+    }
+
+    /// <summary>Monday 00:00 UTC of the week that contains <paramref name="value"/>. Sunday belongs to the week that started the previous Monday.</summary>
+    private static DateTime StartOfWeekUtc(DateTime value)
+    {
+        var utc = value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
+        var date = new DateTime(utc.Year, utc.Month, utc.Day, 0, 0, 0, DateTimeKind.Utc);
+        var offset = ((int)date.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        return date.AddDays(-offset);
     }
 
     private static string Csv(string? value)
