@@ -22,6 +22,7 @@ else
                     <th>Title / Customer</th>
                     <th>Status</th>
                     <th class="text-end">Quoted</th>
+                    <th class="text-end" data-testid="job-col-still-to-invoice">Still to invoice</th>
                     <th class="text-end">Actual</th>
                     <th class="text-end">Variance</th>
                     <th style="width: 200px;"></th>
@@ -46,6 +47,7 @@ else
                             }
                         </td>
                         <td class="text-end">R @j.QuotedTotal.ToString("N2")</td>
+                        <td class="text-end" data-testid="job-still-to-invoice">R @StillToInvoiceAmount(j).ToString("N2")</td>
                         <td class="text-end">R @(GetActualTotal(j).ToString("N2"))</td>
                         <td class="text-end @(GetVariance(j) > 0 ? "text-danger" : GetVariance(j) < 0 ? "text-success" : "")">R @GetVariance(j).ToString("N2")</td>
                         <td class="text-end">
@@ -314,6 +316,8 @@ else
             : (string.IsNullOrWhiteSpace(job.Division?.Name) ? "Unassigned division" : job.Division!.Name);
 
     [Parameter] public List<Job> Jobs { get; set; } = new();
+    /// <summary>Still to invoice by job id, from <see cref="InvoiceBillingCalculator.CalculateUnbilledResidual"/>.</summary>
+    [Parameter] public IReadOnlyDictionary<Guid, decimal>? StillToInvoiceByJob { get; set; }
     [Parameter] public Job? SelectedJob { get; set; }
     [Parameter] public JobCommandCenterSummary? CommandCenter { get; set; }
     [Parameter] public bool CanManage { get; set; }
@@ -349,6 +353,13 @@ else
     private string newSnagDescription = "";
     private string newSafetyDescription = "";
     private SafetyIncidentSeverity newSafetySeverity = SafetyIncidentSeverity.Medium;
+
+    private decimal StillToInvoiceAmount(Job job)
+    {
+        if (StillToInvoiceByJob != null && StillToInvoiceByJob.TryGetValue(job.Id, out var amount))
+            return amount;
+        return InvoiceBillingCalculator.CalculateUnbilledResidual(job.QuotedTotal, 0m);
+    }
 
     private decimal GetActualTotal(Job j)
     {

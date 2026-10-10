@@ -33,6 +33,17 @@ public interface IJobService
         bool unassignedDivisionOnly = false);
 
     /// <summary>
+    /// Still to invoice for the job list. Quoted total minus documents that
+    /// <see cref="InvoiceBillingCalculator.CountsTowardJobBilled"/>, via
+    /// <see cref="InvoiceBillingCalculator.CalculateUnbilledResidual"/>.
+    /// Credit notes, proforma, draft, and cancelled documents are not billed.
+    /// Closed and cancelled jobs are included. Unknown, deleted, and other-tenant jobs are omitted.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, decimal>> GetStillToInvoiceAsync(
+        IReadOnlyCollection<Guid> jobIds,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Open jobs (scheduled, in progress, on hold) where the employee linked to
     /// <paramref name="userId"/> is the lead or on the crew. Empty when the user has no employee.
     /// Office job lists stay on <see cref="GetAllAsync"/>.

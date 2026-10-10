@@ -327,6 +327,49 @@ public class JobService : IJobService
         return await LoadJobsAsync(search, page, pageSize, unassignedDivisionOnly, ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, decimal>> GetStillToInvoiceAsync(
+        IReadOnlyCollection<Guid> jobIds,
+        CancellationToken ct = default)
+    {
+        if (jobIds.Count == 0)
+            return new Dictionary<Guid, decimal>();
+
+        var ids = jobIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, decimal>();
+
+        // Status is not filtered: closed and cancelled jobs still show a number.
+        var jobs = await _dbContext.Set<Job>()
+            .AsNoTracking()
+            .Where(j => ids.Contains(j.Id))
+            .Select(j => new { j.Id, j.QuotedTotal })
+            .ToListAsync(ct);
+
+        if (jobs.Count == 0)
+            return new Dictionary<Guid, decimal>();
+
+        var foundIds = jobs.Select(j => j.Id).ToList();
+        var invoices = await _dbContext.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.JobId != null && foundIds.Contains(i.JobId.Value))
+            .Select(i => new { i.JobId, i.DocumentType, i.Status, i.Total })
+            .ToListAsync(ct);
+
+        var billedByJob = invoices
+            .Where(i => InvoiceBillingCalculator.CountsTowardJobBilled(i.DocumentType, i.Status))
+            .GroupBy(i => i.JobId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+        var result = new Dictionary<Guid, decimal>(jobs.Count);
+        foreach (var job in jobs)
+        {
+            var billed = billedByJob.GetValueOrDefault(job.Id);
+            result[job.Id] = InvoiceBillingCalculator.CalculateUnbilledResidual(job.QuotedTotal, billed);
+        }
+
+        return result;
+    }
+
     public async Task<IReadOnlyList<Job>> GetAssignedOpenJobsForUserAsync(
         Guid userId,
         int take = 50,

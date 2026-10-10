@@ -76,6 +76,7 @@ else
 {
 <JobList
     Jobs="demoJobs"
+    StillToInvoiceByJob="_stillToInvoice"
     SelectedJob="selectedJob"
     CommandCenter="commandCenter"
     Milestones="jobMilestones"
@@ -150,6 +151,7 @@ else
 
 @code {
     private List<Job> demoJobs = new();
+    private IReadOnlyDictionary<Guid, decimal> _stillToInvoice = new Dictionary<Guid, decimal>();
     private bool _initialLoadComplete;
     private TenantBranding _branding = TenantBranding.Default;
     private Tenant? _tenant;
@@ -288,7 +290,13 @@ else
         if (currentPage > pages)
             currentPage = pages;
         demoJobs = (await JobService.GetAllAsync(term, currentPage, PageSize, unassignedDivisionOnly: _unassignedDivisionOnly)).ToList();
+        _stillToInvoice = await JobService.GetStillToInvoiceAsync(demoJobs.Select(j => j.Id).ToList());
     }
+
+    private decimal StillToInvoiceOf(Job job) =>
+        _stillToInvoice.TryGetValue(job.Id, out var amount)
+            ? amount
+            : InvoiceBillingCalculator.CalculateUnbilledResidual(job.QuotedTotal, 0m);
 
     private Task OnSearchChangedAsync() => _dataGate.RunAsync(async () =>
     {
@@ -397,6 +405,7 @@ else
                 j.Customer?.Name ?? "",
                 j.Status.ToString(),
                 TabularExportHelper.FormatDecimal(j.QuotedTotal),
+                TabularExportHelper.FormatDecimal(StillToInvoiceOf(j)),
                 TabularExportHelper.FormatDecimal(act),
                 TabularExportHelper.FormatDecimal(act - j.QuotedTotal)
             };
@@ -410,7 +419,7 @@ else
             if (demoJobs.Any())
             {
                 var csv = TabularExportHelper.BuildCsv(
-                    "JobNumber,Title,Customer,Status,Quoted,Actual,Variance",
+                    "JobNumber,Title,Customer,Status,Quoted,StillToInvoice,Actual,Variance",
                     BuildJobExportRows().Select(r => r.AsEnumerable()));
                 await JS.InvokeVoidAsync("meterpUi.downloadText", "jobs.csv", csv, "text/csv;charset=utf-8");
             }
@@ -427,7 +436,7 @@ else
     {
         if (!demoJobs.Any()) return;
         var tsv = TabularExportHelper.BuildExcelTsv(
-            "JobNumber\tTitle\tCustomer\tStatus\tQuoted\tActual\tVariance",
+            "JobNumber\tTitle\tCustomer\tStatus\tQuoted\tStillToInvoice\tActual\tVariance",
             BuildJobExportRows().Select(r => r.AsEnumerable()));
         await JS.InvokeVoidAsync("meterpUi.downloadText", "jobs.xls", tsv, "application/vnd.ms-excel");
         ToastService.ShowSuccess("Jobs Excel file downloaded.");
@@ -438,7 +447,7 @@ else
         if (!demoJobs.Any()) return;
         var pdf = TabularPdfGenerator.Generate(
             "Jobs Export",
-            new[] { "Job #", "Title", "Customer", "Status", "Quoted", "Actual", "Variance" },
+            new[] { "Job #", "Title", "Customer", "Status", "Quoted", "Still to invoice", "Actual", "Variance" },
             BuildJobExportRows(),
             _branding);
         await JS.InvokeVoidAsync("meterpUi.downloadBytes", "jobs.pdf", Convert.ToBase64String(pdf), "application/pdf");
