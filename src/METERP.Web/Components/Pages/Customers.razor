@@ -33,7 +33,7 @@
 <div class="meterp-filter-bar">
     <div class="input-group">
         <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
-        <input type="search" class="form-control" data-testid="customers-search" placeholder="Search name, email or phone..."
+        <input type="search" class="form-control" data-testid="customers-search" placeholder="Search name, email, phone or VAT number..."
                value="@searchTerm" @oninput="OnSearchInput" />
         @if (!string.IsNullOrEmpty(searchTerm))
         {

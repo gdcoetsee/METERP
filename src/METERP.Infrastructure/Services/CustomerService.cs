@@ -49,7 +49,8 @@ public class CustomerService : ICustomerService
             query = query.Where(c =>
                 c.Name.ToLower().Contains(term) ||
                 (c.Email != null && c.Email.ToLower().Contains(term)) ||
-                (c.Phone != null && c.Phone.Contains(term)));
+                (c.Phone != null && c.Phone.Contains(term)) ||
+                (c.VatNumber != null && c.VatNumber.ToLower().Contains(term)));
         }
 
         return await query

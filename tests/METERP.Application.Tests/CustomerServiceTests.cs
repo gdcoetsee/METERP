@@ -10,7 +10,9 @@ namespace METERP.Application.Tests;
 
 public class CustomerServiceTests
 {
-    private AppDbContext CreateContext(Guid tenantId)
+    private AppDbContext CreateContext(Guid tenantId) => CreateContext(Guid.NewGuid().ToString(), tenantId);
+
+    private static AppDbContext CreateContext(string dbName, Guid tenantId)
     {
         var tenantProvider = new Mock<ITenantProvider>();
         tenantProvider.Setup(p => p.GetCurrentTenantId()).Returns(tenantId);
@@ -18,7 +20,7 @@ public class CustomerServiceTests
         currentUser.Setup(u => u.UserId).Returns(Guid.NewGuid());
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(dbName)
             .Options;
 
         return new AppDbContext(options, tenantProvider.Object, currentUser.Object);
@@ -54,6 +56,118 @@ public class CustomerServiceTests
 
         Assert.Single(results);
         Assert.Equal("Alpha Corp", results[0].Name);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_MatchesVatNumberAsWellAsNameEmailAndPhone()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        await service.CreateAsync(new Customer
+        {
+            Name = "Northern Mine",
+            Email = "accounts@north.test",
+            Phone = "011-100",
+            VatNumber = "ZA4123456789"
+        });
+        await service.CreateAsync(new Customer
+        {
+            Name = "Southern Works",
+            Email = "ap@south.test",
+            Phone = "021-200",
+            VatNumber = "4987654321"
+        });
+        await service.CreateAsync(new Customer { Name = "No Vat Co", Email = "plain@novat.test" });
+
+        var byVat = await service.GetAllAsync("za4123456789");
+        Assert.Single(byVat);
+        Assert.Equal("Northern Mine", byVat[0].Name);
+
+        var byPartialVat = await service.GetAllAsync("498765");
+        Assert.Single(byPartialVat);
+        Assert.Equal("Southern Works", byPartialVat[0].Name);
+
+        var byEmail = await service.GetAllAsync("ap@south");
+        Assert.Single(byEmail);
+        Assert.Equal("Southern Works", byEmail[0].Name);
+
+        var byPhone = await service.GetAllAsync("011-100");
+        Assert.Single(byPhone);
+        Assert.Equal("Northern Mine", byPhone[0].Name);
+
+        var byName = await service.GetAllAsync("no vat");
+        Assert.Single(byName);
+        Assert.Equal("No Vat Co", byName[0].Name);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_VatSearch_DoesNotMatchAnotherTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        await using (var seedA = CreateContext(dbName, tenantA))
+        {
+            seedA.Set<Customer>().Add(new Customer
+            {
+                Name = "Tenant A Mine",
+                VatNumber = "4111111111"
+            });
+            seedA.Set<Customer>().Add(new Customer
+            {
+                Name = "Deleted A",
+                VatNumber = "4222222222",
+                IsDeleted = true
+            });
+            await seedA.SaveChangesAsync();
+        }
+
+        await using (var seedB = CreateContext(dbName, tenantB))
+        {
+            seedB.Set<Customer>().Add(new Customer
+            {
+                Name = "Tenant B Works",
+                VatNumber = "4222222222"
+            });
+            await seedB.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(dbName, tenantA);
+        var serviceA = new CustomerService(dbA);
+
+        var own = await serviceA.GetAllAsync("4111111111");
+        Assert.Single(own);
+        Assert.Equal("Tenant A Mine", own[0].Name);
+
+        var otherTenant = await serviceA.GetAllAsync("4222222222");
+        Assert.Empty(otherTenant);
+
+        await using var dbB = CreateContext(dbName, tenantB);
+        var other = await new CustomerService(dbB).GetAllAsync("4222222222");
+        Assert.Single(other);
+        Assert.Equal("Tenant B Works", other[0].Name);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_EmptySearch_StillPages()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new CustomerService(db);
+        await service.CreateAsync(new Customer { Name = "Alpha Co" });
+        await service.CreateAsync(new Customer { Name = "Bravo Co" });
+        await service.CreateAsync(new Customer { Name = "Charlie Co" });
+
+        var first = await service.GetAllAsync(null, page: 1, pageSize: 2);
+        Assert.Equal(new[] { "Alpha Co", "Bravo Co" }, first.Select(c => c.Name).ToArray());
+
+        var blank = await service.GetAllAsync("", page: 1, pageSize: 2);
+        Assert.Equal(new[] { "Alpha Co", "Bravo Co" }, blank.Select(c => c.Name).ToArray());
+
+        var whitespace = await service.GetAllAsync("   ", page: 2, pageSize: 2);
+        Assert.Equal(new[] { "Charlie Co" }, whitespace.Select(c => c.Name).ToArray());
     }
 
     [Fact]
