@@ -92,7 +92,8 @@ public class Job : BaseEntity
     public bool IsEmergency { get; set; }
 
     /// <summary>
-    /// Snapshot of the quote total at time of conversion.
+    /// VAT-inclusive total snapshotted when the job is created (ex-VAT subtotal + VAT, once).
+    /// Existing rows are not rewritten.
     /// </summary>
     public decimal QuotedTotal { get; set; }
 

@@ -1015,6 +1015,10 @@ public class QuoteService : IQuoteService
             quote.Status = QuoteStatus.Accepted;
         }
 
+        // Lines are ex-VAT. A header left at the subtotal would understate the job
+        // against VAT-inclusive invoices. Refresh once; do not touch other jobs.
+        quote.RecalculateTotals();
+
         var job = new Job
         {
             QuoteId = quote.Id,

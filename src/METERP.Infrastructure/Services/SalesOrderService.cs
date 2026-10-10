@@ -446,6 +446,9 @@ public class SalesOrderService : ISalesOrderService
         if (so.Status != SalesOrderStatus.Confirmed && so.Status != SalesOrderStatus.InProgress)
             so.Status = SalesOrderStatus.Confirmed;
 
+        // Same rule as quote conversion: snapshot subtotal + VAT, not a stale ex-VAT header.
+        RecalculateTotals(so);
+
         var title = $"{so.Customer.Name} - {so.SoNumber}";
 
         // Route through JobService so quota enforcement and usage counters apply.
