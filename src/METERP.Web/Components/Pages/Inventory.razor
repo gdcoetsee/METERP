@@ -73,6 +73,8 @@ else
                     <th>Name</th>
                     <th>Category</th>
                     <th class="text-end">On Hand</th>
+                    <th class="text-end">Reorder</th>
+                    <th class="text-end" data-testid="inventory-col-shortfall">Shortfall</th>
                     <th class="text-end">Reserved</th>
                     <th class="text-end">Available</th>
                     <th class="text-end">Unit Cost</th>
@@ -93,6 +95,17 @@ else
                         <td class="text-end">
                             <strong>@item.QuantityOnHand</strong> @item.Unit
                             @if (isLow) { <span class="badge bg-danger ms-1">Low</span> }
+                        </td>
+                        <td class="text-end">@item.ReorderLevel</td>
+                        <td class="text-end" data-testid="inventory-shortfall">
+                            @if (item.ReorderShortfall > 0)
+                            {
+                                <strong class="text-danger">@item.ReorderShortfall</strong>
+                            }
+                            else
+                            {
+                                <span class="text-muted">0</span>
+                            }
                         </td>
                         <td class="text-end">
                             @if (item.QuantityReserved > 0)
@@ -200,6 +213,7 @@ else
                 <div class="col-md-6">
                     <strong>On Hand:</strong> @selectedItem.QuantityOnHand @selectedItem.Unit<br />
                     <strong>Reorder Level:</strong> @selectedItem.ReorderLevel<br />
+                    <strong>Shortfall:</strong> @selectedItem.ReorderShortfall<br />
                     <strong>Unit Cost:</strong> R @selectedItem.UnitCost.ToString("N2")
                 </div>
                 <div class="col-md-6">
@@ -491,10 +505,10 @@ else
             if (items != null && items.Any())
             {
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("Sku,Name,Category,OnHand,Reserved,Available,UnitCost,ReorderLevel");
+                sb.AppendLine("Sku,Name,Category,OnHand,Reserved,Available,UnitCost,ReorderLevel,Shortfall");
                 foreach (var item in items)
                 {
-                    sb.AppendLine($"{item.Sku},{item.Name},{item.Category},{item.QuantityOnHand},{item.QuantityReserved},{item.QuantityAvailable},{item.UnitCost},{item.ReorderLevel}");
+                    sb.AppendLine($"{item.Sku},{item.Name},{item.Category},{item.QuantityOnHand},{item.QuantityReserved},{item.QuantityAvailable},{item.UnitCost},{item.ReorderLevel},{item.ReorderShortfall}");
                 }
 
                 await JS.InvokeVoidAsync("meterpUi.downloadText", "inventory.csv", sb.ToString(), "text/csv;charset=utf-8");

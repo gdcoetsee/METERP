@@ -435,6 +435,66 @@ public class InventoryServiceTests
     }
 
     [Fact]
+    public async Task GetAllItemsAsync_ReorderShortfall_OmitsInactiveAndDeleted()
+    {
+        var tenantId = Guid.NewGuid();
+        using var db = CreateContext(tenantId);
+        var service = new InventoryService(db);
+
+        await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "SHORT",
+            Name = "Short cable",
+            QuantityOnHand = 2,
+            ReorderLevel = 5,
+            IsActive = true
+        });
+        await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "OK",
+            Name = "Plenty of fuses",
+            QuantityOnHand = 10,
+            ReorderLevel = 5,
+            IsActive = true
+        });
+
+        var inactiveId = await service.CreateItemAsync(new InventoryItem
+        {
+            Sku = "INACTIVE",
+            Name = "Retired gland",
+            QuantityOnHand = 1,
+            ReorderLevel = 8,
+            IsActive = true
+        });
+        var inactive = await service.GetItemByIdAsync(inactiveId);
+        inactive!.IsActive = false;
+        await service.UpdateItemAsync(inactive);
+
+        db.Set<InventoryItem>().Add(new InventoryItem
+        {
+            TenantId = tenantId,
+            Sku = "DELETED",
+            Name = "Deleted drum",
+            QuantityOnHand = 1,
+            ReorderLevel = 9,
+            IsActive = true,
+            IsDeleted = true
+        });
+        await db.SaveChangesAsync();
+
+        var rows = await service.GetAllItemsAsync(pageSize: 50);
+
+        Assert.Equal(2, rows.Count);
+        Assert.DoesNotContain(rows, i => i.Sku is "INACTIVE" or "DELETED");
+
+        var shortItem = Assert.Single(rows, i => i.Sku == "SHORT");
+        Assert.Equal(3m, shortItem.ReorderShortfall);
+
+        var okItem = Assert.Single(rows, i => i.Sku == "OK");
+        Assert.Equal(0m, okItem.ReorderShortfall);
+    }
+
+    [Fact]
     public async Task RecordStockTransactionAsync_ThrowsWhenItemMissing()
     {
         using var db = CreateContext();

@@ -24,4 +24,20 @@ public class StockAvailabilityCalculatorTests
     {
         Assert.Equal(expected, StockAvailabilityCalculator.CalculateReservation(requested, available));
     }
+
+    [Theory]
+    [InlineData(2, 5, 3)]
+    [InlineData(6, 5, 0)]
+    [InlineData(5, 5, 0)]
+    [InlineData(0, 0, 0)]
+    public void CalculateReorderShortfall_IsReorderMinusOnHand_ClampedAtZero(decimal onHand, decimal reorderLevel, decimal expected)
+    {
+        Assert.Equal(expected, StockAvailabilityCalculator.CalculateReorderShortfall(onHand, reorderLevel));
+    }
+
+    [Fact]
+    public void CalculateReorderShortfall_KeepsFractionalUnits()
+    {
+        Assert.Equal(2.5m, StockAvailabilityCalculator.CalculateReorderShortfall(1.5m, 4m));
+    }
 }

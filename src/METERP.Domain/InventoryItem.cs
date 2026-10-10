@@ -24,6 +24,9 @@ public class InventoryItem : BaseEntity
 
     public decimal QuantityAvailable => StockAvailabilityCalculator.GetAvailableQuantity(QuantityOnHand, QuantityReserved);
 
+    /// <summary>Units short of the reorder level. Zero when on hand is at or above reorder.</summary>
+    public decimal ReorderShortfall => StockAvailabilityCalculator.CalculateReorderShortfall(QuantityOnHand, ReorderLevel);
+
     /// <summary>
     /// Reorder / minimum level alert threshold.
     /// </summary>
