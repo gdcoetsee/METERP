@@ -34,6 +34,7 @@ Staff may also use **Continue with Google / Microsoft** when those client IDs ar
 - **Chase.** Chasing an overdue invoice states the net still owed after receipts and open credit notes. A paid invoice, or one already covered by credit, is not chased.
 - **Command Center.** The job card shows TRFid, job card number, team, region, and customer order, and a missing value is a dash. The customer order number saves on the job; blank stays empty and does not change quote or invoice totals.
 - **Inventory.** The register shows on hand, reorder level, and shortfall. Inactive items stay off the list.
+- **Purchase orders.** On Purchase orders, Still to receive lists open lines with ordered, received, and outstanding. Fully received and cancelled orders are left off.
 - **Payroll.** On Payroll, the weekly timesheet is Monday to Sunday, hours sit on the posted day, and closed-job hours stay. The total equals the cells.
 - **Portal.** On the customer portal, the outstanding balance matches that customer's statement as at today.
 - **Finance.** Output VAT uses the tax already stored, credit notes reduce the total, and the CSV total matches the screen. Draft, proforma, and cancelled documents are left out.

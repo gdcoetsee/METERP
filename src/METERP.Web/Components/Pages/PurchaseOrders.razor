@@ -1,6 +1,7 @@
 @page "/purchase-orders"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using METERP.Application.Services
+@using METERP.Application.Models
 @using METERP.Application.Interfaces
 @using METERP.Domain
 @using METERP.Common
@@ -48,12 +49,55 @@
 {
     <ListSkeleton Rows="6" TestId="purchase-orders-loading" AriaLabel="Loading purchase orders" />
 }
-else if (pos == null || !pos.Any())
-{
-    <div class="alert alert-info">No purchase orders yet. Create POs from suppliers to replenish inventory.</div>
-}
 else
 {
+    <section class="mb-4" data-testid="purchase-orders-outstanding">
+        <h2 class="h6 mb-1">Still to receive (@outstanding.Count)</h2>
+        <p class="text-muted small">Open lines with ordered, received, and outstanding. Fully received and cancelled orders are left off. Search filters the list below.</p>
+        @if (outstanding.Count == 0)
+        {
+            <p class="text-muted mb-0" data-testid="purchase-orders-outstanding-empty">Nothing still to receive.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" data-testid="purchase-orders-outstanding-table">
+                    <thead>
+                        <tr>
+                            <th>PO #</th>
+                            <th>Supplier</th>
+                            <th>Line</th>
+                            <th>Status</th>
+                            <th class="text-end">Ordered</th>
+                            <th class="text-end">Received</th>
+                            <th class="text-end">Outstanding</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in outstanding)
+                        {
+                            <tr class="meterp-row-click" data-testid="purchase-order-outstanding-row" @onclick="() => ViewOutstanding(row)" title="Open purchase order">
+                                <td><strong>@row.PoNumber</strong></td>
+                                <td>@(string.IsNullOrWhiteSpace(row.SupplierName) ? "—" : row.SupplierName)</td>
+                                <td>@row.Description</td>
+                                <td>@OutstandingStatusLabel(row.Status)</td>
+                                <td class="text-end" data-testid="purchase-order-outstanding-ordered">@row.Ordered</td>
+                                <td class="text-end" data-testid="purchase-order-outstanding-received">@row.Received</td>
+                                <td class="text-end" data-testid="purchase-order-outstanding-qty"><strong>@row.Outstanding</strong></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @if (pos == null || !pos.Any())
+    {
+        <div class="alert alert-info">No purchase orders yet. Create POs from suppliers to replenish inventory.</div>
+    }
+    else
+    {
     <div class="table-responsive" data-testid="purchase-orders-table">
         <table class="table table-hover">
             <thead>
@@ -98,6 +142,7 @@ else
         <span class="text-muted small">Page @currentPage</span>
         <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(pos.Count < PageSize)">Next</button>
     </div>
+    }
 }
 
 @if (showForm)
@@ -185,8 +230,9 @@ else
                     <thead>
                         <tr>
                             <th>Description</th>
-                            <th class="text-end">Qty</th>
+                            <th class="text-end">Ordered</th>
                             <th class="text-end">Received</th>
+                            <th class="text-end">Outstanding</th>
                             <th>Unit</th>
                             <th class="text-end">Unit Price</th>
                             <th class="text-end">Line Total</th>
@@ -209,6 +255,7 @@ else
                                 </td>
                                 <td class="text-end">@line.Quantity</td>
                                 <td class="text-end">@line.QuantityReceived</td>
+                                <td class="text-end" data-testid="purchase-order-line-outstanding">@line.QuantityOutstanding</td>
                                 <td>@line.Unit</td>
                                 <td class="text-end">R @line.UnitPrice.ToString("N2")</td>
                                 <td class="text-end"><strong>R @line.LineTotal.ToString("N2")</strong></td>
@@ -351,6 +398,7 @@ else
 
 @code {
     private List<PurchaseOrder> pos = new();
+    private List<PurchaseOrderOutstandingRow> outstanding = new();
     private List<Supplier> availableSuppliers = new();
     private PurchaseOrder currentPO = new();
     private PurchaseOrder? selectedPO;
@@ -436,10 +484,25 @@ else
         var generation = ++_posLoadGeneration;
         var term = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim();
         var loaded = (await PurchaseOrderService.GetAllAsync(term, currentPage, PageSize)).ToList();
+        var openLines = (await PurchaseOrderService.GetOutstandingRegisterAsync()).ToList();
         if (generation != _posLoadGeneration)
             return;
         pos = loaded;
+        outstanding = openLines;
     }
+
+    private async Task ViewOutstanding(PurchaseOrderOutstandingRow row)
+    {
+        selectedPO = await PurchaseOrderService.GetByIdAsync(row.PurchaseOrderId);
+        showForm = false;
+        showLineForm = false;
+    }
+
+    private static string OutstandingStatusLabel(PurchaseOrderStatus status) => status switch
+    {
+        PurchaseOrderStatus.PartiallyReceived => "Partially received",
+        _ => status.ToString()
+    };
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {

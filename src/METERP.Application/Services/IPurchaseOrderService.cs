@@ -11,6 +11,13 @@ public interface IPurchaseOrderService
     Task<PurchaseOrder?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<PurchaseOrder>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
 
+    /// <summary>
+    /// Open purchase-order lines still to receive.
+    /// Fully received and cancelled orders are omitted. A line with nothing left to receive is omitted.
+    /// Outstanding is ordered minus received, and never goes below zero.
+    /// </summary>
+    Task<IReadOnlyList<PurchaseOrderOutstandingRow>> GetOutstandingRegisterAsync(CancellationToken ct = default);
+
     Task<Guid> CreateAsync(PurchaseOrder po, CancellationToken ct = default);
     Task UpdateAsync(PurchaseOrder po, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);

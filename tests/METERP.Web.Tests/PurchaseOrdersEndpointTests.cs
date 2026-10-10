@@ -49,6 +49,8 @@ public class PurchaseOrdersEndpointTests : IClassFixture<MeterpWebApplicationFac
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("purchase-orders-ready", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("purchase-orders-export-csv", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("purchase-orders-outstanding", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Still to receive", body, StringComparison.Ordinal);
     }
 
     [Fact]

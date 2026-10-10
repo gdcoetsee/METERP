@@ -85,6 +85,42 @@ public class PurchaseOrderService : IPurchaseOrderService
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<PurchaseOrderOutstandingRow>> GetOutstandingRegisterAsync(CancellationToken ct = default)
+    {
+        var open = await _dbContext.Set<PurchaseOrder>()
+            .AsNoTracking()
+            .Include(p => p.Supplier)
+            .Include(p => p.Lines)
+            .Where(p => p.Status != PurchaseOrderStatus.Received
+                && p.Status != PurchaseOrderStatus.Cancelled)
+            .Where(p => p.Lines.Any(l => l.Quantity > l.QuantityReceived))
+            .OrderByDescending(p => p.PoDate)
+            .ThenBy(p => p.PoNumber)
+            .ToListAsync(ct);
+
+        var rows = new List<PurchaseOrderOutstandingRow>();
+        foreach (var po in open)
+        {
+            foreach (var line in po.Lines
+                .Where(l => !l.IsDeleted && l.Quantity > l.QuantityReceived)
+                .OrderBy(l => l.Description, StringComparer.OrdinalIgnoreCase))
+            {
+                rows.Add(new PurchaseOrderOutstandingRow(
+                    po.Id,
+                    line.Id,
+                    po.PoNumber,
+                    po.Supplier?.Name ?? "",
+                    line.Description,
+                    po.Status,
+                    line.Quantity,
+                    line.QuantityReceived,
+                    line.QuantityOutstanding));
+            }
+        }
+
+        return rows;
+    }
+
     public async Task<Guid> CreateAsync(PurchaseOrder po, CancellationToken ct = default)
     {
         if (po.SupplierId == Guid.Empty)
