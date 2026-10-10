@@ -24,6 +24,7 @@ Staff may also use **Continue with Google / Microsoft** when those client IDs ar
 ## Cash desk rules
 
 - **Quotes.** Tick Includes VAT to type the gross figure: at 15%, R 115.00 stores ex-VAT R 100.00 and VAT R 15.00, and travel uses the same tick. The register From and To include those days, and the VAT column is the tax stored on the quote.
+- **Quote print.** The printed quote shows our VAT number and the customer VAT number when both are set. A blank customer VAT number is left off, and the quote still prints.
 - **Quote to job.** Converting a quote sets the job quoted total to the VAT-inclusive quote total once, travel stays a job cost, and converting the same quote again is refused.
 - **Customers.** Payment terms (days) sets the invoice due date (blank or 0 stays 30 days), and search matches the VAT number as well as the name, email, and phone. On the account statement, Export CSV uses the lines on the screen and the last balance is the closing balance; draft, proforma, and cancelled documents stay off it.
 - **Invoices.** Issue credit note on a draft so the VAT-inclusive credit reduces what the customer owes; a credit left in Draft does not. Credit this amount credits a VAT-inclusive part that cannot exceed the balance due and needs a reason, while Create credit note still credits the whole invoice.

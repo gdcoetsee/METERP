@@ -14,6 +14,7 @@ public class HelpCashDeskGuideTests : IClassFixture<MeterpWebApplicationFactory>
     [
         "Tick Includes VAT to type the gross figure: at 15%, R 115.00 stores ex-VAT R 100.00 and VAT R 15.00, and travel uses the same tick.",
         "The register From and To include those days, and the VAT column is the tax stored on the quote.",
+        "The printed quote shows our VAT number and the customer VAT number when both are set. A blank customer VAT number is left off, and the quote still prints.",
         "Converting a quote sets the job quoted total to the VAT-inclusive quote total once, travel stays a job cost, and converting the same quote again is refused.",
         "Payment terms (days) sets the invoice due date (blank or 0 stays 30 days), and search matches the VAT number as well as the name, email, and phone.",
         "Export CSV uses the lines on the screen and the last balance is the closing balance; draft, proforma, and cancelled documents stay off it.",
