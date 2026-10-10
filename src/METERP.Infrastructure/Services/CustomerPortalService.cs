@@ -52,13 +52,54 @@ public class CustomerPortalService : ICustomerPortalService
         var openQuotes = quotes.Count(q => q.Status == QuoteStatus.Sent);
         var openInvoices = invoices.Count(i =>
             i.DocumentType != InvoiceDocumentType.CreditNote && i.BalanceDue > 0);
-        // Credit notes store a positive total and reduce the balance. Other documents are unchanged.
-        var balance = invoices.Sum(i =>
-            i.DocumentType == InvoiceDocumentType.CreditNote
-                ? InvoiceCreditConvention.ArSignedOpenBalance(i.DocumentType, i.Status, i.Total, i.AmountPaid)
-                : i.BalanceDue);
+        // Same book the office statement uses, as at today. The list above is only a preview.
+        var balance = await OutstandingAsAtTodayAsync(customer.Id, customer.Name, ct);
 
         return new CustomerPortalDashboard(customer.Name, openQuotes, openInvoices, balance, quotes, invoices);
+    }
+
+    /// <summary>
+    /// Closing balance of the customer statement as at <see cref="DateTime.UtcNow"/>.
+    /// Draft, proforma, cancelled, deleted, and later-dated documents stay off, and a
+    /// receipt dated after today does not reduce what is still outstanding.
+    /// </summary>
+    private async Task<decimal> OutstandingAsAtTodayAsync(Guid customerId, string? customerName, CancellationToken ct)
+    {
+        var rows = await _db.Set<Invoice>()
+            .AsNoTracking()
+            .Where(i => i.CustomerId == customerId)
+            .Select(i => new
+            {
+                i.InvoiceDate,
+                i.DocumentType,
+                i.Status,
+                i.InvoiceNumber,
+                i.Total,
+                i.AmountPaid,
+                i.IsDeleted,
+                Payments = i.Payments.Select(p => new
+                {
+                    p.PaymentDate,
+                    p.Amount,
+                    p.Reference,
+                    p.IsDeleted
+                }).ToList()
+            })
+            .ToListAsync(ct);
+
+        var documents = rows.Select(i => new CustomerStatementDocument(
+            i.InvoiceDate,
+            i.DocumentType,
+            i.Status,
+            i.InvoiceNumber,
+            i.Total,
+            i.AmountPaid,
+            i.IsDeleted,
+            i.Payments
+                .Select(p => new CustomerStatementReceipt(p.PaymentDate, p.Amount, p.Reference, p.IsDeleted))
+                .ToList()));
+
+        return CustomerStatementBuilder.Build(customerId, customerName, DateTime.UtcNow, documents).ClosingBalance;
     }
 
     private static CustomerPortalDashboard UnlinkedDashboard() =>

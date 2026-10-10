@@ -59,6 +59,55 @@ public class CustomerPortalServiceTests
     }
 
     [Fact]
+    public async Task GetDashboardAsync_BalanceMatchesStatement_ForAccessBook()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var otherId = Guid.NewGuid();
+        await using var db = CreateContext(tenantId);
+        db.Customers.AddRange(
+            new Customer { Id = customerId, TenantId = tenantId, Name = "Metro Power" },
+            new Customer { Id = otherId, TenantId = tenantId, Name = "Other Co" });
+
+        var sold = InvoiceRow(tenantId, customerId, "INV-SOLD", 1150m, 1150m, InvoiceStatus.Paid, new DateTime(2026, 9, 1));
+        var open = InvoiceRow(tenantId, customerId, "INV-OPEN", 1000m, 0m, InvoiceStatus.Sent, new DateTime(2026, 9, 2));
+        var credit = InvoiceRow(
+            tenantId, customerId, "CRN-OPEN", 80m, 0m, InvoiceStatus.Sent, new DateTime(2026, 9, 3),
+            InvoiceDocumentType.CreditNote);
+        var proforma = InvoiceRow(
+            tenantId, customerId, "INV-PRO", 50m, 0m, InvoiceStatus.Sent, new DateTime(2026, 9, 4),
+            InvoiceDocumentType.Proforma);
+        var draft = InvoiceRow(tenantId, customerId, "INV-DRAFT", 999m, 0m, InvoiceStatus.Draft, new DateTime(2026, 9, 5));
+        var future = InvoiceRow(tenantId, customerId, "INV-FUTURE", 70m, 0m, InvoiceStatus.Sent, new DateTime(2099, 1, 1));
+        var laterPay = InvoiceRow(
+            tenantId, customerId, "INV-LATER", 400m, 150m, InvoiceStatus.PartiallyPaid, new DateTime(2026, 9, 6));
+        laterPay.Payments.Add(new InvoicePayment
+        {
+            TenantId = tenantId,
+            Invoice = laterPay,
+            Amount = 150m,
+            PaymentDate = new DateTime(2099, 1, 2),
+            Reference = "FUTURE"
+        });
+        var deleted = InvoiceRow(tenantId, customerId, "INV-GONE", 500m, 0m, InvoiceStatus.Sent, new DateTime(2026, 9, 7));
+        deleted.IsDeleted = true;
+        var secret = InvoiceRow(tenantId, otherId, "INV-SECRET", 9000m, 0m, InvoiceStatus.Sent, new DateTime(2026, 9, 1));
+
+        db.Invoices.AddRange(sold, open, credit, proforma, draft, future, laterPay, deleted, secret);
+        await db.SaveChangesAsync();
+
+        var dashboard = await new CustomerPortalService(db).GetDashboardAsync(customerId);
+        var statement = await new InvoiceService(db).GetCustomerStatementAsync(customerId);
+
+        Assert.NotNull(statement);
+        // Paid Access invoice closes to 0, open 1000, open credit -80, receipt after today still owing 400.
+        Assert.Equal(1320m, statement.ClosingBalance);
+        Assert.Equal(statement.ClosingBalance, dashboard.BalanceDue);
+        Assert.DoesNotContain(dashboard.Invoices, i => i.InvoiceNumber == "INV-SECRET");
+        Assert.DoesNotContain(dashboard.Invoices, i => i.CustomerId == otherId);
+    }
+
+    [Fact]
     public void UnavailableMessage_IsTheLockedLoginCopy()
     {
         Assert.Equal("This portal login is not available. Contact MET office.", CustomerPortalMessages.Unavailable);
@@ -199,6 +248,28 @@ public class CustomerPortalServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ReportPaymentAsync(Guid.NewGuid(), invoice.Id, 10m, "EFT-3"));
     }
+
+    private static Invoice InvoiceRow(
+        Guid tenantId,
+        Guid customerId,
+        string number,
+        decimal total,
+        decimal amountPaid,
+        InvoiceStatus status,
+        DateTime invoiceDate,
+        InvoiceDocumentType documentType = InvoiceDocumentType.Standard) =>
+        new()
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            InvoiceNumber = number,
+            DocumentType = documentType,
+            Status = status,
+            InvoiceDate = invoiceDate,
+            DueDate = invoiceDate.AddDays(30),
+            Total = total,
+            AmountPaid = amountPaid
+        };
 
     private static AppDbContext CreateContext(Guid tenantId)
     {
