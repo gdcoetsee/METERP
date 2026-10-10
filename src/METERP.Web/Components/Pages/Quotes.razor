@@ -73,6 +73,44 @@
                     @onclick="() => SetBoardFilter(selected.Filter)">@selected.Label</button>
         }
     </div>
+    <div class="d-flex flex-wrap gap-2 align-items-end mt-2" data-testid="quotes-register-filters">
+        <div>
+            <label class="form-label small mb-0" for="quotes-register-from">From</label>
+            <input type="date" id="quotes-register-from" class="form-control form-control-sm"
+                   data-testid="quotes-register-from"
+                   value="@FormatRegisterDate(registerFrom)"
+                   @onchange="OnRegisterFromChanged"
+                   disabled="@_pageBusy" />
+        </div>
+        <div>
+            <label class="form-label small mb-0" for="quotes-register-to">To</label>
+            <input type="date" id="quotes-register-to" class="form-control form-control-sm"
+                   data-testid="quotes-register-to"
+                   value="@FormatRegisterDate(registerTo)"
+                   @onchange="OnRegisterToChanged"
+                   disabled="@_pageBusy" />
+        </div>
+        <div>
+            <label class="form-label small mb-0" for="quotes-register-status">Status</label>
+            <select id="quotes-register-status" class="form-select form-select-sm"
+                    data-testid="quotes-register-status"
+                    value="@RegisterStatusValue"
+                    @onchange="OnRegisterStatusChanged"
+                    disabled="@_pageBusy">
+                <option value="">Any status</option>
+                @foreach (var status in Enum.GetValues<QuoteStatus>())
+                {
+                    <option value="@status">@status</option>
+                }
+            </select>
+        </div>
+        @if (HasRegisterWindow)
+        {
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="quotes-register-clear"
+                    @onclick="ClearRegisterFilters" disabled="@_pageBusy">Clear register</button>
+        }
+        <span class="text-muted small">From and to include those days. VAT is the tax stored on the quote.</span>
+    </div>
 </div>
 
 @if (_loading)
@@ -84,6 +122,7 @@ else
     <p class="text-muted small mb-2" data-testid="quotes-showing">@($"{QuotesRangeCaption}. {BoardHint}")</p>
     <QuoteList
         Quotes="quotes"
+        QuoteIdsWithJobs="quotesWithJobs"
         CanManage="UserCanManage"
         CurrentPage="currentPage"
         DisablePrevious="@(currentPage <= 1 || _pageBusy)"
@@ -447,6 +486,10 @@ else
 
 @code {
     private List<Quote> quotes = new();
+    private HashSet<Guid> quotesWithJobs = new();
+    private DateTime? registerFrom;
+    private DateTime? registerTo;
+    private QuoteStatus? registerStatus;
     private TenantBranding _branding = TenantBranding.Default;
     private Tenant? _tenant;
     private bool QuoteQuotaBlocked =>
@@ -545,8 +588,14 @@ else
         _ => "This count is the current view."
     };
 
+    private bool HasRegisterWindow =>
+        registerFrom.HasValue || registerTo.HasValue || registerStatus.HasValue;
+
+    private string RegisterStatusValue => registerStatus?.ToString() ?? "";
+
     private string QuoteEmptyTitle =>
         !string.IsNullOrWhiteSpace(searchTerm) ? "No quotes match this search"
+        : HasRegisterWindow ? "No quotes in this register"
         : boardFilter switch
         {
             QuoteBoardFilter.All => "No quotes yet",
@@ -560,7 +609,9 @@ else
     private string QuoteEmptyDescription =>
         !string.IsNullOrWhiteSpace(searchTerm)
             ? "Nothing in this view matches that quote number, customer, or note. Clear the search to see the board again."
-            : boardFilter switch
+            : HasRegisterWindow
+                ? "Nothing falls on these dates or this status. Clear the register filter to see the board again."
+                : boardFilter switch
             {
                 QuoteBoardFilter.All => "Create an estimate with labour, materials, and travel as separate lines.",
                 QuoteBoardFilter.Live => "Live hides expired quotes. Open All or Expired if you are looking for older estimates.",
@@ -572,6 +623,7 @@ else
 
     private bool ShowQuoteEmptyCta =>
         string.IsNullOrWhiteSpace(searchTerm)
+        && !HasRegisterWindow
         && boardFilter is QuoteBoardFilter.All or QuoteBoardFilter.Live;
 
     private int LineCount => editorIsNew ? draftLines.Count : editorQuote?.Lines.Count(l => !l.IsDeleted) ?? 0;
@@ -825,7 +877,10 @@ else
         var search = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
         var page = currentPage;
         var filter = boardFilter;
-        var total = await QuoteService.CountAsync(search, filter);
+        var from = registerFrom;
+        var to = registerTo;
+        var status = registerStatus;
+        var total = await QuoteService.CountAsync(search, filter, from: from, to: to, status: status);
         if (gen != _quotesLoadGeneration)
             return;
 
@@ -836,19 +891,70 @@ else
             currentPage = last;
         }
 
-        var loaded = (await QuoteService.GetAllAsync(search, page, PageSize, filter: filter)).ToList();
+        var loaded = (await QuoteService.GetAllAsync(search, page, PageSize, filter: filter, from: from, to: to, status: status)).ToList();
+        if (gen != _quotesLoadGeneration)
+            return;
+
+        var withJobs = await QuoteService.GetQuoteIdsWithJobsAsync(loaded.Select(q => q.Id).ToList());
         if (gen != _quotesLoadGeneration)
             return;
 
         _quoteTotal = total;
         quotes = loaded.Select(q => QuoteUiHelper.DetachForUi(q)!).ToList();
+        quotesWithJobs = withJobs.ToHashSet();
+    }
+
+    private static string FormatRegisterDate(DateTime? value) =>
+        value?.ToString("yyyy-MM-dd") ?? "";
+
+    private static DateTime? ParseRegisterDate(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        return DateTime.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed.Date
+            : null;
+    }
+
+    private Task OnRegisterFromChanged(ChangeEventArgs e)
+    {
+        registerFrom = ParseRegisterDate(e.Value?.ToString());
+        currentPage = 1;
+        return RunGuardedAsync(LoadQuotes);
+    }
+
+    private Task OnRegisterToChanged(ChangeEventArgs e)
+    {
+        registerTo = ParseRegisterDate(e.Value?.ToString());
+        currentPage = 1;
+        return RunGuardedAsync(LoadQuotes);
+    }
+
+    private Task OnRegisterStatusChanged(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString();
+        registerStatus = Enum.TryParse<QuoteStatus>(text, ignoreCase: true, out var parsed) ? parsed : null;
+        if (registerStatus.HasValue)
+            boardFilter = QuoteBoardFilter.All;
+        currentPage = 1;
+        return RunGuardedAsync(LoadQuotes);
+    }
+
+    private Task ClearRegisterFilters()
+    {
+        registerFrom = null;
+        registerTo = null;
+        registerStatus = null;
+        currentPage = 1;
+        return RunGuardedAsync(LoadQuotes);
     }
 
     private Task SetBoardFilter(QuoteBoardFilter filter)
     {
-        if (boardFilter == filter)
+        if (boardFilter == filter && registerStatus == null)
             return Task.CompletedTask;
         boardFilter = filter;
+        registerStatus = null;
         currentPage = 1;
         return RunGuardedAsync(LoadQuotes);
     }
@@ -1298,8 +1404,11 @@ else
             q.QuoteNumber,
             q.Customer?.Name ?? "—",
             q.QuoteDate.ToString("yyyy-MM-dd"),
-            q.Status.ToString(),
+            TabularExportHelper.FormatDecimal(q.Subtotal),
+            TabularExportHelper.FormatDecimal(q.Tax),
             TabularExportHelper.FormatDecimal(q.Total),
+            q.Status.ToString(),
+            quotesWithJobs.Contains(q.Id) ? "Yes" : "—",
             (q.Lines?.Count(l => !l.IsDeleted) ?? 0).ToString()
         });
 
@@ -1314,7 +1423,7 @@ else
         try
         {
             var csv = TabularExportHelper.BuildCsv(
-                "QuoteNumber,Customer,Date,Status,Total,Lines",
+                "QuoteNumber,Customer,Date,ExVat,Vat,Total,Status,Job,Lines",
                 BuildQuoteExportRows());
             await JS.InvokeVoidAsync("meterpUi.downloadText", "quotes.csv", csv, "text/csv;charset=utf-8");
             ToastService.ShowSuccess($"Downloaded this page ({quotes.Count:N0} of {_quoteTotal:N0}).");
@@ -1331,7 +1440,7 @@ else
     {
         if (!quotes.Any()) return;
         var tsv = TabularExportHelper.BuildExcelTsv(
-            "QuoteNumber\tCustomer\tDate\tStatus\tTotal\tLines",
+            "QuoteNumber\tCustomer\tDate\tExVat\tVat\tTotal\tStatus\tJob\tLines",
             BuildQuoteExportRows());
         await JS.InvokeVoidAsync("meterpUi.downloadText", "quotes.xls", tsv, "application/vnd.ms-excel");
         ToastService.ShowSuccess($"Downloaded this page ({quotes.Count:N0} of {_quoteTotal:N0}).");
@@ -1342,7 +1451,7 @@ else
         if (!quotes.Any()) return;
         var pdf = TabularPdfGenerator.Generate(
             "Quotes Export",
-            new[] { "Quote #", "Customer", "Date", "Status", "Total", "Lines" },
+            new[] { "Quote #", "Customer", "Date", "Ex-VAT", "VAT", "Total", "Status", "Job", "Lines" },
             BuildQuoteExportRows(),
             _branding);
         await JS.InvokeVoidAsync("meterpUi.downloadBytes", "quotes.pdf", Convert.ToBase64String(pdf), "application/pdf");

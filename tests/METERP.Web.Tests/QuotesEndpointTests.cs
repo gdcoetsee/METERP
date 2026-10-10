@@ -49,6 +49,9 @@ public class QuotesEndpointTests : IClassFixture<MeterpWebApplicationFactory>
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("quotes-ready", body, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quotes-export-csv", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quotes-register-from", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quotes-register-to", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quotes-register-status", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

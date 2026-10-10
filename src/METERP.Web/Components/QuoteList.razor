@@ -20,11 +20,14 @@ else
         <table class="table table-hover align-middle" data-testid="quotes-table">
             <thead>
                 <tr>
+                    <th>Date</th>
                     <th>Quote #</th>
                     <th>Customer</th>
-                    <th>Date</th>
-                    <th>Status</th>
+                    <th class="text-end">Ex-VAT</th>
+                    <th class="text-end">VAT</th>
                     <th class="text-end">Total</th>
+                    <th>Status</th>
+                    <th>Job</th>
                     <th class="text-center">Lines</th>
                     <th style="width: 200px;"></th>
                 </tr>
@@ -34,11 +37,14 @@ else
                 {
                     <tr @key="q.Id" class="meterp-row-click" data-testid="@GetQuoteRowTestId(q)" title="Open quote"
                         @onclick="() => OnView.InvokeAsync(q)" @onclick:stopPropagation="true">
+                        <td>@q.QuoteDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Valid @q.ValidUntil.ToString("yyyy-MM-dd")</small></td>
                         <td><strong>@q.QuoteNumber</strong></td>
                         <td>@(q.Customer?.Name ?? "-")</td>
-                        <td>@q.QuoteDate.ToString("yyyy-MM-dd")<br /><small class="text-muted">Valid @q.ValidUntil.ToString("yyyy-MM-dd")</small></td>
-                        <td>@((MarkupString)GetStatusBadge(q.Status))</td>
+                        <td class="text-end" data-testid="quote-ex-vat">R @q.Subtotal.ToString("N2")</td>
+                        <td class="text-end" data-testid="quote-vat">R @q.Tax.ToString("N2")</td>
                         <td class="text-end">R @q.Total.ToString("N2")</td>
+                        <td>@((MarkupString)GetStatusBadge(q.Status))</td>
+                        <td data-testid="quote-has-job">@(HasJob(q) ? "Yes" : "—")</td>
                         <td class="text-center"><span class="badge bg-secondary">@(q.Lines?.Count(l => !l.IsDeleted) ?? 0)</span></td>
                         <td class="text-end">
                             @{
@@ -75,6 +81,7 @@ else
 
 @code {
     [Parameter] public List<Quote> Quotes { get; set; } = new();
+    [Parameter] public IReadOnlySet<Guid> QuoteIdsWithJobs { get; set; } = new HashSet<Guid>();
     [Parameter] public bool CanManage { get; set; }
     [Parameter] public int CurrentPage { get; set; } = 1;
     [Parameter] public bool ShowPagination { get; set; } = true;
@@ -93,6 +100,8 @@ else
     [Parameter] public EventCallback OnFirst { get; set; }
     [Parameter] public EventCallback OnLast { get; set; }
     [Parameter] public EventCallback OnCreate { get; set; }
+
+    private bool HasJob(Quote q) => QuoteIdsWithJobs.Contains(q.Id);
 
     private static string GetQuoteRowTestId(Quote q)
     {

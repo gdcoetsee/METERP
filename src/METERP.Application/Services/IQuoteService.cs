@@ -9,10 +9,39 @@ namespace METERP.Application.Services;
 public interface IQuoteService
 {
     Task<Quote?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<IReadOnlyList<Quote>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default, QuoteBoardFilter filter = QuoteBoardFilter.All);
+    Task<IReadOnlyList<Quote>> GetAllAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default,
+        QuoteBoardFilter filter = QuoteBoardFilter.All,
+        DateTime? from = null,
+        DateTime? to = null,
+        QuoteStatus? status = null);
 
-    /// <summary>Count quotes in the same search and board filter as <see cref="GetAllAsync"/>.</summary>
-    Task<int> CountAsync(string? search = null, QuoteBoardFilter filter = QuoteBoardFilter.All, CancellationToken ct = default);
+    /// <summary>Count quotes in the same search, board, and register window as <see cref="GetAllAsync"/>.</summary>
+    Task<int> CountAsync(
+        string? search = null,
+        QuoteBoardFilter filter = QuoteBoardFilter.All,
+        CancellationToken ct = default,
+        DateTime? from = null,
+        DateTime? to = null,
+        QuoteStatus? status = null);
+
+    /// <summary>
+    /// Quote book for a date window and status. From and to are inclusive calendar days.
+    /// VAT on each row is the stored tax. A job in another tenant does not count.
+    /// </summary>
+    Task<IReadOnlyList<QuoteRegisterRow>> GetRegisterAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        QuoteStatus? status = null,
+        CancellationToken ct = default);
+
+    /// <summary>Quote ids in this tenant that have a non-deleted job. Other tenants' jobs are ignored.</summary>
+    Task<IReadOnlySet<Guid>> GetQuoteIdsWithJobsAsync(
+        IReadOnlyCollection<Guid> quoteIds,
+        CancellationToken ct = default);
 
     Task<Guid> CreateAsync(Quote quote, CancellationToken ct = default);
 

@@ -94,6 +94,46 @@ public class QuoteServiceCacheTests
     }
 
     [Fact]
+    public async Task GetAllAsync_DateFilter_DoesNotReturnQuotesCachedForTheUnfilteredList()
+    {
+        var tenantId = Guid.NewGuid();
+        var (db, cache) = CreateHarness(tenantId);
+        using (db)
+        {
+            var customer = new Customer { TenantId = tenantId, Name = "Cache Test Co" };
+            db.Set<Customer>().Add(customer);
+            db.Set<Quote>().AddRange(
+                new Quote
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    QuoteNumber = "Q-IN",
+                    QuoteDate = new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc),
+                    Status = QuoteStatus.Sent,
+                    TaxRate = 0.15m
+                },
+                new Quote
+                {
+                    TenantId = tenantId,
+                    CustomerId = customer.Id,
+                    QuoteNumber = "Q-OUT",
+                    QuoteDate = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
+                    Status = QuoteStatus.Draft,
+                    TaxRate = 0.15m
+                });
+            await db.SaveChangesAsync();
+
+            var service = new QuoteService(db, cache: cache);
+            Assert.Equal(2, (await service.GetAllAsync()).Count);
+
+            var filtered = await service.GetAllAsync(
+                from: new DateTime(2026, 4, 1),
+                to: new DateTime(2026, 4, 3));
+            Assert.Equal("Q-IN", Assert.Single(filtered).QuoteNumber);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_InvalidatesQuoteListCache()
     {
         var tenantId = Guid.NewGuid();

@@ -55,26 +55,78 @@ public class QuoteService : IQuoteService
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default,
-        QuoteBoardFilter filter = QuoteBoardFilter.All)
+        QuoteBoardFilter filter = QuoteBoardFilter.All,
+        DateTime? from = null,
+        DateTime? to = null,
+        QuoteStatus? status = null)
     {
-        if (_cache != null && string.IsNullOrWhiteSpace(search))
+        // A dated or status-filtered book must not reuse the unfiltered list cache.
+        if (_cache != null && string.IsNullOrWhiteSpace(search) && !HasRegisterWindow(from, to, status))
         {
             return await _cache.GetOrCreateAsync(
                 TenantCacheCategories.Quotes,
                 $"p{page}:s{pageSize}:f{(int)filter}",
-                () => LoadQuotesAsync(search, page, pageSize, filter, ct),
+                () => LoadQuotesAsync(search, page, pageSize, filter, from, to, status, ct),
                 ct: ct);
         }
 
-        return await LoadQuotesAsync(search, page, pageSize, filter, ct);
+        return await LoadQuotesAsync(search, page, pageSize, filter, from, to, status, ct);
     }
 
     public async Task<int> CountAsync(
         string? search = null,
         QuoteBoardFilter filter = QuoteBoardFilter.All,
+        CancellationToken ct = default,
+        DateTime? from = null,
+        DateTime? to = null,
+        QuoteStatus? status = null)
+    {
+        return await QuotesForList(search, filter, from, to, status).CountAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<QuoteRegisterRow>> GetRegisterAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        QuoteStatus? status = null,
         CancellationToken ct = default)
     {
-        return await ApplyQuoteListFilter(FilteredQuotes(search), filter).CountAsync(ct);
+        var quotes = await ApplyRegisterWindow(_dbContext.Set<Quote>().AsNoTracking(), from, to, status)
+            .Include(q => q.Customer)
+            .OrderByDescending(q => q.QuoteDate)
+            .ThenByDescending(q => q.QuoteNumber)
+            .ToListAsync(ct);
+
+        var withJobs = await GetQuoteIdsWithJobsAsync(quotes.Select(q => q.Id).ToList(), ct);
+        return quotes.Select(q => new QuoteRegisterRow(
+            q.Id,
+            q.QuoteNumber,
+            q.QuoteDate,
+            q.Customer?.Name ?? "",
+            q.Subtotal,
+            q.Tax,
+            q.Total,
+            q.Status,
+            withJobs.Contains(q.Id))).ToList();
+    }
+
+    public async Task<IReadOnlySet<Guid>> GetQuoteIdsWithJobsAsync(
+        IReadOnlyCollection<Guid> quoteIds,
+        CancellationToken ct = default)
+    {
+        if (quoteIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var ids = quoteIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        if (ids.Count == 0)
+            return new HashSet<Guid>();
+
+        var found = await _dbContext.Set<Job>().AsNoTracking()
+            .Where(j => j.QuoteId != null && ids.Contains(j.QuoteId.Value))
+            .Select(j => j.QuoteId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return found.ToHashSet();
     }
 
     private IQueryable<Quote> FilteredQuotes(string? search)
@@ -100,11 +152,56 @@ public class QuoteService : IQuoteService
             _ => query
         };
 
+    private static bool HasRegisterWindow(DateTime? from, DateTime? to, QuoteStatus? status) =>
+        from.HasValue || to.HasValue || status.HasValue;
+
+    private IQueryable<Quote> QuotesForList(
+        string? search,
+        QuoteBoardFilter filter,
+        DateTime? from,
+        DateTime? to,
+        QuoteStatus? status) =>
+        ApplyRegisterWindow(ApplyQuoteListFilter(FilteredQuotes(search), filter), from, to, status);
+
+    /// <summary>
+    /// Inclusive calendar days. A quote at 23:59 on the To date stays; the next midnight does not.
+    /// Bounds are UTC midnights so Npgsql timestamptz accepts them.
+    /// </summary>
+    private static IQueryable<Quote> ApplyRegisterWindow(
+        IQueryable<Quote> query,
+        DateTime? from,
+        DateTime? to,
+        QuoteStatus? status)
+    {
+        if (from.HasValue)
+        {
+            var start = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
+            query = query.Where(q => q.QuoteDate >= start);
+        }
+
+        if (to.HasValue)
+        {
+            var endExclusive = DateTime.SpecifyKind(to.Value.Date.AddDays(1), DateTimeKind.Utc);
+            query = query.Where(q => q.QuoteDate < endExclusive);
+        }
+
+        if (status.HasValue)
+        {
+            var selected = status.Value;
+            query = query.Where(q => q.Status == selected);
+        }
+
+        return query;
+    }
+
     private async Task<IReadOnlyList<Quote>> LoadQuotesAsync(
         string? search,
         int page,
         int pageSize,
         QuoteBoardFilter filter,
+        DateTime? from,
+        DateTime? to,
+        QuoteStatus? status,
         CancellationToken ct)
     {
         if (page < 1)
@@ -112,7 +209,7 @@ public class QuoteService : IQuoteService
         if (pageSize <= 0)
             pageSize = 20;
 
-        var results = await ApplyQuoteListFilter(FilteredQuotes(search), filter)
+        var results = await QuotesForList(search, filter, from, to, status)
             .Include(q => q.Lines)
             .Include(q => q.Customer)
             .OrderByDescending(q => q.QuoteDate)
